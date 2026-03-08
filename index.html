@@ -409,7 +409,7 @@ const STAGES = ['setup','research','sitemap','copy','schema','export'];
 
 // ── CLAUDE API ─────────────────────────────────────────────────────
 async function callClaude(system, user, onChunk) {
-  const res = await fetch('https://setsail-os-proxy.setsail-it.workers.dev', {
+  const res = await fetch('/api/claude', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({
