@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetSailOS — Website Build Pipeline</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.21.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#F0EFE9;--white:#FFFFFF;--panel:#E8E7E1;
+  --n1:#E2E2DC;--n2:#999990;--n3:#555550;--dark:#111111;
+  --green:#158E1D;--lime:#D8FF29;--dg:#002A0F;
+  --border:rgba(0,0,0,0.09);--border-hov:rgba(0,0,0,0.18);
+  --error:#E53935;--warn:#c07000;
+  --font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+textarea,input,button{font-family:var(--font)!important}
+textarea::placeholder,input::placeholder{color:#bbb!important}
+
+/* ── RESPONSIVE ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.page-pad{padding:32px 32px 80px}
+.nav-bar{display:flex;justify-content:space-between;align-items:center;padding:0 32px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.93);backdrop-filter:blur(10px)}
+.nav-left{display:flex;align-items:center;gap:20px}
+.nav-stage{display:flex;align-items:center;gap:2px}
+.stage-pill{display:flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;font-size:11.5px;font-weight:400;transition:all .2s;white-space:nowrap}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:8px}
+.row-actions{display:flex;gap:6px;flex-shrink:0}
+.card-base{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:20px}
+
+@media(max-width:700px){
+  .grid-2{grid-template-columns:1fr}
+  .grid-3{grid-template-columns:1fr 1fr}
+  .page-pad{padding:20px 16px 60px}
+  .nav-bar{padding:0 16px;height:48px}
+  .nav-left{gap:10px}
+  .nav-stage{display:none}
+  .mobile-stage{display:flex;overflow-x:auto;padding:10px 16px;gap:4px;background:var(--white);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .mobile-stage::-webkit-scrollbar{display:none}
+  .card-base{padding:14px}
+  .h-page{font-size:22px!important}
+  .h-section{font-size:18px!important}
+  .tbl-hdr{display:none!important}
+  .tbl-row{flex-direction:column!important;gap:4px!important;align-items:flex-start!important}
+  .tbl-row-meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+  .row-actions{margin-top:6px}
+  .export-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .export-tabs button{white-space:nowrap}
+  .page-chip-list{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+  .page-chip-list::-webkit-scrollbar{display:none}
+}
+@media(max-width:480px){
+  .grid-3{grid-template-columns:1fr}
+  .stat-row{grid-template-columns:1fr 1fr!important}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useRef,useEffect,useCallback}=React;
+
+const C={
+  bg:'#F0EFE9',white:'#FFFFFF',panel:'#E8E7E1',
+  n1:'#E2E2DC',n2:'#999990',n3:'#555550',dark:'#111111',
+  green:'#158E1D',lime:'#D8FF29',dg:'#002A0F',
+  border:'rgba(0,0,0,0.09)',borderHov:'rgba(0,0,0,0.18)',
+  error:'#E53935',warn:'#c07000',
+};
+
+/* ── API ── */
+async function callClaude(sys,usr,onChunk){
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,stream:true,system:sys,messages:[{role:"user",content:usr}]})
+  });
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`API error ${res.status}`);}
+  const reader=res.body.getReader();const dec=new TextDecoder();let full="";
+  while(true){
+    const{done,value}=await reader.read();if(done)break;
+    for(const line of dec.decode(value).split("\n").filter(l=>l.startsWith("data: "))){
+      try{const d=JSON.parse(line.slice(6));if(d.type==="content_block_delta"&&d.delta?.text){full+=d.delta.text;if(onChunk)onChunk(full);}}catch{}
+    }
+  }
+  return full;
+}
+function parseJSON(t){try{return JSON.parse(t.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim());}catch{return null;}}
+
+/* ── PROMPTS ── */
+const P={
+research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
+{"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","brand_notes":"","strategic_recommendations":[]}`,
+
+sitemap:`You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble:
+[{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","supporting_keywords":[],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
+
+copy:`You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Not corporate. Leads with outcomes. Canadian spelling (analyse, optimise, colour). No fluff, no passive voice. H1 contains primary keyword. FAQ answers complete and conversational. Write COMPLETE page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">. Include: hero, problem/solution, service detail, process, social proof placeholders, FAQ (6+ questions), final CTA.`,
+
+schema:`You are a technical SEO specialist at Setsail Marketing. Rules: every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Add HowTo if process section exists. Use @id anchors. No "#1" or unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready to paste into <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
+};
+
+const STAGES=[
+  {id:"setup",    label:"Setup",    icon:"ti-settings"},
+  {id:"research", label:"Research", icon:"ti-search"},
+  {id:"sitemap",  label:"Sitemap",  icon:"ti-sitemap"},
+  {id:"copy",     label:"Copy",     icon:"ti-pencil"},
+  {id:"schema",   label:"Schema",   icon:"ti-code"},
+  {id:"export",   label:"Export",   icon:"ti-package-export"},
+];
+
+/* ── HOOKS ── */
+function useIsMobile(){
+  const[m,setM]=useState(()=>window.innerWidth<=700);
+  useEffect(()=>{const h=()=>setM(window.innerWidth<=700);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
+  return m;
+}
+
+/* ── MICRO ── */
+const EyeBrow=({children})=><div style={{fontSize:11,color:C.n2,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{children}</div>;
+
+const Chip=({children,color})=>(
+  <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:4,
+    fontSize:10.5,letterSpacing:"0.05em",textTransform:"uppercase",
+    background:color?color+"18":"rgba(0,0,0,0.05)",color:color||C.n2,
+    border:`1px solid ${color?color+"44":C.border}`}}>{children}</span>
+);
+
+function Btn({children,onClick,variant="primary",disabled,small,icon,full}){
+  const[hov,setHov]=useState(false);
+  const s={
+    primary:{background:hov?"#cdf020":C.lime,color:"#111",border:"none"},
+    dark:   {background:hov?"#2a2a2a":C.dark,color:"white",border:"none"},
+    ghost:  {background:hov?C.n1:"transparent",color:C.dark,border:`1px solid ${hov?C.borderHov:C.border}`},
+    danger: {background:hov?"rgba(229,57,53,0.07)":"transparent",color:C.error,border:`1px solid ${hov?"rgba(229,57,53,0.4)":"rgba(229,57,53,0.2)"}`},
+  };
+  return(
+    <button onClick={disabled?undefined:onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:"var(--font)",
+        fontWeight:400,fontSize:small?12:13,cursor:disabled?"not-allowed":"pointer",borderRadius:6,
+        padding:small?"5px 11px":"8px 16px",transition:"all .15s",whiteSpace:"nowrap",opacity:disabled?.4:1,
+        width:full?"100%":"auto",minHeight:small?28:36,...s[variant]}}>
+      {icon&&<i className={`ti ${icon}`} style={{fontSize:13}}/>}{children}
+    </button>
+  );
+}
+
+const Card=({children,style={},highlight,dg})=>(
+  <div className="card-base" style={{background:dg?C.dg:C.white,border:`1px solid ${highlight?highlight+"55":dg?"transparent":C.border}`,...style}}>{children}</div>
+);
+
+const Lbl=({children})=><div style={{fontSize:11,color:C.n2,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{children}</div>;
+
+const SectionMark=({children})=>(
+  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+    <span style={{background:C.dark,color:"white",fontSize:10.5,padding:"3px 9px",borderRadius:4}}>{children}</span>
+    <div style={{flex:1,height:1,background:C.border}}/>
+  </div>
+);
+
+function Inp({value,onChange,placeholder,multiline,rows=4}){
+  const[f,setF]=useState(false);
+  const base={width:"100%",background:C.white,border:`1px solid ${f?C.green:C.border}`,
+    boxShadow:f?"0 0 0 3px rgba(21,142,29,0.08)":"none",
+    borderRadius:6,padding:"9px 12px",color:C.dark,fontSize:13,fontFamily:"var(--font)",
+    outline:"none",transition:"all .15s",WebkitAppearance:"none"};
+  return multiline
+    ?<textarea value={value} onChange={e=>onChange(e.target.value)} onFocus={()=>setF(true)} onBlur={()=>setF(false)} placeholder={placeholder} rows={rows} style={{...base,resize:"vertical"}}/>
+    :<input value={value} onChange={e=>onChange(e.target.value)} onFocus={()=>setF(true)} onBlur={()=>setF(false)} placeholder={placeholder} style={base}/>;
+}
+
+const Spinner=({size=13,color=C.green})=>(
+  <span style={{display:"inline-block",width:size,height:size,border:`2px solid rgba(0,0,0,0.08)`,borderTopColor:color,borderRadius:"50%",animation:"spin 0.75s linear infinite",flexShrink:0}}/>
+);
+
+function ProgressBar({done,total,color=C.green}){
+  const pct=total>0?Math.round(done/total*100):0;
+  return(
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <span style={{fontSize:12,color:C.n2}}>{done}/{total} complete</span>
+        <span style={{fontSize:12,fontWeight:500,color}}>{pct}%</span>
+      </div>
+      <div style={{height:3,background:C.n1,borderRadius:3,overflow:"hidden"}}>
+        <div style={{height:"100%",background:color,width:`${pct}%`,borderRadius:3,transition:"width 0.4s ease"}}/>
+      </div>
+    </div>
+  );
+}
+
+function StreamBox({text,loading,maxHeight=220}){
+  const ref=useRef();
+  useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[text]);
+  return(
+    <div ref={ref} style={{background:C.dg,borderRadius:6,padding:12,minHeight:44,maxHeight,overflow:"auto",
+      fontFamily:"monospace",fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:8}}>
+      {loading&&!text?<div style={{display:"flex",alignItems:"center",gap:8,color:"rgba(255,255,255,0.3)"}}><Spinner size={11} color="rgba(255,255,255,0.35)"/>Thinking...</div>
+        :text||<span style={{color:"rgba(255,255,255,0.2)"}}>Ready</span>}
+    </div>
+  );
+}
+
+/* ── NAV STAGE BAR ── */
+function StageBar({current}){
+  const idx=STAGES.findIndex(s=>s.id===current);
+  return(
+    <div className="nav-stage">
+      {STAGES.map((s,i)=>{
+        const done=i<idx,active=i===idx;
+        return(
+          <div key={s.id} style={{display:"flex",alignItems:"center"}}>
+            <div className="stage-pill" style={{
+              background:active?C.dark:done?"rgba(21,142,29,0.1)":"transparent",
+              color:active?"white":done?C.green:C.n2,
+              border:`1px solid ${active?C.dark:done?"rgba(21,142,29,0.25)":C.border}`}}>
+              {done?<i className="ti ti-check" style={{fontSize:9}}/>:<i className={`ti ${s.icon}`} style={{fontSize:9}}/>}
+              {s.label}
+            </div>
+            {i<STAGES.length-1&&<div style={{width:6,height:1,background:i<idx?"rgba(21,142,29,0.25)":C.border}}/>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Mobile stage dots */
+function MobileStageBar({current}){
+  const idx=STAGES.findIndex(s=>s.id===current);
+  const ref=useRef();
+  useEffect(()=>{if(ref.current){const active=ref.current.querySelector(".active-pill");if(active)active.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});}},[ current]);
+  return(
+    <div ref={ref} className="mobile-stage">
+      {STAGES.map((s,i)=>{
+        const done=i<idx,active=i===idx;
+        return(
+          <div key={s.id} className={active?"active-pill":""} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 12px",borderRadius:20,flexShrink:0,
+            background:active?C.dark:done?"rgba(21,142,29,0.1)":"transparent",
+            color:active?"white":done?C.green:C.n2,fontSize:11.5,
+            border:`1px solid ${active?C.dark:done?"rgba(21,142,29,0.25)":C.border}`}}>
+            {done?<i className="ti ti-check" style={{fontSize:10}}/>:<i className={`ti ${s.icon}`} style={{fontSize:10}}/>}
+            {s.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── STATUS CIRCLE ── */
+const StatusCircle=({status})=>{
+  const m={done:{bg:C.green,c:"✓"},error:{bg:C.error,c:"!"},running:{bg:"transparent",c:"spin"},idle:{bg:C.n1,c:""}};
+  const t=m[status]||m.idle;
+  return<div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,background:t.bg,border:`1px solid ${t.c==="spin"?C.n1:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"white"}}>
+    {t.c==="spin"?<Spinner size={10}/>:t.c}
+  </div>;
+};
+
+/* ── SETUP ── */
+function SetupStage({data,setData,onNext}){
+  const[err,setErr]=useState("");
+  const isMobile=useIsMobile();
+  const set=k=>v=>setData(d=>({...d,[k]:v}));
+  const go=()=>{
+    if(!data.clientName.trim())return setErr("Client name is required");
+    if(data.strategyDoc.trim().length<80)return setErr("Strategy document is too short — paste the full brief");
+    setErr("");onNext();
+  };
+  return(
+    <div style={{maxWidth:680,animation:"fadeIn 0.3s ease"}}>
+      <EyeBrow>Website Build Pipeline</EyeBrow>
+      <h2 className="h-page" style={{fontSize:32,fontWeight:500,letterSpacing:"-0.03em",marginBottom:6}}>New project</h2>
+      <p style={{color:C.n2,fontSize:14,marginBottom:20}}>Fill in client details and paste the full strategy document.</p>
+
+      <Card style={{marginBottom:8}}>
+        <SectionMark>Client</SectionMark>
+        <div className="grid-2" style={{marginBottom:12}}>
+          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Client Name *</label><Inp value={data.clientName} onChange={set("clientName")} placeholder="e.g. Riverside Roofing"/></div>
+          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Website URL</label><Inp value={data.websiteUrl} onChange={set("websiteUrl")} placeholder="e.g. riversideroofing.ca"/></div>
+        </div>
+        <div className="grid-2">
+          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Target Geography</label><Inp value={data.geography} onChange={set("geography")} placeholder="e.g. Vancouver, BC — Canada-wide"/></div>
+          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Pricing to Mention</label><Inp value={data.pricing} onChange={set("pricing")} placeholder="e.g. From $2,400/mo flat"/></div>
+        </div>
+      </Card>
+
+      <Card style={{marginBottom:8}}>
+        <SectionMark>Strategy</SectionMark>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:12,display:"block",marginBottom:5}}>Strategy Document * <span style={{color:C.n2}}>— paste discovery notes, brief, questionnaire, proposal</span></label>
+          <Inp value={data.strategyDoc} onChange={set("strategyDoc")} multiline rows={isMobile?7:10} placeholder="Paste the full strategy document here. Include services, audience, geography, competitors, pricing, tone, goals — everything."/>
+        </div>
+        <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Brand Voice Notes</label><Inp value={data.brandVoice} onChange={set("brandVoice")} multiline rows={2} placeholder="e.g. Direct and confident. No jargon. Canadian spelling."/></div>
+      </Card>
+
+      <Card style={{marginBottom:20}}>
+        <SectionMark>Competitors</SectionMark>
+        <Inp value={data.competitors} onChange={set("competitors")} multiline rows={3} placeholder={"competitor1.ca\ncompetitor2.com"}/>
+      </Card>
+
+      {err&&<div style={{display:"flex",alignItems:"center",gap:7,color:C.error,fontSize:13,marginBottom:12,padding:"8px 12px",background:"rgba(229,57,53,0.06)",border:"1px solid rgba(229,57,53,0.18)",borderRadius:6}}><i className="ti ti-alert-circle" style={{fontSize:14}}/>{err}</div>}
+      <Btn onClick={go} icon="ti-arrow-right">Run Research Analysis</Btn>
+    </div>
+  );
+}
+
+/* ── RESEARCH ── */
+function ResearchStage({setup,research,setResearch,onNext}){
+  const[loading,setLoading]=useState(false);
+  const[stream,setStream]=useState("");
+  const run=async()=>{
+    setLoading(true);setStream("");
+    try{
+      const r=await callClaude(P.research,
+        `CLIENT: ${setup.clientName}\nWEBSITE: ${setup.websiteUrl||"N/A"}\nGEOGRAPHY: ${setup.geography||"N/A"}\nPRICING: ${setup.pricing||"N/A"}\nCOMPETITORS:\n${setup.competitors||"N/A"}\nBRAND VOICE: ${setup.brandVoice||"N/A"}\n\nSTRATEGY DOCUMENT:\n${setup.strategyDoc}`,
+        setStream);
+      setResearch({raw:r,parsed:parseJSON(r)});
+    }catch(e){setStream(`Error: ${e.message}`);}
+    setLoading(false);
+  };
+  const r=research?.parsed;
+  return(
+    <div style={{maxWidth:780,animation:"fadeIn 0.3s ease"}}>
+      <EyeBrow>Stage 2 of 6</EyeBrow>
+      <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Research Brief</h2>
+      <p style={{color:C.n2,fontSize:13,marginBottom:16}}>Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
+      {!research&&<Btn onClick={run} disabled={loading} icon={loading?undefined:"ti-brain"}>{loading?<><Spinner size={12}/>&nbsp;Analysing...</>:"Run Research Analysis"}</Btn>}
+      {(loading||(stream&&!r))&&<Card style={{marginTop:12}}><Lbl>Analysis output</Lbl><StreamBox text={stream} loading={loading}/></Card>}
+      {r&&<div style={{animation:"fadeIn 0.3s ease"}}>
+        <div className="grid-2" style={{marginBottom:8}}>
+          <Card><Lbl>Business Overview</Lbl><p style={{color:C.n3,fontSize:13,lineHeight:1.65}}>{r.business_overview}</p></Card>
+          <Card><Lbl>Value Proposition</Lbl><p style={{color:C.n3,fontSize:13,lineHeight:1.65}}>{r.value_proposition}</p></Card>
+        </div>
+        {r.key_differentiators?.length>0&&<Card style={{marginBottom:8}}><Lbl>Key Differentiators</Lbl>
+          <ul style={{marginTop:8,display:"flex",flexDirection:"column",gap:4,listStyle:"none"}}>
+            {r.key_differentiators.map((d,i)=><li key={i} style={{color:C.n3,fontSize:13,display:"flex",gap:8}}><span style={{color:C.green,flexShrink:0}}>—</span>{d}</li>)}
+          </ul></Card>}
+        {r.target_audience?.length>0&&<Card style={{marginBottom:8}}><Lbl>Target Audience</Lbl>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+            {r.target_audience.map((a,i)=>(
+              <div key={i} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"10px 14px",flex:"1 1 160px"}}>
+                <div style={{fontSize:12,fontWeight:500,marginBottom:4}}>{a.persona}</div>
+                {a.pain_points?.slice(0,3).map((p,j)=><div key={j} style={{color:C.n2,fontSize:12,marginBottom:2,display:"flex",gap:6}}><span style={{opacity:.35}}>—</span>{p}</div>)}
+              </div>
+            ))}
+          </div></Card>}
+        {r.strategic_recommendations?.length>0&&<Card style={{marginBottom:16,borderLeft:`3px solid ${C.green}`}}><Lbl>Strategic Recommendations</Lbl>
+          <ul style={{marginTop:8,display:"flex",flexDirection:"column",gap:6,listStyle:"none"}}>
+            {r.strategic_recommendations.map((rec,i)=><li key={i} style={{color:C.dark,fontSize:13,display:"flex",gap:8}}><i className="ti ti-point-filled" style={{color:C.green,fontSize:8,marginTop:5,flexShrink:0}}/>{rec}</li>)}
+          </ul></Card>}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <Btn onClick={onNext} icon="ti-arrow-right">Proceed to Sitemap</Btn>
+          <Btn variant="ghost" onClick={()=>{setResearch(null);setStream("");}} icon="ti-refresh">Re-run</Btn>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+/* ── SITEMAP ── */
+function SitemapStage({setup,research,sitemap,setSitemap,onNext}){
+  const[loading,setLoading]=useState(false);
+  const[stream,setStream]=useState("");
+  const[revisions,setRevisions]=useState("");
+  const[approved,setApproved]=useState(false);
+  const isMobile=useIsMobile();
+
+  const run=async(withRev=false)=>{
+    setLoading(true);setStream("");setSitemap(null);setApproved(false);
+    try{
+      const r=research?.parsed;
+      const result=await callClaude(P.sitemap,
+        `CLIENT: ${setup.clientName}\nSERVICES: ${r?.primary_services?.join(", ")||"N/A"}\nGEOGRAPHY: ${r?.geography?.primary||setup.geography||"N/A"}\nGEOGRAPHY SECONDARY: ${r?.geography?.secondary?.join(", ")||""}\nCOMPETITORS: ${r?.competitors?.join(", ")||setup.competitors||""}\nOVERVIEW: ${r?.business_overview||""}\nVALUE PROP: ${r?.value_proposition||""}\nPRICING: ${setup.pricing||r?.pricing_notes||""}${withRev&&revisions?"\n\nREVISION NOTES:\n"+revisions:""}`,
+        setStream);
+      const parsed=parseJSON(result);
+      setSitemap({raw:result,pages:Array.isArray(parsed)?parsed:[]});
+    }catch(e){setStream(`Error: ${e.message}`);}
+    setLoading(false);
+  };
+
+  const pages=sitemap?.pages||[];
+  const pCount={P1:pages.filter(p=>p.priority==="P1").length,P2:pages.filter(p=>p.priority==="P2").length,P3:pages.filter(p=>p.priority==="P3").length};
+  const pColor={P1:C.green,P2:C.warn,P3:C.n2};
+
+  return(
+    <div style={{maxWidth:960,animation:"fadeIn 0.3s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
+        <div>
+          <EyeBrow>Stage 3 of 6</EyeBrow>
+          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Sitemap + Keyword Map</h2>
+          <p style={{color:C.n2,fontSize:13}}><span style={{color:C.green,fontWeight:500}}>⛳ Gate 1</span> — Approve before copy begins.</p>
+        </div>
+        {!sitemap&&<Btn onClick={()=>run(false)} disabled={loading} icon={loading?undefined:"ti-sitemap"}>{loading?<><Spinner size={12}/>&nbsp;Generating...</>:"Generate Sitemap"}</Btn>}
+      </div>
+
+      {(loading||stream)&&!sitemap&&<Card><Lbl>Building sitemap...</Lbl><StreamBox text={stream} loading={loading}/></Card>}
+
+      {pages.length>0&&<div style={{animation:"fadeIn 0.3s ease"}}>
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{background:C.dark,color:"white",fontSize:11,padding:"3px 10px",borderRadius:4}}>{pages.length} pages</span>
+          <Chip color={C.green}>P1: {pCount.P1}</Chip>
+          <Chip color={C.warn}>P2: {pCount.P2}</Chip>
+          <Chip>P3: {pCount.P3}</Chip>
+        </div>
+
+        {/* Table — desktop */}
+        {!isMobile&&<div className="tbl-wrap" style={{marginBottom:8}}>
+          <div className="tbl-hdr" style={{display:"grid",gridTemplateColumns:"24px 1.3fr 1.2fr 160px 44px 66px",background:C.bg,padding:"7px 14px",borderBottom:`1px solid ${C.border}`,fontSize:10.5,color:C.n2,letterSpacing:"0.06em",textTransform:"uppercase"}}>
+            <span>#</span><span>Page</span><span>Primary Keyword</span><span>Supporting</span><span>KD</span><span>Priority</span>
+          </div>
+          {pages.map((p,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"24px 1.3fr 1.2fr 160px 44px 66px",padding:"9px 14px",borderBottom:i<pages.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.white:"rgba(240,239,233,0.5)",alignItems:"start"}}>
+              <span style={{color:C.n2,fontSize:11}}>{i+1}</span>
+              <div><div style={{color:C.dark,fontSize:12.5}}>{p.page_name}</div><div style={{color:C.n2,fontSize:10.5,marginTop:1}}>/{p.slug}</div></div>
+              <div style={{color:C.n3,fontSize:12}}>{p.primary_keyword}</div>
+              <div style={{fontSize:11,color:C.n2,lineHeight:1.4}}>{p.supporting_keywords?.slice(0,2).join(", ")}{p.supporting_keywords?.length>2?` +${p.supporting_keywords.length-2}`:""}</div>
+              <span style={{color:C.n2,fontSize:11}}>{p.primary_kd||"–"}</span>
+              <span style={{color:pColor[p.priority]||C.n2,fontSize:11,fontWeight:500}}>{p.priority||"–"}</span>
+            </div>
+          ))}
+        </div>}
+
+        {/* Table — mobile card list */}
+        {isMobile&&<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+          {pages.map((p,i)=>(
+            <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:4}}>
+                <div>
+                  <div style={{color:C.dark,fontSize:13,fontWeight:400}}>{p.page_name}</div>
+                  <div style={{color:C.n2,fontSize:11,marginTop:1}}>/{p.slug}</div>
+                </div>
+                <span style={{color:pColor[p.priority]||C.n2,fontSize:11,fontWeight:500,flexShrink:0}}>{p.priority}</span>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+                <span style={{fontSize:11,color:C.n3}}>{p.primary_keyword}</span>
+                {p.primary_kd&&<span style={{fontSize:11,color:C.n2}}>KD: {p.primary_kd}</span>}
+              </div>
+            </div>
+          ))}
+        </div>}
+
+        {/* Gate */}
+        {!approved?(
+          <div style={{background:C.dg,borderRadius:8,padding:isMobile?14:20,border:"1px solid rgba(255,255,255,0.06)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+              <i className="ti ti-flag-2" style={{color:C.lime,fontSize:14}}/>
+              <span style={{color:C.lime,fontWeight:500,fontSize:13}}>Gate 1 — PM Sitemap Approval</span>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:"rgba(255,255,255,0.5)",display:"block",marginBottom:5}}>Revision notes — leave blank to approve as-is</label>
+              <textarea value={revisions} onChange={e=>setRevisions(e.target.value)} rows={3}
+                placeholder="e.g. Add /emergency-services. Remove /about-team."
+                style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:6,padding:"8px 12px",color:"rgba(255,255,255,0.8)",fontSize:13,fontFamily:"var(--font)",resize:"vertical",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn onClick={()=>setApproved(true)} icon="ti-check">Approve Sitemap</Btn>
+              <button onClick={()=>run(true)} disabled={loading} style={{display:"inline-flex",alignItems:"center",gap:5,background:"transparent",color:"rgba(255,255,255,0.5)",border:"1px solid rgba(255,255,255,0.18)",borderRadius:6,padding:"8px 14px",fontSize:13,fontFamily:"var(--font)",cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1}}>
+                <i className="ti ti-refresh" style={{fontSize:12}}/>{loading?"Regenerating...":"Revise & Regenerate"}
+              </button>
+            </div>
+          </div>
+        ):(
+          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(21,142,29,0.08)",border:"1px solid rgba(21,142,29,0.2)",borderRadius:6,padding:"9px 14px",color:C.green,fontSize:13}}>
+              <i className="ti ti-check"/>Sitemap approved — {pages.length} pages locked
+            </div>
+            <Btn onClick={onNext} icon="ti-arrow-right">Generate Copy</Btn>
+          </div>
+        )}
+      </div>}
+    </div>
+  );
+}
+
+/* ── COPY ── */
+function CopyStage({setup,research,sitemap,copyData,setCopyData,onNext}){
+  const[running,setRunning]=useState(false);
+  const[currentSlug,setCurrentSlug]=useState(null);
+  const[currentStream,setCurrentStream]=useState("");
+  const[preview,setPreview]=useState(null);
+  const stopRef=useRef(false);
+  const isMobile=useIsMobile();
+  const pages=sitemap?.pages||[];
+  const ordered=[...pages.filter(p=>p.priority==="P1"),...pages.filter(p=>p.priority==="P2"),...pages.filter(p=>p.priority==="P3")];
+  const doneCount=Object.keys(copyData||{}).filter(k=>copyData[k]?.copy).length;
+
+  const buildPrompt=page=>{const r=research?.parsed;
+    return`CLIENT: ${setup.clientName}\nPAGE: ${page.page_name} | /${page.slug}\nPRIMARY KEYWORD: ${page.primary_keyword}\nSUPPORTING: ${page.supporting_keywords?.join(", ")}\nINTENT: ${page.search_intent}\nWORD COUNT MIN: ${page.word_count_target||1500}\nOVERVIEW: ${r?.business_overview||""}\nVALUE PROP: ${r?.value_proposition||""}\nAUDIENCE: ${r?.target_audience?.map(a=>a.persona).join(", ")||""}\nDIFFERENTIATORS: ${r?.key_differentiators?.join(". ")||""}\nGEOGRAPHY: ${r?.geography?.primary||setup.geography||""}\nPRICING: ${setup.pricing||r?.pricing_notes||""}\nVOICE: ${r?.tone_and_voice||setup.brandVoice||"Confident, direct, human. Canadian spelling."}\nNOTES: ${page.notes||""}\n\nWrite the complete page.`;};
+
+  const runSingle=async page=>{
+    setCurrentSlug(page.slug);setCurrentStream("");
+    try{const copy=await callClaude(P.copy,buildPrompt(page),setCurrentStream);setCopyData(p=>({...(p||{}),[page.slug]:{copy,page}}));}
+    catch(e){setCopyData(p=>({...(p||{}),[page.slug]:{error:e.message,page}}));}
+    setCurrentSlug(null);
+  };
+
+  const runAll=async()=>{
+    setRunning(true);stopRef.current=false;
+    for(const page of ordered){
+      if(stopRef.current)break;if(copyData?.[page.slug]?.copy)continue;
+      await runSingle(page);await new Promise(r=>setTimeout(r,600));
+    }
+    setRunning(false);
+  };
+
+  return(
+    <div style={{maxWidth:900,animation:"fadeIn 0.3s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
+        <div>
+          <EyeBrow>Stage 4 of 6</EyeBrow>
+          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Copy Generation</h2>
+          <p style={{color:C.n2,fontSize:13}}>All {ordered.length} pages. P1 first. ~60–90s per page.</p>
+        </div>
+        <div style={{display:"flex",gap:8,flexShrink:0}}>
+          {running?<Btn variant="danger" onClick={()=>{stopRef.current=true;setRunning(false);}} icon="ti-player-stop">Stop</Btn>
+            :<Btn onClick={runAll} disabled={!!currentSlug} icon="ti-player-play">{doneCount>0?`Continue (${doneCount}/${ordered.length})`:"Generate All"}</Btn>}
+        </div>
+      </div>
+      {ordered.length>0&&<ProgressBar done={doneCount} total={ordered.length}/>}
+      {currentSlug&&<Card style={{marginBottom:10,borderLeft:`3px solid ${C.green}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><Spinner size={12}/><span style={{fontSize:13}}>Writing: <strong>{ordered.find(p=>p.slug===currentSlug)?.page_name}</strong></span></div>
+        <div style={{height:70,overflow:"hidden",background:C.dg,borderRadius:5,padding:10,fontFamily:"monospace",fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.5}}>{currentStream.slice(-400)}</div>
+      </Card>}
+      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
+        {ordered.map(page=>{
+          const r=copyData?.[page.slug];const isRun=currentSlug===page.slug,isDone=!!r?.copy,isErr=!!r?.error;
+          return(
+            <div key={page.slug} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.white,borderRadius:6,border:`1px solid ${isRun?C.green:isDone?"rgba(21,142,29,0.22)":isErr?"rgba(229,57,53,0.22)":C.border}`,transition:"border-color .2s",flexWrap:isMobile?"wrap":"nowrap"}}>
+              <StatusCircle status={isRun?"running":isDone?"done":isErr?"error":"idle"}/>
+              <div style={{flex:1,minWidth:0}}>
+                <span style={{color:isDone?C.dark:C.n2,fontSize:13}}>{page.page_name}</span>
+                {!isMobile&&<span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{page.slug}</span>}
+                {page.priority==="P1"&&<Chip color={C.green}>P1</Chip>}
+                {isErr&&<span style={{color:C.error,fontSize:11,marginLeft:8,display:"block"}}>{r.error}</span>}
+              </div>
+              <div className="row-actions">
+                {isDone&&<><Btn small variant="ghost" icon="ti-eye" onClick={()=>setPreview(preview===page.slug?null:page.slug)}>{preview===page.slug?"Hide":"Preview"}</Btn>
+                <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(r.copy)}>Copy</Btn></>}
+                {(!isDone||isErr)&&!isRun&&<Btn small variant="ghost" onClick={()=>runSingle(page)} disabled={running||!!currentSlug}>{isErr?"Retry":"Run"}</Btn>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {preview&&copyData?.[preview]?.copy&&<Card style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <Lbl>{ordered.find(p=>p.slug===preview)?.page_name}</Lbl>
+          <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(copyData[preview].copy)}>Copy HTML</Btn>
+        </div>
+        <div style={{maxHeight:320,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.65,background:C.bg,borderRadius:5,padding:10}}>{copyData[preview].copy}</div>
+      </Card>}
+      {doneCount===ordered.length&&ordered.length>0&&!running&&<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(21,142,29,0.08)",border:"1px solid rgba(21,142,29,0.2)",borderRadius:6,padding:"9px 14px",color:C.green,fontSize:13}}><i className="ti ti-check"/>All {ordered.length} pages complete</div>
+        <Btn onClick={onNext} icon="ti-arrow-right">Generate Schema + Meta</Btn>
+      </div>}
+      {doneCount>0&&doneCount<ordered.length&&!running&&<Btn variant="ghost" onClick={onNext} style={{marginTop:8}} icon="ti-arrow-right">Skip to Schema</Btn>}
+    </div>
+  );
+}
+
+/* ── SCHEMA ── */
+function SchemaStage({setup,sitemap,schemaData,setSchemaData,onNext}){
+  const[running,setRunning]=useState(false);
+  const[currentSlug,setCurrentSlug]=useState(null);
+  const[preview,setPreview]=useState(null);
+  const stopRef=useRef(false);
+  const isMobile=useIsMobile();
+  const pages=sitemap?.pages||[];
+  const doneCount=Object.keys(schemaData||{}).filter(k=>schemaData[k]?.schema).length;
+  const base=`https://www.${setup.websiteUrl||"example.com"}`;
+
+  const runSingle=async page=>{
+    setCurrentSlug(page.slug);
+    try{
+      const schema=await callClaude(P.schema,
+        `CLIENT: ${setup.clientName}\nBASE URL: ${base}\nPAGE: ${page.page_name}\nURL: ${base}/${page.slug}\nTYPE: ${page.page_type}\nPRIMARY KW: ${page.primary_keyword}\nSUPPORTING KW: ${page.supporting_keywords?.join(", ")}\nDESCRIPTION: ${page.notes||page.page_name}\nBREADCRUMB: Home > ${page.page_name}`);
+      setSchemaData(p=>({...(p||{}),[page.slug]:{schema,page}}));
+    }catch(e){setSchemaData(p=>({...(p||{}),[page.slug]:{error:e.message,page}}));}
+    setCurrentSlug(null);
+  };
+
+  const runAll=async()=>{
+    setRunning(true);stopRef.current=false;
+    for(const page of pages){
+      if(stopRef.current)break;if(schemaData?.[page.slug]?.schema)continue;
+      await runSingle(page);await new Promise(r=>setTimeout(r,500));
+    }
+    setRunning(false);
+  };
+
+  return(
+    <div style={{maxWidth:900,animation:"fadeIn 0.3s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
+        <div>
+          <EyeBrow>Stage 5 of 6</EyeBrow>
+          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Schema + Meta Tags</h2>
+          <p style={{color:C.n2,fontSize:13}}>JSON-LD, meta title, description, and OG tags — paste-ready for Webflow.</p>
+        </div>
+        <div style={{flexShrink:0}}>
+          {running?<Btn variant="danger" onClick={()=>{stopRef.current=true;setRunning(false);}} icon="ti-player-stop">Stop</Btn>
+            :<Btn onClick={runAll} icon="ti-code">{doneCount>0?`Continue (${doneCount}/${pages.length})`:"Generate All"}</Btn>}
+        </div>
+      </div>
+      {pages.length>0&&<ProgressBar done={doneCount} total={pages.length} color={C.dark}/>}
+      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
+        {pages.map(page=>{
+          const r=schemaData?.[page.slug];const isRun=currentSlug===page.slug,isDone=!!r?.schema;
+          return(
+            <div key={page.slug} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.white,borderRadius:6,border:`1px solid ${isRun?C.dark:isDone?"rgba(0,0,0,0.18)":C.border}`,flexWrap:isMobile?"wrap":"nowrap"}}>
+              <div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,background:isDone?C.green:C.n1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"white"}}>{isRun?<Spinner size={10}/>:isDone?"✓":""}</div>
+              <div style={{flex:1}}><span style={{color:isDone?C.dark:C.n2,fontSize:13}}>{page.page_name}</span>{!isMobile&&<span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{page.slug}</span>}</div>
+              <div className="row-actions">
+                {isDone&&<><Btn small variant="ghost" icon="ti-eye" onClick={()=>setPreview(preview===page.slug?null:page.slug)}>{preview===page.slug?"Hide":"View"}</Btn>
+                <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(r.schema)}>Copy</Btn></>}
+                {!isDone&&!isRun&&<Btn small variant="ghost" onClick={()=>runSingle(page)} disabled={running||!!currentSlug}>Run</Btn>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {preview&&schemaData?.[preview]?.schema&&<Card style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <Lbl>{pages.find(p=>p.slug===preview)?.page_name}</Lbl>
+          <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(schemaData[preview].schema)}>Copy All</Btn>
+        </div>
+        <div style={{maxHeight:300,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.5,background:C.bg,borderRadius:5,padding:10}}>{schemaData[preview].schema}</div>
+      </Card>}
+      {doneCount>0&&<div style={{marginTop:8}}><Btn onClick={onNext} icon="ti-package-export">View Export Package</Btn></div>}
+    </div>
+  );
+}
+
+/* ── EXPORT ── */
+function ExportStage({setup,sitemap,copyData,schemaData}){
+  const pages=sitemap?.pages||[];
+  const[tab,setTab]=useState("sitemap");
+  const[sel,setSel]=useState(pages[0]?.slug||"");
+  const isMobile=useIsMobile();
+  const copyCount=pages.filter(p=>copyData?.[p.slug]?.copy).length;
+  const schemaCount=pages.filter(p=>schemaData?.[p.slug]?.schema).length;
+
+  const download=()=>{
+    let out=`${setup.clientName} — Website Build Package\nSetSailOS · Setsail Marketing Agency\n${"═".repeat(60)}\n\nSITEMAP (${pages.length} pages)\n${"─".repeat(40)}\n\n`;
+    pages.forEach((p,i)=>{out+=`${i+1}. ${p.page_name} (/${p.slug}) [${p.priority}]\n   Primary: ${p.primary_keyword} | KD: ${p.primary_kd||"?"}\n   Supporting: ${p.supporting_keywords?.join(", ")}\n\n`;});
+    out+=`\n${"═".repeat(60)}\nCOPY BY PAGE\n${"─".repeat(40)}\n\n`;
+    pages.forEach(p=>{const c=copyData?.[p.slug];if(c?.copy)out+=`\n${p.page_name.toUpperCase()} · /${p.slug}\n${"─".repeat(30)}\n${c.copy}\n\n`;});
+    out+=`\n${"═".repeat(60)}\nSCHEMA + META BY PAGE\n${"─".repeat(40)}\n\n`;
+    pages.forEach(p=>{const s=schemaData?.[p.slug];if(s?.schema)out+=`\n${p.page_name.toUpperCase()} · /${p.slug}\n${"─".repeat(30)}\n${s.schema}\n\n`;});
+    const blob=new Blob([out],{type:"text/plain"});const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=`${setup.clientName.toLowerCase().replace(/\s+/g,"-")}-website-build.txt`;a.click();URL.revokeObjectURL(url);
+  };
+
+  const tabs=[{id:"sitemap",label:`Sitemap (${pages.length})`},{id:"copy",label:`Copy (${copyCount})`},{id:"schema",label:`Schema (${schemaCount})`}];
+
+  return(
+    <div style={{maxWidth:920,animation:"fadeIn 0.3s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,gap:12,flexWrap:"wrap"}}>
+        <div>
+          <EyeBrow>Stage 6 of 6</EyeBrow>
+          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Export Package</h2>
+          <p style={{color:C.n2,fontSize:13}}>{setup.clientName} — {pages.length} pages ready to hand off.</p>
+        </div>
+        <Btn onClick={download} icon="ti-download">Download Full Package</Btn>
+      </div>
+
+      <div className="stat-row" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
+        {[{label:"Pages in Sitemap",value:pages.length,icon:"ti-sitemap"},{label:"Pages with Copy",value:copyCount,icon:"ti-pencil",color:C.green},{label:"Pages with Schema",value:schemaCount,icon:"ti-code"}].map(s=>(
+          <Card key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px"}}>
+            <div style={{width:32,height:32,borderRadius:6,background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className={`ti ${s.icon}`} style={{fontSize:14,color:s.color||C.dark}}/></div>
+            <div><div style={{fontSize:24,fontWeight:500,letterSpacing:"-0.03em",lineHeight:1}}>{s.value}</div><div style={{fontSize:11,color:C.n2,marginTop:2}}>{s.label}</div></div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="export-tabs" style={{display:"flex",gap:4,marginBottom:10}}>
+        {tabs.map(t=><button key={t.id} onClick={()=>{setTab(t.id);setSel(pages[0]?.slug||"");}} style={{padding:"6px 14px",borderRadius:6,fontSize:13,background:tab===t.id?C.dark:"transparent",color:tab===t.id?"white":C.n2,border:`1px solid ${tab===t.id?C.dark:C.border}`,cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s",flexShrink:0}}>{t.label}</button>}
+      </div>
+
+      {tab==="sitemap"&&<div className="tbl-wrap">
+        {pages.map((p,i)=>(
+          <div key={p.slug} style={{display:"flex",gap:10,padding:"10px 14px",borderBottom:i<pages.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.white:"rgba(240,239,233,0.5)",alignItems:"flex-start",flexWrap:isMobile?"wrap":"nowrap"}}>
+            <span style={{color:C.n2,fontSize:11,paddingTop:1,flexShrink:0,width:18}}>{i+1}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <span style={{color:C.dark,fontSize:13}}>{p.page_name}</span><span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{p.slug}</span>
+              <div style={{fontSize:11,color:C.n2,marginTop:2,flexWrap:"wrap"}}>{p.primary_keyword}{p.supporting_keywords?.length>0&&` · ${p.supporting_keywords.slice(0,2).join(", ")}`}</div>
+            </div>
+            <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
+              <span style={{color:p.priority==="P1"?C.green:p.priority==="P2"?C.warn:C.n2,fontSize:11,fontWeight:500}}>{p.priority}</span>
+              <span style={{color:C.n2,fontSize:11}}>{p.word_count_target||1500}w</span>
+            </div>
+          </div>
+        ))}
+      </div>}
+
+      {(tab==="copy"||tab==="schema")&&<div>
+        <div className="page-chip-list" style={{display:"flex",gap:5,marginBottom:10,flexWrap:isMobile?"nowrap":"wrap"}}>
+          {pages.filter(p=>tab==="copy"?copyData?.[p.slug]?.copy:schemaData?.[p.slug]?.schema).map(p=>(
+            <button key={p.slug} onClick={()=>setSel(p.slug)} style={{padding:"5px 12px",borderRadius:5,fontSize:12,background:sel===p.slug?C.dark:"transparent",color:sel===p.slug?"white":C.n2,border:`1px solid ${sel===p.slug?C.dark:C.border}`,cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s",flexShrink:0}}>{p.page_name}</button>
+          ))}
+        </div>
+        {sel&&<Card>
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+            <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(tab==="copy"?copyData[sel]?.copy:schemaData[sel]?.schema)}>Copy {tab==="copy"?"HTML":"Schema"}</Btn>
+          </div>
+          <div style={{maxHeight:460,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.65,background:C.bg,borderRadius:5,padding:10}}>
+            {tab==="copy"?copyData[sel]?.copy:schemaData[sel]?.schema}
+          </div>
+        </Card>}
+      </div>}
+    </div>
+  );
+}
+
+/* ── APP ── */
+function App(){
+  const[stage,setStage]=useState("setup");
+  const[setup,setSetup]=useState({clientName:"",websiteUrl:"",strategyDoc:"",geography:"",pricing:"",competitors:"",brandVoice:""});
+  const[research,setResearch]=useState(null);
+  const[sitemap,setSitemap]=useState(null);
+  const[copyData,setCopyData]=useState(null);
+  const[schemaData,setSchemaData]=useState(null);
+  const isMobile=useIsMobile();
+
+  return(
+    <div style={{minHeight:"100vh",background:C.bg}}>
+      {/* Nav */}
+      <div className="nav-bar">
+        <div className="nav-left">
+          <a href="#" style={{display:"flex",alignItems:"center",gap:7,textDecoration:"none",color:C.dark,flexShrink:0}}>
+            <div style={{width:22,height:22,background:C.dark,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <span style={{fontSize:13.5,fontWeight:500,letterSpacing:"-0.01em"}}>Setsail<em style={{fontStyle:"normal",color:C.green}}> OS</em></span>
+          </a>
+          {!isMobile&&<><div style={{height:14,width:1,background:C.border}}/><span style={{fontSize:12,color:C.n2}}>Website Build Pipeline</span></>}
+          {setup.clientName&&!isMobile&&<><div style={{height:14,width:1,background:C.border}}/><span style={{fontSize:12,color:C.dark}}>{setup.clientName}</span></>}
+          {setup.clientName&&isMobile&&<span style={{fontSize:12,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:120}}>{setup.clientName}</span>}
+        </div>
+        <StageBar current={stage}/>
+      </div>
+
+      {/* Mobile stage bar */}
+      {isMobile&&<MobileStageBar current={stage}/>}
+
+      {/* Body */}
+      <div className="page-pad" style={{maxWidth:1020,margin:"0 auto"}}>
+        {stage==="setup"    &&<SetupStage    data={setup} setData={setSetup} onNext={()=>setStage("research")}/>}
+        {stage==="research" &&<ResearchStage setup={setup} research={research} setResearch={setResearch} onNext={()=>setStage("sitemap")}/>}
+        {stage==="sitemap"  &&<SitemapStage  setup={setup} research={research} sitemap={sitemap} setSitemap={setSitemap} onNext={()=>setStage("copy")}/>}
+        {stage==="copy"     &&<CopyStage     setup={setup} research={research} sitemap={sitemap} copyData={copyData} setCopyData={setCopyData} onNext={()=>setStage("schema")}/>}
+        {stage==="schema"   &&<SchemaStage   setup={setup} sitemap={sitemap} schemaData={schemaData} setSchemaData={setSchemaData} onNext={()=>setStage("export")}/>}
+        {stage==="export"   &&<ExportStage   setup={setup} sitemap={sitemap} copyData={copyData} schemaData={schemaData}/>}
+      </div>
+    </div>
+  );
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
