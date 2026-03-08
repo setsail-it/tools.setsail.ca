@@ -4,769 +4,1175 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SetSailOS — Website Build Pipeline</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.21.0/dist/tabler-icons.min.css">
 <style>
-:root{
-  --bg:#F0EFE9;--white:#FFFFFF;--panel:#E8E7E1;
-  --n1:#E2E2DC;--n2:#999990;--n3:#555550;--dark:#111111;
-  --green:#158E1D;--lime:#D8FF29;--dg:#002A0F;
-  --border:rgba(0,0,0,0.09);--border-hov:rgba(0,0,0,0.18);
-  --error:#E53935;--warn:#c07000;
+:root {
+  --bg:#F0EFE9; --white:#fff; --panel:#E8E7E1; --n1:#E2E2DC;
+  --n2:#999990; --n3:#555550; --dark:#111; --green:#158E1D;
+  --lime:#D8FF29; --dg:#002A0F; --border:rgba(0,0,0,0.09);
   --font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif;
+  --error:#E53935; --warn:#c07000;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-textarea,input,button{font-family:var(--font)!important}
-textarea::placeholder,input::placeholder{color:#bbb!important}
+input,textarea,button,select{font-family:var(--font)!important}
+input::placeholder,textarea::placeholder{color:#bbb}
 
-/* ── RESPONSIVE ── */
+/* NAV */
+#nav{display:flex;justify-content:space-between;align-items:center;padding:0 32px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.93);backdrop-filter:blur(10px)}
+.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--dark);font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
+.logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-mark svg{width:11px;height:11px}
+.nav-meta{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--n2)}
+.nav-divider{width:1px;height:14px;background:var(--border)}
+#client-name-nav{color:var(--dark)}
+#stage-bar{display:flex;align-items:center;gap:2px}
+.stage-pill{display:flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;font-size:11.5px;transition:all .2s;white-space:nowrap;border:1px solid var(--border);color:var(--n2);background:transparent}
+.stage-pill.active{background:var(--dark);color:white;border-color:var(--dark)}
+.stage-pill.done{background:rgba(21,142,29,0.1);color:var(--green);border-color:rgba(21,142,29,0.25)}
+.stage-dot{width:6px;height:1px;background:var(--border)}
+.stage-dot.done{background:rgba(21,142,29,0.25)}
+
+/* MOBILE STAGE */
+#mobile-stage{display:none;overflow-x:auto;padding:10px 16px;gap:4px;background:var(--white);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+#mobile-stage::-webkit-scrollbar{display:none}
+
+/* MAIN */
+#main{max-width:1020px;margin:0 auto;padding:32px 32px 80px}
+
+/* STAGE SCREENS */
+.screen{animation:fadeIn .3s ease;display:none}
+.screen.active{display:block}
+
+/* TYPOGRAPHY */
+.eyebrow{font-size:11px;color:var(--n2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
+h2.page-h{font-size:30px;font-weight:500;letter-spacing:-0.03em;margin-bottom:4px}
+h2.page-h.sm{font-size:24px}
+.page-sub{color:var(--n2);font-size:13px;margin-bottom:20px}
+.section-mark{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.section-mark-label{background:var(--dark);color:white;font-size:10.5px;padding:3px 9px;border-radius:4px}
+.section-mark-line{flex:1;height:1px;background:var(--border)}
+label.field-label{font-size:12px;display:block;margin-bottom:5px;color:var(--dark)}
+label.field-label span{color:var(--n2)}
+
+/* CARD */
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:8px}
+.card.dg{background:var(--dg);border-color:rgba(255,255,255,0.06)}
+.card.highlight-green{border-left:3px solid var(--green)}
+.card.highlight-border{border-color:rgba(21,142,29,0.22)}
+
+/* INPUTS */
+.inp{width:100%;background:var(--white);border:1px solid rgba(0,0,0,0.13);border-radius:6px;padding:9px 12px;color:var(--dark);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none}
+.inp:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(21,142,29,0.08)}
+textarea.inp{resize:vertical}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;border-radius:6px;padding:8px 16px;transition:all .15s;white-space:nowrap;border:none;min-height:36px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--lime);color:#111}
+.btn-primary:hover:not(:disabled){background:#cdf020}
+.btn-dark{background:var(--dark);color:white}
+.btn-dark:hover:not(:disabled){background:#2a2a2a}
+.btn-ghost{background:transparent;color:var(--dark);border:1px solid var(--border)}
+.btn-ghost:hover:not(:disabled){background:var(--n1);border-color:rgba(0,0,0,.18)}
+.btn-danger{background:transparent;color:var(--error);border:1px solid rgba(229,57,53,0.2)}
+.btn-danger:hover:not(:disabled){background:rgba(229,57,53,0.07);border-color:rgba(229,57,53,0.4)}
+.btn-dg{background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.18)}
+.btn-dg:hover:not(:disabled){color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.35)}
+.btn.sm{font-size:12px;padding:5px 11px;min-height:28px}
+.btn.full{width:100%}
+
+/* CHIP */
+.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--n2);background:rgba(0,0,0,0.04)}
+.chip.green{color:var(--green);background:rgba(21,142,29,0.08);border-color:rgba(21,142,29,0.2)}
+.chip.warn{color:var(--warn);background:rgba(192,112,0,0.08);border-color:rgba(192,112,0,0.2)}
+
+/* SPINNER */
+.spinner{display:inline-block;border:2px solid rgba(0,0,0,0.08);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0}
+
+/* PROGRESS BAR */
+.progress-wrap{margin-bottom:14px}
+.progress-meta{display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px}
+.progress-meta .count{color:var(--n2)}
+.progress-meta .pct{color:var(--green);font-weight:500}
+.progress-track{height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
+
+/* STREAM BOX */
+.stream-box{background:var(--dg);border-radius:6px;padding:12px;min-height:44px;max-height:220px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.5);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin-top:8px}
+
+/* GRID */
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.page-pad{padding:32px 32px 80px}
-.nav-bar{display:flex;justify-content:space-between;align-items:center;padding:0 32px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.93);backdrop-filter:blur(10px)}
-.nav-left{display:flex;align-items:center;gap:20px}
-.nav-stage{display:flex;align-items:center;gap:2px}
-.stage-pill{display:flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;font-size:11.5px;font-weight:400;transition:all .2s;white-space:nowrap}
-.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:8px}
-.row-actions{display:flex;gap:6px;flex-shrink:0}
-.card-base{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:20px}
 
+/* TABLE */
+.tbl-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl-head{display:grid;grid-template-columns:24px 1.4fr 1.2fr 160px 44px 68px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;min-width:600px}
+.tbl-row{display:grid;grid-template-columns:24px 1.4fr 1.2fr 160px 44px 68px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--white);align-items:start;min-width:600px}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row:nth-child(even){background:rgba(240,239,233,0.5)}
+.tbl-page-name{color:var(--dark);font-size:12.5px}
+.tbl-slug{color:var(--n2);font-size:10.5px;margin-top:1px}
+.tbl-kw{color:var(--n3);font-size:12px}
+.tbl-support{font-size:11px;color:var(--n2);line-height:1.4}
+.tbl-kd{color:var(--n2);font-size:11px}
+.tbl-p1{color:var(--green);font-size:11px;font-weight:500}
+.tbl-p2{color:var(--warn);font-size:11px;font-weight:500}
+.tbl-p3{color:var(--n2);font-size:11px}
+
+/* PAGE ROW (copy/schema list) */
+.page-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--white);border-radius:6px;border:1px solid var(--border);transition:border-color .2s;margin-bottom:5px}
+.page-row.running{border-color:var(--green)}
+.page-row.done{border-color:rgba(21,142,29,0.22)}
+.page-row.error{border-color:rgba(229,57,53,0.22)}
+.status-circle{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
+.status-idle{background:var(--n1)}
+.status-done{background:var(--green)}
+.status-error{background:var(--error)}
+.status-running{background:transparent;border:1px solid var(--n1)}
+.page-row-name{flex:1;font-size:13px;color:var(--n2)}
+.page-row-name.done{color:var(--dark)}
+.page-row-slug{font-size:11px;color:var(--n2);margin-left:8px}
+.page-row-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* INLINE CODE VIEW */
+.code-view{max-height:340px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px}
+
+/* SUCCESS BANNER */
+.success-banner{display:flex;align-items:center;gap:7px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:9px 14px;color:var(--green);font-size:13px}
+
+/* ERROR BANNER */
+.error-banner{display:flex;align-items:center;gap:7px;background:rgba(229,57,53,0.06);border:1px solid rgba(229,57,53,0.18);border-radius:6px;padding:8px 12px;color:var(--error);font-size:13px;margin-bottom:12px}
+
+/* STATS */
+.stat-card{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.stat-icon{width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:var(--dark)}
+.stat-val{font-size:24px;font-weight:500;letter-spacing:-0.03em;line-height:1}
+.stat-lbl{font-size:11px;color:var(--n2);margin-top:2px}
+
+/* TABS */
+.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:13px;background:transparent;color:var(--n2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s}
+.tab-btn.active{background:var(--dark);color:white;border-color:var(--dark)}
+
+/* MOBILE CARDS */
+.mobile-page-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:6px}
+
+/* RESPONSIVE */
 @media(max-width:700px){
-  .grid-2{grid-template-columns:1fr}
-  .grid-3{grid-template-columns:1fr 1fr}
-  .page-pad{padding:20px 16px 60px}
-  .nav-bar{padding:0 16px;height:48px}
-  .nav-left{gap:10px}
-  .nav-stage{display:none}
-  .mobile-stage{display:flex;overflow-x:auto;padding:10px 16px;gap:4px;background:var(--white);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
-  .mobile-stage::-webkit-scrollbar{display:none}
-  .card-base{padding:14px}
-  .h-page{font-size:22px!important}
-  .h-section{font-size:18px!important}
-  .tbl-hdr{display:none!important}
-  .tbl-row{flex-direction:column!important;gap:4px!important;align-items:flex-start!important}
-  .tbl-row-meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
-  .row-actions{margin-top:6px}
-  .export-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .export-tabs button{white-space:nowrap}
-  .page-chip-list{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
-  .page-chip-list::-webkit-scrollbar{display:none}
+  #nav{padding:0 16px;height:48px}
+  #stage-bar{display:none}
+  #mobile-stage{display:flex}
+  #main{padding:20px 16px 60px}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  h2.page-h{font-size:22px}
+  .tbl-wrap{border-radius:6px}
+  .card{padding:14px}
+  .nav-meta .nav-divider:first-child{display:none}
+  .nav-meta .nav-meta-label{display:none}
 }
 @media(max-width:480px){
-  .grid-3{grid-template-columns:1fr}
-  .stat-row{grid-template-columns:1fr 1fr!important}
+  .grid-3{grid-template-columns:1fr 1fr}
 }
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-const{useState,useRef,useEffect,useCallback}=React;
 
-const C={
-  bg:'#F0EFE9',white:'#FFFFFF',panel:'#E8E7E1',
-  n1:'#E2E2DC',n2:'#999990',n3:'#555550',dark:'#111111',
-  green:'#158E1D',lime:'#D8FF29',dg:'#002A0F',
-  border:'rgba(0,0,0,0.09)',borderHov:'rgba(0,0,0,0.18)',
-  error:'#E53935',warn:'#c07000',
+<!-- NAV -->
+<div id="nav">
+  <div style="display:flex;align-items:center;gap:16px">
+    <a href="#" class="nav-logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span>Setsail<em style="font-style:normal;color:var(--green)"> OS</em></span>
+    </a>
+    <div class="nav-meta">
+      <div class="nav-divider"></div>
+      <span class="nav-meta-label">Website Build Pipeline</span>
+      <div class="nav-divider" id="nav-div2" style="display:none"></div>
+      <span id="client-name-nav"></span>
+    </div>
+  </div>
+  <div id="stage-bar"></div>
+</div>
+
+<!-- MOBILE STAGE BAR -->
+<div id="mobile-stage"></div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- SETUP -->
+  <div class="screen active" id="screen-setup">
+    <div style="max-width:680px">
+      <div class="eyebrow">Website Build Pipeline</div>
+      <h2 class="page-h">New project</h2>
+      <p class="page-sub">Fill in client details and paste the full strategy document.</p>
+
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Client</span><div class="section-mark-line"></div></div>
+        <div class="grid-2" style="margin-bottom:12px">
+          <div><label class="field-label">Client Name *</label><input class="inp" id="f-client" placeholder="e.g. Riverside Roofing"></div>
+          <div><label class="field-label">Website URL</label><input class="inp" id="f-url" placeholder="e.g. riversideroofing.ca"></div>
+        </div>
+        <div class="grid-2">
+          <div><label class="field-label">Target Geography</label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC — Canada-wide"></div>
+          <div><label class="field-label">Pricing to Mention</label><input class="inp" id="f-pricing" placeholder="e.g. From $2,400/mo flat"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Strategy</span><div class="section-mark-line"></div></div>
+        <div style="margin-bottom:12px">
+          <label class="field-label">Strategy Document * <span>— paste discovery notes, brief, questionnaire, proposal</span></label>
+          <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Include services, audience, geography, competitors, pricing, tone, goals — everything."></textarea>
+        </div>
+        <div>
+          <label class="field-label">Brand Voice Notes</label>
+          <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. No jargon. Canadian spelling."></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Competitors</span><div class="section-mark-line"></div></div>
+        <textarea class="inp" id="f-competitors" rows="3" placeholder="competitor1.ca&#10;competitor2.com"></textarea>
+      </div>
+
+      <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
+      <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
+    </div>
+  </div>
+
+  <!-- RESEARCH -->
+  <div class="screen" id="screen-research">
+    <div style="max-width:780px">
+      <div class="eyebrow">Stage 2 of 6</div>
+      <h2 class="page-h sm">Research Brief</h2>
+      <p class="page-sub">Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
+      <button class="btn btn-primary" id="research-run-btn" onclick="runResearch()"><i class="ti ti-brain"></i> Run Research Analysis</button>
+      <div id="research-stream-wrap" style="display:none" class="card" style="margin-top:12px">
+        <div class="eyebrow" style="margin-bottom:0">Analysis output</div>
+        <div class="stream-box" id="research-stream"></div>
+      </div>
+      <div id="research-results" style="display:none;margin-top:0;animation:fadeIn .3s ease"></div>
+    </div>
+  </div>
+
+  <!-- SITEMAP -->
+  <div class="screen" id="screen-sitemap">
+    <div style="max-width:960px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 3 of 6</div>
+          <h2 class="page-h sm">Sitemap + Keyword Map</h2>
+          <p class="page-sub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
+        </div>
+        <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
+      </div>
+      <div id="sitemap-stream-wrap" style="display:none" class="card">
+        <div class="eyebrow" style="margin-bottom:0">Building sitemap...</div>
+        <div class="stream-box" id="sitemap-stream"></div>
+      </div>
+      <div id="sitemap-results" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- COPY -->
+  <div class="screen" id="screen-copy">
+    <div style="max-width:900px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 4 of 6</div>
+          <h2 class="page-h sm">Copy Generation</h2>
+          <p class="page-sub" style="margin-bottom:0" id="copy-subtitle">P1 first. ~60–90s per page.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="copy-run-btn" onclick="runAllCopy()"><i class="ti ti-player-play"></i> Generate All Pages</button>
+          <button class="btn btn-danger" id="copy-stop-btn" style="display:none" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button>
+        </div>
+      </div>
+      <div id="copy-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span class="count" id="copy-count-label"></span><span class="pct" id="copy-pct-label"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="copy-progress-fill" style="width:0%"></div></div>
+      </div>
+      <div id="copy-active-card" style="display:none" class="card highlight-green" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span class="spinner" style="width:12px;height:12px"></span>
+          <span style="font-size:13px">Writing: <strong id="copy-active-name"></strong></span>
+        </div>
+        <div style="height:70px;overflow:hidden;background:var(--dg);border-radius:5px;padding:10px;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5" id="copy-active-stream"></div>
+      </div>
+      <div id="copy-list"></div>
+      <div id="copy-preview-wrap" style="display:none" class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="eyebrow" id="copy-preview-label" style="margin-bottom:0"></div>
+          <button class="btn btn-ghost sm" onclick="copyToClipboard('copy-preview-content','copy')"><i class="ti ti-copy"></i> Copy HTML</button>
+        </div>
+        <div class="code-view" id="copy-preview-content"></div>
+      </div>
+      <div id="copy-done-banner" style="display:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
+        <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label"></span></div>
+        <button class="btn btn-primary" onclick="goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema + Meta</button>
+      </div>
+      <button class="btn btn-ghost" id="copy-skip-btn" style="display:none;margin-top:8px" onclick="goTo('schema')"><i class="ti ti-arrow-right"></i> Skip to Schema</button>
+    </div>
+  </div>
+
+  <!-- SCHEMA -->
+  <div class="screen" id="screen-schema">
+    <div style="max-width:900px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 5 of 6</div>
+          <h2 class="page-h sm">Schema + Meta Tags</h2>
+          <p class="page-sub" style="margin-bottom:0">JSON-LD, meta title, description, OG tags — paste-ready for Webflow.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-dark" id="schema-run-btn" onclick="runAllSchema()"><i class="ti ti-code"></i> Generate All Schema</button>
+          <button class="btn btn-danger" id="schema-stop-btn" style="display:none" onclick="stopSchema()"><i class="ti ti-player-stop"></i> Stop</button>
+        </div>
+      </div>
+      <div id="schema-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span class="count" id="schema-count-label"></span><span class="pct" id="schema-pct-label" style="color:var(--dark)"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="schema-progress-fill" style="width:0%;background:var(--dark)"></div></div>
+      </div>
+      <div id="schema-list"></div>
+      <div id="schema-preview-wrap" style="display:none" class="card" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="eyebrow" id="schema-preview-label" style="margin-bottom:0"></div>
+          <button class="btn btn-ghost sm" onclick="copyToClipboard('schema-preview-content','schema')"><i class="ti ti-copy"></i> Copy Schema</button>
+        </div>
+        <div class="code-view" id="schema-preview-content"></div>
+      </div>
+      <div id="schema-next-btn" style="display:none;margin-top:8px">
+        <button class="btn btn-primary" onclick="goTo('export')"><i class="ti ti-package-export"></i> View Export Package</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="screen" id="screen-export">
+    <div style="max-width:920px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 6 of 6</div>
+          <h2 class="page-h sm">Export Package</h2>
+          <p class="page-sub" style="margin-bottom:0" id="export-subtitle"></p>
+        </div>
+        <button class="btn btn-primary" onclick="downloadPackage()"><i class="ti ti-download"></i> Download Full Package</button>
+      </div>
+      <div class="grid-3" style="margin-bottom:16px" id="export-stats"></div>
+      <div class="tab-bar" id="export-tab-bar">
+        <button class="tab-btn active" onclick="switchTab('sitemap',this)">Sitemap</button>
+        <button class="tab-btn" onclick="switchTab('copy',this)">Copy</button>
+        <button class="tab-btn" onclick="switchTab('schema',this)">Schema</button>
+      </div>
+      <div id="export-sitemap-tab"></div>
+      <div id="export-copy-tab" style="display:none"></div>
+      <div id="export-schema-tab" style="display:none"></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────
+const S = {
+  client:'', url:'', geo:'', pricing:'', strategy:'', voice:'', competitors:'',
+  research: null,   // parsed JSON
+  pages: [],        // sitemap pages
+  copy: {},         // slug -> {copy, page}
+  schema: {},       // slug -> {schema, page}
+  copyStop: false,
+  schemaStop: false,
+  copyRunning: false,
+  schemaRunning: false,
+  currentCopySlug: null,
+  currentSchemaSlug: null,
+  copyPreviewSlug: null,
+  schemaPreviewSlug: null,
+  currentTab: 'sitemap',
 };
 
-/* ── API ── */
-async function callClaude(sys,usr,onChunk){
-  const res=await fetch("https://api.anthropic.com/v1/messages",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:8000,stream:true,system:sys,messages:[{role:"user",content:usr}]})
+const STAGES = ['setup','research','sitemap','copy','schema','export'];
+
+// ── CLAUDE API ─────────────────────────────────────────────────────
+async function callClaude(system, user, onChunk) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      stream: true,
+      system: system,
+      messages: [{role:'user', content:user}]
+    })
   });
-  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`API error ${res.status}`);}
-  const reader=res.body.getReader();const dec=new TextDecoder();let full="";
-  while(true){
-    const{done,value}=await reader.read();if(done)break;
-    for(const line of dec.decode(value).split("\n").filter(l=>l.startsWith("data: "))){
-      try{const d=JSON.parse(line.slice(6));if(d.type==="content_block_delta"&&d.delta?.text){full+=d.delta.text;if(onChunk)onChunk(full);}}catch{}
+  if (!res.ok) {
+    const e = await res.json().catch(function() { return {}; });
+    throw new Error((e.error && e.error.message) || ('API error ' + res.status));
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let full = '';
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    const lines = dec.decode(chunk.value).split('\n').filter(function(l) { return l.startsWith('data: '); });
+    for (let i = 0; i < lines.length; i++) {
+      try {
+        const d = JSON.parse(lines[i].slice(6));
+        if (d.type === 'content_block_delta' && d.delta && d.delta.text) {
+          full += d.delta.text;
+          if (onChunk) onChunk(full);
+        }
+      } catch(e2) { /* ignore parse errors on SSE frames */ }
     }
   }
   return full;
 }
-function parseJSON(t){try{return JSON.parse(t.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim());}catch{return null;}}
 
-/* ── PROMPTS ── */
-const P={
-research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
+function safeParseJSON(text) {
+  try {
+    const clean = text.replace(/```json[\s]*/g,'').replace(/```[\s]*/g,'').trim();
+    return JSON.parse(clean);
+  } catch(e) {
+    return null;
+  }
+}
+
+// ── PROMPTS ────────────────────────────────────────────────────────
+const PROMPTS = {
+research: `You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","brand_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble:
+sitemap: `You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble:
 [{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","supporting_keywords":[],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
-copy:`You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Not corporate. Leads with outcomes. Canadian spelling (analyse, optimise, colour). No fluff, no passive voice. H1 contains primary keyword. FAQ answers complete and conversational. Write COMPLETE page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">. Include: hero, problem/solution, service detail, process, social proof placeholders, FAQ (6+ questions), final CTA.`,
+copy: `You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Not corporate. Leads with outcomes. Canadian spelling (analyse, optimise, colour). No fluff, no passive voice. H1 contains primary keyword. FAQ answers complete and conversational. Write COMPLETE page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">. Include: hero, problem/solution, service detail, process, social proof placeholders, FAQ (6+ questions), final CTA.`,
 
-schema:`You are a technical SEO specialist at Setsail Marketing. Rules: every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Add HowTo if process section exists. Use @id anchors. No "#1" or unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready to paste into <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
+schema: `You are a technical SEO specialist at Setsail Marketing. Rules: every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Add HowTo if process section exists. Use @id anchors. No "#1" or unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready to paste into <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
 };
 
-const STAGES=[
-  {id:"setup",    label:"Setup",    icon:"ti-settings"},
-  {id:"research", label:"Research", icon:"ti-search"},
-  {id:"sitemap",  label:"Sitemap",  icon:"ti-sitemap"},
-  {id:"copy",     label:"Copy",     icon:"ti-pencil"},
-  {id:"schema",   label:"Schema",   icon:"ti-code"},
-  {id:"export",   label:"Export",   icon:"ti-package-export"},
-];
-
-/* ── HOOKS ── */
-function useIsMobile(){
-  const[m,setM]=useState(()=>window.innerWidth<=700);
-  useEffect(()=>{const h=()=>setM(window.innerWidth<=700);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
-  return m;
+// ── NAVIGATION ─────────────────────────────────────────────────────
+function goTo(stage) {
+  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById('screen-' + stage).classList.add('active');
+  renderStageBar(stage);
+  window.scrollTo(0,0);
+  if (stage === 'export') renderExport();
 }
 
-/* ── MICRO ── */
-const EyeBrow=({children})=><div style={{fontSize:11,color:C.n2,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{children}</div>;
+function renderStageBar(current) {
+  const stages = [
+    {id:'setup',label:'Setup',icon:'ti-settings'},
+    {id:'research',label:'Research',icon:'ti-search'},
+    {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
+    {id:'copy',label:'Copy',icon:'ti-pencil'},
+    {id:'schema',label:'Schema',icon:'ti-code'},
+    {id:'export',label:'Export',icon:'ti-package-export'},
+  ];
+  const idx = stages.findIndex(function(s) { return s.id === current; });
+  
+  function makePill(s, i) {
+    const done = i < idx, active = i === idx;
+    const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
+    const icon = done ? '<i class="ti ti-check" style="font-size:9px"></i>' : '<i class="ti ' + s.icon + '" style="font-size:9px"></i>';
+    return '<div class="' + cls + '">' + icon + s.label + '</div>';
+  }
 
-const Chip=({children,color})=>(
-  <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:4,
-    fontSize:10.5,letterSpacing:"0.05em",textTransform:"uppercase",
-    background:color?color+"18":"rgba(0,0,0,0.05)",color:color||C.n2,
-    border:`1px solid ${color?color+"44":C.border}`}}>{children}</span>
-);
-
-function Btn({children,onClick,variant="primary",disabled,small,icon,full}){
-  const[hov,setHov]=useState(false);
-  const s={
-    primary:{background:hov?"#cdf020":C.lime,color:"#111",border:"none"},
-    dark:   {background:hov?"#2a2a2a":C.dark,color:"white",border:"none"},
-    ghost:  {background:hov?C.n1:"transparent",color:C.dark,border:`1px solid ${hov?C.borderHov:C.border}`},
-    danger: {background:hov?"rgba(229,57,53,0.07)":"transparent",color:C.error,border:`1px solid ${hov?"rgba(229,57,53,0.4)":"rgba(229,57,53,0.2)"}`},
-  };
-  return(
-    <button onClick={disabled?undefined:onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:"var(--font)",
-        fontWeight:400,fontSize:small?12:13,cursor:disabled?"not-allowed":"pointer",borderRadius:6,
-        padding:small?"5px 11px":"8px 16px",transition:"all .15s",whiteSpace:"nowrap",opacity:disabled?.4:1,
-        width:full?"100%":"auto",minHeight:small?28:36,...s[variant]}}>
-      {icon&&<i className={`ti ${icon}`} style={{fontSize:13}}/>}{children}
-    </button>
-  );
-}
-
-const Card=({children,style={},highlight,dg})=>(
-  <div className="card-base" style={{background:dg?C.dg:C.white,border:`1px solid ${highlight?highlight+"55":dg?"transparent":C.border}`,...style}}>{children}</div>
-);
-
-const Lbl=({children})=><div style={{fontSize:11,color:C.n2,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{children}</div>;
-
-const SectionMark=({children})=>(
-  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-    <span style={{background:C.dark,color:"white",fontSize:10.5,padding:"3px 9px",borderRadius:4}}>{children}</span>
-    <div style={{flex:1,height:1,background:C.border}}/>
-  </div>
-);
-
-function Inp({value,onChange,placeholder,multiline,rows=4}){
-  const[f,setF]=useState(false);
-  const base={width:"100%",background:C.white,border:`1px solid ${f?C.green:C.border}`,
-    boxShadow:f?"0 0 0 3px rgba(21,142,29,0.08)":"none",
-    borderRadius:6,padding:"9px 12px",color:C.dark,fontSize:13,fontFamily:"var(--font)",
-    outline:"none",transition:"all .15s",WebkitAppearance:"none"};
-  return multiline
-    ?<textarea value={value} onChange={e=>onChange(e.target.value)} onFocus={()=>setF(true)} onBlur={()=>setF(false)} placeholder={placeholder} rows={rows} style={{...base,resize:"vertical"}}/>
-    :<input value={value} onChange={e=>onChange(e.target.value)} onFocus={()=>setF(true)} onBlur={()=>setF(false)} placeholder={placeholder} style={base}/>;
-}
-
-const Spinner=({size=13,color=C.green})=>(
-  <span style={{display:"inline-block",width:size,height:size,border:`2px solid rgba(0,0,0,0.08)`,borderTopColor:color,borderRadius:"50%",animation:"spin 0.75s linear infinite",flexShrink:0}}/>
-);
-
-function ProgressBar({done,total,color=C.green}){
-  const pct=total>0?Math.round(done/total*100):0;
-  return(
-    <div style={{marginBottom:14}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-        <span style={{fontSize:12,color:C.n2}}>{done}/{total} complete</span>
-        <span style={{fontSize:12,fontWeight:500,color}}>{pct}%</span>
-      </div>
-      <div style={{height:3,background:C.n1,borderRadius:3,overflow:"hidden"}}>
-        <div style={{height:"100%",background:color,width:`${pct}%`,borderRadius:3,transition:"width 0.4s ease"}}/>
-      </div>
-    </div>
-  );
-}
-
-function StreamBox({text,loading,maxHeight=220}){
-  const ref=useRef();
-  useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[text]);
-  return(
-    <div ref={ref} style={{background:C.dg,borderRadius:6,padding:12,minHeight:44,maxHeight,overflow:"auto",
-      fontFamily:"monospace",fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",marginTop:8}}>
-      {loading&&!text?<div style={{display:"flex",alignItems:"center",gap:8,color:"rgba(255,255,255,0.3)"}}><Spinner size={11} color="rgba(255,255,255,0.35)"/>Thinking...</div>
-        :text||<span style={{color:"rgba(255,255,255,0.2)"}}>Ready</span>}
-    </div>
-  );
-}
-
-/* ── NAV STAGE BAR ── */
-function StageBar({current}){
-  const idx=STAGES.findIndex(s=>s.id===current);
-  return(
-    <div className="nav-stage">
-      {STAGES.map((s,i)=>{
-        const done=i<idx,active=i===idx;
-        return(
-          <div key={s.id} style={{display:"flex",alignItems:"center"}}>
-            <div className="stage-pill" style={{
-              background:active?C.dark:done?"rgba(21,142,29,0.1)":"transparent",
-              color:active?"white":done?C.green:C.n2,
-              border:`1px solid ${active?C.dark:done?"rgba(21,142,29,0.25)":C.border}`}}>
-              {done?<i className="ti ti-check" style={{fontSize:9}}/>:<i className={`ti ${s.icon}`} style={{fontSize:9}}/>}
-              {s.label}
-            </div>
-            {i<STAGES.length-1&&<div style={{width:6,height:1,background:i<idx?"rgba(21,142,29,0.25)":C.border}}/>}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* Mobile stage dots */
-function MobileStageBar({current}){
-  const idx=STAGES.findIndex(s=>s.id===current);
-  const ref=useRef();
-  useEffect(()=>{if(ref.current){const active=ref.current.querySelector(".active-pill");if(active)active.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});}},[ current]);
-  return(
-    <div ref={ref} className="mobile-stage">
-      {STAGES.map((s,i)=>{
-        const done=i<idx,active=i===idx;
-        return(
-          <div key={s.id} className={active?"active-pill":""} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 12px",borderRadius:20,flexShrink:0,
-            background:active?C.dark:done?"rgba(21,142,29,0.1)":"transparent",
-            color:active?"white":done?C.green:C.n2,fontSize:11.5,
-            border:`1px solid ${active?C.dark:done?"rgba(21,142,29,0.25)":C.border}`}}>
-            {done?<i className="ti ti-check" style={{fontSize:10}}/>:<i className={`ti ${s.icon}`} style={{fontSize:10}}/>}
-            {s.label}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── STATUS CIRCLE ── */
-const StatusCircle=({status})=>{
-  const m={done:{bg:C.green,c:"✓"},error:{bg:C.error,c:"!"},running:{bg:"transparent",c:"spin"},idle:{bg:C.n1,c:""}};
-  const t=m[status]||m.idle;
-  return<div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,background:t.bg,border:`1px solid ${t.c==="spin"?C.n1:"transparent"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"white"}}>
-    {t.c==="spin"?<Spinner size={10}/>:t.c}
-  </div>;
-};
-
-/* ── SETUP ── */
-function SetupStage({data,setData,onNext}){
-  const[err,setErr]=useState("");
-  const isMobile=useIsMobile();
-  const set=k=>v=>setData(d=>({...d,[k]:v}));
-  const go=()=>{
-    if(!data.clientName.trim())return setErr("Client name is required");
-    if(data.strategyDoc.trim().length<80)return setErr("Strategy document is too short — paste the full brief");
-    setErr("");onNext();
-  };
-  return(
-    <div style={{maxWidth:680,animation:"fadeIn 0.3s ease"}}>
-      <EyeBrow>Website Build Pipeline</EyeBrow>
-      <h2 className="h-page" style={{fontSize:32,fontWeight:500,letterSpacing:"-0.03em",marginBottom:6}}>New project</h2>
-      <p style={{color:C.n2,fontSize:14,marginBottom:20}}>Fill in client details and paste the full strategy document.</p>
-
-      <Card style={{marginBottom:8}}>
-        <SectionMark>Client</SectionMark>
-        <div className="grid-2" style={{marginBottom:12}}>
-          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Client Name *</label><Inp value={data.clientName} onChange={set("clientName")} placeholder="e.g. Riverside Roofing"/></div>
-          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Website URL</label><Inp value={data.websiteUrl} onChange={set("websiteUrl")} placeholder="e.g. riversideroofing.ca"/></div>
-        </div>
-        <div className="grid-2">
-          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Target Geography</label><Inp value={data.geography} onChange={set("geography")} placeholder="e.g. Vancouver, BC — Canada-wide"/></div>
-          <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Pricing to Mention</label><Inp value={data.pricing} onChange={set("pricing")} placeholder="e.g. From $2,400/mo flat"/></div>
-        </div>
-      </Card>
-
-      <Card style={{marginBottom:8}}>
-        <SectionMark>Strategy</SectionMark>
-        <div style={{marginBottom:12}}>
-          <label style={{fontSize:12,display:"block",marginBottom:5}}>Strategy Document * <span style={{color:C.n2}}>— paste discovery notes, brief, questionnaire, proposal</span></label>
-          <Inp value={data.strategyDoc} onChange={set("strategyDoc")} multiline rows={isMobile?7:10} placeholder="Paste the full strategy document here. Include services, audience, geography, competitors, pricing, tone, goals — everything."/>
-        </div>
-        <div><label style={{fontSize:12,display:"block",marginBottom:5}}>Brand Voice Notes</label><Inp value={data.brandVoice} onChange={set("brandVoice")} multiline rows={2} placeholder="e.g. Direct and confident. No jargon. Canadian spelling."/></div>
-      </Card>
-
-      <Card style={{marginBottom:20}}>
-        <SectionMark>Competitors</SectionMark>
-        <Inp value={data.competitors} onChange={set("competitors")} multiline rows={3} placeholder={"competitor1.ca\ncompetitor2.com"}/>
-      </Card>
-
-      {err&&<div style={{display:"flex",alignItems:"center",gap:7,color:C.error,fontSize:13,marginBottom:12,padding:"8px 12px",background:"rgba(229,57,53,0.06)",border:"1px solid rgba(229,57,53,0.18)",borderRadius:6}}><i className="ti ti-alert-circle" style={{fontSize:14}}/>{err}</div>}
-      <Btn onClick={go} icon="ti-arrow-right">Run Research Analysis</Btn>
-    </div>
-  );
-}
-
-/* ── RESEARCH ── */
-function ResearchStage({setup,research,setResearch,onNext}){
-  const[loading,setLoading]=useState(false);
-  const[stream,setStream]=useState("");
-  const run=async()=>{
-    setLoading(true);setStream("");
-    try{
-      const r=await callClaude(P.research,
-        `CLIENT: ${setup.clientName}\nWEBSITE: ${setup.websiteUrl||"N/A"}\nGEOGRAPHY: ${setup.geography||"N/A"}\nPRICING: ${setup.pricing||"N/A"}\nCOMPETITORS:\n${setup.competitors||"N/A"}\nBRAND VOICE: ${setup.brandVoice||"N/A"}\n\nSTRATEGY DOCUMENT:\n${setup.strategyDoc}`,
-        setStream);
-      setResearch({raw:r,parsed:parseJSON(r)});
-    }catch(e){setStream(`Error: ${e.message}`);}
-    setLoading(false);
-  };
-  const r=research?.parsed;
-  return(
-    <div style={{maxWidth:780,animation:"fadeIn 0.3s ease"}}>
-      <EyeBrow>Stage 2 of 6</EyeBrow>
-      <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Research Brief</h2>
-      <p style={{color:C.n2,fontSize:13,marginBottom:16}}>Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
-      {!research&&<Btn onClick={run} disabled={loading} icon={loading?undefined:"ti-brain"}>{loading?<><Spinner size={12}/>&nbsp;Analysing...</>:"Run Research Analysis"}</Btn>}
-      {(loading||(stream&&!r))&&<Card style={{marginTop:12}}><Lbl>Analysis output</Lbl><StreamBox text={stream} loading={loading}/></Card>}
-      {r&&<div style={{animation:"fadeIn 0.3s ease"}}>
-        <div className="grid-2" style={{marginBottom:8}}>
-          <Card><Lbl>Business Overview</Lbl><p style={{color:C.n3,fontSize:13,lineHeight:1.65}}>{r.business_overview}</p></Card>
-          <Card><Lbl>Value Proposition</Lbl><p style={{color:C.n3,fontSize:13,lineHeight:1.65}}>{r.value_proposition}</p></Card>
-        </div>
-        {r.key_differentiators?.length>0&&<Card style={{marginBottom:8}}><Lbl>Key Differentiators</Lbl>
-          <ul style={{marginTop:8,display:"flex",flexDirection:"column",gap:4,listStyle:"none"}}>
-            {r.key_differentiators.map((d,i)=><li key={i} style={{color:C.n3,fontSize:13,display:"flex",gap:8}}><span style={{color:C.green,flexShrink:0}}>—</span>{d}</li>)}
-          </ul></Card>}
-        {r.target_audience?.length>0&&<Card style={{marginBottom:8}}><Lbl>Target Audience</Lbl>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
-            {r.target_audience.map((a,i)=>(
-              <div key={i} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"10px 14px",flex:"1 1 160px"}}>
-                <div style={{fontSize:12,fontWeight:500,marginBottom:4}}>{a.persona}</div>
-                {a.pain_points?.slice(0,3).map((p,j)=><div key={j} style={{color:C.n2,fontSize:12,marginBottom:2,display:"flex",gap:6}}><span style={{opacity:.35}}>—</span>{p}</div>)}
-              </div>
-            ))}
-          </div></Card>}
-        {r.strategic_recommendations?.length>0&&<Card style={{marginBottom:16,borderLeft:`3px solid ${C.green}`}}><Lbl>Strategic Recommendations</Lbl>
-          <ul style={{marginTop:8,display:"flex",flexDirection:"column",gap:6,listStyle:"none"}}>
-            {r.strategic_recommendations.map((rec,i)=><li key={i} style={{color:C.dark,fontSize:13,display:"flex",gap:8}}><i className="ti ti-point-filled" style={{color:C.green,fontSize:8,marginTop:5,flexShrink:0}}/>{rec}</li>)}
-          </ul></Card>}
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <Btn onClick={onNext} icon="ti-arrow-right">Proceed to Sitemap</Btn>
-          <Btn variant="ghost" onClick={()=>{setResearch(null);setStream("");}} icon="ti-refresh">Re-run</Btn>
-        </div>
-      </div>}
-    </div>
-  );
-}
-
-/* ── SITEMAP ── */
-function SitemapStage({setup,research,sitemap,setSitemap,onNext}){
-  const[loading,setLoading]=useState(false);
-  const[stream,setStream]=useState("");
-  const[revisions,setRevisions]=useState("");
-  const[approved,setApproved]=useState(false);
-  const isMobile=useIsMobile();
-
-  const run=async(withRev=false)=>{
-    setLoading(true);setStream("");setSitemap(null);setApproved(false);
-    try{
-      const r=research?.parsed;
-      const result=await callClaude(P.sitemap,
-        `CLIENT: ${setup.clientName}\nSERVICES: ${r?.primary_services?.join(", ")||"N/A"}\nGEOGRAPHY: ${r?.geography?.primary||setup.geography||"N/A"}\nGEOGRAPHY SECONDARY: ${r?.geography?.secondary?.join(", ")||""}\nCOMPETITORS: ${r?.competitors?.join(", ")||setup.competitors||""}\nOVERVIEW: ${r?.business_overview||""}\nVALUE PROP: ${r?.value_proposition||""}\nPRICING: ${setup.pricing||r?.pricing_notes||""}${withRev&&revisions?"\n\nREVISION NOTES:\n"+revisions:""}`,
-        setStream);
-      const parsed=parseJSON(result);
-      setSitemap({raw:result,pages:Array.isArray(parsed)?parsed:[]});
-    }catch(e){setStream(`Error: ${e.message}`);}
-    setLoading(false);
-  };
-
-  const pages=sitemap?.pages||[];
-  const pCount={P1:pages.filter(p=>p.priority==="P1").length,P2:pages.filter(p=>p.priority==="P2").length,P3:pages.filter(p=>p.priority==="P3").length};
-  const pColor={P1:C.green,P2:C.warn,P3:C.n2};
-
-  return(
-    <div style={{maxWidth:960,animation:"fadeIn 0.3s ease"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
-        <div>
-          <EyeBrow>Stage 3 of 6</EyeBrow>
-          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Sitemap + Keyword Map</h2>
-          <p style={{color:C.n2,fontSize:13}}><span style={{color:C.green,fontWeight:500}}>⛳ Gate 1</span> — Approve before copy begins.</p>
-        </div>
-        {!sitemap&&<Btn onClick={()=>run(false)} disabled={loading} icon={loading?undefined:"ti-sitemap"}>{loading?<><Spinner size={12}/>&nbsp;Generating...</>:"Generate Sitemap"}</Btn>}
-      </div>
-
-      {(loading||stream)&&!sitemap&&<Card><Lbl>Building sitemap...</Lbl><StreamBox text={stream} loading={loading}/></Card>}
-
-      {pages.length>0&&<div style={{animation:"fadeIn 0.3s ease"}}>
-        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-          <span style={{background:C.dark,color:"white",fontSize:11,padding:"3px 10px",borderRadius:4}}>{pages.length} pages</span>
-          <Chip color={C.green}>P1: {pCount.P1}</Chip>
-          <Chip color={C.warn}>P2: {pCount.P2}</Chip>
-          <Chip>P3: {pCount.P3}</Chip>
-        </div>
-
-        {/* Table — desktop */}
-        {!isMobile&&<div className="tbl-wrap" style={{marginBottom:8}}>
-          <div className="tbl-hdr" style={{display:"grid",gridTemplateColumns:"24px 1.3fr 1.2fr 160px 44px 66px",background:C.bg,padding:"7px 14px",borderBottom:`1px solid ${C.border}`,fontSize:10.5,color:C.n2,letterSpacing:"0.06em",textTransform:"uppercase"}}>
-            <span>#</span><span>Page</span><span>Primary Keyword</span><span>Supporting</span><span>KD</span><span>Priority</span>
-          </div>
-          {pages.map((p,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"24px 1.3fr 1.2fr 160px 44px 66px",padding:"9px 14px",borderBottom:i<pages.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.white:"rgba(240,239,233,0.5)",alignItems:"start"}}>
-              <span style={{color:C.n2,fontSize:11}}>{i+1}</span>
-              <div><div style={{color:C.dark,fontSize:12.5}}>{p.page_name}</div><div style={{color:C.n2,fontSize:10.5,marginTop:1}}>/{p.slug}</div></div>
-              <div style={{color:C.n3,fontSize:12}}>{p.primary_keyword}</div>
-              <div style={{fontSize:11,color:C.n2,lineHeight:1.4}}>{p.supporting_keywords?.slice(0,2).join(", ")}{p.supporting_keywords?.length>2?` +${p.supporting_keywords.length-2}`:""}</div>
-              <span style={{color:C.n2,fontSize:11}}>{p.primary_kd||"–"}</span>
-              <span style={{color:pColor[p.priority]||C.n2,fontSize:11,fontWeight:500}}>{p.priority||"–"}</span>
-            </div>
-          ))}
-        </div>}
-
-        {/* Table — mobile card list */}
-        {isMobile&&<div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
-          {pages.map((p,i)=>(
-            <div key={i} style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:6,padding:"10px 12px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:4}}>
-                <div>
-                  <div style={{color:C.dark,fontSize:13,fontWeight:400}}>{p.page_name}</div>
-                  <div style={{color:C.n2,fontSize:11,marginTop:1}}>/{p.slug}</div>
-                </div>
-                <span style={{color:pColor[p.priority]||C.n2,fontSize:11,fontWeight:500,flexShrink:0}}>{p.priority}</span>
-              </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
-                <span style={{fontSize:11,color:C.n3}}>{p.primary_keyword}</span>
-                {p.primary_kd&&<span style={{fontSize:11,color:C.n2}}>KD: {p.primary_kd}</span>}
-              </div>
-            </div>
-          ))}
-        </div>}
-
-        {/* Gate */}
-        {!approved?(
-          <div style={{background:C.dg,borderRadius:8,padding:isMobile?14:20,border:"1px solid rgba(255,255,255,0.06)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
-              <i className="ti ti-flag-2" style={{color:C.lime,fontSize:14}}/>
-              <span style={{color:C.lime,fontWeight:500,fontSize:13}}>Gate 1 — PM Sitemap Approval</span>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:12,color:"rgba(255,255,255,0.5)",display:"block",marginBottom:5}}>Revision notes — leave blank to approve as-is</label>
-              <textarea value={revisions} onChange={e=>setRevisions(e.target.value)} rows={3}
-                placeholder="e.g. Add /emergency-services. Remove /about-team."
-                style={{width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:6,padding:"8px 12px",color:"rgba(255,255,255,0.8)",fontSize:13,fontFamily:"var(--font)",resize:"vertical",outline:"none"}}/>
-            </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <Btn onClick={()=>setApproved(true)} icon="ti-check">Approve Sitemap</Btn>
-              <button onClick={()=>run(true)} disabled={loading} style={{display:"inline-flex",alignItems:"center",gap:5,background:"transparent",color:"rgba(255,255,255,0.5)",border:"1px solid rgba(255,255,255,0.18)",borderRadius:6,padding:"8px 14px",fontSize:13,fontFamily:"var(--font)",cursor:loading?"not-allowed":"pointer",opacity:loading?.5:1}}>
-                <i className="ti ti-refresh" style={{fontSize:12}}/>{loading?"Regenerating...":"Revise & Regenerate"}
-              </button>
-            </div>
-          </div>
-        ):(
-          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-            <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(21,142,29,0.08)",border:"1px solid rgba(21,142,29,0.2)",borderRadius:6,padding:"9px 14px",color:C.green,fontSize:13}}>
-              <i className="ti ti-check"/>Sitemap approved — {pages.length} pages locked
-            </div>
-            <Btn onClick={onNext} icon="ti-arrow-right">Generate Copy</Btn>
-          </div>
-        )}
-      </div>}
-    </div>
-  );
-}
-
-/* ── COPY ── */
-function CopyStage({setup,research,sitemap,copyData,setCopyData,onNext}){
-  const[running,setRunning]=useState(false);
-  const[currentSlug,setCurrentSlug]=useState(null);
-  const[currentStream,setCurrentStream]=useState("");
-  const[preview,setPreview]=useState(null);
-  const stopRef=useRef(false);
-  const isMobile=useIsMobile();
-  const pages=sitemap?.pages||[];
-  const ordered=[...pages.filter(p=>p.priority==="P1"),...pages.filter(p=>p.priority==="P2"),...pages.filter(p=>p.priority==="P3")];
-  const doneCount=Object.keys(copyData||{}).filter(k=>copyData[k]?.copy).length;
-
-  const buildPrompt=page=>{const r=research?.parsed;
-    return`CLIENT: ${setup.clientName}\nPAGE: ${page.page_name} | /${page.slug}\nPRIMARY KEYWORD: ${page.primary_keyword}\nSUPPORTING: ${page.supporting_keywords?.join(", ")}\nINTENT: ${page.search_intent}\nWORD COUNT MIN: ${page.word_count_target||1500}\nOVERVIEW: ${r?.business_overview||""}\nVALUE PROP: ${r?.value_proposition||""}\nAUDIENCE: ${r?.target_audience?.map(a=>a.persona).join(", ")||""}\nDIFFERENTIATORS: ${r?.key_differentiators?.join(". ")||""}\nGEOGRAPHY: ${r?.geography?.primary||setup.geography||""}\nPRICING: ${setup.pricing||r?.pricing_notes||""}\nVOICE: ${r?.tone_and_voice||setup.brandVoice||"Confident, direct, human. Canadian spelling."}\nNOTES: ${page.notes||""}\n\nWrite the complete page.`;};
-
-  const runSingle=async page=>{
-    setCurrentSlug(page.slug);setCurrentStream("");
-    try{const copy=await callClaude(P.copy,buildPrompt(page),setCurrentStream);setCopyData(p=>({...(p||{}),[page.slug]:{copy,page}}));}
-    catch(e){setCopyData(p=>({...(p||{}),[page.slug]:{error:e.message,page}}));}
-    setCurrentSlug(null);
-  };
-
-  const runAll=async()=>{
-    setRunning(true);stopRef.current=false;
-    for(const page of ordered){
-      if(stopRef.current)break;if(copyData?.[page.slug]?.copy)continue;
-      await runSingle(page);await new Promise(r=>setTimeout(r,600));
+  let html = '';
+  for (let i = 0; i < stages.length; i++) {
+    html += makePill(stages[i], i);
+    if (i < stages.length - 1) {
+      html += '<div class="stage-dot' + (i < idx ? ' done' : '') + '"></div>';
     }
-    setRunning(false);
-  };
+  }
+  document.getElementById('stage-bar').innerHTML = html;
 
-  return(
-    <div style={{maxWidth:900,animation:"fadeIn 0.3s ease"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
-        <div>
-          <EyeBrow>Stage 4 of 6</EyeBrow>
-          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Copy Generation</h2>
-          <p style={{color:C.n2,fontSize:13}}>All {ordered.length} pages. P1 first. ~60–90s per page.</p>
-        </div>
-        <div style={{display:"flex",gap:8,flexShrink:0}}>
-          {running?<Btn variant="danger" onClick={()=>{stopRef.current=true;setRunning(false);}} icon="ti-player-stop">Stop</Btn>
-            :<Btn onClick={runAll} disabled={!!currentSlug} icon="ti-player-play">{doneCount>0?`Continue (${doneCount}/${ordered.length})`:"Generate All"}</Btn>}
-        </div>
-      </div>
-      {ordered.length>0&&<ProgressBar done={doneCount} total={ordered.length}/>}
-      {currentSlug&&<Card style={{marginBottom:10,borderLeft:`3px solid ${C.green}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><Spinner size={12}/><span style={{fontSize:13}}>Writing: <strong>{ordered.find(p=>p.slug===currentSlug)?.page_name}</strong></span></div>
-        <div style={{height:70,overflow:"hidden",background:C.dg,borderRadius:5,padding:10,fontFamily:"monospace",fontSize:11,color:"rgba(255,255,255,0.4)",lineHeight:1.5}}>{currentStream.slice(-400)}</div>
-      </Card>}
-      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
-        {ordered.map(page=>{
-          const r=copyData?.[page.slug];const isRun=currentSlug===page.slug,isDone=!!r?.copy,isErr=!!r?.error;
-          return(
-            <div key={page.slug} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.white,borderRadius:6,border:`1px solid ${isRun?C.green:isDone?"rgba(21,142,29,0.22)":isErr?"rgba(229,57,53,0.22)":C.border}`,transition:"border-color .2s",flexWrap:isMobile?"wrap":"nowrap"}}>
-              <StatusCircle status={isRun?"running":isDone?"done":isErr?"error":"idle"}/>
-              <div style={{flex:1,minWidth:0}}>
-                <span style={{color:isDone?C.dark:C.n2,fontSize:13}}>{page.page_name}</span>
-                {!isMobile&&<span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{page.slug}</span>}
-                {page.priority==="P1"&&<Chip color={C.green}>P1</Chip>}
-                {isErr&&<span style={{color:C.error,fontSize:11,marginLeft:8,display:"block"}}>{r.error}</span>}
-              </div>
-              <div className="row-actions">
-                {isDone&&<><Btn small variant="ghost" icon="ti-eye" onClick={()=>setPreview(preview===page.slug?null:page.slug)}>{preview===page.slug?"Hide":"Preview"}</Btn>
-                <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(r.copy)}>Copy</Btn></>}
-                {(!isDone||isErr)&&!isRun&&<Btn small variant="ghost" onClick={()=>runSingle(page)} disabled={running||!!currentSlug}>{isErr?"Retry":"Run"}</Btn>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {preview&&copyData?.[preview]?.copy&&<Card style={{marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <Lbl>{ordered.find(p=>p.slug===preview)?.page_name}</Lbl>
-          <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(copyData[preview].copy)}>Copy HTML</Btn>
-        </div>
-        <div style={{maxHeight:320,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.65,background:C.bg,borderRadius:5,padding:10}}>{copyData[preview].copy}</div>
-      </Card>}
-      {doneCount===ordered.length&&ordered.length>0&&!running&&<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginTop:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(21,142,29,0.08)",border:"1px solid rgba(21,142,29,0.2)",borderRadius:6,padding:"9px 14px",color:C.green,fontSize:13}}><i className="ti ti-check"/>All {ordered.length} pages complete</div>
-        <Btn onClick={onNext} icon="ti-arrow-right">Generate Schema + Meta</Btn>
-      </div>}
-      {doneCount>0&&doneCount<ordered.length&&!running&&<Btn variant="ghost" onClick={onNext} style={{marginTop:8}} icon="ti-arrow-right">Skip to Schema</Btn>}
-    </div>
-  );
+  // Mobile
+  let mhtml = '';
+  for (let i = 0; i < stages.length; i++) {
+    mhtml += makePill(stages[i], i);
+  }
+  document.getElementById('mobile-stage').innerHTML = mhtml;
+  // Scroll active into view
+  const activePill = document.querySelector('#mobile-stage .active');
+  if (activePill) activePill.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
 }
 
-/* ── SCHEMA ── */
-function SchemaStage({setup,sitemap,schemaData,setSchemaData,onNext}){
-  const[running,setRunning]=useState(false);
-  const[currentSlug,setCurrentSlug]=useState(null);
-  const[preview,setPreview]=useState(null);
-  const stopRef=useRef(false);
-  const isMobile=useIsMobile();
-  const pages=sitemap?.pages||[];
-  const doneCount=Object.keys(schemaData||{}).filter(k=>schemaData[k]?.schema).length;
-  const base=`https://www.${setup.websiteUrl||"example.com"}`;
+// ── SETUP ──────────────────────────────────────────────────────────
+function setupNext() {
+  const client = document.getElementById('f-client').value.trim();
+  const strategy = document.getElementById('f-strategy').value.trim();
+  if (!client) return showSetupError('Client name is required');
+  if (strategy.length < 80) return showSetupError('Strategy document is too short — paste the full brief');
+  
+  S.client = client;
+  S.url = document.getElementById('f-url').value.trim();
+  S.geo = document.getElementById('f-geo').value.trim();
+  S.pricing = document.getElementById('f-pricing').value.trim();
+  S.strategy = strategy;
+  S.voice = document.getElementById('f-voice').value.trim();
+  S.competitors = document.getElementById('f-competitors').value.trim();
 
-  const runSingle=async page=>{
-    setCurrentSlug(page.slug);
-    try{
-      const schema=await callClaude(P.schema,
-        `CLIENT: ${setup.clientName}\nBASE URL: ${base}\nPAGE: ${page.page_name}\nURL: ${base}/${page.slug}\nTYPE: ${page.page_type}\nPRIMARY KW: ${page.primary_keyword}\nSUPPORTING KW: ${page.supporting_keywords?.join(", ")}\nDESCRIPTION: ${page.notes||page.page_name}\nBREADCRUMB: Home > ${page.page_name}`);
-      setSchemaData(p=>({...(p||{}),[page.slug]:{schema,page}}));
-    }catch(e){setSchemaData(p=>({...(p||{}),[page.slug]:{error:e.message,page}}));}
-    setCurrentSlug(null);
-  };
+  document.getElementById('client-name-nav').textContent = client;
+  document.getElementById('nav-div2').style.display = '';
+  hideSetupError();
+  goTo('research');
+}
 
-  const runAll=async()=>{
-    setRunning(true);stopRef.current=false;
-    for(const page of pages){
-      if(stopRef.current)break;if(schemaData?.[page.slug]?.schema)continue;
-      await runSingle(page);await new Promise(r=>setTimeout(r,500));
+function showSetupError(msg) {
+  const el = document.getElementById('setup-error');
+  document.getElementById('setup-error-msg').textContent = msg;
+  el.style.display = 'flex';
+}
+function hideSetupError() {
+  document.getElementById('setup-error').style.display = 'none';
+}
+
+// ── RESEARCH ───────────────────────────────────────────────────────
+async function runResearch() {
+  const btn = document.getElementById('research-run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Analysing...';
+  
+  const wrap = document.getElementById('research-stream-wrap');
+  const streamEl = document.getElementById('research-stream');
+  wrap.style.display = 'block';
+  streamEl.textContent = '';
+  document.getElementById('research-results').style.display = 'none';
+
+  const userPrompt = 'CLIENT: ' + S.client + '\nWEBSITE: ' + (S.url||'N/A') + '\nGEOGRAPHY: ' + (S.geo||'N/A') + '\nPRICING: ' + (S.pricing||'N/A') + '\nCOMPETITORS:\n' + (S.competitors||'N/A') + '\nBRAND VOICE: ' + (S.voice||'N/A') + '\n\nSTRATEGY DOCUMENT:\n' + S.strategy;
+
+  try {
+    const result = await callClaude(PROMPTS.research, userPrompt, function(text) {
+      streamEl.textContent = text;
+      streamEl.scrollTop = streamEl.scrollHeight;
+    });
+    S.research = safeParseJSON(result);
+    if (S.research) {
+      renderResearchResults(S.research);
+      wrap.style.display = 'none';
+    } else {
+      streamEl.textContent = 'Could not parse response. Raw output:\n\n' + result;
     }
-    setRunning(false);
-  };
+  } catch(err) {
+    streamEl.textContent = 'Error: ' + err.message;
+  }
 
-  return(
-    <div style={{maxWidth:900,animation:"fadeIn 0.3s ease"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
-        <div>
-          <EyeBrow>Stage 5 of 6</EyeBrow>
-          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Schema + Meta Tags</h2>
-          <p style={{color:C.n2,fontSize:13}}>JSON-LD, meta title, description, and OG tags — paste-ready for Webflow.</p>
-        </div>
-        <div style={{flexShrink:0}}>
-          {running?<Btn variant="danger" onClick={()=>{stopRef.current=true;setRunning(false);}} icon="ti-player-stop">Stop</Btn>
-            :<Btn onClick={runAll} icon="ti-code">{doneCount>0?`Continue (${doneCount}/${pages.length})`:"Generate All"}</Btn>}
-        </div>
-      </div>
-      {pages.length>0&&<ProgressBar done={doneCount} total={pages.length} color={C.dark}/>}
-      <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:14}}>
-        {pages.map(page=>{
-          const r=schemaData?.[page.slug];const isRun=currentSlug===page.slug,isDone=!!r?.schema;
-          return(
-            <div key={page.slug} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.white,borderRadius:6,border:`1px solid ${isRun?C.dark:isDone?"rgba(0,0,0,0.18)":C.border}`,flexWrap:isMobile?"wrap":"nowrap"}}>
-              <div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,background:isDone?C.green:C.n1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"white"}}>{isRun?<Spinner size={10}/>:isDone?"✓":""}</div>
-              <div style={{flex:1}}><span style={{color:isDone?C.dark:C.n2,fontSize:13}}>{page.page_name}</span>{!isMobile&&<span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{page.slug}</span>}</div>
-              <div className="row-actions">
-                {isDone&&<><Btn small variant="ghost" icon="ti-eye" onClick={()=>setPreview(preview===page.slug?null:page.slug)}>{preview===page.slug?"Hide":"View"}</Btn>
-                <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(r.schema)}>Copy</Btn></>}
-                {!isDone&&!isRun&&<Btn small variant="ghost" onClick={()=>runSingle(page)} disabled={running||!!currentSlug}>Run</Btn>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {preview&&schemaData?.[preview]?.schema&&<Card style={{marginBottom:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <Lbl>{pages.find(p=>p.slug===preview)?.page_name}</Lbl>
-          <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(schemaData[preview].schema)}>Copy All</Btn>
-        </div>
-        <div style={{maxHeight:300,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.5,background:C.bg,borderRadius:5,padding:10}}>{schemaData[preview].schema}</div>
-      </Card>}
-      {doneCount>0&&<div style={{marginTop:8}}><Btn onClick={onNext} icon="ti-package-export">View Export Package</Btn></div>}
-    </div>
-  );
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
 }
 
-/* ── EXPORT ── */
-function ExportStage({setup,sitemap,copyData,schemaData}){
-  const pages=sitemap?.pages||[];
-  const[tab,setTab]=useState("sitemap");
-  const[sel,setSel]=useState(pages[0]?.slug||"");
-  const isMobile=useIsMobile();
-  const copyCount=pages.filter(p=>copyData?.[p.slug]?.copy).length;
-  const schemaCount=pages.filter(p=>schemaData?.[p.slug]?.schema).length;
+function renderResearchResults(r) {
+  let html = '<div style="animation:fadeIn .3s ease">';
+  html += '<div class="grid-2" style="margin-bottom:8px">';
+  html += '<div class="card"><div class="eyebrow">Business Overview</div><p style="color:var(--n3);font-size:13px;line-height:1.65">' + esc(r.business_overview||'') + '</p></div>';
+  html += '<div class="card"><div class="eyebrow">Value Proposition</div><p style="color:var(--n3);font-size:13px;line-height:1.65">' + esc(r.value_proposition||'') + '</p></div>';
+  html += '</div>';
 
-  const download=()=>{
-    let out=`${setup.clientName} — Website Build Package\nSetSailOS · Setsail Marketing Agency\n${"═".repeat(60)}\n\nSITEMAP (${pages.length} pages)\n${"─".repeat(40)}\n\n`;
-    pages.forEach((p,i)=>{out+=`${i+1}. ${p.page_name} (/${p.slug}) [${p.priority}]\n   Primary: ${p.primary_keyword} | KD: ${p.primary_kd||"?"}\n   Supporting: ${p.supporting_keywords?.join(", ")}\n\n`;});
-    out+=`\n${"═".repeat(60)}\nCOPY BY PAGE\n${"─".repeat(40)}\n\n`;
-    pages.forEach(p=>{const c=copyData?.[p.slug];if(c?.copy)out+=`\n${p.page_name.toUpperCase()} · /${p.slug}\n${"─".repeat(30)}\n${c.copy}\n\n`;});
-    out+=`\n${"═".repeat(60)}\nSCHEMA + META BY PAGE\n${"─".repeat(40)}\n\n`;
-    pages.forEach(p=>{const s=schemaData?.[p.slug];if(s?.schema)out+=`\n${p.page_name.toUpperCase()} · /${p.slug}\n${"─".repeat(30)}\n${s.schema}\n\n`;});
-    const blob=new Blob([out],{type:"text/plain"});const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");a.href=url;a.download=`${setup.clientName.toLowerCase().replace(/\s+/g,"-")}-website-build.txt`;a.click();URL.revokeObjectURL(url);
-  };
+  if (r.key_differentiators && r.key_differentiators.length) {
+    html += '<div class="card" style="margin-bottom:8px"><div class="eyebrow">Key Differentiators</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">';
+    r.key_differentiators.forEach(function(d) {
+      html += '<li style="color:var(--n3);font-size:13px;display:flex;gap:8px"><span style="color:var(--green);flex-shrink:0">—</span>' + esc(d) + '</li>';
+    });
+    html += '</ul></div>';
+  }
 
-  const tabs=[{id:"sitemap",label:`Sitemap (${pages.length})`},{id:"copy",label:`Copy (${copyCount})`},{id:"schema",label:`Schema (${schemaCount})`}];
+  if (r.strategic_recommendations && r.strategic_recommendations.length) {
+    html += '<div class="card highlight-green" style="margin-bottom:20px"><div class="eyebrow">Strategic Recommendations</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+    r.strategic_recommendations.forEach(function(rec) {
+      html += '<li style="color:var(--dark);font-size:13px;display:flex;gap:8px"><i class="ti ti-point-filled" style="color:var(--green);font-size:8px;margin-top:5px;flex-shrink:0"></i>' + esc(rec) + '</li>';
+    });
+    html += '</ul></div>';
+  }
 
-  return(
-    <div style={{maxWidth:920,animation:"fadeIn 0.3s ease"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,gap:12,flexWrap:"wrap"}}>
-        <div>
-          <EyeBrow>Stage 6 of 6</EyeBrow>
-          <h2 className="h-page" style={{fontSize:28,fontWeight:500,letterSpacing:"-0.03em",marginBottom:4}}>Export Package</h2>
-          <p style={{color:C.n2,fontSize:13}}>{setup.clientName} — {pages.length} pages ready to hand off.</p>
-        </div>
-        <Btn onClick={download} icon="ti-download">Download Full Package</Btn>
-      </div>
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  html += '<button class="btn btn-primary" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>';
+  html += '<button class="btn btn-ghost" onclick="runResearch()"><i class="ti ti-refresh"></i> Re-run</button>';
+  html += '</div></div>';
 
-      <div className="stat-row" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
-        {[{label:"Pages in Sitemap",value:pages.length,icon:"ti-sitemap"},{label:"Pages with Copy",value:copyCount,icon:"ti-pencil",color:C.green},{label:"Pages with Schema",value:schemaCount,icon:"ti-code"}].map(s=>(
-          <Card key={s.label} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px"}}>
-            <div style={{width:32,height:32,borderRadius:6,background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><i className={`ti ${s.icon}`} style={{fontSize:14,color:s.color||C.dark}}/></div>
-            <div><div style={{fontSize:24,fontWeight:500,letterSpacing:"-0.03em",lineHeight:1}}>{s.value}</div><div style={{fontSize:11,color:C.n2,marginTop:2}}>{s.label}</div></div>
-          </Card>
-        ))}
-      </div>
-
-      <div className="export-tabs" style={{display:"flex",gap:4,marginBottom:10}}>
-        {tabs.map(t=><button key={t.id} onClick={()=>{setTab(t.id);setSel(pages[0]?.slug||"");}} style={{padding:"6px 14px",borderRadius:6,fontSize:13,background:tab===t.id?C.dark:"transparent",color:tab===t.id?"white":C.n2,border:`1px solid ${tab===t.id?C.dark:C.border}`,cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s",flexShrink:0}}>{t.label}</button>}
-      </div>
-
-      {tab==="sitemap"&&<div className="tbl-wrap">
-        {pages.map((p,i)=>(
-          <div key={p.slug} style={{display:"flex",gap:10,padding:"10px 14px",borderBottom:i<pages.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.white:"rgba(240,239,233,0.5)",alignItems:"flex-start",flexWrap:isMobile?"wrap":"nowrap"}}>
-            <span style={{color:C.n2,fontSize:11,paddingTop:1,flexShrink:0,width:18}}>{i+1}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <span style={{color:C.dark,fontSize:13}}>{p.page_name}</span><span style={{color:C.n2,fontSize:11,marginLeft:8}}>/{p.slug}</span>
-              <div style={{fontSize:11,color:C.n2,marginTop:2,flexWrap:"wrap"}}>{p.primary_keyword}{p.supporting_keywords?.length>0&&` · ${p.supporting_keywords.slice(0,2).join(", ")}`}</div>
-            </div>
-            <div style={{display:"flex",gap:8,flexShrink:0,alignItems:"center"}}>
-              <span style={{color:p.priority==="P1"?C.green:p.priority==="P2"?C.warn:C.n2,fontSize:11,fontWeight:500}}>{p.priority}</span>
-              <span style={{color:C.n2,fontSize:11}}>{p.word_count_target||1500}w</span>
-            </div>
-          </div>
-        ))}
-      </div>}
-
-      {(tab==="copy"||tab==="schema")&&<div>
-        <div className="page-chip-list" style={{display:"flex",gap:5,marginBottom:10,flexWrap:isMobile?"nowrap":"wrap"}}>
-          {pages.filter(p=>tab==="copy"?copyData?.[p.slug]?.copy:schemaData?.[p.slug]?.schema).map(p=>(
-            <button key={p.slug} onClick={()=>setSel(p.slug)} style={{padding:"5px 12px",borderRadius:5,fontSize:12,background:sel===p.slug?C.dark:"transparent",color:sel===p.slug?"white":C.n2,border:`1px solid ${sel===p.slug?C.dark:C.border}`,cursor:"pointer",fontFamily:"var(--font)",transition:"all .15s",flexShrink:0}}>{p.page_name}</button>
-          ))}
-        </div>
-        {sel&&<Card>
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
-            <Btn small variant="ghost" icon="ti-copy" onClick={()=>navigator.clipboard.writeText(tab==="copy"?copyData[sel]?.copy:schemaData[sel]?.schema)}>Copy {tab==="copy"?"HTML":"Schema"}</Btn>
-          </div>
-          <div style={{maxHeight:460,overflow:"auto",fontFamily:"monospace",fontSize:11,color:C.n3,whiteSpace:"pre-wrap",lineHeight:1.65,background:C.bg,borderRadius:5,padding:10}}>
-            {tab==="copy"?copyData[sel]?.copy:schemaData[sel]?.schema}
-          </div>
-        </Card>}
-      </div>}
-    </div>
-  );
+  const el = document.getElementById('research-results');
+  el.innerHTML = html;
+  el.style.display = 'block';
 }
 
-/* ── APP ── */
-function App(){
-  const[stage,setStage]=useState("setup");
-  const[setup,setSetup]=useState({clientName:"",websiteUrl:"",strategyDoc:"",geography:"",pricing:"",competitors:"",brandVoice:""});
-  const[research,setResearch]=useState(null);
-  const[sitemap,setSitemap]=useState(null);
-  const[copyData,setCopyData]=useState(null);
-  const[schemaData,setSchemaData]=useState(null);
-  const isMobile=useIsMobile();
+// ── SITEMAP ────────────────────────────────────────────────────────
+async function runSitemap(withRevisions) {
+  const btn = document.getElementById('sitemap-run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...';
+  document.getElementById('sitemap-results').style.display = 'none';
+  S.pages = [];
 
-  return(
-    <div style={{minHeight:"100vh",background:C.bg}}>
-      {/* Nav */}
-      <div className="nav-bar">
-        <div className="nav-left">
-          <a href="#" style={{display:"flex",alignItems:"center",gap:7,textDecoration:"none",color:C.dark,flexShrink:0}}>
-            <div style={{width:22,height:22,background:C.dark,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </div>
-            <span style={{fontSize:13.5,fontWeight:500,letterSpacing:"-0.01em"}}>Setsail<em style={{fontStyle:"normal",color:C.green}}> OS</em></span>
-          </a>
-          {!isMobile&&<><div style={{height:14,width:1,background:C.border}}/><span style={{fontSize:12,color:C.n2}}>Website Build Pipeline</span></>}
-          {setup.clientName&&!isMobile&&<><div style={{height:14,width:1,background:C.border}}/><span style={{fontSize:12,color:C.dark}}>{setup.clientName}</span></>}
-          {setup.clientName&&isMobile&&<span style={{fontSize:12,color:C.dark,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:120}}>{setup.clientName}</span>}
-        </div>
-        <StageBar current={stage}/>
-      </div>
+  const wrap = document.getElementById('sitemap-stream-wrap');
+  const streamEl = document.getElementById('sitemap-stream');
+  wrap.style.display = 'block';
+  streamEl.textContent = '';
 
-      {/* Mobile stage bar */}
-      {isMobile&&<MobileStageBar current={stage}/>}
+  const r = S.research || {};
+  const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
+  let prompt = 'CLIENT: ' + S.client + '\nSERVICES: ' + ((r.primary_services||[]).join(', ')||'N/A') + '\nGEOGRAPHY: ' + ((r.geography&&r.geography.primary)||S.geo||'N/A') + '\nGEOGRAPHY SECONDARY: ' + ((r.geography&&r.geography.secondary||[]).join(', ')||'') + '\nCOMPETITORS: ' + ((r.competitors||[]).join(', ')||S.competitors||'') + '\nOVERVIEW: ' + (r.business_overview||'') + '\nVALUE PROP: ' + (r.value_proposition||'') + '\nPRICING: ' + (S.pricing||(r.pricing_notes||''));
+  if (withRevisions && revNote && revNote.value.trim()) {
+    prompt += '\n\nREVISION NOTES:\n' + revNote.value;
+  }
 
-      {/* Body */}
-      <div className="page-pad" style={{maxWidth:1020,margin:"0 auto"}}>
-        {stage==="setup"    &&<SetupStage    data={setup} setData={setSetup} onNext={()=>setStage("research")}/>}
-        {stage==="research" &&<ResearchStage setup={setup} research={research} setResearch={setResearch} onNext={()=>setStage("sitemap")}/>}
-        {stage==="sitemap"  &&<SitemapStage  setup={setup} research={research} sitemap={sitemap} setSitemap={setSitemap} onNext={()=>setStage("copy")}/>}
-        {stage==="copy"     &&<CopyStage     setup={setup} research={research} sitemap={sitemap} copyData={copyData} setCopyData={setCopyData} onNext={()=>setStage("schema")}/>}
-        {stage==="schema"   &&<SchemaStage   setup={setup} sitemap={sitemap} schemaData={schemaData} setSchemaData={setSchemaData} onNext={()=>setStage("export")}/>}
-        {stage==="export"   &&<ExportStage   setup={setup} sitemap={sitemap} copyData={copyData} schemaData={schemaData}/>}
-      </div>
-    </div>
-  );
+  try {
+    const result = await callClaude(PROMPTS.sitemap, prompt, function(text) {
+      streamEl.textContent = text;
+      streamEl.scrollTop = streamEl.scrollHeight;
+    });
+    const parsed = safeParseJSON(result);
+    if (Array.isArray(parsed) && parsed.length) {
+      S.pages = parsed;
+      wrap.style.display = 'none';
+      renderSitemapResults();
+    } else {
+      streamEl.textContent = 'Could not parse sitemap. Raw:\n\n' + result;
+    }
+  } catch(err) {
+    streamEl.textContent = 'Error: ' + err.message;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
 }
-ReactDOM.render(<App/>,document.getElementById("root"));
+
+function renderSitemapResults() {
+  const pages = S.pages;
+  const p1 = pages.filter(function(p) { return p.priority==='P1'; }).length;
+  const p2 = pages.filter(function(p) { return p.priority==='P2'; }).length;
+  const p3 = pages.filter(function(p) { return p.priority==='P3'; }).length;
+  const isMobile = window.innerWidth <= 700;
+
+  let html = '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
+  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">' + pages.length + ' pages</span>';
+  html += '<span class="chip green">P1: ' + p1 + '</span><span class="chip warn">P2: ' + p2 + '</span><span class="chip">P3: ' + p3 + '</span>';
+  html += '</div>';
+
+  if (isMobile) {
+    // Mobile: stacked cards
+    html += '<div style="margin-bottom:8px">';
+    pages.forEach(function(p, i) {
+      const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+      html += '<div class="mobile-page-card">';
+      html += '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">';
+      html += '<div><div style="color:var(--dark);font-size:13px">' + esc(p.page_name) + '</div><div style="color:var(--n2);font-size:10.5px">/' + esc(p.slug) + '</div></div>';
+      html += '<span style="color:' + pColor + ';font-size:11px;font-weight:500;flex-shrink:0">' + esc(p.priority) + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--n3)">' + esc(p.primary_keyword) + (p.primary_kd ? ' <span style="color:var(--n2)">KD: ' + esc(p.primary_kd) + '</span>' : '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    // Desktop: table
+    html += '<div class="tbl-wrap" style="margin-bottom:8px">';
+    html += '<div class="tbl-head"><span>#</span><span>Page</span><span>Primary Keyword</span><span>Supporting</span><span>KD</span><span>Priority</span></div>';
+    pages.forEach(function(p, i) {
+      const pCls = p.priority==='P1'?'tbl-p1':p.priority==='P2'?'tbl-p2':'tbl-p3';
+      const supp = (p.supporting_keywords||[]).slice(0,2).join(', ') + ((p.supporting_keywords||[]).length > 2 ? ' +' + ((p.supporting_keywords||[]).length-2) : '');
+      html += '<div class="tbl-row">';
+      html += '<span style="color:var(--n2);font-size:11px">' + (i+1) + '</span>';
+      html += '<div><div class="tbl-page-name">' + esc(p.page_name) + '</div><div class="tbl-slug">/' + esc(p.slug) + '</div></div>';
+      html += '<div class="tbl-kw">' + esc(p.primary_keyword) + '</div>';
+      html += '<div class="tbl-support">' + esc(supp) + '</div>';
+      html += '<span class="tbl-kd">' + esc(p.primary_kd||'–') + '</span>';
+      html += '<span class="' + pCls + '">' + esc(p.priority||'–') + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Gate 1
+  html += '<div class="card dg" style="margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><i class="ti ti-flag-2" style="color:var(--lime);font-size:14px"></i><span style="color:var(--lime);font-weight:500;font-size:13px">Gate 1 — PM Sitemap Approval</span></div>';
+  html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.5);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
+  html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
+  html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
+  html += '</div></div>';
+
+  const el = document.getElementById('sitemap-results');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function approveSitemap() {
+  const pages = S.pages;
+  let html = '<div class="success-banner" style="margin-bottom:12px"><i class="ti ti-check"></i>Sitemap approved — ' + pages.length + ' pages locked</div>';
+  html += '<button class="btn btn-primary" onclick="initCopy();goTo(\'copy\')"><i class="ti ti-arrow-right"></i> Generate Copy</button>';
+  
+  // Replace gate section
+  const results = document.getElementById('sitemap-results');
+  const dg = results.querySelector('.card.dg');
+  if (dg) {
+    dg.outerHTML = html;
+  } else {
+    results.innerHTML += html;
+  }
+}
+
+// ── COPY ───────────────────────────────────────────────────────────
+function getOrderedPages() {
+  const p1 = S.pages.filter(function(p) { return p.priority==='P1'; });
+  const p2 = S.pages.filter(function(p) { return p.priority==='P2'; });
+  const p3 = S.pages.filter(function(p) { return p.priority==='P3'; });
+  return p1.concat(p2).concat(p3);
+}
+
+function initCopy() {
+  const pages = getOrderedPages();
+  document.getElementById('copy-subtitle').textContent = pages.length + ' pages. P1 first. ~60–90s per page.';
+  document.getElementById('copy-progress').style.display = 'block';
+  renderCopyList();
+  updateCopyProgress();
+}
+
+function buildCopyPrompt(page) {
+  const r = S.research || {};
+  return 'CLIENT: ' + S.client + '\nPAGE: ' + page.page_name + ' | /' + page.slug + '\nPRIMARY KEYWORD: ' + page.primary_keyword + '\nSUPPORTING: ' + (page.supporting_keywords||[]).join(', ') + '\nINTENT: ' + page.search_intent + '\nWORD COUNT MIN: ' + (page.word_count_target||1500) + '\nOVERVIEW: ' + (r.business_overview||'') + '\nVALUE PROP: ' + (r.value_proposition||'') + '\nAUDIENCE: ' + ((r.target_audience||[]).map(function(a) { return a.persona; }).join(', ')) + '\nDIFFERENTIATORS: ' + (r.key_differentiators||[]).join('. ') + '\nGEOGRAPHY: ' + ((r.geography&&r.geography.primary)||S.geo||'') + '\nPRICING: ' + (S.pricing||(r.pricing_notes||'')) + '\nVOICE: ' + ((r.tone_and_voice)||S.voice||'Confident, direct, human. Canadian spelling.') + '\nNOTES: ' + (page.notes||'') + '\n\nWrite the complete page.';
+}
+
+async function runSingleCopy(page) {
+  S.currentCopySlug = page.slug;
+  updateCopyRow(page.slug, 'running');
+  
+  const activeCard = document.getElementById('copy-active-card');
+  const activeName = document.getElementById('copy-active-name');
+  const activeStream = document.getElementById('copy-active-stream');
+  activeCard.style.display = 'block';
+  activeName.textContent = page.page_name;
+  activeStream.textContent = '';
+
+  try {
+    const copy = await callClaude(PROMPTS.copy, buildCopyPrompt(page), function(text) {
+      activeStream.textContent = text.slice(-400);
+    });
+    S.copy[page.slug] = {copy: copy, page: page};
+    updateCopyRow(page.slug, 'done');
+  } catch(err) {
+    S.copy[page.slug] = {error: err.message, page: page};
+    updateCopyRow(page.slug, 'error', err.message);
+  }
+
+  S.currentCopySlug = null;
+  activeCard.style.display = 'none';
+  updateCopyProgress();
+}
+
+async function runAllCopy() {
+  if (S.copyRunning) return;
+  S.copyRunning = true;
+  S.copyStop = false;
+  document.getElementById('copy-run-btn').style.display = 'none';
+  document.getElementById('copy-stop-btn').style.display = '';
+
+  const pages = getOrderedPages();
+  for (let i = 0; i < pages.length; i++) {
+    if (S.copyStop) break;
+    if (S.copy[pages[i].slug] && S.copy[pages[i].slug].copy) continue;
+    await runSingleCopy(pages[i]);
+    await sleep(600);
+  }
+
+  S.copyRunning = false;
+  document.getElementById('copy-stop-btn').style.display = 'none';
+  document.getElementById('copy-run-btn').style.display = '';
+  updateCopyProgress();
+  checkCopyDone();
+}
+
+function stopCopy() {
+  S.copyStop = true;
+}
+
+function updateCopyProgress() {
+  const pages = getOrderedPages();
+  const done = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
+  const total = pages.length;
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('copy-count-label').textContent = done + '/' + total + ' complete';
+  document.getElementById('copy-pct-label').textContent = pct + '%';
+  document.getElementById('copy-progress-fill').style.width = pct + '%';
+}
+
+function checkCopyDone() {
+  const pages = getOrderedPages();
+  const done = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
+  if (done === pages.length && done > 0) {
+    document.getElementById('copy-done-label').textContent = 'All ' + done + ' pages complete';
+    document.getElementById('copy-done-banner').style.display = 'flex';
+    document.getElementById('copy-skip-btn').style.display = 'none';
+  } else if (done > 0) {
+    document.getElementById('copy-skip-btn').style.display = '';
+  }
+}
+
+function renderCopyList() {
+  const pages = getOrderedPages();
+  let html = '';
+  pages.forEach(function(page) {
+    const r = S.copy[page.slug];
+    const isDone = r && r.copy;
+    const isErr = r && r.error;
+    const status = isDone ? 'done' : isErr ? 'error' : 'idle';
+    html += makeCopyRow(page, status, isErr ? r.error : '');
+  });
+  document.getElementById('copy-list').innerHTML = html;
+}
+
+function makeCopyRow(page, status, errMsg) {
+  const isDone = status === 'done';
+  const isErr = status === 'error';
+  const isRun = status === 'running';
+  let rowCls = 'page-row';
+  if (isRun) rowCls += ' running';
+  if (isDone) rowCls += ' done';
+  if (isErr) rowCls += ' error';
+  
+  let cirCls = 'status-circle status-idle';
+  let cirInner = '';
+  if (isRun) { cirCls = 'status-circle status-running'; cirInner = '<span class="spinner" style="width:10px;height:10px"></span>'; }
+  else if (isDone) { cirCls = 'status-circle status-done'; cirInner = '✓'; }
+  else if (isErr) { cirCls = 'status-circle status-error'; cirInner = '!'; }
+
+  let actions = '';
+  if (isDone) {
+    const s = S.copyPreviewSlug === page.slug ? 'Hide' : 'Preview';
+    actions += '<button class="btn btn-ghost sm" onclick="toggleCopyPreview(\'' + page.slug + '\')"><i class="ti ti-eye"></i> ' + s + '</button>';
+    actions += '<button class="btn btn-ghost sm" onclick="copyText(S.copy[\'' + page.slug + '\'].copy)"><i class="ti ti-copy"></i> Copy</button>';
+  } else if (!isRun) {
+    actions += '<button class="btn btn-ghost sm" onclick="runSingleAndUpdate(\'' + page.slug + '\')">Run</button>';
+  }
+
+  let nameColor = isDone ? 'var(--dark)' : 'var(--n2)';
+  let errHtml = isErr ? '<span style="color:var(--error);font-size:11px;margin-left:8px;display:block">' + esc(errMsg||'') + '</span>' : '';
+  const p1Badge = page.priority === 'P1' ? '<span class="chip green" style="margin-left:6px">P1</span>' : '';
+  
+  return '<div class="' + rowCls + '" id="copy-row-' + page.slug + '">'
+    + '<div class="' + cirCls + '">' + cirInner + '</div>'
+    + '<div style="flex:1;min-width:0"><span class="page-row-name' + (isDone ? ' done' : '') + '">' + esc(page.page_name) + '</span>' + p1Badge + errHtml + '</div>'
+    + '<div class="page-row-actions">' + actions + '</div>'
+    + '</div>';
+}
+
+function updateCopyRow(slug, status, errMsg) {
+  const pages = getOrderedPages();
+  const page = pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  const el = document.getElementById('copy-row-' + slug);
+  if (el) el.outerHTML = makeCopyRow(page, status, errMsg||'');
+}
+
+function toggleCopyPreview(slug) {
+  const wrap = document.getElementById('copy-preview-wrap');
+  if (S.copyPreviewSlug === slug) {
+    S.copyPreviewSlug = null;
+    wrap.style.display = 'none';
+    updateCopyRow(slug, 'done');
+    return;
+  }
+  S.copyPreviewSlug = slug;
+  const pages = getOrderedPages();
+  const page = pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  document.getElementById('copy-preview-label').textContent = page.page_name;
+  document.getElementById('copy-preview-content').textContent = S.copy[slug].copy;
+  wrap.style.display = 'block';
+  updateCopyRow(slug, 'done');
+}
+
+async function runSingleAndUpdate(slug) {
+  const pages = getOrderedPages();
+  const page = pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  await runSingleCopy(page);
+  checkCopyDone();
+}
+
+// ── SCHEMA ─────────────────────────────────────────────────────────
+function initSchema() {
+  document.getElementById('schema-progress').style.display = 'block';
+  renderSchemaList();
+  updateSchemaProgress();
+}
+
+function buildSchemaPrompt(page) {
+  const base = 'https://www.' + (S.url || 'example.com');
+  return 'CLIENT: ' + S.client + '\nBASE URL: ' + base + '\nPAGE: ' + page.page_name + '\nURL: ' + base + '/' + page.slug + '\nTYPE: ' + page.page_type + '\nPRIMARY KW: ' + page.primary_keyword + '\nSUPPORTING KW: ' + (page.supporting_keywords||[]).join(', ') + '\nDESCRIPTION: ' + (page.notes||page.page_name) + '\nBREADCRUMB: Home > ' + page.page_name;
+}
+
+async function runSingleSchema(page) {
+  S.currentSchemaSlug = page.slug;
+  updateSchemaRow(page.slug, 'running');
+  try {
+    const schema = await callClaude(PROMPTS.schema, buildSchemaPrompt(page), null);
+    S.schema[page.slug] = {schema: schema, page: page};
+    updateSchemaRow(page.slug, 'done');
+  } catch(err) {
+    S.schema[page.slug] = {error: err.message, page: page};
+    updateSchemaRow(page.slug, 'error', err.message);
+  }
+  S.currentSchemaSlug = null;
+  updateSchemaProgress();
+}
+
+async function runAllSchema() {
+  if (S.schemaRunning) return;
+  S.schemaRunning = true;
+  S.schemaStop = false;
+  document.getElementById('schema-run-btn').style.display = 'none';
+  document.getElementById('schema-stop-btn').style.display = '';
+  initSchema();
+  for (let i = 0; i < S.pages.length; i++) {
+    if (S.schemaStop) break;
+    if (S.schema[S.pages[i].slug] && S.schema[S.pages[i].slug].schema) continue;
+    await runSingleSchema(S.pages[i]);
+    await sleep(500);
+  }
+  S.schemaRunning = false;
+  document.getElementById('schema-stop-btn').style.display = 'none';
+  document.getElementById('schema-run-btn').style.display = '';
+  checkSchemaDone();
+}
+
+function stopSchema() { S.schemaStop = true; }
+
+function updateSchemaProgress() {
+  const done = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
+  const total = S.pages.length;
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('schema-count-label').textContent = done + '/' + total + ' complete';
+  document.getElementById('schema-pct-label').textContent = pct + '%';
+  document.getElementById('schema-progress-fill').style.width = pct + '%';
+}
+
+function checkSchemaDone() {
+  const done = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
+  if (done > 0) document.getElementById('schema-next-btn').style.display = 'block';
+}
+
+function renderSchemaList() {
+  let html = '';
+  S.pages.forEach(function(page) {
+    const r = S.schema[page.slug];
+    const isDone = r && r.schema;
+    const isErr = r && r.error;
+    html += makeSchemaRow(page, isDone ? 'done' : isErr ? 'error' : 'idle', isErr ? r.error : '');
+  });
+  document.getElementById('schema-list').innerHTML = html;
+}
+
+function makeSchemaRow(page, status, errMsg) {
+  const isDone = status === 'done', isRun = status === 'running';
+  let cirCls = 'status-circle status-idle', cirInner = '';
+  if (isRun) { cirCls = 'status-circle status-running'; cirInner = '<span class="spinner" style="width:10px;height:10px"></span>'; }
+  else if (isDone) { cirCls = 'status-circle status-done'; cirInner = '✓'; }
+
+  let actions = '';
+  if (isDone) {
+    actions += '<button class="btn btn-ghost sm" onclick="toggleSchemaPreview(\'' + page.slug + '\')"><i class="ti ti-eye"></i> View</button>';
+    actions += '<button class="btn btn-ghost sm" onclick="copyText(S.schema[\'' + page.slug + '\'].schema)"><i class="ti ti-copy"></i> Copy</button>';
+  } else if (!isRun) {
+    actions += '<button class="btn btn-ghost sm" onclick="runSingleSchemaAndUpdate(\'' + page.slug + '\')">Run</button>';
+  }
+
+  return '<div class="page-row' + (isDone?' done':'') + (isRun?' running':'') + '" id="schema-row-' + page.slug + '">'
+    + '<div class="' + cirCls + '">' + cirInner + '</div>'
+    + '<div style="flex:1"><span class="page-row-name' + (isDone?' done':'') + '">' + esc(page.page_name) + '</span></div>'
+    + '<div class="page-row-actions">' + actions + '</div>'
+    + '</div>';
+}
+
+function updateSchemaRow(slug, status, errMsg) {
+  const page = S.pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  const el = document.getElementById('schema-row-' + slug);
+  if (el) el.outerHTML = makeSchemaRow(page, status, errMsg||'');
+}
+
+function toggleSchemaPreview(slug) {
+  const wrap = document.getElementById('schema-preview-wrap');
+  if (S.schemaPreviewSlug === slug) {
+    S.schemaPreviewSlug = null;
+    wrap.style.display = 'none';
+    return;
+  }
+  S.schemaPreviewSlug = slug;
+  const page = S.pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  document.getElementById('schema-preview-label').textContent = page.page_name;
+  document.getElementById('schema-preview-content').textContent = S.schema[slug].schema;
+  wrap.style.display = 'block';
+}
+
+async function runSingleSchemaAndUpdate(slug) {
+  const page = S.pages.find(function(p) { return p.slug === slug; });
+  if (!page) return;
+  await runSingleSchema(page);
+  checkSchemaDone();
+}
+
+// ── EXPORT ─────────────────────────────────────────────────────────
+function renderExport() {
+  const pages = S.pages;
+  const copyCount = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
+  const schemaCount = pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
+
+  document.getElementById('export-subtitle').textContent = S.client + ' — ' + pages.length + ' pages ready to hand off.';
+
+  // Stats
+  const stats = [
+    {val:pages.length, label:'Pages in Sitemap', icon:'ti-sitemap'},
+    {val:copyCount,    label:'Pages with Copy',  icon:'ti-pencil', green:true},
+    {val:schemaCount,  label:'Pages with Schema', icon:'ti-code'},
+  ];
+  let shtml = '';
+  stats.forEach(function(s) {
+    shtml += '<div class="card stat-card">';
+    shtml += '<div class="stat-icon"><i class="ti ' + s.icon + '"' + (s.green ? ' style="color:var(--green)"' : '') + '></i></div>';
+    shtml += '<div><div class="stat-val">' + s.val + '</div><div class="stat-lbl">' + s.label + '</div></div>';
+    shtml += '</div>';
+  });
+  document.getElementById('export-stats').innerHTML = shtml;
+
+  // Update tab labels
+  document.querySelectorAll('#export-tab-bar .tab-btn')[0].textContent = 'Sitemap (' + pages.length + ')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[1].textContent = 'Copy (' + copyCount + ')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[2].textContent = 'Schema (' + schemaCount + ')';
+
+  renderSitemapTab();
+  renderCopyTab();
+  renderSchemaTab();
+}
+
+function renderSitemapTab() {
+  const pages = S.pages;
+  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;overflow-x:auto">';
+  pages.forEach(function(p, i) {
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    const bg = i%2===0 ? 'var(--white)' : 'rgba(240,239,233,0.5)';
+    const supp = (p.supporting_keywords||[]).slice(0,2).join(', ');
+    html += '<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:' + (i<pages.length-1?'1px solid var(--border)':'none') + ';background:' + bg + ';align-items:flex-start;flex-wrap:wrap">';
+    html += '<span style="color:var(--n2);font-size:11px;padding-top:1px;flex-shrink:0;width:18px">' + (i+1) + '</span>';
+    html += '<div style="flex:1;min-width:120px"><span style="color:var(--dark);font-size:13px">' + esc(p.page_name) + '</span><span style="color:var(--n2);font-size:11px;margin-left:8px">/' + esc(p.slug) + '</span><div style="font-size:11px;color:var(--n2);margin-top:2px">' + esc(p.primary_keyword) + (supp ? ' · ' + esc(supp) : '') + '</div></div>';
+    html += '<div style="display:flex;gap:8px;flex-shrink:0"><span style="color:' + pColor + ';font-size:11px;font-weight:500">' + esc(p.priority) + '</span><span style="color:var(--n2);font-size:11px">' + (p.word_count_target||1500) + 'w</span></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  document.getElementById('export-sitemap-tab').innerHTML = html;
+}
+
+function renderCopyTab() {
+  const pages = S.pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; });
+  if (!pages.length) { document.getElementById('export-copy-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No copy generated yet.</p>'; return; }
+  let html = '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(function(p, i) {
+    html += '<button class="tab-btn' + (i===0?' active':'') + '" style="flex-shrink:0" onclick="switchCopyPage(\'' + p.slug + '\',this)">' + esc(p.page_name) + '</button>';
+  });
+  html += '</div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyText(S.copy[currentExportCopySlug].copy)"><i class="ti ti-copy"></i> Copy HTML</button></div><div class="code-view" id="export-copy-view">' + esc(S.copy[pages[0].slug].copy) + '</div></div>';
+  document.getElementById('export-copy-tab').innerHTML = html;
+  window.currentExportCopySlug = pages[0].slug;
+}
+
+function switchCopyPage(slug, btn) {
+  window.currentExportCopySlug = slug;
+  document.querySelectorAll('#export-copy-tab .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('export-copy-view').textContent = S.copy[slug].copy;
+}
+
+function renderSchemaTab() {
+  const pages = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; });
+  if (!pages.length) { document.getElementById('export-schema-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No schema generated yet.</p>'; return; }
+  let html = '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(function(p, i) {
+    html += '<button class="tab-btn' + (i===0?' active':'') + '" style="flex-shrink:0" onclick="switchSchemaPage(\'' + p.slug + '\',this)">' + esc(p.page_name) + '</button>';
+  });
+  html += '</div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyText(S.schema[currentExportSchemaSlug].schema)"><i class="ti ti-copy"></i> Copy Schema</button></div><div class="code-view" id="export-schema-view">' + esc(S.schema[pages[0].slug].schema) + '</div></div>';
+  document.getElementById('export-schema-tab').innerHTML = html;
+  window.currentExportSchemaSlug = pages[0].slug;
+}
+
+function switchSchemaPage(slug, btn) {
+  window.currentExportSchemaSlug = slug;
+  document.querySelectorAll('#export-schema-tab .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.getElementById('export-schema-view').textContent = S.schema[slug].schema;
+}
+
+function switchTab(tab, btn) {
+  ['sitemap','copy','schema'].forEach(function(t) {
+    document.getElementById('export-' + t + '-tab').style.display = t===tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab-bar .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+
+function downloadPackage() {
+  const pages = S.pages;
+  let out = S.client + ' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n' + '='.repeat(60) + '\n\nSITEMAP (' + pages.length + ' pages)\n' + '-'.repeat(40) + '\n\n';
+  pages.forEach(function(p, i) {
+    out += (i+1) + '. ' + p.page_name + ' (/' + p.slug + ') [' + p.priority + ']\n   Primary: ' + p.primary_keyword + ' | KD: ' + (p.primary_kd||'?') + '\n   Supporting: ' + (p.supporting_keywords||[]).join(', ') + '\n\n';
+  });
+  out += '\n' + '='.repeat(60) + '\nCOPY BY PAGE\n' + '-'.repeat(40) + '\n\n';
+  pages.forEach(function(p) {
+    const c = S.copy[p.slug];
+    if (c && c.copy) out += '\n' + p.page_name.toUpperCase() + ' · /' + p.slug + '\n' + '-'.repeat(30) + '\n' + c.copy + '\n\n';
+  });
+  out += '\n' + '='.repeat(60) + '\nSCHEMA + META BY PAGE\n' + '-'.repeat(40) + '\n\n';
+  pages.forEach(function(p) {
+    const s = S.schema[p.slug];
+    if (s && s.schema) out += '\n' + p.page_name.toUpperCase() + ' · /' + p.slug + '\n' + '-'.repeat(30) + '\n' + s.schema + '\n\n';
+  });
+  const blob = new Blob([out], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = S.client.toLowerCase().replace(/\s+/g,'-') + '-website-build.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+function copyText(text) {
+  navigator.clipboard.writeText(text).catch(function() {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  });
+}
+function copyToClipboard(elId, type) {
+  const el = document.getElementById(elId);
+  if (el) copyText(el.textContent);
+}
+
+// ── INIT ───────────────────────────────────────────────────────────
+renderStageBar('setup');
+document.querySelectorAll('.inp').forEach(function(el) {
+  el.addEventListener('focus', function() { this.style.borderColor='var(--green)'; this.style.boxShadow='0 0 0 3px rgba(21,142,29,0.08)'; });
+  el.addEventListener('blur',  function() { this.style.borderColor='rgba(0,0,0,0.13)'; this.style.boxShadow='none'; });
+});
 </script>
 </body>
 </html>
