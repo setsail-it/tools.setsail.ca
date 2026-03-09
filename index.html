@@ -1139,32 +1139,68 @@ async function runSitemap(withRevisions) {
 }
 
 function enrichSitemapWithKwData() {
-  // After Claude generates pages, backfill real vol/KD/score from S.kwResearch
   if (!S.kwResearch?.keywords?.length || !S.pages?.length) return;
 
-  // Build a fast lookup: normalised keyword → data
+  const allKws = S.kwResearch.keywords;
+
+  // Build exact lookup
   const kwMap = {};
-  S.kwResearch.keywords.forEach(k => {
-    kwMap[k.kw.toLowerCase().trim()] = k;
-  });
+  allKws.forEach(k => { kwMap[k.kw.toLowerCase().trim()] = k; });
+
+  // Fuzzy token overlap: returns best match from allKws for a given string
+  function tokenOverlap(a, b) {
+    const ta = new Set(a.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean));
+    const tb = new Set(b.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean));
+    let overlap = 0;
+    ta.forEach(t => { if (tb.has(t)) overlap++; });
+    return overlap / Math.max(ta.size, tb.size, 1);
+  }
+
+  function bestMatch(str, minScore = 0.4) {
+    const key = str.toLowerCase().trim();
+    if (kwMap[key]) return kwMap[key]; // exact match first
+    let best = null, bestSim = 0;
+    allKws.forEach(k => {
+      const sim = tokenOverlap(key, k.kw);
+      if (sim > bestSim) { bestSim = sim; best = k; }
+    });
+    return bestSim >= minScore ? best : null;
+  }
 
   S.pages = S.pages.map(p => {
-    const key = (p.primary_keyword || '').toLowerCase().trim();
-    const match = kwMap[key];
+    // Try primary keyword match, fall back to page name + slug tokens
+    const searchStr = p.primary_keyword || (p.page_name + ' ' + p.slug.replace(/\//g,' '));
+    const match = bestMatch(searchStr);
     if (match && match.vol > 0) {
+      // Update primary keyword to matched one so user sees what we found
+      if (!p.primary_keyword || !kwMap[p.primary_keyword?.toLowerCase()]) {
+        p.primary_keyword = match.kw;
+      }
       p.primary_vol = match.vol;
       p.primary_kd = match.kd;
       p.score = match.score;
     }
-    // Also enrich supporting keywords
-    if (p.supporting_keywords?.length) {
-      p.supporting_keywords = p.supporting_keywords.map(sk => {
-        const skKey = (typeof sk === 'object' ? sk.kw : sk).toLowerCase().trim();
-        const skMatch = kwMap[skKey];
-        if (skMatch) return { kw: skKey, vol: skMatch.vol, kd: skMatch.kd };
-        return typeof sk === 'object' ? sk : { kw: sk, vol: 0, kd: 0 };
-      });
-    }
+
+    // Enrich supporting keywords — fuzzy match each one
+    const suppKws = (p.supporting_keywords || []);
+    const enrichedSupp = suppKws.map(sk => {
+      const raw = typeof sk === 'object' ? (sk.kw || '') : sk;
+      if (!raw) return null;
+      const m = bestMatch(raw, 0.35);
+      if (m) return { kw: m.kw, vol: m.vol, kd: m.kd };
+      return { kw: raw, vol: 0, kd: 0 };
+    }).filter(Boolean);
+
+    // Add extra supporting kws from kwResearch that match this page's topic
+    // but aren't already included — gives richer data
+    const pageTopicStr = (p.page_name + ' ' + (p.slug||'').replace(/\//g,' ')).toLowerCase();
+    const alreadyIncluded = new Set([p.primary_keyword?.toLowerCase(), ...enrichedSupp.map(s => s.kw.toLowerCase())]);
+    const extras = allKws
+      .filter(k => !alreadyIncluded.has(k.kw.toLowerCase()) && k.vol > 0 && tokenOverlap(pageTopicStr, k.kw) >= 0.45)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    p.supporting_keywords = [...enrichedSupp, ...extras.map(e => ({ kw: e.kw, vol: e.vol, kd: e.kd }))];
     return p;
   });
 }
@@ -1247,26 +1283,30 @@ function renderSitemapResults(approved) {
     html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     html += '</div>'; // end main row
 
-    // Supporting keywords inline row — only if they have data
+    // Supporting keywords — mini grid rows aligned to main columns
     const suppKws = (p.supporting_keywords || []).filter(sk => {
       const kw = typeof sk === 'object' ? sk.kw : sk;
       return kw && kw.length > 0;
     });
     if (suppKws.length) {
-      html += '<div style="padding:4px 14px 10px '+(isSubPage?'36px':'14px')+';border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(isLowVol?'rgba(0,0,0,0.02)':(i%2===0?'var(--white)':'rgba(0,0,0,0.012)'))+';border-top:1px solid var(--border);'+rowOpacity+'">';
-      html += '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">';
-      html += '<span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-right:4px">Supporting:</span>';
-      suppKws.forEach(sk => {
+      const suppBg = isLowVol ? 'rgba(0,0,0,0.02)' : (i%2===0?'var(--white)':'rgba(0,0,0,0.012)');
+      suppKws.forEach((sk, si) => {
         const kw = typeof sk === 'object' ? sk.kw : sk;
         const v = typeof sk === 'object' ? (sk.vol || 0) : 0;
         const d = typeof sk === 'object' ? (sk.kd || 0) : 0;
-        const tagColor = v > 200 ? 'rgba(21,142,29,0.08);border-color:rgba(21,142,29,0.2)' : v > 50 ? '' : 'rgba(0,0,0,0.02)';
-        html += '<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10.5px;color:var(--n3);display:inline-flex;align-items:center;gap:4px">'+esc(kw);
-        if (v > 0) html += '<span style="color:var(--n2);font-size:9.5px;border-left:1px solid var(--border);padding-left:4px;margin-left:1px">'+v.toLocaleString()+'</span>';
-        if (d > 0) html += '<span style="color:'+(d<20?'var(--green)':d<40?'var(--warn)':'var(--error)')+';font-size:9.5px">/'+d+'</span>';
-        html += '</span>';
+        const sc = v > 0 && d > 0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+        const dColor = d===0?'var(--n2)':d<20?'var(--green)':d<40?'var(--warn)':'var(--error)';
+        const vColor = v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+        html += '<div style="display:grid;grid-template-columns:22px 1.5fr 1.3fr 58px 46px 54px 58px;padding:3px 14px 3px '+(isSubPage?'36px':'14px')+';background:'+suppBg+';border-top:1px dashed rgba(0,0,0,0.06);align-items:center;'+rowOpacity+'">';
+        html += '<span style="color:var(--n1);font-size:11px;padding-left:4px">↳</span>';
+        html += '<span style="color:var(--n2);font-size:11px;padding-left:'+(isSubPage?'14px':'0')+';">'+esc(kw)+'</span>';
+        html += '<span></span>';
+        html += '<span style="color:'+vColor+';font-size:11px">'+(v>0?v.toLocaleString():'–')+'</span>';
+        html += '<span style="color:'+dColor+';font-size:11px">'+(d>0?d:'–')+'</span>';
+        html += '<span style="color:var(--n2);font-size:10px">'+(sc>0?sc:'–')+'</span>';
+        html += '<span></span>';
+        html += '</div>';
       });
-      html += '</div>'; // end supporting kws
     }
     html += '</div>'; // end page block
     if (hasBorder) html += '<div style="border-bottom:1px solid var(--border)"></div>';
