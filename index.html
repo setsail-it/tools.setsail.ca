@@ -299,21 +299,20 @@ textarea.inp{resize:vertical}
 
   <!-- LAYOUT -->
   <div class="screen" id="screen-layout">
-    <div style="max-width:860px">
-      <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 5 of 7</div>
-        <h2 class="ph sm">Page Layout Briefs</h2>
-        <p class="psub" style="margin-bottom:0">Section-by-section layout and CRO briefs. Click any page to generate. Designer-ready for Webflow.</p>
+    <div style="max-width:960px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="eyebrow">Stage 5 of 7</div>
+          <h2 class="ph sm">Page Layout Builder</h2>
+          <p class="psub" style="margin-bottom:0">Pick and arrange sections. No AI — instant, zero tokens.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-ghost" id="layout-page-prev-btn" onclick="layoutNavPage(-1)" style="display:none"><i class="ti ti-chevron-left"></i></button>
+          <select id="layout-page-select" onchange="layoutSelectPage(this.value)" style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;cursor:pointer"></select>
+          <button class="btn btn-ghost" id="layout-page-next-btn" onclick="layoutNavPage(1)" style="display:none"><i class="ti ti-chevron-right"></i></button>
+        </div>
       </div>
-      <div id="layout-progress" style="display:none" class="progress-wrap">
-        <div class="progress-meta"><span id="layout-count-label" style="color:var(--n2)"></span><span id="layout-pct-label" style="color:var(--green);font-weight:500"></span></div>
-        <div class="progress-track"><div class="progress-fill" id="layout-progress-fill" style="width:0%"></div></div>
-      </div>
-      <div id="layout-queue"></div>
-      <div id="layout-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
-        <div class="success-banner"><i class="ti ti-check"></i><span id="layout-done-label">All layout briefs complete</span></div>
-        <button class="btn btn-primary" onclick="initSchema();goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema</button>
-      </div>
+      <div id="layout-builder"></div>
     </div>
   </div>
 
@@ -988,13 +987,17 @@ async function fetchAhrefsMetrics(forceRefresh) {
       });
       scheduleSave();
       renderSitemapResults(S.sitemapApproved);
-    } else if (data.error) {
-      if (statusEl) statusEl.textContent = 'Ahrefs error: ' + data.error;
+      return;
     }
+    const errMsg = data.error || ('HTTP ' + res.status);
+    const isNoKey = data.code === 'NO_KEY';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">'
+      + (isNoKey ? '⚠ API key not configured — add AHREFS_API_KEY secret in Cloudflare Workers' : '⚠ ' + esc(errMsg))
+      + '</span>';
   } catch(e) {
-    if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⚠ ' + esc(e.message) + '</span>';
   }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Retry'; }
 }
 
 async function runGapAnalysis() {
@@ -1120,6 +1123,31 @@ function toggleCopyCode(slug) {
   else { el.style.display = 'none'; btn.textContent = 'Show code'; }
 }
 
+function toggleCopyEdit(slug) {
+  const viewEl = document.getElementById('copy-code-'+slug);
+  const editEl = document.getElementById('copy-edit-'+slug);
+  const editBtn = document.getElementById('copy-edit-btn-'+slug);
+  if (!editEl) return;
+  const isEditing = editEl.style.display !== 'none';
+  if (isEditing) {
+    // Save
+    const newVal = editEl.value;
+    S.copy[slug].copy = newVal;
+    if (viewEl) viewEl.textContent = newVal;
+    scheduleSave();
+    editEl.style.display = 'none';
+    if (viewEl && viewEl.style.display !== 'none') viewEl.style.display = 'block';
+    editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+  } else {
+    // Open editor
+    editEl.style.display = 'block';
+    if (viewEl) viewEl.style.display = 'none';
+    document.getElementById('copy-code-btn-'+slug) && (document.getElementById('copy-code-btn-'+slug).textContent = 'Show code');
+    editBtn.innerHTML = '<i class="ti ti-check"></i> Save';
+    editEl.focus();
+  }
+}
+
 function renderCopyQueue() {
   const pages = orderedPages();
   let html = '';
@@ -1206,195 +1234,194 @@ function checkCopyAllDone() {
   } else { document.getElementById('copy-all-done').style.display = 'none'; }
 }
 
-// ── LAYOUT ────────────────────────────────────────────────────────
-let layoutStopFlag = false;
-S.layoutCurrentSlug = null;
-S.layoutExpandedSlug = null;
-S.layout = S.layout || {};
+// ── LAYOUT COMPONENT PICKER (zero tokens) ─────────────────────────
+const LAYOUT_COMPONENTS = [
+  // Hero
+  { id:'hero-center', group:'Hero', label:'Hero — Centred', desc:'Full-width headline + subtext + CTA, centered', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="25" y="16" width="50" height="6" rx="2" fill="#ccc"/><rect x="33" y="26" width="34" height="4" rx="2" fill="#ddd"/><rect x="35" y="34" width="30" height="8" rx="3" fill="#158E1D" opacity=".7"/>' },
+  { id:'hero-split-left', group:'Hero', label:'Hero — Split Left', desc:'Text left, image/video right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="38" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="30" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="30" height="3" rx="2" fill="#ddd"/><rect x="12" y="38" width="18" height="7" rx="3" fill="#158E1D" opacity=".7"/><rect x="56" y="12" width="34" height="36" rx="3" fill="#ddd"/>' },
+  { id:'hero-split-right', group:'Hero', label:'Hero — Split Right', desc:'Image left, text right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="34" height="36" rx="3" fill="#ddd"/><rect x="50" y="14" width="38" height="5" rx="2" fill="#ccc"/><rect x="50" y="23" width="30" height="3" rx="2" fill="#ddd"/><rect x="50" y="29" width="30" height="3" rx="2" fill="#ddd"/><rect x="50" y="38" width="18" height="7" rx="3" fill="#158E1D" opacity=".7"/>' },
+  // Social Proof
+  { id:'logo-strip', group:'Social Proof', label:'Logo Strip', desc:'Row of client/partner logos', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="30" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="48" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="66" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="26" y="35" width="48" height="3" rx="2" fill="#e5e5e2"/>' },
+  { id:'stats-bar', group:'Social Proof', label:'Stats Bar', desc:'3–4 large numbers with labels', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="14" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="14" y="27" width="16" height="3" rx="2" fill="#ddd"/><rect x="38" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="38" y="27" width="16" height="3" rx="2" fill="#ddd"/><rect x="62" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="62" y="27" width="16" height="3" rx="2" fill="#ddd"/>' },
+  { id:'testimonial-strip', group:'Social Proof', label:'Testimonial Strip', desc:'2–3 quote cards in a row', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="18" height="12" rx="2" fill="#eee"/><rect x="14" y="34" width="10" height="3" rx="1" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="43" y="18" width="18" height="12" rx="2" fill="#eee"/><rect x="43" y="34" width="10" height="3" rx="1" fill="#ddd"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
+  // Problem / Solution
+  { id:'problem-text', group:'Problem / Solution', label:'Problem Block', desc:'2–3 paragraphs, dark background', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="18" y="14" width="64" height="5" rx="2" fill="rgba(255,255,255,.3)"/><rect x="14" y="23" width="72" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="29" width="60" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="35" width="68" height="3" rx="2" fill="rgba(255,255,255,.15)"/>' },
+  { id:'solution-split', group:'Problem / Solution', label:'Solution Split', desc:'Text + visual side by side', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="36" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="32" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="28" height="3" rx="2" fill="#ddd"/><rect x="54" y="12" width="36" height="36" rx="4" fill="#D8FF29" opacity=".5"/><rect x="60" y="20" width="24" height="3" rx="2" fill="rgba(0,0,0,.2)"/><rect x="60" y="26" width="18" height="3" rx="2" fill="rgba(0,0,0,.2)"/>' },
+  // Services
+  { id:'services-3col', group:'Services', label:'Services — 3 Col', desc:'3 service cards in a grid', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="16" width="8" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="14" y="27" width="16" height="3" rx="2" fill="#ccc"/><rect x="14" y="33" width="12" height="3" rx="2" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="43" y="16" width="8" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="43" y="27" width="16" height="3" rx="2" fill="#ccc"/><rect x="43" y="33" width="12" height="3" rx="2" fill="#ddd"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
+  { id:'services-4col', group:'Services', label:'Services — 4 Col', desc:'4 service icon cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="13" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="13" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="32" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="35" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="35" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="54" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="57" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="57" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="76" y="14" width="14" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
+  { id:'services-alternating', group:'Services', label:'Services — Alternating', desc:'Text / image alternating rows', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="12" width="36" height="14" rx="2" fill="#e5e5e2"/><rect x="52" y="12" width="36" height="14" rx="2" fill="#ddd"/><rect x="52" y="30" width="36" height="14" rx="2" fill="#e5e5e2"/><rect x="12" y="30" width="36" height="14" rx="2" fill="#ddd"/>' },
+  // Process
+  { id:'process-steps', group:'Process', label:'Process — Numbered Steps', desc:'3–5 horizontal step cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><circle cx="22" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="20" y="23" font-size="6" fill="white" font-family="sans-serif">1</text><rect x="14" y="28" width="16" height="3" rx="2" fill="#ddd"/><rect x="27" y="19" width="8" height="1" fill="#ccc"/><circle cx="43" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="41" y="23" font-size="6" fill="white" font-family="sans-serif">2</text><rect x="35" y="28" width="16" height="3" rx="2" fill="#ddd"/><rect x="48" y="19" width="8" height="1" fill="#ccc"/><circle cx="64" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="62" y="23" font-size="6" fill="white" font-family="sans-serif">3</text><rect x="56" y="28" width="16" height="3" rx="2" fill="#ddd"/>' },
+  { id:'process-timeline', group:'Process', label:'Process — Timeline', desc:'Vertical timeline with steps', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><line x1="30" y1="12" x2="30" y2="48" stroke="#ddd" stroke-width="2"/><circle cx="30" cy="18" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="15" width="46" height="3" rx="2" fill="#ccc"/><circle cx="30" cy="30" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="27" width="36" height="3" rx="2" fill="#ccc"/><circle cx="30" cy="42" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="39" width="42" height="3" rx="2" fill="#ccc"/>' },
+  // Proof / Testimonials
+  { id:'testimonial-featured', group:'Testimonials', label:'Testimonial — Featured', desc:'Large single quote, dark bg', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="18" y="15" width="64" height="3" rx="2" fill="rgba(255,255,255,.3)"/><rect x="14" y="22" width="72" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="28" width="60" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="36" y="38" width="28" height="5" rx="2" fill="rgba(255,255,255,.1)"/>' },
+  { id:'case-study-cards', group:'Testimonials', label:'Case Study Cards', desc:'2–3 result-focused client cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="14" width="38" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="30" height="12" rx="2" fill="#ddd"/><rect x="14" y="34" width="20" height="3" rx="2" fill="#ccc"/><rect x="14" y="40" width="14" height="3" rx="2" fill="#ddd"/><rect x="52" y="14" width="38" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".6"/><rect x="56" y="18" width="30" height="12" rx="2" fill="#ddd"/>' },
+  // FAQ / Objections
+  { id:'faq-accordion', group:'FAQ', label:'FAQ — Accordion', desc:'Expandable Q&A list', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="13" width="70" height="7" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="23" width="70" height="7" rx="2" fill="#158E1D" opacity=".08" stroke="#158E1D" stroke-width=".5"/><rect x="12" y="33" width="70" height="7" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="43" width="70" height="5" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/>' },
+  { id:'objection-grid', group:'FAQ', label:'Objection Callout Grid', desc:'2–3 col "You might be thinking…" cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="38" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="8" height="8" rx="2" fill="#D8FF29"/><rect x="14" y="30" width="26" height="3" rx="2" fill="#ccc"/><rect x="14" y="36" width="20" height="3" rx="2" fill="#ddd"/><rect x="52" y="12" width="38" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".7"/>' },
+  // CTA
+  { id:'cta-dark', group:'CTA', label:'CTA — Dark Band', desc:'Dark bg with headline + button', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="22" y="16" width="56" height="6" rx="2" fill="rgba(255,255,255,.35)"/><rect x="34" y="26" width="32" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="35" y="33" width="30" height="8" rx="3" fill="#D8FF29" opacity=".85"/>' },
+  { id:'cta-lime', group:'CTA', label:'CTA — Lime Band', desc:'Lime bg, bold CTA', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#D8FF29"/><rect x="22" y="16" width="56" height="6" rx="2" fill="rgba(0,0,0,.25)"/><rect x="34" y="26" width="32" height="3" rx="2" fill="rgba(0,0,0,.15)"/><rect x="35" y="33" width="30" height="8" rx="3" fill="#111"/>' },
+  { id:'cta-split', group:'CTA', label:'CTA — Split', desc:'Text left, form/CTA card right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="34" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="26" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="22" height="3" rx="2" fill="#ddd"/><rect x="52" y="12" width="36" height="36" rx="4" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="56" y="18" width="28" height="5" rx="2" fill="#eee"/><rect x="56" y="28" width="28" height="5" rx="2" fill="#eee"/><rect x="60" y="38" width="20" height="6" rx="3" fill="#158E1D" opacity=".7"/>' },
+  // Content
+  { id:'image-text-grid', group:'Content', label:'Image + Text Grid', desc:'Masonry or alternating image/text', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="18" rx="2" fill="#ddd"/><rect x="40" y="12" width="50" height="8" rx="2" fill="#ccc"/><rect x="40" y="24" width="42" height="3" rx="2" fill="#ddd"/><rect x="10" y="34" width="50" height="8" rx="2" fill="#ccc"/><rect x="64" y="34" width="26" height="18" rx="2" fill="#ddd"/>' },
+  { id:'full-width-image', group:'Content', label:'Full-Width Image', desc:'Edge-to-edge photo with optional caption', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#ddd"/><rect x="30" y="22" width="40" height="4" rx="2" fill="rgba(255,255,255,.5)"/><rect x="35" y="30" width="30" height="3" rx="2" fill="rgba(255,255,255,.3)"/>' },
+  { id:'team-grid', group:'Content', label:'Team Grid', desc:'3–4 col team member cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><circle cx="22" cy="22" r="7" fill="#ddd"/><rect x="14" y="32" width="16" height="3" rx="2" fill="#ccc"/><rect x="14" y="38" width="12" height="2" rx="2" fill="#ddd"/><circle cx="46" cy="22" r="7" fill="#ddd"/><rect x="38" y="32" width="16" height="3" rx="2" fill="#ccc"/><circle cx="70" cy="22" r="7" fill="#ddd"/><rect x="62" y="32" width="16" height="3" rx="2" fill="#ccc"/>' },
+  { id:'blog-preview', group:'Content', label:'Blog Preview Grid', desc:'3 col recent articles', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="14" width="22" height="12" rx="2" fill="#ddd"/><rect x="12" y="30" width="16" height="3" rx="2" fill="#ccc"/><rect x="12" y="36" width="10" height="2" rx="2" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="41" y="14" width="22" height="12" rx="2" fill="#ddd"/><rect x="41" y="30" width="16" height="3" rx="2" fill="#ccc"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
+];
+
+// Group components
+const LAYOUT_GROUPS = [...new Set(LAYOUT_COMPONENTS.map(c => c.group))];
+
+let layoutCurrentSlug = null;
 
 function initLayout() {
-  document.getElementById('layout-progress').style.display = 'block';
-  const next = orderedPages().find(p => !(S.layout[p.slug]||{}).blocks);
-  if (next && !S.layoutExpandedSlug) S.layoutExpandedSlug = next.slug;
-  renderLayoutQueue(); updateLayoutProgress(); checkLayoutAllDone();
-}
-
-function buildLayoutPrompt(page) {
-  const copyData = (S.copy[page.slug]||{}).copy || '';
-  return 'CLIENT: '+S.setup.client+'\nPAGE: '+page.page_name+' ('+page.page_type+')\nSLUG: /'+page.slug+'\nPRIMARY KEYWORD: '+page.primary_keyword+'\nSEARCH INTENT: '+page.search_intent+'\nWORD COUNT TARGET: '+(page.word_count_target||1500)+'\nNOTES: '+(page.notes||'')+'\nSTRATEGIC CONTEXT: '+(S.research?.value_proposition||'')+'\n'+(copyData?'PAGE COPY (first 3000 chars):\n'+copyData.slice(0,3000):'NO COPY YET — generate layout based on page type, keyword intent and industry context.')+'\n\nGenerate a complete layout brief for this page.';
-}
-
-async function runLayoutPage(slug) {
-  const page = orderedPages().find(p => p.slug === slug);
-  if (!page || S.layoutRunning) return;
-  S.layoutRunning = true; layoutStopFlag = false;
-  S.layoutCurrentSlug = slug;
-  S.layoutExpandedSlug = slug;
-  renderLayoutQueue();
-  try {
-    const raw = await callClaude(P.layout, buildLayoutPrompt(page), null);
-    if (!layoutStopFlag) {
-      const blocks = safeParseJSON(raw);
-      if (Array.isArray(blocks) && blocks.length) {
-        S.layout[slug] = { blocks, page };
-      } else {
-        S.layout[slug] = { error: 'Could not parse layout JSON', raw, page };
-      }
-      scheduleSave();
-      const pages = orderedPages();
-      const curIdx = pages.findIndex(p => p.slug === slug);
-      const next = pages.find((p,i) => i > curIdx && !(S.layout[p.slug]||{}).blocks);
-      S.layoutExpandedSlug = next ? next.slug : slug;
-    }
-  } catch(e) {
-    S.layout[slug] = { error: e.message, page };
+  const pages = orderedPages();
+  if (!pages.length) return;
+  // Ensure S.layout exists
+  if (!S.layout) S.layout = {};
+  // Default to first page
+  if (!layoutCurrentSlug || !pages.find(p => p.slug === layoutCurrentSlug)) {
+    layoutCurrentSlug = pages[0].slug;
   }
-  S.layoutCurrentSlug = null;
-  S.layoutRunning = false;
-  renderLayoutQueue(); updateLayoutProgress(); checkLayoutAllDone();
+  renderLayoutPageSelect();
+  renderLayoutBuilder();
 }
 
-function toggleLayoutExpand(slug) {
-  if (S.layoutRunning) return;
-  S.layoutExpandedSlug = S.layoutExpandedSlug === slug ? null : slug;
-  renderLayoutQueue();
-}
-
-function redoLayoutPage(slug) {
-  delete S.layout[slug];
-  S.layoutExpandedSlug = slug;
-  scheduleSave(); updateLayoutProgress(); renderLayoutQueue(); checkLayoutAllDone();
-}
-
-const LAYOUT_BG_COLORS = {
-  'white':'#ffffff','light-grey':'#f4f4f2','dark':'#111111','brand-green':'#158E1D',
-  'brand-lime':'#D8FF29','image-overlay':'#333333'
-};
-const LAYOUT_VARIANT_LABELS = {
-  'full-width-center':'Full Width Centre','split-left-text':'Split — Text Left',
-  'split-right-text':'Split — Text Right','3-col-grid':'3 Col Grid','4-col-grid':'4 Col Grid',
-  '2-col-grid':'2 Col Grid','alternating-rows':'Alternating Rows','card-grid':'Card Grid',
-  'timeline':'Timeline','accordion':'Accordion','sticky-sidebar':'Sticky Sidebar',
-  'full-width-bg':'Full Width BG','banner':'Banner'
-};
-
-function renderLayoutQueue() {
+function renderLayoutPageSelect() {
   const pages = orderedPages();
-  let html = '';
-  pages.forEach((p, i) => {
-    const r = S.layout[p.slug]||{};
-    const isDone = Array.isArray(r.blocks) && r.blocks.length > 0;
-    const isErr = !!r.error && !isDone;
-    const isRunning = S.layoutCurrentSlug === p.slug;
-    const isExpanded = S.layoutExpandedSlug === p.slug;
-    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
-    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-color:rgba(255,255,255,0.3);border-top-color:white"></span>':(i+1);
-    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+  const sel = document.getElementById('layout-page-select');
+  if (!sel) return;
+  sel.innerHTML = pages.map(p => {
+    const done = (S.layout[p.slug]||[]).length > 0;
+    return '<option value="'+esc(p.slug)+'"'+(p.slug===layoutCurrentSlug?' selected':'')+'>'+esc(p.page_name)+(done?' ✓':'')+'</option>';
+  }).join('');
+  document.getElementById('layout-page-prev-btn').style.display = pages.length > 1 ? '' : 'none';
+  document.getElementById('layout-page-next-btn').style.display = pages.length > 1 ? '' : 'none';
+}
 
-    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+'">';
-    html += '<div onclick="toggleLayoutExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
-      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
-      +'<div style="flex:1;min-width:0">'
-        +'<span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
-        +'<span style="font-size:10.5px;color:'+pColor+';margin-left:8px;padding:1px 6px;background:rgba(0,0,0,0.04);border-radius:3px">'+p.priority+'</span>'
-        +(isDone?'<span style="font-size:10.5px;color:var(--n2);margin-left:8px">'+r.blocks.length+' sections</span>':'')
-      +'</div>'
-      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
-      +'</div>';
+function layoutSelectPage(slug) {
+  layoutCurrentSlug = slug;
+  renderLayoutBuilder();
+}
 
-    if (isExpanded) {
-      html += '<div style="border-top:1px solid var(--border);padding:14px">';
-      if (isRunning) {
-        html += '<div style="display:flex;align-items:center;gap:8px;color:var(--n2);font-size:13px">'
-          +'<span class="spinner" style="width:12px;height:12px"></span> Building layout brief...</div>';
-      } else if (isDone) {
-        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
-          +'<button class="btn btn-ghost sm" onclick="copyLayoutBrief(\''+p.slug+'\')"><i class="ti ti-copy"></i> Copy Brief</button>'
-          +'<button class="btn btn-danger sm" onclick="redoLayoutPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
-          +'</div>';
-        // Render layout blocks as visual wireframe cards
-        r.blocks.sort((a,b)=>(a.order||0)-(b.order||0)).forEach((block, bi) => {
-          const bg = block.background === 'dark'?'background:#111;color:white':
-                     block.background === 'brand-green'?'background:var(--green);color:white':
-                     block.background === 'brand-lime'?'background:var(--lime);color:var(--dark)':
-                     block.background === 'light-grey'?'background:var(--bg)':'background:var(--white)';
-          html += '<div style="border:1px solid var(--border);border-radius:7px;overflow:hidden;margin-bottom:8px;'+bg+'">';
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid rgba(0,0,0,0.07);gap:8px;flex-wrap:wrap">';
-          html += '<div style="display:flex;align-items:center;gap:8px">'
-            +'<span style="font-size:10px;color:rgba(0,0,0,0.35);font-weight:600;background:rgba(0,0,0,0.06);padding:1px 7px;border-radius:3px">'+(bi+1)+'</span>'
-            +'<span style="font-size:12.5px;font-weight:500">'+esc(block.headline||block.section_type)+'</span>'
-            +'</div>';
-          html += '<div style="display:flex;gap:5px;flex-wrap:wrap">'
-            +'<span style="font-size:10px;padding:1px 7px;background:rgba(0,0,0,0.07);border-radius:3px">'+esc(block.section_type)+'</span>'
-            +'<span style="font-size:10px;padding:1px 7px;background:rgba(0,0,0,0.07);border-radius:3px">'+esc(LAYOUT_VARIANT_LABELS[block.layout_variant]||block.layout_variant||'')+'</span>'
-            +(block.cta_in_section?'<span style="font-size:10px;padding:1px 7px;background:rgba(21,142,29,0.12);color:var(--green);border-radius:3px">CTA</span>':'')
-            +'</div>';
-          html += '</div>';
-          html += '<div style="padding:10px 12px;display:flex;flex-direction:column;gap:5px">';
-          if (block.content_hooks?.length) {
-            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:3px">';
-            block.content_hooks.forEach(h => { html += '<span style="font-size:11px;background:rgba(0,0,0,0.05);border-radius:4px;padding:2px 8px;color:inherit;opacity:0.75">'+esc(h)+'</span>'; });
-            html += '</div>';
-          }
-          if (block.cro_note) html += '<div style="font-size:11.5px;opacity:0.7;font-style:italic">✦ '+esc(block.cro_note)+'</div>';
-          if (block.visual_cue) html += '<div style="font-size:11px;opacity:0.5"><i class="ti ti-photo" style="font-size:9px"></i> '+esc(block.visual_cue)+'</div>';
-          html += '</div></div>';
-        });
-        const curIdx = pages.findIndex(pp => pp.slug === p.slug);
-        const nextP = pages.find((pp,ii) => ii > curIdx && !(S.layout[pp.slug]||{}).blocks);
-        if (nextP) {
-          html += '<div style="margin-top:10px;display:flex;gap:8px">'
-            +'<button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=\''+nextP.slug+'\';renderLayoutQueue();runLayoutPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
-            +'<button class="btn btn-ghost sm" onclick="initSchema();goTo(\'schema\')">Skip to Schema</button>'
-            +'</div>';
-        }
-      } else if (isErr) {
-        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
-          +'<button class="btn btn-primary sm" onclick="runLayoutPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
-      } else {
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type)+' · '+esc(p.search_intent||'')+' · CRO layout brief</div>'
-          +'<button class="btn btn-primary sm" onclick="runLayoutPage(\''+p.slug+'\')"><i class="ti ti-layout"></i> Generate Layout</button>'
-          +'</div>';
-      }
+function layoutNavPage(dir) {
+  const pages = orderedPages();
+  const idx = pages.findIndex(p => p.slug === layoutCurrentSlug);
+  const next = pages[(idx + dir + pages.length) % pages.length];
+  layoutCurrentSlug = next.slug;
+  renderLayoutPageSelect();
+  renderLayoutBuilder();
+}
+
+function getPageLayout(slug) {
+  if (!S.layout[slug]) S.layout[slug] = [];
+  return S.layout[slug];
+}
+
+function layoutAddComponent(compId) {
+  const comp = LAYOUT_COMPONENTS.find(c => c.id === compId);
+  if (!comp) return;
+  const layout = getPageLayout(layoutCurrentSlug);
+  layout.push({ id: compId, label: comp.label, customLabel: '' });
+  S.layout[layoutCurrentSlug] = layout;
+  scheduleSave();
+  renderLayoutBuilder();
+  renderLayoutPageSelect();
+}
+
+function layoutRemoveItem(idx) {
+  const layout = getPageLayout(layoutCurrentSlug);
+  layout.splice(idx, 1);
+  scheduleSave();
+  renderLayoutBuilder();
+  renderLayoutPageSelect();
+}
+
+function layoutMoveItem(idx, dir) {
+  const layout = getPageLayout(layoutCurrentSlug);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= layout.length) return;
+  [layout[idx], layout[newIdx]] = [layout[newIdx], layout[idx]];
+  scheduleSave();
+  renderLayoutBuilder();
+}
+
+function layoutSaveLabel(idx, val) {
+  const layout = getPageLayout(layoutCurrentSlug);
+  if (layout[idx]) { layout[idx].customLabel = val; scheduleSave(); }
+}
+
+function renderLayoutBuilder() {
+  const page = orderedPages().find(p => p.slug === layoutCurrentSlug);
+  const layout = getPageLayout(layoutCurrentSlug);
+  let html = '<div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">';
+
+  // ── Left: canvas ──
+  html += '<div>';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    +'<div style="font-size:12px;font-weight:500;color:var(--dark)">'+(page?esc(page.page_name):'')+'<span style="color:var(--n2);font-weight:400;margin-left:6px">'+layout.length+' section'+(layout.length!==1?'s':'')+'</span></div>';
+  if (layout.length > 0) {
+    html += '<button class="btn btn-ghost sm" onclick="copyLayoutText()"><i class="ti ti-copy"></i> Copy Brief</button>';
+  }
+  html += '</div>';
+
+  if (layout.length === 0) {
+    html += '<div style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;color:var(--n2);font-size:13px">Pick sections from the library →</div>';
+  } else {
+    layout.forEach((item, idx) => {
+      const comp = LAYOUT_COMPONENTS.find(c => c.id === item.id) || {};
+      html += '<div style="border:1px solid var(--border);border-radius:8px;background:var(--white);margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:9px 12px">';
+      html += '<span style="font-size:11px;color:var(--n2);font-weight:600;width:18px;text-align:center;flex-shrink:0">'+(idx+1)+'</span>';
+      html += '<svg viewBox="0 0 100 60" width="50" height="30" style="flex-shrink:0">'+( comp.svg||'')+'</svg>';
+      html += '<div style="flex:1;min-width:0">';
+      html += '<div style="font-size:12px;font-weight:500;color:var(--dark)">'+esc(comp.label||item.label)+'</div>';
+      html += '<input type="text" placeholder="Section note (optional)" value="'+esc(item.customLabel||'')+'" onchange="layoutSaveLabel('+idx+',this.value)" style="font-size:11px;color:var(--n2);background:none;border:none;outline:none;width:100%;font-family:var(--font);padding:0;margin-top:1px">';
       html += '</div>';
-    }
+      html += '<div style="display:flex;gap:3px;flex-shrink:0">';
+      html += '<button onclick="layoutMoveItem('+idx+',-1)" '+(idx===0?'disabled':'')+' style="background:none;border:1px solid var(--border);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:'+(idx===0?'0.3':'1')+'"><i class="ti ti-chevron-up" style="font-size:10px"></i></button>';
+      html += '<button onclick="layoutMoveItem('+idx+',1)" '+(idx===layout.length-1?'disabled':'')+' style="background:none;border:1px solid var(--border);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:'+(idx===layout.length-1?'0.3':'1')+'"><i class="ti ti-chevron-down" style="font-size:10px"></i></button>';
+      html += '<button onclick="layoutRemoveItem('+idx+')" style="background:none;border:1px solid rgba(229,57,53,.2);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--error)"><i class="ti ti-x" style="font-size:10px"></i></button>';
+      html += '</div>';
+      html += '</div>';
+    });
+    // Done → advance to schema
+    html += '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">';
+    html += '<button class="btn btn-primary" onclick="initSchema();goTo(\'schema\')"><i class="ti ti-arrow-right"></i> Proceed to Schema</button>';
+    html += '<span style="font-size:11px;color:var(--n2)">or continue adding sections</span>';
     html += '</div>';
+  }
+  html += '</div>';
+
+  // ── Right: component library ──
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:70vh;overflow-y:auto">';
+  html += '<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;position:sticky;top:0;background:var(--white);z-index:1">Section Library</div>';
+  LAYOUT_GROUPS.forEach(group => {
+    html += '<div style="padding:6px 12px 2px;font-size:10.5px;color:var(--n2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:4px">'+esc(group)+'</div>';
+    LAYOUT_COMPONENTS.filter(c => c.group === group).forEach(comp => {
+      html += '<div onclick="layoutAddComponent(\''+comp.id+'\')" style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-radius:4px;margin:0 4px 2px" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += '<svg viewBox="0 0 100 60" width="44" height="26" style="flex-shrink:0;border-radius:3px;border:1px solid var(--border)">'+comp.svg+'</svg>';
+      html += '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--dark)">'+esc(comp.label)+'</div><div style="font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(comp.desc)+'</div></div>';
+      html += '<i class="ti ti-plus" style="font-size:11px;color:var(--n2);flex-shrink:0"></i>';
+      html += '</div>';
+    });
   });
-  document.getElementById('layout-queue').innerHTML = html;
+  html += '</div>';
+  html += '</div>';
+
+  document.getElementById('layout-builder').innerHTML = html;
 }
 
-function copyLayoutBrief(slug) {
-  const r = S.layout[slug];
-  if (!r?.blocks) return;
-  const text = r.blocks.sort((a,b)=>(a.order||0)-(b.order||0)).map((b,i) =>
-    (i+1)+'. '+b.headline+' ['+b.section_type+' / '+b.layout_variant+']'
-    +'\n   CRO: '+b.cro_note
-    +'\n   Content: '+(b.content_hooks||[]).join(' · ')
-    +'\n   Visual: '+b.visual_cue
-    +'\n   BG: '+b.background
-    +(b.cta_in_section?'\n   ✓ CTA in section':'')
-  ).join('\n\n');
+function copyLayoutText() {
+  const layout = getPageLayout(layoutCurrentSlug);
+  const page = orderedPages().find(p => p.slug === layoutCurrentSlug);
+  const text = (page ? page.page_name + ' — Page Layout\n' + '='.repeat(40) + '\n\n' : '')
+    + layout.map((item, i) => {
+      const comp = LAYOUT_COMPONENTS.find(c => c.id === item.id) || {};
+      return (i+1)+'. '+comp.label+(item.customLabel?' — '+item.customLabel:'');
+    }).join('\n');
   copyToClip2(text);
-}
-
-function updateLayoutProgress() {
-  const pages = orderedPages();
-  const done = pages.filter(p => (S.layout[p.slug]||{}).blocks?.length).length;
-  const pct = pages.length > 0 ? Math.round(done/pages.length*100) : 0;
-  document.getElementById('layout-count-label').textContent = done+'/'+pages.length+' pages complete';
-  document.getElementById('layout-pct-label').textContent = pct+'%';
-  document.getElementById('layout-progress-fill').style.width = pct+'%';
-}
-
-function checkLayoutAllDone() {
-  const pages = orderedPages();
-  const done = pages.filter(p => (S.layout[p.slug]||{}).blocks?.length).length;
-  if (done === pages.length && done > 0) {
-    document.getElementById('layout-done-label').textContent = 'All '+done+' pages complete';
-    document.getElementById('layout-all-done').style.display = 'flex';
-  } else { document.getElementById('layout-all-done').style.display = 'none'; }
 }
 
 let schemaStopFlag = false;

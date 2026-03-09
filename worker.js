@@ -124,24 +124,39 @@ export default {
     // ── AHREFS KEYWORD METRICS ───────────────────────────────────
     if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
       try {
+        if (!env.AHREFS_API_KEY) return new Response(JSON.stringify({
+          error: 'AHREFS_API_KEY secret not set in Cloudflare Workers. Add it via Workers & Pages → setsail-tools → Settings → Variables and Secrets.',
+          code: 'NO_KEY'
+        }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
         const { keywords, country } = await request.json();
-        if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords' }), {
+        if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords provided' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
+
         const params = new URLSearchParams();
-        params.set('select', 'keyword,volume,difficulty,serp_features');
-        params.set('country', country || 'ca');
-        keywords.forEach(k => params.append('keywords[]', k));
+        params.set('select', 'keyword,volume,difficulty');
+        params.set('country', (country || 'ca').toLowerCase().slice(0,2));
+        keywords.slice(0, 50).forEach(k => params.append('keywords[]', k)); // max 50
+
         const ahrefsRes = await fetch('https://api.ahrefs.com/v3/keywords-explorer/overview?' + params.toString(), {
-          headers: {
-            'Authorization': 'Bearer ' + env.AHREFS_API_KEY,
-            'Content-Type': 'application/json',
-          }
+          headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
         });
-        const data = await ahrefsRes.json();
+
+        const raw = await ahrefsRes.text();
+        let data;
+        try { data = JSON.parse(raw); } catch(e) { data = { error: 'Non-JSON response: ' + raw.slice(0,200) }; }
+
+        if (!ahrefsRes.ok) {
+          return new Response(JSON.stringify({
+            error: data?.detail || data?.message || data?.error || ('Ahrefs API error ' + ahrefsRes.status),
+            status: ahrefsRes.status,
+            detail: data
+          }), { status: ahrefsRes.status, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
         return new Response(JSON.stringify(data), {
-          status: ahrefsRes.status,
-          headers: { 'Content-Type': 'application/json', ...cors }
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
