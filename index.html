@@ -1458,10 +1458,9 @@ Generate a complete section-by-section wireframe. Include every section a high-c
 
   let full = '';
   try {
-    full = await streamClaude(
-      [{ role: 'user', content: userPrompt }],
+    full = await callClaude(
       systemPrompt,
-      4096,
+      userPrompt,
       (partial) => {
         const el = document.getElementById('layout-stream-'+slug);
         if (el) el.textContent = partial.slice(-200);
