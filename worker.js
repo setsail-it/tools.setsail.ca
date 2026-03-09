@@ -147,12 +147,8 @@ export default {
         // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
         if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {
           const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-          const body = kwList.map(kw => ({
-            keyword: kw,
-            location_code: cc === 'CA' ? 2124 : cc === 'US' ? 2840 : cc === 'GB' ? 2826 : 2124,
-            language_code: 'en',
-            include_serp_info: false
-          }));
+          const locationCode = cc === 'CA' ? 2124 : cc === 'US' ? 2840 : cc === 'GB' ? 2826 : 2124;
+          const body = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
           let dfsRes, dfsData, dfsRaw;
           try {
             dfsRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
