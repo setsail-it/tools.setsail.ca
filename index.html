@@ -1075,6 +1075,7 @@ function attemptSitemapParse() {
     wrap.style.display = 'none';
     renderSitemapResults(false);
     scheduleSave();
+    enrichSitemapWithLiveData();
   } else {
     alert('Still could not parse — try Regenerate');
   }
@@ -1124,7 +1125,7 @@ async function runSitemap(withRevisions) {
     const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
     const parsed = safeParseJSON(result);
     if (Array.isArray(parsed) && parsed.length) {
-      S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave();
+      S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
     } else {
       streamEl.textContent = result;
       // Add retry button
@@ -1139,70 +1140,100 @@ async function runSitemap(withRevisions) {
 }
 
 function enrichSitemapWithKwData() {
-  if (!S.kwResearch?.keywords?.length || !S.pages?.length) return;
-
-  const allKws = S.kwResearch.keywords;
-
-  // Build exact lookup
-  const kwMap = {};
-  allKws.forEach(k => { kwMap[k.kw.toLowerCase().trim()] = k; });
-
-  // Fuzzy token overlap: returns best match from allKws for a given string
-  function tokenOverlap(a, b) {
-    const ta = new Set(a.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean));
-    const tb = new Set(b.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean));
-    let overlap = 0;
-    ta.forEach(t => { if (tb.has(t)) overlap++; });
-    return overlap / Math.max(ta.size, tb.size, 1);
-  }
-
-  function bestMatch(str, minScore = 0.4) {
-    const key = str.toLowerCase().trim();
-    if (kwMap[key]) return kwMap[key]; // exact match first
-    let best = null, bestSim = 0;
-    allKws.forEach(k => {
-      const sim = tokenOverlap(key, k.kw);
-      if (sim > bestSim) { bestSim = sim; best = k; }
-    });
-    return bestSim >= minScore ? best : null;
-  }
+  // Sync pass: match from kwResearch cache (fast, may miss)
+  if (!S.pages?.length) return;
+  const cached = {};
+  (S.kwResearch?.keywords || []).forEach(k => { cached[k.kw.toLowerCase().trim()] = k; });
 
   S.pages = S.pages.map(p => {
-    // Try primary keyword match, fall back to page name + slug tokens
-    const searchStr = p.primary_keyword || (p.page_name + ' ' + p.slug.replace(/\//g,' '));
-    const match = bestMatch(searchStr);
-    if (match && match.vol > 0) {
-      // Update primary keyword to matched one so user sees what we found
-      if (!p.primary_keyword || !kwMap[p.primary_keyword?.toLowerCase()]) {
-        p.primary_keyword = match.kw;
-      }
-      p.primary_vol = match.vol;
-      p.primary_kd = match.kd;
-      p.score = match.score;
+    const pk = (p.primary_keyword || '').toLowerCase().trim();
+    const hit = cached[pk];
+    if (hit && hit.vol > 0) { p.primary_vol = hit.vol; p.primary_kd = hit.kd; p.score = hit.score; }
+    if (p.supporting_keywords?.length) {
+      p.supporting_keywords = p.supporting_keywords.map(sk => {
+        const raw = typeof sk === 'object' ? (sk.kw || '') : String(sk);
+        const h = cached[raw.toLowerCase().trim()];
+        return h ? { kw: raw, vol: h.vol, kd: h.kd } : { kw: raw, vol: 0, kd: 0 };
+      });
     }
-
-    // Enrich supporting keywords — fuzzy match each one
-    const suppKws = (p.supporting_keywords || []);
-    const enrichedSupp = suppKws.map(sk => {
-      const raw = typeof sk === 'object' ? (sk.kw || '') : sk;
-      if (!raw) return null;
-      const m = bestMatch(raw, 0.35);
-      if (m) return { kw: m.kw, vol: m.vol, kd: m.kd };
-      return { kw: raw, vol: 0, kd: 0 };
-    }).filter(Boolean);
-
-    // Add extra supporting kws from kwResearch that match this page's topic
-    // but aren't already included — gives richer data
-    const pageTopicStr = (p.page_name + ' ' + (p.slug||'').replace(/\//g,' ')).toLowerCase();
-    const alreadyIncluded = new Set([p.primary_keyword?.toLowerCase(), ...enrichedSupp.map(s => s.kw.toLowerCase())]);
-    const extras = allKws
-      .filter(k => !alreadyIncluded.has(k.kw.toLowerCase()) && k.vol > 0 && tokenOverlap(pageTopicStr, k.kw) >= 0.45)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-
-    p.supporting_keywords = [...enrichedSupp, ...extras.map(e => ({ kw: e.kw, vol: e.vol, kd: e.kd }))];
     return p;
   });
+}
+
+async function enrichSitemapWithLiveData() {
+  // Async pass: directly lookup any keyword that's still missing vol data
+  if (!S.pages?.length) return;
+
+  // Collect all unique keywords across all pages that need data
+  const needed = new Set();
+  S.pages.forEach(p => {
+    if (!p.primary_vol || p.primary_vol === 0) needed.add((p.primary_keyword || '').trim());
+    (p.supporting_keywords || []).forEach(sk => {
+      const kw = typeof sk === 'object' ? sk.kw : sk;
+      if (kw && (!sk.vol || sk.vol === 0)) needed.add(kw.trim());
+    });
+  });
+  const kwList = [...needed].filter(k => k.length > 2);
+  if (!kwList.length) return;
+
+  // Show enriching indicator
+  const statusEls = document.querySelectorAll('[id^="sitemap-enrich-status"]');
+  const enrichBadge = document.getElementById('sitemap-enrich-badge');
+  if (enrichBadge) { enrichBadge.style.display = 'inline-flex'; enrichBadge.textContent = 'Fetching ' + kwList.length + ' keyword volumes…'; }
+
+  try {
+    const geo = S.research?.geography?.primary || S.setup?.geo || '';
+    const geoLower = geo.toLowerCase();
+    const country = (geoLower.includes('canada')||geoLower.includes('bc')||geoLower.includes('vancouver')||geoLower.includes('calgary')) ? 'CA' : 'US';
+
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: kwList, country })
+    });
+    const data = await res.json();
+    if (!data.keywords) throw new Error(data.error || 'No data');
+
+    // Build lookup from fresh data
+    const fresh = {};
+    data.keywords.forEach(k => { fresh[k.keyword.toLowerCase().trim()] = k; });
+
+    // Also add to kwResearch cache for future use
+    if (!S.kwResearch) S.kwResearch = { keywords: [], fetchedAt: Date.now(), source: 'dataforseo' };
+    const existingKws = new Set(S.kwResearch.keywords.map(k => k.kw.toLowerCase()));
+    data.keywords.filter(k => k.volume > 0 && !existingKws.has(k.keyword.toLowerCase())).forEach(k => {
+      const kd = k.difficulty > 0 ? k.difficulty : 50;
+      S.kwResearch.keywords.push({ kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10 });
+    });
+
+    // Apply fresh data to pages
+    S.pages = S.pages.map(p => {
+      const pk = (p.primary_keyword || '').toLowerCase().trim();
+      const hit = fresh[pk];
+      if (hit && hit.volume > 0) {
+        p.primary_vol = hit.volume;
+        p.primary_kd = hit.difficulty || 0;
+        const kd2 = hit.difficulty > 0 ? hit.difficulty : 50;
+        p.score = Math.round((Math.log(hit.volume+1)*100/kd2)*10)/10;
+      }
+      if (p.supporting_keywords?.length) {
+        p.supporting_keywords = p.supporting_keywords.map(sk => {
+          const raw = typeof sk === 'object' ? sk.kw : String(sk);
+          const h = fresh[raw.toLowerCase().trim()];
+          return h && h.volume > 0 ? { kw: raw, vol: h.volume, kd: h.difficulty || 0 } : (typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 });
+        });
+      }
+      return p;
+    });
+
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    if (enrichBadge) enrichBadge.style.display = 'none';
+
+  } catch(e) {
+    if (enrichBadge) { enrichBadge.style.display = 'none'; }
+    console.warn('Live enrich failed:', e.message);
+  }
 }
 
 function renderSitemapResults(approved) {
@@ -1217,6 +1248,7 @@ function renderSitemapResults(approved) {
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
   if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-volume pages</span>';
+  html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes…</span></span>';
   html += '</div>';
 
   // Keyword opportunities table
