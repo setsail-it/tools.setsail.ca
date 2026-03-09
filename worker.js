@@ -242,72 +242,60 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
 
-        const body = seeds.slice(0, 20).map(seed => ({
-          keyword: seed,
-          location_code: locationCode,
-          language_code: 'en',
-          limit: 30
+        // ── Step 1: Get keyword ideas via keywords_for_keywords ──
+        const expandBody = seeds.slice(0, 12).map(seed => ({
+          keyword: seed, location_code: locationCode, language_code: 'en', limit: 30
         }));
-
-        let raw, data;
-        const res = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
+        let expandData;
+        const expandRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
+          body: JSON.stringify(expandBody)
         });
-        raw = await res.text();
-        try { data = JSON.parse(raw); } catch(e) {
-          return new Response(JSON.stringify({ error: 'Parse error: ' + raw.slice(0,200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        const expandRaw = await expandRes.text();
+        try { expandData = JSON.parse(expandRaw); } catch(e) {
+          return new Response(JSON.stringify({ error: 'Expand parse error: ' + expandRaw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        if (!expandRes.ok || (expandData.status_code && expandData.status_code !== 20000)) {
+          return new Response(JSON.stringify({ error: expandData?.status_message || ('Expand HTTP ' + expandRes.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
-        if (!res.ok || (data.status_code && data.status_code !== 20000)) {
-          return new Response(JSON.stringify({ error: data?.status_message || ('HTTP ' + res.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-        }
-
-        // keywords_for_keywords response: tasks[].result[].items[].keyword
-        // Each result item = one seed, with an items[] array of related keywords
-        // Return raw response for structure inspection
-        const taskCount = (data.tasks || []).length;
-        const task0 = data.tasks?.[0];
-        const result0 = task0?.result?.[0];
-        const rawSlice = JSON.stringify(data).slice(0, 3000);
-
-        // Try both possible structures:
-        // A) result[] items directly have keyword+search_volume (original assumption)
-        // B) result[].items[] has the keywords (nested)
-        const kwMap = {};
-        (data.tasks || []).forEach(task => {
+        // Collect all unique keyword strings — no volume filter (CA volume can be 0 from this endpoint)
+        const kwSet = new Set(seeds); // always include seeds
+        (expandData.tasks || []).forEach(task => {
           (task.result || []).forEach(r => {
-            // Structure A: r is a keyword item directly
-            if (r.keyword && (r.search_volume || 0) > 0) {
-              if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
-                kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
-              }
-            }
-            // Structure B: r has an items[] array of keyword items
-            (r.items || []).forEach(item => {
-              if (item.keyword && (item.search_volume || 0) > 0) {
-                if (!kwMap[item.keyword] || item.search_volume > kwMap[item.keyword].volume) {
-                  kwMap[item.keyword] = { volume: item.search_volume || 0, kd: item.competition_index || 0, cpc: item.cpc || 0 };
-                }
-              }
-            });
+            if (r.keyword) kwSet.add(r.keyword);
+            (r.items || []).forEach(item => { if (item.keyword) kwSet.add(item.keyword); });
+          });
+        });
+        const kwList = [...kwSet].slice(0, 100);
+
+        // ── Step 2: Get real CA volumes via search_volume/live (proven working endpoint) ──
+        const volBody = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
+        const volRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify(volBody)
+        });
+        const volRaw = await volRes.text();
+        let volData;
+        try { volData = JSON.parse(volRaw); } catch(e) {
+          return new Response(JSON.stringify({ error: 'Volume parse error: ' + volRaw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        // Build final keyword list with real volumes
+        const kwMap = {};
+        (volData.tasks || []).forEach(task => {
+          (task.result || []).forEach(r => {
+            if (r.keyword) kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
           });
         });
 
-        const keywords = Object.entries(kwMap).map(([kw, d]) => ({ keyword: kw, volume: d.volume, difficulty: d.kd, cpc: d.cpc }));
-        return new Response(JSON.stringify({
-          keywords,
-          source: 'dataforseo-expand',
-          _debug: {
-            taskCount,
-            task0keys: task0 ? Object.keys(task0) : [],
-            result0keys: result0 ? Object.keys(result0) : [],
-            result0type: result0 ? typeof result0 : 'undefined',
-            kwMapSize: keywords.length,
-            rawSlice
-          }
-        }), {
+        const keywords = kwList
+          .filter(kw => kwMap[kw])
+          .map(kw => ({ keyword: kw, volume: kwMap[kw].volume, difficulty: kwMap[kw].kd, cpc: kwMap[kw].cpc }));
+
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
