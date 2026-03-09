@@ -1271,6 +1271,115 @@ async function enrichSitemapWithLiveData() {
   }
 }
 
+
+async function findMoreKeywords(pageIdx) {
+  const page = S.pages[pageIdx];
+  if (!page) return;
+
+  const btn = document.getElementById('find-kw-btn-' + pageIdx);
+  const statusEl = document.getElementById('revise-kw-status-' + pageIdx);
+  const resultEl = document.getElementById('find-kw-result-' + pageIdx);
+
+  // Toggle off if already showing
+  if (resultEl && resultEl.style.display !== 'none') {
+    resultEl.style.display = 'none';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:7px;height:7px;display:inline-block;vertical-align:middle"></span>';
+  if (statusEl) statusEl.textContent = '';
+
+  // Same seed building as reviseKeywords
+  const currentPrimary = page.primary_keyword || '';
+  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoLower = geo.toLowerCase();
+
+  const stripGeo = kw => {
+    if (!geoLower) return kw;
+    return kw.toLowerCase()
+      .replace(new RegExp('\\s+' + geoLower.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&') + '\\s*$', 'i'), '')
+      .replace(new RegExp('^' + geoLower.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&') + '\\s+', 'i'), '')
+      .trim();
+  };
+
+  const seedSet = new Set();
+  [currentPrimary, ...currentSupporting].filter(Boolean).forEach(kw => {
+    const base = stripGeo(kw);
+    if (base.length > 3) seedSet.add(base);
+  });
+  const pageName = (page.page_name || '').toLowerCase()
+    .replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
+  if (pageName.length > 3) seedSet.add(pageName);
+  if (geoLower && pageName.length > 3) seedSet.add(pageName + ' ' + geoLower);
+  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
+  const geoStr = (geo + ' ' + geoLower).toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+
+  try {
+    const expandRes = await fetch('/api/kw-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds, country })
+    });
+    const expandData = await expandRes.json();
+
+    if (!expandData.keywords || !expandData.keywords.length) {
+      if (statusEl) statusEl.innerHTML = '<span style="font-size:10px;color:var(--warn)">⚠ No results' + (expandData.error?' ('+expandData.error+')':'') + '</span>';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-search" style="font-size:9px"></i> Find More';
+      return;
+    }
+
+    // Score, rank, flag already-added
+    const existing = new Set([currentPrimary, ...currentSupporting].map(k => k.toLowerCase().trim()));
+    const seen = new Set();
+    const top40 = expandData.keywords
+      .filter(k => k.volume >= 10)
+      .map(k => {
+        const kd = k.difficulty > 0 ? k.difficulty : 50;
+        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10 };
+      })
+      .sort((a, b) => b.score - a.score)
+      .filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; })
+      .slice(0, 40);
+
+    const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+    const vCol = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+
+    let rhtml = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;margin:0 14px 6px;overflow:hidden">';
+    rhtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">';
+    rhtml += '<div style="font-size:10.5px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-search" style="font-size:10px"></i> '+top40.length+' Keywords for '+esc(page.page_name)+'</div>';
+    rhtml += `<button onclick="document.getElementById('find-kw-result-${pageIdx}').style.display='none'" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;font-family:var(--font);padding:0 2px;line-height:1">✕</button>`;
+    rhtml += '</div>';
+    rhtml += '<div style="max-height:260px;overflow-y:auto;padding:4px 0">';
+    top40.forEach(k => {
+      const added = existing.has(k.kw.toLowerCase().trim());
+      rhtml += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
+      rhtml += `<span style="flex:1;font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>`;
+      rhtml += `<span style="font-size:10px;color:${vCol(k.vol)};min-width:52px;text-align:right">${k.vol.toLocaleString()}/mo</span>`;
+      rhtml += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:38px;text-align:right">KD ${k.kd||'?'}</span>`;
+      rhtml += `<span style="font-size:10px;color:var(--n2);min-width:38px;text-align:right">${k.score}</span>`;
+      if (!added) {
+        rhtml += `<button onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd});this.textContent='✓';this.disabled=true;this.style.color='var(--green)';this.style.borderColor='var(--green)'" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
+      } else {
+        rhtml += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--n2)">✓</span>`;
+      }
+      rhtml += '</div>';
+    });
+    rhtml += '</div></div>';
+
+    resultEl.innerHTML = rhtml;
+    resultEl.style.display = 'block';
+    if (statusEl) statusEl.textContent = '';
+  } catch(err) {
+    if (statusEl) statusEl.innerHTML = '<span style="font-size:10px;color:var(--warn)">⚠ ' + err.message + '</span>';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-search" style="font-size:9px"></i> Find More';
+}
+
 async function reviseKeywords(pageIdx) {
   const page = S.pages[pageIdx];
   if (!page) return;
@@ -1785,132 +1894,122 @@ function _renderSitemapResultsInner(approved) {
     + '</div>';
 
   pages.forEach((p, i) => {
-    // Wrap each page + supporting kws in a single block div
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
     const vol = typeof p.primary_vol === 'number' ? p.primary_vol : (parseInt(p.primary_vol) || 0);
     const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
     const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0);
-
     const isStructural = !!p.is_structural;
-    const isLowVol = !isStructural && (vol === 0 || vol < 30);
     const kdColor = kd === 0 ? 'var(--n2)' : kd <= 20 ? 'var(--green)' : kd <= 40 ? 'var(--warn)' : 'var(--error)';
-    const rowOpacity = isLowVol ? 'opacity:0.55;' : '';
-
-    // Detect sub-pages (slug contains /)
     const isSubPage = (p.slug||'').includes('/');
-    const indent = isSubPage ? 'padding-left:22px;' : '';
+    const rowBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
 
-    const hasBorder = i<pages.length-1;
-    html += '<div>'; // page block wrapper
-    html += '<div style="display:grid;grid-template-columns:22px 1.5fr 1.3fr 58px 46px 54px 58px;padding:8px 14px;'
-      + 'border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')
-      + ';background:'+(isLowVol ? 'rgba(0,0,0,0.02)' : (i%2===0?'var(--white)':'rgba(0,0,0,0.012)'))
-      + ';align-items:start;'+rowOpacity+'">';
+    // Vol display — colour signal only, no row dimming
+    let volHtml;
+    if (isStructural && vol === 0) {
+      volHtml = '<span style="color:var(--n2);font-size:10px">–</span>';
+    } else if (vol === 0) {
+      volHtml = '<span style="color:var(--error);font-size:11px;font-weight:500">⚠ 0</span>';
+    } else if (vol < 30) {
+      volHtml = '<span style="color:var(--warn);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    } else {
+      volHtml = '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    }
 
-    html += '<span style="color:var(--n2);font-size:11px">'+(i+1)+'</span>';
+    html += '<div>'; // page block
 
-    // Page name + slug — edit mode shows inputs
+    // ── MAIN ROW ──
+    html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:8px 14px;align-items:start;background:'+rowBg+'">';
+    html += '<span style="color:var(--n2);font-size:11px;padding-top:2px">'+(i+1)+'</span>';
+
     if (sitemapEditMode) {
+      // ── Edit mode: Page name cell — inputs + compact icon controls ──
+      const btnS = 'background:transparent;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);line-height:1.5';
       html += '<div style="display:flex;flex-direction:column;gap:3px">';
       html += '<input value="'+esc(p.page_name)+'" onblur="updatePageField('+i+',\'page_name\',this.value)" style="font-size:12px;color:var(--dark);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%"/>';
       html += '<input value="'+esc(p.slug||'')+'" onblur="updatePageField('+i+',\'slug\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-family:var(--font);outline:none;width:100%"/>';
       html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
       ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
       html += '</select>';
-      // ↑ ↓ ✕ action buttons — inline under name inputs
-      const btnS = 'background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:var(--font);color:var(--n2)';
-      html += '<div style="display:flex;gap:4px;margin-top:2px;align-items:center">';
-      html += `<button onclick="movePage(${i},-1)" title="Move up" ${i===0?'disabled':''} style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===0?'0.25':'0.7'}"">↑ Up</button>`;
-      html += `<button onclick="movePage(${i},1)" title="Move down" ${i===pages.length-1?'disabled':''} style="${btnS};opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===pages.length-1?'0.25':'0.7'}"">↓ Down</button>`;
-      html += `<button onclick="deletePage(${i})" title="Delete page" style="background:transparent;border:1px solid rgba(220,50,47,0.3);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:var(--font);color:var(--error);opacity:0.65" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">✕ Delete</button>`;
-      html += '</div>';
-      html += '</div>';
-      // Primary keyword — editable with live lookup
+      // Icon-only reorder/delete
+      html += '<div style="display:flex;gap:3px;margin-top:1px">';
+      html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
+      html += `<button onclick="movePage(${i},1)" ${i===pages.length-1?'disabled':''} title="Move down" style="${btnS};opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↓</button>`;
+      html += `<button onclick="deletePage(${i})" title="Delete" style="background:transparent;border:1px solid rgba(220,50,47,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--error);line-height:1.5;opacity:0.55" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.55'">✕</button>`;
+      html += '</div></div>';
+
+      // ── Edit mode: Keyword cell — input + AI + Find More inline ──
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
       html += '<input value="'+esc(p.primary_keyword||'')+'" placeholder="primary keyword…" onblur="updatePrimaryKw('+i+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" style="font-size:11px;color:var(--n3);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%;margin-top:2px"/>';
+      html += '<div style="display:flex;gap:4px;align-items:center">';
+      html += `<button id="revise-kw-btn-${i}" onclick="reviseKeywords(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.4);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-sparkles" style="font-size:9px"></i> AI</button>`;
+      html += `<button id="find-kw-btn-${i}" onclick="findMoreKeywords(${i})" style="background:transparent;border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-search" style="font-size:9px"></i> Find More</button>`;
+      html += `<span id="revise-kw-status-${i}" style="font-size:10px;color:var(--n2)"></span>`;
+      html += '</div></div>';
+
     } else {
-      // Read-only view
-      html += '<div style="'+indent+'">';
-      if (isSubPage) html += '<div style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></div>';
-      html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>'+(isStructural ? '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle;font-weight:500">STRUCTURAL</span>' : '');
-      html += '<div style="color:var(--n2);font-size:10.5px;'+(isSubPage?'padding-left:14px':'')+'">/'+esc(p.slug)+'</div>';
-      if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:2px;'+(isSubPage?'padding-left:14px':'')+'">'+esc(p.rationale)+'</div>';
+      // ── View mode: read-only ──
+      html += '<div>';
+      if (isSubPage) html += '<span style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></span>';
+      html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>';
+      if (isStructural) html += '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle">STRUCTURAL</span>';
+      html += '<div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div>';
+      if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       html += '</div>';
       html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
     }
 
-    // Vol — flag zero/low, but not structural pages
-    if (isStructural && vol === 0) {
-      html += '<span style="color:var(--n2);font-size:10px">–</span>';
-    } else if (vol === 0) {
-      html += '<span style="color:var(--error);font-size:11px;font-weight:500">⚠ 0</span>';
-    } else if (vol < 30) {
-      html += '<span style="color:var(--warn);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
-    } else {
-      html += '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
-    }
-
+    html += volHtml;
     html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500">'+(kd||'?')+'</span>';
     html += '<span style="color:var(--n3);font-size:11px">'+score+'</span>';
-    // Priority — dropdown in edit mode
     if (sitemapEditMode) {
       html += `<select onchange="updatePageField(${i},'priority',this.value);renderSitemapResults(S.sitemapApproved)" style="font-size:11px;color:${pColor};font-weight:500;background:var(--n1);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-family:var(--font);outline:none">`;
-      ['P1','P2','P3'].forEach(pv => {
-        html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`;
-      });
+      ['P1','P2','P3'].forEach(pv => { html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`; });
       html += '</select>';
-
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     }
     html += '</div>'; // end main row
 
-    // Revise Keywords row — edit mode only
-    if (sitemapEditMode) {
-      const revBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
-      html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 14px 5px;background:${revBg};border-top:1px dashed rgba(0,0,0,0.05)">`;
-      html += `<button id="revise-kw-btn-${i}" onclick="reviseKeywords(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.35);border-radius:4px;padding:2px 10px;font-size:10.5px;color:var(--green);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:4px"><i class="ti ti-sparkles" style="font-size:10px"></i> Revise Keywords</button>`;
-      html += `<span id="revise-kw-status-${i}" style="font-size:10.5px;color:var(--n2)"></span>`;
-      html += '</div>';
-      html += `<div id="revise-kw-result-${i}" style="display:none"></div>`;
-    }
+    // ── Inline result panels ──
+    html += `<div id="revise-kw-result-${i}" style="display:none"></div>`;
+    html += `<div id="find-kw-result-${i}" style="display:none"></div>`;
 
-    // Supporting keywords — mini grid rows aligned to main columns
-    const suppKws = (p.supporting_keywords || []).filter(sk => {
-      const kw = typeof sk === 'object' ? sk.kw : sk;
-      return kw && kw.length > 0;
-    });
+    // ── Supporting keywords ──
+    const suppKws = (p.supporting_keywords || []).filter(sk => { const kw = typeof sk==='object'?sk.kw:sk; return kw && kw.length>0; });
     if (suppKws.length) {
-      const suppBg = isLowVol ? 'rgba(0,0,0,0.02)' : (i%2===0?'var(--white)':'rgba(0,0,0,0.012)');
       suppKws.forEach((sk, si) => {
-        const kw = typeof sk === 'object' ? sk.kw : sk;
-        const v = typeof sk === 'object' ? (sk.vol || 0) : 0;
-        const d = typeof sk === 'object' ? (sk.kd || 0) : 0;
-        const sc = v > 0 && d > 0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+        const kw = typeof sk==='object'?sk.kw:sk;
+        const v = typeof sk==='object'?(sk.vol||0):0;
+        const d = typeof sk==='object'?(sk.kd||0):0;
+        const sc = v>0&&d>0?Math.round((Math.log(v+1)*100/d)*10)/10:0;
         const dColor = d===0?'var(--n2)':d<20?'var(--green)':d<40?'var(--warn)':'var(--error)';
         const vColor = v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
-        html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:3px 14px 3px '+(isSubPage?'36px':'14px')+';background:'+suppBg+';border-top:1px dashed rgba(0,0,0,0.06);align-items:center;'+rowOpacity+'">';
+        html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:3px 14px;background:'+rowBg+';border-top:1px dashed rgba(0,0,0,0.06);align-items:center">';
         html += '<span style="color:var(--n1);font-size:11px;padding-left:4px">↳</span>';
-        html += '<span style="color:var(--n2);font-size:11px;padding-left:'+(isSubPage?'14px':'0')+';">'+esc(kw)+'</span>';
+        html += '<span style="color:var(--n2);font-size:11px">'+esc(kw)+'</span>';
         html += '<span></span>';
         html += '<span style="color:'+vColor+';font-size:11px">'+(v>0?v.toLocaleString():'–')+'</span>';
         html += '<span style="color:'+dColor+';font-size:11px">'+(d>0?d:'–')+'</span>';
         html += '<span style="color:var(--n2);font-size:10px">'+(sc>0?sc:'–')+'</span>';
-        html += `<span style="text-align:right"><button onclick="removeKeyword(${i},'${kw.replace(/'/g,'')}')" title="Remove keyword" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 4px;line-height:1;opacity:0.4" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✕</button></span>`;
+        if (sitemapEditMode) {
+          html += `<span style="text-align:right"><button onclick="removeKeyword(${i},'${kw.replace(/'/g,'')}',event)" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 4px;line-height:1;opacity:0.35" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.35'">✕</button></span>`;
+        } else {
+          html += '<span></span>';
+        }
         html += '</div>';
       });
     }
-    // Manual keyword add row
-    const addRowBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
-    html += `<div style="display:grid;grid-template-columns:${gcols};padding:4px 14px;background:${addRowBg};border-top:1px dashed rgba(0,0,0,0.06);align-items:center">`;
-    html += '<span></span>';
-    html += '<div style="display:flex;align-items:center;gap:6px;grid-column:2/-1;padding:2px 0">';
-    html += `<input id="kw-add-${i}" type="text" placeholder="+ Add keyword manually…" style="flex:1;background:transparent;border:none;outline:none;font-size:11px;color:var(--n3);font-family:var(--font);cursor:text" onkeydown="if(event.key===\'Enter\'){addManualKeyword(${i},this.value);this.value=\'\'}"/>`;
-    html += `<button onclick="var inp=document.getElementById(\'kw-add-${i}\');addManualKeyword(${i},inp.value);inp.value=\'\'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">Add</button>`;
-    html += '</div>';
-    html += '</div>';
+
+    // ── Add keyword row (edit mode only) ──
+    if (sitemapEditMode) {
+      html += `<div style="display:flex;align-items:center;gap:6px;padding:5px 14px;background:${rowBg};border-top:1px dashed rgba(0,0,0,0.06)">`;
+      html += `<input id="kw-add-${i}" type="text" placeholder="+ Add keyword…" style="flex:1;background:transparent;border:none;outline:none;font-size:11px;color:var(--n2);font-family:var(--font)" onkeydown="if(event.key===\'Enter\'){addManualKeyword(${i},this.value);this.value=\'\'}"/>`;
+      html += `<button onclick="var inp=document.getElementById(\'kw-add-${i}\');addManualKeyword(${i},inp.value);inp.value=\'\'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font)">Add</button>`;
+      html += '</div>';
+    }
 
     html += '</div>'; // end page block
-    if (hasBorder) html += '<div style="border-bottom:1px solid var(--border)"></div>';
+    if (i < pages.length-1) html += '<div style="border-bottom:1px solid var(--border)"></div>';
   });
   // Add page button (edit mode only)
   if (sitemapEditMode) {
