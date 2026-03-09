@@ -660,39 +660,43 @@ const P = {
 research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON. No preamble. No markdown fences. No backticks. Raw JSON only:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect. Your ONLY job is to cluster a provided keyword list into pages.
+sitemap:`You are a senior SEO architect. Build a sitemap with two types of pages:
 
-CRITICAL RULES:
-1. Every primary_keyword MUST be copied VERBATIM from the KEYWORD LIST provided. Do not invent, paraphrase, or modify keywords.
-2. Every supporting keyword MUST also come verbatim from the KEYWORD LIST.
-3. Pick the keyword with the HIGHEST opportunity score as the primary for each page.
-4. Do NOT build a page if you cannot assign it a primary keyword from the list.
-5. Do NOT add pages for services that have zero keywords in the list — no keyword data = no page.
-6. A page exists to capture a keyword cluster. Group keywords with overlapping topic/intent together.
+TYPE A — STRUCTURAL PAGES (always include, regardless of keyword volume):
+These pages must exist for business and UX reasons. Assign the best available keyword from the list to them.
+Always include: / (homepage), /about, /contact
+Include if relevant: /case-studies, /blog
 
-URL STRUCTURE:
-- / homepage only
-- /services/[slug] — service pages (P1)
-- /industries/[slug] — vertical pages (P2, only if vol > 100)
-- /locations/[slug] — geo pages (P2, only if vol > 100)
-- /about /contact /blog — utility only (P3)
+TYPE B — SEO PAGES (only build if keyword data justifies it):
+- /services/[slug] — only if a keyword cluster exists with vol > 0
+- /industries/[slug] — only if keyword vol > 100
+- /locations/[slug] — only if keyword vol > 100
+- /blog/[slug] — only if keyword vol > 50
+
+KEYWORD RULES:
+1. primary_keyword MUST be copied VERBATIM from the KEYWORD LIST. No inventing or paraphrasing.
+2. supporting_keywords must also come verbatim from the list.
+3. For structural pages with no exact match: assign the closest relevant keyword from the list.
+4. For SEO pages: use the highest opportunity score keyword as primary for that topic cluster.
+5. Group keywords with overlapping topic/intent into the same page — don't fragment.
 
 PRIORITY:
-- P1: Homepage + service pages — core revenue
-- P2: Industry/location pages — vol > 100 only
-- P3: Utility pages — only if vol > 50 OR critical conversion path (about, contact)
+- P1: Homepage + all service pages
+- P2: Location/industry pages (vol > 100 only)
+- P3: Structural utility pages (about, contact, blog, case-studies)
 
-OUTPUT: A JSON array. Each object:
+OUTPUT: JSON array, each object:
 {
   "page_name": "string",
   "slug": "services/seo-vancouver",
   "page_type": "home|service|industry|location|about|blog|utility",
   "priority": "P1|P2|P3",
+  "is_structural": true,
   "primary_keyword": "EXACT string from keyword list",
   "primary_vol": 1600,
   "primary_kd": 18,
   "score": 89.0,
-  "rationale": "Only if vol < 50 — why build this page",
+  "rationale": "Required for [reason] — best available keyword assigned",
   "supporting_keywords": [{"kw": "EXACT string from list", "vol": 320, "kd": 4}],
   "search_intent": "informational|commercial|transactional|navigational",
   "word_count_target": 1500,
@@ -1240,7 +1244,7 @@ function renderSitemapResults(approved) {
   const p1 = pages.filter(p=>p.priority==='P1').length;
   const p2 = pages.filter(p=>p.priority==='P2').length;
   const p3 = pages.filter(p=>p.priority==='P3').length;
-  const zeroVol = pages.filter(p => !p.primary_vol || p.primary_vol === 0).length;
+  const zeroVol = pages.filter(p => !p.is_structural && (!p.primary_vol || p.primary_vol === 0)).length;
   const hasKwData = S.kwResearch?.keywords?.length > 0;
 
   let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
@@ -1273,7 +1277,8 @@ function renderSitemapResults(approved) {
     const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
     const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0);
 
-    const isLowVol = vol === 0 || vol < 30;
+    const isStructural = !!p.is_structural;
+    const isLowVol = !isStructural && (vol === 0 || vol < 30);
     const kdColor = kd === 0 ? 'var(--n2)' : kd <= 20 ? 'var(--green)' : kd <= 40 ? 'var(--warn)' : 'var(--error)';
     const rowOpacity = isLowVol ? 'opacity:0.55;' : '';
 
@@ -1293,15 +1298,17 @@ function renderSitemapResults(approved) {
     // Page name + slug with sub-page indent
     html += '<div style="'+indent+'">';
     if (isSubPage) html += '<div style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></div>';
-    html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>';
+    html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>'+(isStructural ? '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle;font-weight:500">STRUCTURAL</span>' : '');
     html += '<div style="color:var(--n2);font-size:10.5px;'+(isSubPage?'padding-left:14px':'')+'">/'+esc(p.slug)+'</div>';
     if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:2px;'+(isSubPage?'padding-left:14px':'')+'">'+esc(p.rationale)+'</div>';
     html += '</div>';
 
     html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
 
-    // Vol — flag zero/low
-    if (vol === 0) {
+    // Vol — flag zero/low, but not structural pages
+    if (isStructural && vol === 0) {
+      html += '<span style="color:var(--n2);font-size:10px">–</span>';
+    } else if (vol === 0) {
       html += '<span style="color:var(--error);font-size:11px;font-weight:500">⚠ 0</span>';
     } else if (vol < 30) {
       html += '<span style="color:var(--warn);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
