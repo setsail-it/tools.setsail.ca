@@ -712,7 +712,7 @@ function renderMobileStageList() {
     const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
     const cls = 'mobile-stage-item' + (active?' active':done?' done':'');
     const icon = done ? 'ti-check' : s.icon;
-    html += '<div class="'+cls+'" '+(canClick?'onclick="navToStage(''+s.id+'');closeMobileNav()"':'')+' style="'+(canClick?'':'opacity:0.4;cursor:default')+'">'
+    html += '<div class="'+cls+'" '+(canClick?'onclick="navToStage(\''+s.id+'\');closeMobileNav()"':'')+' style="'+(canClick?'':'opacity:0.4;cursor:default')+'">'
       +'<div class="msi-icon"><i class="ti '+icon+'"></i></div>'
       +s.label
       +(active?'<span style="margin-left:auto;font-size:10px;color:var(--green)">Current</span>':'')
@@ -782,11 +782,9 @@ function renderResearchResults(r, editMode) {
     html += editField('tone_and_voice','Tone & Voice', r.tone_and_voice, false);
     html += editField('pricing_notes','Pricing Notes', r.pricing_notes, false);
     html += '<div><label style="font-size:11px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Key Differentiators (one per line)</label>';
-    html += '<textarea id="r-edit-differentiators" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.key_differentiators||[]).join('
-'))+'</textarea></div>';
+    html += '<textarea id="r-edit-differentiators" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.key_differentiators||[]).join('\n'))+'</textarea></div>';
     html += '<div><label style="font-size:11px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Strategic Recommendations (one per line)</label>';
-    html += '<textarea id="r-edit-recommendations" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.strategic_recommendations||[]).join('
-'))+'</textarea></div>';
+    html += '<textarea id="r-edit-recommendations" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.strategic_recommendations||[]).join('\n'))+'</textarea></div>';
     html += '</div></div>';
   } else {
     html += '<div class="grid-2" style="margin-bottom:8px">';
@@ -820,10 +818,8 @@ function saveResearchEdits() {
   S.research.value_proposition = val('r-edit-value_proposition');
   S.research.tone_and_voice = val('r-edit-tone_and_voice');
   S.research.pricing_notes = val('r-edit-pricing_notes');
-  S.research.key_differentiators = val('r-edit-differentiators').split('
-').map(s=>s.trim()).filter(Boolean);
-  S.research.strategic_recommendations = val('r-edit-recommendations').split('
-').map(s=>s.trim()).filter(Boolean);
+  S.research.key_differentiators = val('r-edit-differentiators').split('\n').map(s=>s.trim()).filter(Boolean);
+  S.research.strategic_recommendations = val('r-edit-recommendations').split('\n').map(s=>s.trim()).filter(Boolean);
   scheduleSave();
   renderResearchResults(S.research, false);
 }
