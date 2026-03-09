@@ -214,6 +214,20 @@ export default {
           return new Response(JSON.stringify({ ...data, source: 'ahrefs' }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
+        // ── No key configured ──
+        return new Response(JSON.stringify({
+          error: 'No keyword API configured. Add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (recommended, ~$0.0005/keyword). Sign up at dataforseo.com.',
+          code: 'NO_KEY'
+        }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+
     // ── KW EXPAND (DataForSEO keyword suggestions from seeds) ────
     if (url.pathname === '/api/kw-expand' && request.method === 'POST') {
       try {
@@ -228,7 +242,6 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
 
-        // keywords_for_keywords returns related keyword ideas with volume
         const body = seeds.slice(0, 20).map(seed => ({
           keyword: seed,
           location_code: locationCode,
@@ -243,13 +256,14 @@ export default {
           body: JSON.stringify(body)
         });
         raw = await res.text();
-        try { data = JSON.parse(raw); } catch(e) { return new Response(JSON.stringify({ error: 'Parse error: ' + raw.slice(0,200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } }); }
+        try { data = JSON.parse(raw); } catch(e) {
+          return new Response(JSON.stringify({ error: 'Parse error: ' + raw.slice(0,200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
 
         if (!res.ok || (data.status_code && data.status_code !== 20000)) {
           return new Response(JSON.stringify({ error: data?.status_message || ('HTTP ' + res.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
-        // Collect all unique keywords with volume
         const kwMap = {};
         (data.tasks || []).forEach(task => {
           (task.result || []).forEach(r => {
@@ -267,19 +281,6 @@ export default {
         });
       } catch(err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
-      }
-    }
-
-        // ── No key configured ──
-        return new Response(JSON.stringify({
-          error: 'No keyword API configured. Add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (recommended, ~$0.0005/keyword). Sign up at dataforseo.com.',
-          code: 'NO_KEY'
-        }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
-        });
       }
     }
 
