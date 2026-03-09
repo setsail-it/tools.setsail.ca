@@ -266,13 +266,29 @@ export default {
 
         // keywords_for_keywords response: tasks[].result[].items[].keyword
         // Each result item = one seed, with an items[] array of related keywords
+        // Return raw response for structure inspection
+        const taskCount = (data.tasks || []).length;
+        const task0 = data.tasks?.[0];
+        const result0 = task0?.result?.[0];
+        const rawSlice = JSON.stringify(data).slice(0, 3000);
+
+        // Try both possible structures:
+        // A) result[] items directly have keyword+search_volume (original assumption)
+        // B) result[].items[] has the keywords (nested)
         const kwMap = {};
         (data.tasks || []).forEach(task => {
-          (task.result || []).forEach(resultItem => {
-            (resultItem.items || []).forEach(r => {
-              if (r.keyword && (r.search_volume || 0) > 0) {
-                if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
-                  kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+          (task.result || []).forEach(r => {
+            // Structure A: r is a keyword item directly
+            if (r.keyword && (r.search_volume || 0) > 0) {
+              if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
+                kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+              }
+            }
+            // Structure B: r has an items[] array of keyword items
+            (r.items || []).forEach(item => {
+              if (item.keyword && (item.search_volume || 0) > 0) {
+                if (!kwMap[item.keyword] || item.search_volume > kwMap[item.keyword].volume) {
+                  kwMap[item.keyword] = { volume: item.search_volume || 0, kd: item.competition_index || 0, cpc: item.cpc || 0 };
                 }
               }
             });
@@ -280,20 +296,18 @@ export default {
         });
 
         const keywords = Object.entries(kwMap).map(([kw, d]) => ({ keyword: kw, volume: d.volume, difficulty: d.kd, cpc: d.cpc }));
-        const taskCount = (data.tasks || []).length;
-        const resultCount = (data.tasks || []).reduce((n, t) => n + (t.result || []).length, 0);
-        // Sample first result item to show actual structure
-        const sampleTask = data.tasks?.[0];
-        const sampleResult = sampleTask?.result?.[0];
-        const sampleItem = sampleResult?.items?.[0];
-        const structureSample = {
-          taskKeys: sampleTask ? Object.keys(sampleTask) : [],
-          resultKeys: sampleResult ? Object.keys(sampleResult) : [],
-          itemKeys: sampleItem ? Object.keys(sampleItem) : [],
-          firstItem: sampleItem || null,
-          rawResultSlice: JSON.stringify(sampleResult).slice(0, 500)
-        };
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', _debug: { taskCount, resultCount, kwMapSize: keywords.length, structureSample } }), {
+        return new Response(JSON.stringify({
+          keywords,
+          source: 'dataforseo-expand',
+          _debug: {
+            taskCount,
+            task0keys: task0 ? Object.keys(task0) : [],
+            result0keys: result0 ? Object.keys(result0) : [],
+            result0type: result0 ? typeof result0 : 'undefined',
+            kwMapSize: keywords.length,
+            rawSlice
+          }
+        }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
