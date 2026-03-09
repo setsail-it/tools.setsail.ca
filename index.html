@@ -1531,15 +1531,27 @@ function renderSitemapResults(approved) {
 
     html += '<span style="color:var(--n2);font-size:11px">'+(i+1)+'</span>';
 
-    // Page name + slug with sub-page indent
-    html += '<div style="'+indent+'">';
-    if (isSubPage) html += '<div style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></div>';
-    html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>'+(isStructural ? '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle;font-weight:500">STRUCTURAL</span>' : '');
-    html += '<div style="color:var(--n2);font-size:10.5px;'+(isSubPage?'padding-left:14px':'')+'">/'+esc(p.slug)+'</div>';
-    if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:2px;'+(isSubPage?'padding-left:14px':'')+'">'+esc(p.rationale)+'</div>';
-    html += '</div>';
-
-    html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
+    // Page name + slug — edit mode shows inputs
+    if (sitemapEditMode) {
+      html += '<div style="display:flex;flex-direction:column;gap:3px">';
+      html += '<input value="'+esc(p.page_name)+'" onblur="updatePageField('+i+',\'page_name\',this.value)" style="font-size:12px;color:var(--dark);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%"/>';
+      html += '<input value="'+esc(p.slug||'')+'" onblur="updatePageField('+i+',\'slug\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-family:var(--font);outline:none;width:100%"/>';
+      html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+      ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
+      html += '</select>';
+      html += '</div>';
+      // Primary keyword — editable with live lookup
+      html += '<input value="'+esc(p.primary_keyword||'')+'" placeholder="primary keyword…" onblur="updatePrimaryKw('+i+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" style="font-size:11px;color:var(--n3);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%;margin-top:2px"/>';
+    } else {
+      // Read-only view
+      html += '<div style="'+indent+'">';
+      if (isSubPage) html += '<div style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></div>';
+      html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>'+(isStructural ? '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle;font-weight:500">STRUCTURAL</span>' : '');
+      html += '<div style="color:var(--n2);font-size:10.5px;'+(isSubPage?'padding-left:14px':'')+'">/'+esc(p.slug)+'</div>';
+      if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:2px;'+(isSubPage?'padding-left:14px':'')+'">'+esc(p.rationale)+'</div>';
+      html += '</div>';
+      html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
+    }
 
     // Vol — flag zero/low, but not structural pages
     if (isStructural && vol === 0) {
@@ -1638,7 +1650,14 @@ function renderSitemapResults(approved) {
   }
 
   const el = document.getElementById('sitemap-results');
-  el.innerHTML = html; el.style.display = 'block';
+  try {
+    el.innerHTML = html;
+    el.style.display = 'block';
+  } catch(err) {
+    console.error('renderSitemapResults error:', err);
+    el.innerHTML = '<div style="padding:20px;color:red;font-size:12px">Render error: ' + err.message + '</div>';
+    el.style.display = 'block';
+  }
 }
 
 function approveSitemap() {
