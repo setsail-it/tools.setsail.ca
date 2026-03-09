@@ -121,6 +121,18 @@ export default {
     }
 
 
+    // ── DEBUG (secrets check) ─────────────────────────────────────
+    if (url.pathname === '/api/debug-env' && request.method === 'GET') {
+      return new Response(JSON.stringify({
+        has_anthropic: !!env.ANTHROPIC_API_KEY,
+        has_dfs_login: !!env.DATAFORSEO_LOGIN,
+        has_dfs_pass: !!env.DATAFORSEO_PASSWORD,
+        has_ahrefs: !!env.AHREFS_API_KEY,
+        dfs_login_len: env.DATAFORSEO_LOGIN ? env.DATAFORSEO_LOGIN.length : 0,
+        dfs_pass_len: env.DATAFORSEO_PASSWORD ? env.DATAFORSEO_PASSWORD.length : 0,
+      }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
+    }
+
     // ── KEYWORD METRICS (DataForSEO primary, Ahrefs fallback) ────
     if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
       try {
