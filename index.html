@@ -257,46 +257,14 @@ textarea.inp{resize:vertical}
       <div style="margin-bottom:16px">
         <div class="eyebrow">Stage 5 of 6</div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
-        <p class="psub" style="margin-bottom:0">JSON-LD, meta title, description, OG tags — paste-ready for Webflow.</p>
+        <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
       </div>
       <div id="schema-progress" style="display:none" class="progress-wrap">
         <div class="progress-meta"><span id="schema-count-label" style="color:var(--n2)"></span><span id="schema-pct-label" style="color:var(--dark);font-weight:500"></span></div>
         <div class="progress-track"><div class="progress-fill" id="schema-progress-fill" style="width:0%;background:var(--dark)"></div></div>
       </div>
-      <!-- Active panel -->
-      <div id="schema-active-panel" style="display:none" class="card" style="border-left:3px solid var(--dark);margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="spinner" style="width:13px;height:13px;border-top-color:var(--dark)"></span>
-            <span style="font-size:14px;font-weight:500" id="schema-active-name"></span>
-          </div>
-          <button class="btn btn-danger sm" onclick="stopSchema()"><i class="ti ti-player-stop"></i> Stop</button>
-        </div>
-        <div style="font-size:12px;color:var(--n2)">Generating schema markup...</div>
-      </div>
-      <!-- Result panel -->
-      <div id="schema-result-panel" style="display:none" class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="width:18px;height:18px;border-radius:50%;background:var(--dark);display:flex;align-items:center;justify-content:center;font-size:9px;color:white;flex-shrink:0">&#10003;</span>
-            <span style="font-size:14px;font-weight:500" id="schema-result-name"></span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-ghost sm" onclick="copyToClip2(S.schema[S.schemaCurrentSlug]&&S.schema[S.schemaCurrentSlug].schema)"><i class="ti ti-copy"></i> Copy Schema</button>
-            <button class="btn btn-ghost sm" onclick="toggleSchemaResultView()"><i class="ti ti-code"></i> <span id="schema-result-toggle-label">Show code</span></button>
-            <button class="btn btn-danger sm" onclick="redoSchemaPage(S.schemaCurrentSlug)"><i class="ti ti-refresh"></i> Redo</button>
-          </div>
-        </div>
-        <div id="schema-result-code" style="display:none;max-height:300px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)"></div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-dark" id="schema-next-btn-inline" onclick="schemaNextPage()"><i class="ti ti-arrow-right"></i> <span id="schema-next-label">Next Page</span></button>
-          <button class="btn btn-ghost" onclick="goTo('export')"><i class="ti ti-package-export"></i> Skip to Export</button>
-        </div>
-      </div>
-      <!-- Page queue -->
       <div id="schema-queue"></div>
-      <!-- All done -->
-      <div id="schema-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <div id="schema-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
         <div class="success-banner"><i class="ti ti-check"></i><span id="schema-done-label">All schema complete</span></div>
         <button class="btn btn-primary" onclick="goTo('export')"><i class="ti ti-package-export"></i> View Export Package</button>
       </div>
@@ -981,11 +949,14 @@ function checkCopyAllDone() {
 
 let schemaStopFlag = false;
 S.schemaCurrentSlug = null;
+S.schemaExpandedSlug = null;
+
+function stopSchema() { schemaStopFlag = true; }
 
 function initSchema() {
   document.getElementById('schema-progress').style.display = 'block';
   const next = S.pages.find(p => !(S.schema[p.slug]||{}).schema);
-  if (next) S.schemaCurrentSlug = next.slug;
+  if (next && !S.schemaExpandedSlug) S.schemaExpandedSlug = next.slug;
   renderSchemaQueue(); updateSchemaProgress(); checkSchemaAllDone();
 }
 
@@ -994,68 +965,48 @@ function buildSchemaPrompt(page) {
   return 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
 }
 
-function stopSchema() { schemaStopFlag = true; }
-
 async function runSchemaPage(slug) {
   const page = S.pages.find(p => p.slug === slug);
   if (!page || S.schemaRunning) return;
   S.schemaRunning = true; schemaStopFlag = false;
   S.schemaCurrentSlug = slug;
-  document.getElementById('schema-result-panel').style.display = 'none';
-  document.getElementById('schema-all-done').style.display = 'none';
-  const activePanel = document.getElementById('schema-active-panel');
-  document.getElementById('schema-active-name').textContent = page.page_name;
-  activePanel.style.display = 'block';
+  S.schemaExpandedSlug = slug;
   renderSchemaQueue();
   try {
     const schema = await callClaude(P.schema, buildSchemaPrompt(page), null);
-    activePanel.style.display = 'none';
-    if (!schemaStopFlag) { S.schema[slug] = {schema, page}; scheduleSave(); showSchemaResult(slug); }
+    if (!schemaStopFlag) {
+      S.schema[slug] = {schema, page};
+      scheduleSave();
+      const curIdx = S.pages.findIndex(p => p.slug === slug);
+      const next = S.pages.find((p,i) => i > curIdx && !(S.schema[p.slug]||{}).schema);
+      S.schemaExpandedSlug = next ? next.slug : slug;
+    }
   } catch(e) {
     S.schema[slug] = {error: e.message, page};
-    activePanel.style.display = 'none';
-    renderSchemaQueue();
   }
+  S.schemaCurrentSlug = null;
   S.schemaRunning = false;
-  updateSchemaProgress(); renderSchemaQueue(); checkSchemaAllDone();
+  renderSchemaQueue(); updateSchemaProgress(); checkSchemaAllDone();
 }
 
-function showSchemaResult(slug) {
-  const page = S.pages.find(p => p.slug === slug);
-  if (!page) return;
-  S.schemaCurrentSlug = slug;
-  document.getElementById('schema-result-name').textContent = page.page_name;
-  document.getElementById('schema-result-code').textContent = (S.schema[slug]||{}).schema || '';
-  document.getElementById('schema-result-code').style.display = 'none';
-  document.getElementById('schema-result-toggle-label').textContent = 'Show code';
-  const curIdx = S.pages.indexOf(page);
-  const nextPage = S.pages.find((p,i) => i > curIdx && !(S.schema[p.slug]||{}).schema);
-  const nextBtn = document.getElementById('schema-next-btn-inline');
-  if (nextPage) { document.getElementById('schema-next-label').textContent = 'Next: '+nextPage.page_name; nextBtn.style.display = ''; }
-  else { nextBtn.style.display = 'none'; }
-  document.getElementById('schema-result-panel').style.display = 'block';
+function toggleSchemaExpand(slug) {
+  if (S.schemaRunning) return;
+  S.schemaExpandedSlug = S.schemaExpandedSlug === slug ? null : slug;
   renderSchemaQueue();
-}
-
-function toggleSchemaResultView() {
-  const code = document.getElementById('schema-result-code');
-  const label = document.getElementById('schema-result-toggle-label');
-  if (code.style.display === 'none') { code.style.display = 'block'; label.textContent = 'Hide code'; }
-  else { code.style.display = 'none'; label.textContent = 'Show code'; }
-}
-
-function schemaNextPage() {
-  const cur = S.pages.find(p => p.slug === S.schemaCurrentSlug);
-  const curIdx = cur ? S.pages.indexOf(cur) : -1;
-  const next = S.pages.find((p,i) => i > curIdx && !(S.schema[p.slug]||{}).schema);
-  if (next) { document.getElementById('schema-result-panel').style.display = 'none'; S.schemaCurrentSlug = next.slug; renderSchemaQueue(); runSchemaPage(next.slug); }
 }
 
 function redoSchemaPage(slug) {
   delete S.schema[slug];
-  document.getElementById('schema-result-panel').style.display = 'none';
-  updateSchemaProgress(); scheduleSave(); renderSchemaQueue();
-  runSchemaPage(slug);
+  S.schemaExpandedSlug = slug;
+  scheduleSave(); updateSchemaProgress(); renderSchemaQueue(); checkSchemaAllDone();
+}
+
+function toggleSchemaCode(slug) {
+  const el = document.getElementById('schema-code-'+slug);
+  const btn = document.getElementById('schema-code-btn-'+slug);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = 'block'; btn.textContent = 'Hide code'; }
+  else { el.style.display = 'none'; btn.textContent = 'Show code'; }
 }
 
 function renderSchemaQueue() {
@@ -1063,28 +1014,57 @@ function renderSchemaQueue() {
   S.pages.forEach((p, i) => {
     const r = S.schema[p.slug]||{};
     const isDone = !!r.schema, isErr = !!r.error;
-    const isCurrent = p.slug === S.schemaCurrentSlug && !isDone;
-    const isRunning = isCurrent && S.schemaRunning;
-    const cirStyle = isDone?'background:var(--dark)':isErr?'background:var(--error)':isCurrent?'background:var(--dark);opacity:0.5':'background:var(--n1)';
-    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'&#8226;':(i+1);
-    let right = '';
-    if (isDone) {
-      right = '<div style="display:flex;gap:5px">'
-        +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.schema[\''+p.slug+'\']||{}).schema)"><i class="ti ti-copy" style="font-size:11px"></i></button>'
-        +'<button class="btn btn-ghost sm" onclick="showSchemaResult(\''+p.slug+'\')">View</button>'
-        +'<button class="btn btn-ghost sm" onclick="redoSchemaPage(\''+p.slug+'\')"><i class="ti ti-refresh" style="font-size:11px"></i></button>'
-        +'</div>';
-    } else if (!isRunning) {
-      const btnCls = isCurrent ? 'btn-dark' : 'btn-ghost';
-      const lbl = isCurrent ? '<i class=\"ti ti-code\"></i> Generate' : 'Run';
-      right = '<button class="btn '+btnCls+' sm" onclick="S.schemaCurrentSlug=\''+p.slug+'\';renderSchemaQueue();runSchemaPage(\''+p.slug+'\')">'+lbl+'</button>';
+    const isRunning = S.schemaCurrentSlug === p.slug;
+    const isExpanded = S.schemaExpandedSlug === p.slug;
+    const cirStyle = isDone?'background:var(--dark)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-color:rgba(255,255,255,0.3);border-top-color:white"></span>':(i+1);
+    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(0,0,0,0.18);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+
+    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+'">';
+
+    // Header row
+    html += '<div onclick="toggleSchemaExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
+      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
+      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
+      +(isErr&&!isExpanded?'<span style="font-size:11px;color:var(--error);margin-left:8px">Error</span>':'')
+      +'</div>'
+      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
+      +'</div>';
+
+    // Expanded body
+    if (isExpanded) {
+      html += '<div style="border-top:1px solid var(--border);padding:14px">';
+      if (isRunning) {
+        html += '<div style="display:flex;align-items:center;gap:8px;color:var(--n2);font-size:13px">'
+          +'<span class="spinner" style="width:12px;height:12px"></span> Generating schema markup...</div>'
+          +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopSchema()"><i class="ti ti-player-stop"></i> Stop</button></div>';
+      } else if (isDone) {
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.schema[\''+p.slug+'\']||{}).schema)"><i class="ti ti-copy"></i> Copy Schema</button>'
+          +'<button class="btn btn-ghost sm" id="schema-code-btn-'+p.slug+'" onclick="toggleSchemaCode(\''+p.slug+'\')">Show code</button>'
+          +'<button class="btn btn-danger sm" onclick="redoSchemaPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          +'</div>'
+          +'<div id="schema-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.schema)+'</div>';
+        const curIdx = S.pages.findIndex(pp => pp.slug === p.slug);
+        const nextP = S.pages.find((pp,ii) => ii > curIdx && !(S.schema[pp.slug]||{}).schema);
+        if (nextP) {
+          html += '<div style="margin-top:10px;display:flex;gap:8px">'
+            +'<button class="btn btn-dark sm" onclick="S.schemaExpandedSlug=\''+nextP.slug+'\';renderSchemaQueue();runSchemaPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+            +'<button class="btn btn-ghost sm" onclick="goTo(\'export\')">Skip to Export</button>'
+            +'</div>';
+        }
+      } else if (isErr) {
+        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+          +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+      } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type||'page')+' · JSON-LD + meta + OG</div>'
+          +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-code"></i> Generate Schema</button>'
+          +'</div>';
+      }
+      html += '</div>';
     }
-    const border = isCurrent?'border-color:var(--dark);border-width:1.5px':isDone?'border-color:rgba(0,0,0,0.15)':isErr?'border-color:rgba(229,57,53,0.22)':'';
-    html += '<div class="page-row" style="'+border+'">'
-      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500">'+cirContent+'</div>'
-      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone?'var(--dark)':isCurrent?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
-      +(isErr?'<div style="font-size:11px;color:var(--error);margin-top:2px">'+esc(r.error)+'</div>':'')
-      +'</div><div>'+right+'</div></div>';
+    html += '</div>';
   });
   document.getElementById('schema-queue').innerHTML = html;
 }
@@ -1101,7 +1081,6 @@ function checkSchemaAllDone() {
   const done = S.pages.filter(p => (S.schema[p.slug]||{}).schema).length;
   if (done === S.pages.length && done > 0) {
     document.getElementById('schema-done-label').textContent = 'All '+done+' pages complete';
-    document.getElementById('schema-result-panel').style.display = 'none';
     document.getElementById('schema-all-done').style.display = 'flex';
   } else { document.getElementById('schema-all-done').style.display = 'none'; }
 }
