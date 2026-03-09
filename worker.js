@@ -120,6 +120,36 @@ export default {
       }
     }
 
+
+    // ── AHREFS KEYWORD METRICS ───────────────────────────────────
+    if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
+      try {
+        const { keywords, country } = await request.json();
+        if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const params = new URLSearchParams();
+        params.set('select', 'keyword,volume,difficulty,serp_features');
+        params.set('country', country || 'ca');
+        keywords.forEach(k => params.append('keywords[]', k));
+        const ahrefsRes = await fetch('https://api.ahrefs.com/v3/keywords-explorer/overview?' + params.toString(), {
+          headers: {
+            'Authorization': 'Bearer ' + env.AHREFS_API_KEY,
+            'Content-Type': 'application/json',
+          }
+        });
+        const data = await ahrefsRes.json();
+        return new Response(JSON.stringify(data), {
+          status: ahrefsRes.status,
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     // Everything else → static assets
     return env.ASSETS.fetch(request);
   }

@@ -215,13 +215,31 @@ textarea.inp{resize:vertical}
   <!-- SITEMAP -->
   <div class="screen" id="screen-sitemap">
     <div style="max-width:960px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow">Stage 3 of 6</div>
           <h2 class="ph sm">Sitemap + Keyword Map</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
-        <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-file-import"></i> Import Existing</button>
+          <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
+        </div>
+      </div>
+      <!-- Import existing sitemap panel -->
+      <div id="sitemap-import-panel" style="display:none;margin-bottom:14px" class="card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-file-import" style="color:var(--green)"></i> Import Existing Sitemap</div>
+        <p style="font-size:12px;color:var(--n2);margin-bottom:10px">Paste existing page URLs (one per line). Claude will compare against the generated sitemap and surface missing page opportunities.</p>
+        <textarea id="sitemap-import-urls" rows="5" placeholder="https://example.com/services/plumbing&#10;https://example.com/about&#10;https://example.com/contact" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--dark);font-size:12px;font-family:var(--font);resize:vertical;outline:none;box-sizing:border-box"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="sitemap-gap-btn" onclick="runGapAnalysis()"><i class="ti ti-search"></i> Analyse Gaps</button>
+          <span style="font-size:11px;color:var(--n2)">Compares existing pages against AI-generated recommendations</span>
+        </div>
+        <div id="sitemap-gap-stream-wrap" style="display:none;margin-top:10px">
+          <div class="eyebrow" style="margin-bottom:4px">Analysing gaps...</div>
+          <div class="stream-box" id="sitemap-gap-stream"></div>
+        </div>
+        <div id="sitemap-gap-results" style="display:none;margin-top:10px"></div>
       </div>
       <div id="sitemap-stream-wrap" style="display:none" class="card">
         <div class="eyebrow" style="margin-bottom:0">Building sitemap...</div>
@@ -326,6 +344,8 @@ async function saveProject() {
       pages: S.pages,
       copy: S.copy,
       schema: S.schema,
+      kwMetrics: S.kwMetrics || {},
+      sitemapApproved: S.sitemapApproved || false,
       savedAt: Date.now(),
     };
     const res = await fetch('/api/projects/' + S.projectId, {
@@ -426,6 +446,8 @@ async function resumeProject(id) {
   S.pages = data.pages || [];
   S.copy = data.copy || {};
   S.schema = data.schema || {};
+  S.kwMetrics = data.kwMetrics || {};
+  S.sitemapApproved = data.sitemapApproved || false;
 
   document.getElementById('projects-screen').style.display = 'none';
 
@@ -484,7 +506,6 @@ function goTo(stage) {
   document.getElementById('screen-' + stage).classList.add('active');
   renderStageBar(stage);
   window.scrollTo(0,0);
-  if (stage === 'export') renderExport();
   if (stage === 'setup' && S.setup) prefillSetup();
   scheduleSave();
 }
@@ -505,17 +526,16 @@ function renderStageBar(current) {
 }
 
 function navToStage(stage) {
-  const from = STAGE_ORDER.indexOf(S.stage);
-  const to = STAGE_ORDER.indexOf(stage);
-  if (to <= from) {
-    goTo(stage);
-    if (stage === 'research' && S.research) renderResearchResults(S.research);
-    if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
-    if (stage === 'copy' && S.pages.length) initCopy();
-    if (stage === 'schema' && S.pages.length) initSchema();
-  } else {
-    goTo(stage);
-  }
+  goTo(stage);
+  renderStageContent(stage);
+}
+
+function renderStageContent(stage) {
+  if (stage === 'research' && S.research) renderResearchResults(S.research);
+  if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
+  if (stage === 'copy' && S.pages.length) initCopy();
+  if (stage === 'schema' && S.pages.length) initSchema();
+  if (stage === 'export') renderExport();
 }
 
 // ── API ────────────────────────────────────────────────────────────
@@ -698,26 +718,45 @@ function renderSitemapResults(approved) {
   const p2 = pages.filter(p=>p.priority==='P2').length;
   const p3 = pages.filter(p=>p.priority==='P3').length;
 
+  // Check if we have live Ahrefs data
+  const hasAhrefsData = S.kwMetrics && Object.keys(S.kwMetrics).length > 0;
+  const ahrefsLastFetched = S.kwMetrics?._fetchedAt;
+
   let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
   html += '</div>';
 
-  // Keywords section - all pages with volume + KD
+  // Keywords section
   html += '<div style="margin-bottom:18px">';
-  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Keyword Opportunities</div>';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
+  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Keyword Opportunities</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  if (hasAhrefsData) {
+    html += '<span id="sitemap-ahrefs-status" style="font-size:11px;color:var(--green)"><i class="ti ti-plug" style="font-size:10px"></i> Ahrefs data live</span>';
+    html += '<button id="sitemap-ahrefs-btn" class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchAhrefsMetrics(true)"><i class="ti ti-refresh"></i> Refresh</button>';
+  } else {
+    html += '<span id="sitemap-ahrefs-status" style="font-size:11px;color:var(--n2)">No live data</span>';
+    html += '<button id="sitemap-ahrefs-btn" class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchAhrefsMetrics(true)"><i class="ti ti-brand-ahrefs"></i> Fetch Ahrefs Data</button>';
+  }
+  html += '</div></div>';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 56px 56px 72px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase"><span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Priority</span></div>';
+  html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 60px 60px 72px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase"><span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Priority</span></div>';
   pages.forEach((p,i) => {
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    const kd = parseInt(p.primary_kd)||0;
-    const kdColor = kd<=20?'var(--green)':kd<=50?'var(--warn)':'var(--error)';
-    html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 56px 56px 72px;padding:9px 14px;border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(i%2===0?'var(--white)':'rgba(0,0,0,0.015)')+';align-items:start">';
+    // Use live Ahrefs data if available, else fall back to Claude-estimated values
+    const live = (S.kwMetrics||{})[p.primary_keyword] || {};
+    const vol = live.volume !== undefined ? live.volume.toLocaleString() : (p.primary_vol||'–');
+    const kdVal = live.kd !== undefined ? live.kd : (parseInt(p.primary_kd)||0);
+    const kdDisplay = live.kd !== undefined ? live.kd : (p.primary_kd||'–');
+    const kdColor = kdVal<=20?'var(--green)':kdVal<=50?'var(--warn)':'var(--error)';
+    const isLive = live.volume !== undefined;
+    html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 60px 60px 72px;padding:9px 14px;border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(i%2===0?'var(--white)':'rgba(0,0,0,0.015)')+';align-items:start">';
     html += '<span style="color:var(--n2);font-size:11px">'+(i+1)+'</span>';
     html += '<div><div style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</div><div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div></div>';
     html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword)+'</div>';
-    html += '<span style="color:var(--dark);font-size:12px;font-weight:500">'+(p.primary_vol||'–')+'</span>';
-    html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500">'+esc(p.primary_kd||'–')+'</span>';
+    html += '<span style="color:var(--dark);font-size:12px;font-weight:500'+(isLive?';background:rgba(21,142,29,0.06);border-radius:3px;padding:1px 4px':'')+'">'+vol+'</span>';
+    html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500'+(isLive?';background:rgba(0,0,0,0.04);border-radius:3px;padding:1px 4px':'')+'">'+kdDisplay+'</span>';
     html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     html += '</div>';
   });
@@ -758,9 +797,89 @@ function renderSitemapResults(approved) {
 }
 
 function approveSitemap() {
-  S.stage = 'sitemap'; scheduleSave();
+  S.stage = 'sitemap'; S.sitemapApproved = true; scheduleSave();
   renderSitemapResults(true);
 }
+
+function toggleSitemapImport() {
+  const panel = document.getElementById('sitemap-import-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function fetchAhrefsMetrics(forceRefresh) {
+  if (!S.pages.length) return;
+  const btn = document.getElementById('sitemap-ahrefs-btn');
+  const statusEl = document.getElementById('sitemap-ahrefs-status');
+
+  // Use cached unless forced
+  if (!forceRefresh && S.kwMetrics && Object.keys(S.kwMetrics).length > 0) {
+    renderSitemapResults(S.sitemapApproved);
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching...'; }
+  if (statusEl) statusEl.textContent = 'Fetching from Ahrefs...';
+
+  const keywords = [...new Set(S.pages.map(p => p.primary_keyword).filter(Boolean))];
+  const country = (S.setup?.geo || 'ca').toLowerCase().slice(0,2);
+
+  try {
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords, country })
+    });
+    const data = await res.json();
+
+    if (data.keywords) {
+      S.kwMetrics = {};
+      data.keywords.forEach(k => {
+        S.kwMetrics[k.keyword] = { volume: k.volume, kd: k.difficulty };
+      });
+      scheduleSave();
+      renderSitemapResults(S.sitemapApproved);
+    } else if (data.error) {
+      if (statusEl) statusEl.textContent = 'Ahrefs error: ' + data.error;
+    }
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+}
+
+async function runGapAnalysis() {
+  const urls = document.getElementById('sitemap-import-urls')?.value?.trim();
+  if (!urls) return;
+  const btn = document.getElementById('sitemap-gap-btn');
+  const wrap = document.getElementById('sitemap-gap-stream-wrap');
+  const streamEl = document.getElementById('sitemap-gap-stream');
+  const resultsEl = document.getElementById('sitemap-gap-results');
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Analysing...';
+  wrap.style.display = 'block'; streamEl.textContent = '';
+  resultsEl.style.display = 'none';
+
+  const existingPages = urls.split('\n').map(u => u.trim()).filter(Boolean);
+  const generatedPages = S.pages.map(p => ({ page: p.page_name, slug: '/'+p.slug, kw: p.primary_keyword, priority: p.priority }));
+
+  const prompt = 'EXISTING SITE PAGES (currently live):\n' + existingPages.join('\n')
+    + '\n\nGENERATED SITEMAP RECOMMENDATIONS:\n' + JSON.stringify(generatedPages, null, 2)
+    + '\n\nCLIENT: ' + (S.setup?.client||'') + '\nINDUSTRY: ' + (S.research?.primary_services?.join(', ')||'')
+    + '\n\nAnalyse the gap between existing pages and recommended pages. Identify:\n1. Pages in the generated sitemap that are MISSING from the existing site (high-value opportunities)\n2. Existing pages NOT in the generated sitemap that should be kept or improved\n3. Quick wins — low-KD keywords on existing pages that could rank with minor optimisation\n\nFormat as a clear gap analysis report with specific recommendations. Be concise and actionable.';
+
+  const system = 'You are a senior SEO strategist. Analyse the gap between an existing website and an SEO-optimised sitemap. Output a concise, actionable gap analysis. Use markdown-style formatting with ### headers, bullet points, and clear priority labels (🟢 Quick Win, 🟡 Medium-term, 🔴 New Page Needed).';
+
+  try {
+    const result = await callClaude(system, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
+    wrap.style.display = 'none';
+    resultsEl.innerHTML = '<div style="font-size:12.5px;color:var(--n3);line-height:1.75;white-space:pre-wrap;background:var(--bg);border-radius:6px;padding:14px;border:1px solid var(--border)">'+esc(result)+'</div>';
+    resultsEl.style.display = 'block';
+  } catch(e) {
+    streamEl.textContent = 'Error: '+e.message;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> Analyse Gaps';
+}
+
 
 // ── COPY ───────────────────────────────────────────────────────────
 function orderedPages() {
@@ -769,16 +888,6 @@ function orderedPages() {
 
 // Current slug being worked on
 S.copyCurrentSlug = null;
-
-function initCopy() {
-  document.getElementById('copy-progress').style.display = 'block';
-  renderCopyQueue();
-  updateCopyProgress();
-  // Auto-focus first incomplete page
-  const next = orderedPages().find(p => !S.copy[p.slug]?.copy);
-  if (next) focusCopyPage(next.slug);
-  checkCopyAllDone();
-}
 
 function focusCopyPage(slug) {
   S.copyCurrentSlug = slug;
