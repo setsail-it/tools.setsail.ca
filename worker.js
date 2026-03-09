@@ -214,6 +214,62 @@ export default {
           return new Response(JSON.stringify({ ...data, source: 'ahrefs' }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
+    // ── KW EXPAND (DataForSEO keyword suggestions from seeds) ────
+    if (url.pathname === '/api/kw-expand' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials', code: 'NO_KEY' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const { seeds, country } = await request.json();
+        if (!seeds?.length) return new Response(JSON.stringify({ error: 'No seeds' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
+
+        // keywords_for_keywords returns related keyword ideas with volume
+        const body = seeds.slice(0, 20).map(seed => ({
+          keyword: seed,
+          location_code: locationCode,
+          language_code: 'en',
+          limit: 30
+        }));
+
+        let raw, data;
+        const res = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        raw = await res.text();
+        try { data = JSON.parse(raw); } catch(e) { return new Response(JSON.stringify({ error: 'Parse error: ' + raw.slice(0,200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } }); }
+
+        if (!res.ok || (data.status_code && data.status_code !== 20000)) {
+          return new Response(JSON.stringify({ error: data?.status_message || ('HTTP ' + res.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        // Collect all unique keywords with volume
+        const kwMap = {};
+        (data.tasks || []).forEach(task => {
+          (task.result || []).forEach(r => {
+            if (r.keyword && r.search_volume > 0) {
+              if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
+                kwMap[r.keyword] = { volume: r.search_volume, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+              }
+            }
+          });
+        });
+
+        const keywords = Object.entries(kwMap).map(([kw, d]) => ({ keyword: kw, volume: d.volume, difficulty: d.kd, cpc: d.cpc }));
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand' }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
         // ── No key configured ──
         return new Response(JSON.stringify({
           error: 'No keyword API configured. Add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (recommended, ~$0.0005/keyword). Sign up at dataforseo.com.',

@@ -877,63 +877,79 @@ async function fetchKeywordResearch() {
   const r = S.research || {};
   const setup = S.setup || {};
 
-  // Build seed keywords: services × primary geo + secondary geos
   const services = r.primary_services || [];
   const primaryGeo = r.geography?.primary || setup.geo || '';
-  const secondaryGeos = r.geography?.secondary || [];
-  const allGeos = [primaryGeo, ...secondaryGeos].filter(Boolean).slice(0, 4);
+  const secondaryGeos = (r.geography?.secondary || []).slice(0, 3);
+  const allGeos = [primaryGeo, ...secondaryGeos].filter(Boolean);
 
-  // Generate keyword candidates
+  // Determine country
+  const geoStr = allGeos.join(' ').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+
+  // Build tight seed list (10–20 terms) for keyword expansion
+  // These are the "parent" terms DataForSEO will expand into 200+ related keywords
   const seeds = new Set();
-  services.forEach(svc => {
-    seeds.add(svc.toLowerCase());
-    allGeos.forEach(geo => {
-      seeds.add((svc + ' ' + geo).toLowerCase());
-      seeds.add((geo + ' ' + svc).toLowerCase());
-    });
+  const shortGeo = primaryGeo.replace(/,.*$/, '').trim(); // e.g. "Vancouver" not "Vancouver, BC"
+  services.slice(0, 8).forEach(svc => {
+    const s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?)$/i, '').trim();
+    seeds.add(s + ' ' + shortGeo.toLowerCase());
+    seeds.add(shortGeo.toLowerCase() + ' ' + s);
   });
-  // Add geo-only terms
-  allGeos.forEach(geo => {
-    seeds.add(('digital marketing ' + geo).toLowerCase());
-    seeds.add(('marketing agency ' + geo).toLowerCase());
-  });
+  seeds.add('digital marketing ' + shortGeo.toLowerCase());
+  seeds.add('marketing agency ' + shortGeo.toLowerCase());
+  seeds.add(shortGeo.toLowerCase() + ' marketing agency');
 
-  const kwList = [...seeds].filter(k => k.length > 3).slice(0, 80);
-  if (!kwList.length) return;
+  const seedList = [...seeds].filter(k => k.length > 4).slice(0, 20);
+  if (!seedList.length) return;
 
-  // Show fetching state in research results
   const kwEl = document.getElementById('research-kw-status');
-  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching keyword data...';
-
-  const country = (primaryGeo.toLowerCase().includes('canada') || primaryGeo.toLowerCase().includes('bc') || primaryGeo.toLowerCase().includes('vancouver') || primaryGeo.toLowerCase().includes('calgary') || primaryGeo.toLowerCase().includes('toronto')) ? 'CA' : 'US';
+  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding keywords from ' + seedList.length + ' seeds…';
 
   try {
-    const res = await fetch('/api/ahrefs', {
+    // Step 1: Expand seeds into related keyword universe
+    const expandRes = await fetch('/api/kw-expand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: kwList, country })
+      body: JSON.stringify({ seeds: seedList, country })
     });
-    const data = await res.json();
+    const expandData = await expandRes.json();
 
-    if (data.keywords) {
-      // Filter to only keywords with volume > 0, sort by opportunity score
-      const withData = data.keywords
-        .filter(k => k.volume > 0)
-        .map(k => ({
-          kw: k.keyword,
-          vol: k.volume,
-          kd: k.difficulty,
-          // Opportunity score: high vol, low KD = best
-          score: Math.round((k.volume / Math.max(k.difficulty || 1, 1)) * 10) / 10
-        }))
-        .sort((a, b) => b.score - a.score);
-
-      S.kwResearch = { keywords: withData, fetchedAt: Date.now(), source: data.source || 'dataforseo' };
-      scheduleSave();
-      renderKwResearchCard();
-    } else if (kwEl) {
-      kwEl.innerHTML = '<span style="color:var(--n2);font-size:11px">' + esc(data.error || 'No keyword data available') + '</span>';
+    if (!expandData.keywords || expandData.error) {
+      if (kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(expandData.error || 'Expansion failed') + '</span>';
+      return;
     }
+
+    if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords — scoring opportunities…';
+
+    // Step 2: Score and rank
+    // Opportunity score: logarithmic vol / KD — rewards high vol + low KD
+    // Penalise KD 0 (often means no data) and vol < 10
+    const scored = expandData.keywords
+      .filter(k => k.volume >= 10)
+      .map(k => {
+        const kd = k.difficulty > 0 ? k.difficulty : 50; // treat KD=0 as competitive unknown
+        const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
+        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    // Step 3: Deduplicate and take top 100
+    const seen = new Set();
+    const deduped = scored.filter(k => {
+      if (seen.has(k.kw)) return false;
+      seen.add(k.kw);
+      return true;
+    }).slice(0, 100);
+
+    S.kwResearch = {
+      keywords: deduped,
+      seeds: seedList,
+      fetchedAt: Date.now(),
+      source: expandData.source || 'dataforseo'
+    };
+    scheduleSave();
+    renderKwResearchCard();
+
   } catch(e) {
     if (kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(e.message) + '</span>';
   }
@@ -944,38 +960,44 @@ function renderKwResearchCard() {
   if (!el || !S.kwResearch?.keywords?.length) return;
 
   const kws = S.kwResearch.keywords;
-  const top = kws.slice(0, 20);
+  const top = kws.slice(0, 25);
   const ts = S.kwResearch.fetchedAt ? new Date(S.kwResearch.fetchedAt).toLocaleTimeString('en-CA', {hour:'2-digit',minute:'2-digit'}) : '';
+  const seedCount = S.kwResearch.seeds?.length || 0;
 
   let html = '<div class="card hl" style="margin-bottom:8px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
   html += '<div><div class="eyebrow" style="color:var(--green)">Keyword Opportunities</div>';
-  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'+kws.length+' keywords with search volume · sorted by opportunity score'+(ts?' · fetched '+ts:'')+'</div></div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'
+    + kws.length + ' opportunities found from ' + seedCount + ' seeds'
+    + (ts ? ' · ' + ts : '') + ' · sorted by opportunity score</div></div>';
   html += '<button class="btn btn-ghost sm" onclick="fetchKeywordResearch()"><i class="ti ti-refresh"></i> Refresh</button>';
   html += '</div>';
 
   html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 80px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">';
-  html += '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span></div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>CPC</span><span>Score</span></div>';
 
   top.forEach((k, i) => {
-    const kdColor = k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    const kdColor = k.kd === 0 ? 'var(--n2)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
     const rowBg = i % 2 === 0 ? '' : 'background:var(--bg)';
-    html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 80px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">';
-    html += '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>';
-    html += '<span style="color:var(--n3)">'+k.vol.toLocaleString()+'</span>';
-    html += '<span style="color:'+kdColor+';font-weight:500">'+k.kd+'</span>';
-    html += '<span style="color:var(--n2);font-size:11px">'+k.score+'</span>';
-    html += '</div>';
+    const kdLabel = k.kd === 0 ? '?' : k.kd;
+    html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
+      + '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>'
+      + '<span style="color:var(--n3)">'+k.vol.toLocaleString()+'</span>'
+      + '<span style="color:'+kdColor+';font-weight:500">'+kdLabel+'</span>'
+      + '<span style="color:var(--n2);font-size:11px">'+(k.cpc?'$'+k.cpc.toFixed(2):'-')+'</span>'
+      + '<span style="color:var(--n2);font-size:11px">'+k.score+'</span>'
+      + '</div>';
   });
 
-  if (kws.length > 20) {
-    html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (kws.length-20) + ' more keywords available in sitemap stage</div>';
+  if (kws.length > 25) {
+    html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+'+(kws.length-25)+' more injected into sitemap stage</div>';
   }
-
   html += '</div>';
-  html += '<div style="font-size:11px;color:var(--n2);margin-top:8px"><i class="ti ti-info-circle" style="font-size:10px"></i> Opportunity score = volume ÷ KD. These keywords are automatically used when generating the sitemap.</div>';
-  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:8px">'
+    + '<i class="ti ti-info-circle" style="font-size:10px"></i>'
+    + ' Score = log(volume) ÷ KD. KD shown as ? when DataForSEO has no difficulty data. These are automatically used when generating the sitemap.'
+    + '</div></div>';
 
   el.innerHTML = html;
   el.style.display = 'block';
@@ -983,7 +1005,7 @@ function renderKwResearchCard() {
   if (status) status.style.display = 'none';
 }
 
-// ── SITEMAP ────────────────────────────────────────────────────────
+// ── SITEMAP ────────────────────────────────────────────────────────// ── SITEMAP ────────────────────────────────────────────────────────
 async function runSitemap(withRevisions) {
   const btn = document.getElementById('sitemap-run-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...';
