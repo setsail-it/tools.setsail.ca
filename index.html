@@ -660,8 +660,49 @@ const P = {
 research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON. No preamble. No markdown fences. No backticks. Raw JSON only:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: prioritise keywords with real search volume and lower KD (under 40 = winnable). Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. When KEYWORD DATA is provided below, use those real volume/KD figures — do not estimate. Assign the best available keyword to each page. Output ONLY a valid JSON array. No preamble. No markdown fences. No backticks. Raw JSON only:
-[{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[{"kw":"","vol":""}],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
+sitemap:`You are a senior SEO architect at Setsail Marketing. Your job is to build a PERFORMANCE-FIRST sitemap where every page must earn its place through search demand.
+
+PHILOSOPHY: Every page is an investment of copywriting, design, development and ongoing optimisation time. Only create pages with a clear, winnable keyword opportunity. "Winnable" = real monthly search volume AND realistic ranking potential.
+
+PROCESS:
+1. You will receive a KEYWORD DATASET — real search volume + difficulty data from DataForSEO
+2. Cluster related keywords into logical page groups
+3. Each page should own a keyword cluster, not just a single keyword
+4. Assign the keyword with the best opportunity score as the primary keyword per page
+5. Pages with primary_vol < 50 require a compelling rationale (e.g. high commercial intent, brand anchor, critical conversion page)
+6. DROP any page you cannot match to at least one keyword with real volume — do not invent pages speculatively
+
+URL STRUCTURE (use these prefixes):
+- / (homepage only)
+- /services/[slug] for individual service pages
+- /industries/[slug] for vertical/niche pages
+- /locations/[slug] for secondary geo pages (only if vol > 100)
+- /about, /contact, /case-studies, /blog for utility pages
+- /blog/[slug] for blog posts
+
+PRIORITY:
+- P1 = Core revenue pages (homepage + all /services/ pages) — build these first
+- P2 = High-opportunity secondary pages (industries, locations) — only if vol > 100
+- P3 = Utility & content pages — only if vol > 50 OR critical for conversion
+
+JSON SCHEMA — output a JSON array of page objects, each with exactly these fields:
+{
+  "page_name": "Human readable page title",
+  "slug": "services/seo-vancouver",
+  "page_type": "home|service|industry|location|about|blog|utility",
+  "priority": "P1|P2|P3",
+  "primary_keyword": "exact keyword string",
+  "primary_vol": 1600,
+  "primary_kd": 18,
+  "score": 89.0,
+  "rationale": "Why this page earns its place — omit if vol > 50",
+  "supporting_keywords": [{"kw": "keyword", "vol": 320}, {"kw": "keyword 2", "vol": 110}],
+  "search_intent": "informational|commercial|transactional|navigational",
+  "word_count_target": 1500,
+  "notes": "Brief build note"
+}
+
+Output ONLY a valid JSON array. No preamble. No markdown fences. No backticks. Raw JSON only:`,
 
 copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
 
@@ -1048,19 +1089,35 @@ async function runSitemap(withRevisions) {
 
   const r = S.research||{};
   const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
-  let prompt = 'CLIENT: '+S.setup.client+'\nSERVICES: '+((r.primary_services||[]).join(', ')||'N/A')+'\nGEOGRAPHY: '+(r.geography?.primary||S.setup.geo||'N/A')+'\nGEO SECONDARY: '+((r.geography?.secondary||[]).join(', '))+'\nCOMPETITORS: '+((r.competitors||[]).join(', ')||S.setup.competitors||'')+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nPRICING: '+(S.setup.pricing||r.pricing_notes||'');
 
-  // Inject real keyword data if available
+  // Client context — brief, secondary to keyword data
+  let prompt = '## CLIENT CONTEXT\n';
+  prompt += 'Client: '+S.setup.client+'\n';
+  prompt += 'Primary geo: '+(r.geography?.primary||S.setup.geo||'N/A')+'\n';
+  prompt += 'Secondary geos: '+((r.geography?.secondary||[]).join(', ')||'none')+'\n';
+  prompt += 'Services offered: '+((r.primary_services||[]).join(', ')||'N/A')+'\n';
+  prompt += 'Value prop: '+(r.value_proposition||r.business_overview||'')+'\n';
+  prompt += 'Competitors: '+((r.competitors||[]).join(', ')||S.setup.competitors||'')+'\n';
+
+  // Keyword data is the PRIMARY input — not secondary
   if (S.kwResearch?.keywords?.length) {
-    const kwLines = S.kwResearch.keywords
-      .slice(0, 60)
-      .map(k => k.kw + ' | vol:' + k.vol + ' | kd:' + k.kd + ' | score:' + k.score)
-      .join('\n');
-    prompt += '\n\nKEYWORD DATA (real search volume + KD from DataForSEO — use these to assign the best keyword to each page):\n' + kwLines;
-    prompt += '\n\nINSTRUCTION: Assign primary keywords with the best opportunity score (high vol, low KD). For pages without a keyword match above, you may suggest additional keywords consistent with the services and geography.';
+    const kws = S.kwResearch.keywords.filter(k => k.vol > 0);
+    prompt += '\n## KEYWORD DATASET (' + kws.length + ' keywords with real search volume — THIS IS YOUR PRIMARY INPUT)\n';
+    prompt += 'Format: keyword | vol/mo | KD | opportunity_score\n';
+    prompt += '(Opportunity score = log(vol) / KD — higher = better. KD=0 means no difficulty data, treat as competitive unknown.)\n\n';
+    kws.slice(0, 80).forEach(k => {
+      prompt += k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n';
+    });
+    prompt += '\n## TASK\n';
+    prompt += 'Cluster these keywords into pages. Let the keyword data drive what pages get built.\n';
+    prompt += 'Only include pages that have a clear keyword match with real volume (vol > 0).\n';
+    prompt += 'Pages targeting vol < 50 must include a rationale field explaining why they still belong.\n';
+    prompt += 'Do NOT create pages for services/locations that have no supporting keyword volume.\n';
+  } else {
+    prompt += '\n## TASK\nNo keyword data available yet — build a best-guess sitemap based on client context. Flag all pages as needing keyword validation.\n';
   }
 
-  if (withRevisions && revNote?.value.trim()) prompt += '\n\nREVISION NOTES:\n'+revNote.value;
+  if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n'+revNote.value;
 
   try {
     const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
@@ -1085,46 +1142,73 @@ function renderSitemapResults(approved) {
   const p1 = pages.filter(p=>p.priority==='P1').length;
   const p2 = pages.filter(p=>p.priority==='P2').length;
   const p3 = pages.filter(p=>p.priority==='P3').length;
-
-  // Check if we have live Ahrefs data
-  const hasAhrefsData = S.kwMetrics && Object.keys(S.kwMetrics).length > 0;
-  const ahrefsLastFetched = S.kwMetrics?._fetchedAt;
+  const zeroVol = pages.filter(p => !p.primary_vol || p.primary_vol === 0).length;
+  const hasKwData = S.kwResearch?.keywords?.length > 0;
 
   let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
+  if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-volume pages</span>';
   html += '</div>';
 
-  // Keywords section
+  // Keyword opportunities table
   html += '<div style="margin-bottom:18px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
-  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Keyword Opportunities</div>';
+  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Page Performance Map</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
-  if (hasAhrefsData) {
-    html += '<span id="sitemap-ahrefs-status" style="font-size:11px;color:var(--green)"><i class="ti ti-plug" style="font-size:10px"></i> Ahrefs data live</span>';
-    html += '<button id="sitemap-ahrefs-btn" class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchAhrefsMetrics(true)"><i class="ti ti-refresh"></i> Refresh</button>';
-  } else {
-    html += '<span id="sitemap-ahrefs-status" style="font-size:11px;color:var(--n2)">No live data</span>';
-    html += '<button id="sitemap-ahrefs-btn" class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchAhrefsMetrics(true)"><i class="ti ti-brand-ahrefs"></i> Fetch Ahrefs Data</button>';
+  if (hasKwData) {
+    html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
+    html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
   }
   html += '</div></div>';
+
+  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 60px 60px 72px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase"><span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Priority</span></div>';
-  pages.forEach((p,i) => {
+  html += '<div style="display:grid;grid-template-columns:22px 1.5fr 1.3fr 58px 46px 54px 58px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span></div>';
+
+  pages.forEach((p, i) => {
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    // Use live Ahrefs data if available, else fall back to Claude-estimated values
-    const live = (S.kwMetrics||{})[p.primary_keyword] || {};
-    const vol = live.volume !== undefined ? live.volume.toLocaleString() : (p.primary_vol||'–');
-    const kdVal = live.kd !== undefined ? live.kd : (parseInt(p.primary_kd)||0);
-    const kdDisplay = live.kd !== undefined ? live.kd : (p.primary_kd||'–');
-    const kdColor = kdVal<=20?'var(--green)':kdVal<=50?'var(--warn)':'var(--error)';
-    const isLive = live.volume !== undefined;
-    html += '<div style="display:grid;grid-template-columns:24px 1.6fr 1.4fr 60px 60px 72px;padding:9px 14px;border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(i%2===0?'var(--white)':'rgba(0,0,0,0.015)')+';align-items:start">';
+    const vol = typeof p.primary_vol === 'number' ? p.primary_vol : (parseInt(p.primary_vol) || 0);
+    const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
+    const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0);
+
+    const isLowVol = vol === 0 || vol < 30;
+    const kdColor = kd === 0 ? 'var(--n2)' : kd <= 20 ? 'var(--green)' : kd <= 40 ? 'var(--warn)' : 'var(--error)';
+    const rowOpacity = isLowVol ? 'opacity:0.55;' : '';
+
+    // Detect sub-pages (slug contains /)
+    const isSubPage = (p.slug||'').includes('/');
+    const indent = isSubPage ? 'padding-left:22px;' : '';
+
+    html += '<div style="display:grid;grid-template-columns:22px 1.5fr 1.3fr 58px 46px 54px 58px;padding:8px 14px;'
+      + 'border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')
+      + ';background:'+(isLowVol ? 'rgba(0,0,0,0.02)' : (i%2===0?'var(--white)':'rgba(0,0,0,0.012)'))
+      + ';align-items:start;'+rowOpacity+'">';
+
     html += '<span style="color:var(--n2);font-size:11px">'+(i+1)+'</span>';
-    html += '<div><div style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</div><div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div></div>';
-    html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword)+'</div>';
-    html += '<span style="color:var(--dark);font-size:12px;font-weight:500'+(isLive?';background:rgba(21,142,29,0.06);border-radius:3px;padding:1px 4px':'')+'">'+vol+'</span>';
-    html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500'+(isLive?';background:rgba(0,0,0,0.04);border-radius:3px;padding:1px 4px':'')+'">'+kdDisplay+'</span>';
+
+    // Page name + slug with sub-page indent
+    html += '<div style="'+indent+'">';
+    if (isSubPage) html += '<div style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></div>';
+    html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>';
+    html += '<div style="color:var(--n2);font-size:10.5px;'+(isSubPage?'padding-left:14px':'')+'">/'+esc(p.slug)+'</div>';
+    if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:2px;'+(isSubPage?'padding-left:14px':'')+'">'+esc(p.rationale)+'</div>';
+    html += '</div>';
+
+    html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
+
+    // Vol — flag zero/low
+    if (vol === 0) {
+      html += '<span style="color:var(--error);font-size:11px;font-weight:500">⚠ 0</span>';
+    } else if (vol < 30) {
+      html += '<span style="color:var(--warn);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    } else {
+      html += '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    }
+
+    html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500">'+(kd||'?')+'</span>';
+    html += '<span style="color:var(--n3);font-size:11px">'+score+'</span>';
     html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     html += '</div>';
   });
