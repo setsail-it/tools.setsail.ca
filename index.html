@@ -1327,19 +1327,36 @@ Recommend the best primary keyword and up to 5 supporting keywords for this page
     let raw = '';
     await callClaude(system, user, chunk => { raw += chunk; });
 
-    // Parse JSON — strip all fences and leading text aggressively
-    let clean = raw
-      .replace(/```json\s*/gi,'').replace(/```\s*/g,'')
-      .replace(/^[^\[\{]*/,'')  // strip any leading non-JSON text
-      .trim();
-    // Last resort: extract first {...} block
+    // Parse JSON — find the best complete JSON object in the response
+    // Strategy: try all {...} matches from longest to shortest, pick first valid one
     let result;
-    try { result = JSON.parse(clean); }
-    catch(e) {
-      const m = clean.match(/\{[\s\S]*\}/);
-      if (m) { try { result = JSON.parse(m[0]); } catch(e2) { throw new Error('JSON parse failed: ' + e2.message + ' | raw: ' + raw.slice(0,120)); } }
-      else throw new Error('No JSON object found in response');
-    }
+    (function() {
+      const stripped = raw.replace(/```json\s*/gi,'').replace(/```/g,'');
+      // Find all positions of '{' and try to extract valid JSON from each
+      const candidates = [];
+      for (let si = 0; si < stripped.length; si++) {
+        if (stripped[si] !== '{') continue;
+        // Try to find matching closing brace
+        let depth = 0;
+        for (let ei = si; ei < stripped.length; ei++) {
+          if (stripped[ei] === '{') depth++;
+          else if (stripped[ei] === '}') {
+            depth--;
+            if (depth === 0) {
+              candidates.push(stripped.slice(si, ei+1));
+              break;
+            }
+          }
+        }
+      }
+      // Sort by length descending — longest valid JSON wins
+      candidates.sort((a,b) => b.length - a.length);
+      for (const c of candidates) {
+        try { result = JSON.parse(c); if (result.primary_keyword) return; }
+        catch(e) {}
+      }
+      if (!result) throw new Error('No valid JSON found | raw: ' + raw.slice(0,150));
+    })();
 
     // Render suggestion panel
     const scoreFn = (v,d) => v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
