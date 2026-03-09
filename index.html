@@ -1280,16 +1280,77 @@ async function reviseKeywords(pageIdx) {
   const resultEl = document.getElementById('revise-kw-result-' + pageIdx);
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Analysing…';
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Expanding…';
   status.textContent = '';
   resultEl.style.display = 'none';
 
-  // Build keyword list for Claude — top 80 from kwResearch
-  const kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
-    `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
-  ).join('\n');
+  // ── Step 1: Build page-specific seeds ──
+  // Use the page's own assigned keywords as expansion seeds — not the global company-wide pool
+  const currentPrimary = page.primary_keyword || '';
+  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
 
-  const currentKws = [page.primary_keyword, ...((page.supporting_keywords||[]).map(sk => typeof sk==='object'?sk.kw:sk))].filter(Boolean).join(', ');
+  // Also seed with the stripped page name (e.g. "social media management" from "Social Media Management")
+  const pageName = (page.page_name || '').toLowerCase().replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoLower = geo.toLowerCase();
+
+  const seedSet = new Set();
+  if (currentPrimary) seedSet.add(currentPrimary.toLowerCase());
+  currentSupporting.forEach(k => seedSet.add(k.toLowerCase()));
+  // Add page name + geo variants as seeds to pull topical neighbours
+  if (pageName) {
+    seedSet.add(pageName);
+    if (geoLower) seedSet.add(pageName + ' ' + geoLower);
+  }
+  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 15);
+
+  // Detect country from geo
+  const geoStr = (geo + ' ' + geoLower).toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+
+  // ── Step 2: Fetch page-specific keyword expansion ──
+  let kwList = '';
+  const currentKws = [currentPrimary, ...currentSupporting].filter(Boolean).join(', ');
+  try {
+    status.innerHTML = '<span class="spinner" style="width:9px;height:9px;display:inline-block;vertical-align:middle"></span> <span style="font-size:10.5px;color:var(--n2)">Fetching page-specific keywords…</span>';
+    const expandRes = await fetch('/api/kw-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds, country })
+    });
+    const expandData = await expandRes.json();
+
+    if (expandData.keywords && expandData.keywords.length) {
+      // Score and rank — same formula as global research
+      const scored = expandData.keywords
+        .filter(k => k.volume >= 10)
+        .map(k => {
+          const kd = k.difficulty > 0 ? k.difficulty : 50;
+          const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
+          return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score };
+        })
+        .sort((a, b) => b.score - a.score);
+      // Deduplicate
+      const seen = new Set();
+      const top60 = scored.filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 60);
+      kwList = top60.map(k => `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score})`).join('\n');
+      status.innerHTML = `<span style="font-size:10.5px;color:var(--n2)">${top60.length} page-specific keywords found</span>`;
+    } else {
+      // Fallback to global pool if expansion returns nothing
+      kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
+        `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
+      ).join('\n');
+      status.innerHTML = '<span style="font-size:10.5px;color:var(--n2)">Using global keyword pool</span>';
+    }
+  } catch(expandErr) {
+    // Fallback gracefully
+    kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
+      `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
+    ).join('\n');
+    status.innerHTML = '<span style="font-size:10.5px;color:var(--warn)">⚠ Expansion failed — using global pool</span>';
+  }
+
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Analysing…';
 
   const system = `You are an SEO keyword strategist. Given a page brief and a keyword list, recommend the best primary keyword and up to 5 supporting keywords for that page.
 
