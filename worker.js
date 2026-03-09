@@ -264,19 +264,25 @@ export default {
           return new Response(JSON.stringify({ error: data?.status_message || ('HTTP ' + res.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
+        // keywords_for_keywords response: tasks[].result[].items[].keyword
+        // Each result item = one seed, with an items[] array of related keywords
         const kwMap = {};
         (data.tasks || []).forEach(task => {
-          (task.result || []).forEach(r => {
-            if (r.keyword && r.search_volume > 0) {
-              if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
-                kwMap[r.keyword] = { volume: r.search_volume, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+          (task.result || []).forEach(resultItem => {
+            (resultItem.items || []).forEach(r => {
+              if (r.keyword && (r.search_volume || 0) > 0) {
+                if (!kwMap[r.keyword] || r.search_volume > kwMap[r.keyword].volume) {
+                  kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+                }
               }
-            }
+            });
           });
         });
 
         const keywords = Object.entries(kwMap).map(([kw, d]) => ({ keyword: kw, volume: d.volume, difficulty: d.kd, cpc: d.cpc }));
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand' }), {
+        const taskCount = (data.tasks || []).length;
+        const resultCount = (data.tasks || []).reduce((n, t) => n + (t.result || []).length, 0);
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', _debug: { taskCount, resultCount, kwMapSize: keywords.length } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
