@@ -1327,14 +1327,18 @@ Recommend the best primary keyword and up to 5 supporting keywords for this page
     let raw = '';
     await callClaude(system, user, chunk => { raw += chunk; });
 
-    // Parse JSON
-    const clean = raw.replace(/```json|```/g,'').trim();
+    // Parse JSON — strip all fences and leading text aggressively
+    let clean = raw
+      .replace(/```json\s*/gi,'').replace(/```\s*/g,'')
+      .replace(/^[^\[\{]*/,'')  // strip any leading non-JSON text
+      .trim();
+    // Last resort: extract first {...} block
     let result;
     try { result = JSON.parse(clean); }
     catch(e) {
       const m = clean.match(/\{[\s\S]*\}/);
-      if (m) result = JSON.parse(m[0]);
-      else throw new Error('Could not parse response');
+      if (m) { try { result = JSON.parse(m[0]); } catch(e2) { throw new Error('JSON parse failed: ' + e2.message + ' | raw: ' + raw.slice(0,120)); } }
+      else throw new Error('No JSON object found in response');
     }
 
     // Render suggestion panel
@@ -1670,11 +1674,11 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]
-  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px 90px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
+  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
     + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span>'
-    + (sitemapEditMode ? '<span style="text-align:right">Actions</span>' : '')
+    + ''
     + '</div>';
 
   pages.forEach((p, i) => {
@@ -1710,6 +1714,13 @@ function _renderSitemapResultsInner(approved) {
       html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
       ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
       html += '</select>';
+      // ↑ ↓ ✕ action buttons — inline under name inputs
+      const btnS = 'background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:var(--font);color:var(--n2)';
+      html += '<div style="display:flex;gap:4px;margin-top:2px;align-items:center">';
+      html += `<button onclick="movePage(${i},-1)" title="Move up" ${i===0?'disabled':''} style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===0?'0.25':'0.7'}"">↑ Up</button>`;
+      html += `<button onclick="movePage(${i},1)" title="Move down" ${i===pages.length-1?'disabled':''} style="${btnS};opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===pages.length-1?'0.25':'0.7'}"">↓ Down</button>`;
+      html += `<button onclick="deletePage(${i})" title="Delete page" style="background:transparent;border:1px solid rgba(220,50,47,0.3);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;font-family:var(--font);color:var(--error);opacity:0.65" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">✕ Delete</button>`;
+      html += '</div>';
       html += '</div>';
       // Primary keyword — editable with live lookup
       html += '<input value="'+esc(p.primary_keyword||'')+'" placeholder="primary keyword…" onblur="updatePrimaryKw('+i+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" style="font-size:11px;color:var(--n3);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%;margin-top:2px"/>';
@@ -1744,13 +1755,7 @@ function _renderSitemapResultsInner(approved) {
         html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`;
       });
       html += '</select>';
-      // Actions column — ↑ ↓ 🗑 compact icon buttons
-      const btnBase = 'border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px;line-height:1;font-family:var(--font)';
-      html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;flex-wrap:nowrap">';
-      html += `<button onclick="movePage(${i},-1)" title="Move up" ${i===0?'disabled':''} style="background:transparent;border:1px solid var(--border);${btnBase};color:var(--n2);opacity:${i===0?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===0?'0.25':'0.7'}"">↑</button>`;
-      html += `<button onclick="movePage(${i},1)" title="Move down" ${i===pages.length-1?'disabled':''} style="background:transparent;border:1px solid var(--border);${btnBase};color:var(--n2);opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===pages.length-1?'0.25':'0.7'}"">↓</button>`;
-      html += `<button onclick="deletePage(${i})" title="Delete page" style="background:transparent;border:1px solid rgba(220,50,47,0.3);${btnBase};color:var(--error);opacity:0.6" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">✕</button>`;
-      html += '</div>';
+
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     }
