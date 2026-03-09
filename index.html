@@ -657,10 +657,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── PROMPTS ────────────────────────────────────────────────────────
 const P = {
-research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
+research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON. No preamble. No markdown fences. No backticks. Raw JSON only:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: prioritise keywords with real search volume and lower KD (under 40 = winnable). Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. When KEYWORD DATA is provided below, use those real volume/KD figures — do not estimate. Assign the best available keyword to each page. Output ONLY a valid JSON array, no preamble, no markdown fences:
+sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: prioritise keywords with real search volume and lower KD (under 40 = winnable). Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. When KEYWORD DATA is provided below, use those real volume/KD figures — do not estimate. Assign the best available keyword to each page. Output ONLY a valid JSON array. No preamble. No markdown fences. No backticks. Raw JSON only:
 [{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[{"kw":"","vol":""}],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
 copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
