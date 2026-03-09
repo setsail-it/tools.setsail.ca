@@ -1270,6 +1270,62 @@ async function enrichSitemapWithLiveData() {
   }
 }
 
+async function addManualKeyword(pageIdx, rawKw) {
+  const kw = rawKw.trim().toLowerCase();
+  if (!kw) return;
+  const page = S.pages[pageIdx];
+  if (!page) return;
+
+  // Check if it's already there
+  const existing = (page.supporting_keywords || []).map(sk => (typeof sk === 'object' ? sk.kw : sk).toLowerCase());
+  if (existing.includes(kw) || (page.primary_keyword||'').toLowerCase() === kw) return;
+
+  // Look up from kwResearch cache first
+  const cached = (S.kwResearch?.keywords || []).find(k => k.kw.toLowerCase() === kw);
+  if (cached) {
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    page.supporting_keywords.push({ kw: cached.kw, vol: cached.vol, kd: cached.kd });
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    return;
+  }
+
+  // Live lookup for unknown keyword
+  const geo = S.research?.geography?.primary || S.setup?.geo || '';
+  const country = geo.toLowerCase().includes('canada')||geo.toLowerCase().includes('bc')||geo.toLowerCase().includes('vancouver') ? 'CA' : 'US';
+  try {
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: [kw], country })
+    });
+    const data = await res.json();
+    const hit = data.keywords?.find(k => k.keyword.toLowerCase() === kw);
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    if (hit) {
+      page.supporting_keywords.push({ kw: hit.keyword, vol: hit.volume || 0, kd: hit.difficulty || 0 });
+    } else {
+      page.supporting_keywords.push({ kw, vol: 0, kd: 0 });
+    }
+  } catch(e) {
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    page.supporting_keywords.push({ kw, vol: 0, kd: 0 });
+  }
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function removeKeyword(pageIdx, kw) {
+  const page = S.pages[pageIdx];
+  if (!page?.supporting_keywords) return;
+  page.supporting_keywords = page.supporting_keywords.filter(sk => {
+    const k = typeof sk === 'object' ? sk.kw : sk;
+    return k.toLowerCase() !== kw.toLowerCase();
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
 function renderSitemapResults(approved) {
   const pages = S.pages;
   const p1 = pages.filter(p=>p.priority==='P1').length;
@@ -1373,10 +1429,20 @@ function renderSitemapResults(approved) {
         html += '<span style="color:'+vColor+';font-size:11px">'+(v>0?v.toLocaleString():'–')+'</span>';
         html += '<span style="color:'+dColor+';font-size:11px">'+(d>0?d:'–')+'</span>';
         html += '<span style="color:var(--n2);font-size:10px">'+(sc>0?sc:'–')+'</span>';
-        html += '<span></span>';
+        html += `<span style="text-align:right"><button onclick="removeKeyword(${i},'${kw.replace(/'/g,'')}')" title="Remove keyword" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 4px;line-height:1;opacity:0.4" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.4'">✕</button></span>`;
         html += '</div>';
       });
     }
+    // Manual keyword add row
+    const addRowBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
+    html += `<div style="display:grid;grid-template-columns:22px 1.5fr 1.3fr 58px 46px 54px 58px;padding:4px 14px;background:${addRowBg};border-top:1px dashed rgba(0,0,0,0.06);align-items:center">`;
+    html += '<span></span>';
+    html += '<div style="display:flex;align-items:center;gap:6px;grid-column:2/-1;padding:2px 0">';
+    html += `<input id="kw-add-${i}" type="text" placeholder="+ Add keyword manually…" style="flex:1;background:transparent;border:none;outline:none;font-size:11px;color:var(--n3);font-family:var(--font);cursor:text" onkeydown="if(event.key===\'Enter\'){addManualKeyword(${i},this.value);this.value=\'\'}"/>`;
+    html += `<button onclick="var inp=document.getElementById(\'kw-add-${i}\');addManualKeyword(${i},inp.value);inp.value=\'\'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">Add</button>`;
+    html += '</div>';
+    html += '</div>';
+
     html += '</div>'; // end page block
     if (hasBorder) html += '<div style="border-bottom:1px solid var(--border)"></div>';
   });
