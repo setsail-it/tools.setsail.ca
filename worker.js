@@ -168,20 +168,22 @@ export default {
             });
           }
 
-          // Surface any API-level errors
-          if (!dfsRes.ok || dfsData?.status_code >= 400) {
+          // DataForSEO uses 20000-range for success, 40xxx for errors — NOT standard HTTP codes
+          if (!dfsRes.ok) {
             return new Response(JSON.stringify({
-              error: 'DataForSEO error: ' + (dfsData?.status_message || dfsData?.error || ('HTTP ' + dfsRes.status)),
-              status_code: dfsData?.status_code,
-              raw: dfsRaw?.slice(0, 500)
+              error: 'DataForSEO HTTP error: ' + dfsRes.status, raw: dfsRaw?.slice(0,300)
             }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
           }
-
-          // Check task-level errors
-          const task0 = dfsData?.tasks?.[0];
-          if (task0?.status_code >= 400) {
+          if (dfsData?.status_code && dfsData.status_code !== 20000) {
             return new Response(JSON.stringify({
-              error: 'DataForSEO task error: ' + (task0?.status_message || 'unknown'),
+              error: 'DataForSEO API error: ' + (dfsData?.status_message || dfsData.status_code),
+              status_code: dfsData?.status_code
+            }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+          }
+          const task0 = dfsData?.tasks?.[0];
+          if (task0?.status_code && task0.status_code !== 20000 && task0.status_code !== 20100) {
+            return new Response(JSON.stringify({
+              error: 'DataForSEO task error: ' + (task0?.status_message || task0.status_code),
               status_code: task0?.status_code
             }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
           }
