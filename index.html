@@ -401,6 +401,7 @@ async function saveProject() {
       copy: S.copy,
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
+      kwResearch: S.kwResearch || null,
       sitemapApproved: S.sitemapApproved || false,
       layout: S.layout || {},
       savedAt: Date.now(),
@@ -504,6 +505,7 @@ async function resumeProject(id) {
   S.copy = data.copy || {};
   S.schema = data.schema || {};
   S.kwMetrics = data.kwMetrics || {};
+  S.kwResearch = data.kwResearch || null;
   S.sitemapApproved = data.sitemapApproved || false;
   S.layout = data.layout || {};
 
@@ -520,7 +522,7 @@ async function resumeProject(id) {
   goTo(S.stage);
 
   // Re-render stage content
-  if (S.stage === 'research' && S.research) renderResearchResults(S.research);
+  if (S.stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
   if (S.stage === 'layout' && S.pages.length) { initLayout(); }
@@ -591,7 +593,7 @@ function navToStage(stage) {
 }
 
 function renderStageContent(stage) {
-  if (stage === 'research' && S.research) renderResearchResults(S.research);
+  if (stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
   if (stage === 'copy' && S.pages.length) initCopy();
   if (stage === 'layout' && S.pages.length) initLayout();
@@ -658,7 +660,7 @@ const P = {
 research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: every page targets a real, searchable keyword with realistic search volume. Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. For primary keywords estimate realistic Canadian monthly search volume and KD (0-100). For supporting_keywords include an array of objects with kw and estimated vol. Output ONLY a valid JSON array, no preamble, no markdown fences:
+sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: prioritise keywords with real search volume and lower KD (under 40 = winnable). Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. When KEYWORD DATA is provided below, use those real volume/KD figures — do not estimate. Assign the best available keyword to each page. Output ONLY a valid JSON array, no preamble, no markdown fences:
 [{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[{"kw":"","vol":""}],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
 copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
@@ -765,7 +767,7 @@ async function runResearch() {
   try {
     const result = await callClaude(P.research, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
     S.research = safeParseJSON(result);
-    if (S.research) { wrap.style.display = 'none'; renderResearchResults(S.research); scheduleSave(); }
+    if (S.research) { wrap.style.display = 'none'; renderResearchResults(S.research); scheduleSave(); fetchKeywordResearch(); }
     else streamEl.textContent = 'Could not parse JSON. Raw:\n\n' + result;
   } catch(e) { streamEl.textContent = 'Error: '+e.message; }
   btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
@@ -810,6 +812,10 @@ function renderResearchResults(r, editMode) {
       html += '</ul></div>';
     }
   }
+  if (!editMode) {
+    html += '<div id="research-kw-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>';
+    html += '<div id="research-kw-card" style="display:none"></div>';
+  }
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
   html += '<button class="btn btn-primary" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>';
   if (!editMode) html += '<button class="btn btn-ghost" onclick="renderResearchResults(S.research, true)"><i class="ti ti-edit"></i> Edit</button>';
@@ -832,6 +838,117 @@ function saveResearchEdits() {
   renderResearchResults(S.research, false);
 }
 
+// ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────
+async function fetchKeywordResearch() {
+  const r = S.research || {};
+  const setup = S.setup || {};
+
+  // Build seed keywords: services × primary geo + secondary geos
+  const services = r.primary_services || [];
+  const primaryGeo = r.geography?.primary || setup.geo || '';
+  const secondaryGeos = r.geography?.secondary || [];
+  const allGeos = [primaryGeo, ...secondaryGeos].filter(Boolean).slice(0, 4);
+
+  // Generate keyword candidates
+  const seeds = new Set();
+  services.forEach(svc => {
+    seeds.add(svc.toLowerCase());
+    allGeos.forEach(geo => {
+      seeds.add((svc + ' ' + geo).toLowerCase());
+      seeds.add((geo + ' ' + svc).toLowerCase());
+    });
+  });
+  // Add geo-only terms
+  allGeos.forEach(geo => {
+    seeds.add(('digital marketing ' + geo).toLowerCase());
+    seeds.add(('marketing agency ' + geo).toLowerCase());
+  });
+
+  const kwList = [...seeds].filter(k => k.length > 3).slice(0, 80);
+  if (!kwList.length) return;
+
+  // Show fetching state in research results
+  const kwEl = document.getElementById('research-kw-status');
+  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching keyword data...';
+
+  const country = (primaryGeo.toLowerCase().includes('canada') || primaryGeo.toLowerCase().includes('bc') || primaryGeo.toLowerCase().includes('vancouver') || primaryGeo.toLowerCase().includes('calgary') || primaryGeo.toLowerCase().includes('toronto')) ? 'CA' : 'US';
+
+  try {
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: kwList, country })
+    });
+    const data = await res.json();
+
+    if (data.keywords) {
+      // Filter to only keywords with volume > 0, sort by opportunity score
+      const withData = data.keywords
+        .filter(k => k.volume > 0)
+        .map(k => ({
+          kw: k.keyword,
+          vol: k.volume,
+          kd: k.difficulty,
+          // Opportunity score: high vol, low KD = best
+          score: Math.round((k.volume / Math.max(k.difficulty || 1, 1)) * 10) / 10
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      S.kwResearch = { keywords: withData, fetchedAt: Date.now(), source: data.source || 'dataforseo' };
+      scheduleSave();
+      renderKwResearchCard();
+    } else if (kwEl) {
+      kwEl.innerHTML = '<span style="color:var(--n2);font-size:11px">' + esc(data.error || 'No keyword data available') + '</span>';
+    }
+  } catch(e) {
+    if (kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(e.message) + '</span>';
+  }
+}
+
+function renderKwResearchCard() {
+  const el = document.getElementById('research-kw-card');
+  if (!el || !S.kwResearch?.keywords?.length) return;
+
+  const kws = S.kwResearch.keywords;
+  const top = kws.slice(0, 20);
+  const ts = S.kwResearch.fetchedAt ? new Date(S.kwResearch.fetchedAt).toLocaleTimeString('en-CA', {hour:'2-digit',minute:'2-digit'}) : '';
+
+  let html = '<div class="card hl" style="margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+  html += '<div><div class="eyebrow" style="color:var(--green)">Keyword Opportunities</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'+kws.length+' keywords with search volume · sorted by opportunity score'+(ts?' · fetched '+ts:'')+'</div></div>';
+  html += '<button class="btn btn-ghost sm" onclick="fetchKeywordResearch()"><i class="ti ti-refresh"></i> Refresh</button>';
+  html += '</div>';
+
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+  html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 80px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">';
+  html += '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span></div>';
+
+  top.forEach((k, i) => {
+    const kdColor = k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    const rowBg = i % 2 === 0 ? '' : 'background:var(--bg)';
+    html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 80px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">';
+    html += '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>';
+    html += '<span style="color:var(--n3)">'+k.vol.toLocaleString()+'</span>';
+    html += '<span style="color:'+kdColor+';font-weight:500">'+k.kd+'</span>';
+    html += '<span style="color:var(--n2);font-size:11px">'+k.score+'</span>';
+    html += '</div>';
+  });
+
+  if (kws.length > 20) {
+    html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (kws.length-20) + ' more keywords available in sitemap stage</div>';
+  }
+
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:8px"><i class="ti ti-info-circle" style="font-size:10px"></i> Opportunity score = volume ÷ KD. These keywords are automatically used when generating the sitemap.</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+  const status = document.getElementById('research-kw-status');
+  if (status) status.style.display = 'none';
+}
+
 // ── SITEMAP ────────────────────────────────────────────────────────
 async function runSitemap(withRevisions) {
   const btn = document.getElementById('sitemap-run-btn');
@@ -844,6 +961,17 @@ async function runSitemap(withRevisions) {
   const r = S.research||{};
   const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
   let prompt = 'CLIENT: '+S.setup.client+'\nSERVICES: '+((r.primary_services||[]).join(', ')||'N/A')+'\nGEOGRAPHY: '+(r.geography?.primary||S.setup.geo||'N/A')+'\nGEO SECONDARY: '+((r.geography?.secondary||[]).join(', '))+'\nCOMPETITORS: '+((r.competitors||[]).join(', ')||S.setup.competitors||'')+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nPRICING: '+(S.setup.pricing||r.pricing_notes||'');
+
+  // Inject real keyword data if available
+  if (S.kwResearch?.keywords?.length) {
+    const kwLines = S.kwResearch.keywords
+      .slice(0, 60)
+      .map(k => k.kw + ' | vol:' + k.vol + ' | kd:' + k.kd + ' | score:' + k.score)
+      .join('\n');
+    prompt += '\n\nKEYWORD DATA (real search volume + KD from DataForSEO — use these to assign the best keyword to each page):\n' + kwLines;
+    prompt += '\n\nINSTRUCTION: Assign primary keywords with the best opportunity score (high vol, low KD). For pages without a keyword match above, you may suggest additional keywords consistent with the services and geography.';
+  }
+
   if (withRevisions && revNote?.value.trim()) prompt += '\n\nREVISION NOTES:\n'+revNote.value;
 
   try {
