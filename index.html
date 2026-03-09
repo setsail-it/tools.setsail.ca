@@ -696,10 +696,12 @@ sitemap:`You are a senior SEO architect. Build a performance-first sitemap by ma
 → vol > 100 required
 
 **/about**
-→ Brand navigational keywords: "[agency name]", "[agency name] [city]", "b corp marketing agency"
+→ ALWAYS assign a keyword. Look for: "[agency name] [city]", "b corp marketing agency", "ethical marketing agency", "certified b corp", "[agency name] reviews", "marketing agency team"
+→ If none exist verbatim, find the closest brand/trust keyword in the list — vol:0 is fine
 
 **/contact**
-→ Conversion keywords: "free marketing audit", "hire marketing agency [city]", "marketing consultation"
+→ ALWAYS assign a keyword. Look for: "free marketing audit", "marketing consultation [city]", "hire marketing agency", "marketing agency quote", "get marketing help"
+→ If none exist verbatim, find the closest conversion-intent keyword in the list — vol:0 is fine
 
 **/blog**
 → Informational keywords only: "how to...", "what is...", "[topic] guide"
@@ -710,6 +712,7 @@ sitemap:`You are a senior SEO architect. Build a performance-first sitemap by ma
 3. Group semantically related keywords into one page — don't fragment one topic across pages
 4. Assign the highest-scoring keyword within the CORRECT CLUSTER for each page type
 5. Do not assign the globally highest-scoring keyword to the wrong page type
+6. Structural pages (/about, /contact) must ALWAYS have a primary_keyword — never output an empty string. Use the closest match from the list even at vol:0.
 
 ## OUTPUT
 JSON array, each object:
