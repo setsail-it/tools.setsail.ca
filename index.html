@@ -303,16 +303,25 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
           <div class="eyebrow">Stage 5 of 7</div>
-          <h2 class="ph sm">Page Layout Builder</h2>
-          <p class="psub" style="margin-bottom:0">Pick and arrange sections. No AI — instant, zero tokens.</p>
+          <h2 class="ph sm">Page Wireframes</h2>
+          <p class="psub" style="margin-bottom:0">AI generates full annotated wireframes — ready to hand to a designer.</p>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
-          <button class="btn btn-ghost" id="layout-page-prev-btn" onclick="layoutNavPage(-1)" style="display:none"><i class="ti ti-chevron-left"></i></button>
-          <select id="layout-page-select" onchange="layoutSelectPage(this.value)" style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;cursor:pointer"></select>
-          <button class="btn btn-ghost" id="layout-page-next-btn" onclick="layoutNavPage(1)" style="display:none"><i class="ti ti-chevron-right"></i></button>
+          <button class="btn btn-ghost sm" onclick="showLayoutSettings()"><i class="ti ti-settings"></i> Template</button>
+          <button class="btn btn-primary" onclick="runAllWireframes()"><i class="ti ti-player-play"></i> Generate All</button>
         </div>
       </div>
-      <div id="layout-builder"></div>
+      <!-- Template/Figma settings panel -->
+      <div id="layout-settings-panel" style="display:none;background:var(--panel);border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:10px">Template Reference <span style="font-weight:400;color:var(--n2)">(optional — paste a Figma URL to map sections to your template)</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="layout-figma-url" type="text" placeholder="https://figma.com/design/..." style="flex:1;min-width:240px;font-size:12px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none">
+          <button class="btn btn-ghost sm" onclick="saveFigmaUrl()"><i class="ti ti-check"></i> Save</button>
+          <button class="btn btn-ghost sm" onclick="document.getElementById('layout-settings-panel').style.display='none'">Cancel</button>
+        </div>
+        <div id="layout-figma-status" style="font-size:11px;color:var(--n2);margin-top:6px"></div>
+      </div>
+      <div id="layout-queue"></div>
     </div>
   </div>
 
@@ -992,7 +1001,7 @@ async function fetchAhrefsMetrics(forceRefresh) {
     const errMsg = data.error || ('HTTP ' + res.status);
     const isNoKey = data.code === 'NO_KEY';
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">'
-      + (isNoKey ? '⚠ API key not configured — add AHREFS_API_KEY secret in Cloudflare Workers' : '⚠ ' + esc(errMsg))
+      + (isNoKey ? '⚠ No keyword API configured — add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (<a href="https://dataforseo.com" target="_blank" style="color:inherit">dataforseo.com</a> — ~$0.0005/kw)' : '⚠ ' + esc(errMsg))
       + '</span>';
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⚠ ' + esc(e.message) + '</span>';
@@ -1182,13 +1191,15 @@ function renderCopyQueue() {
         html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
           +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
       } else if (isDone) {
-        // Done — show actions + optional code
+        // Done — show actions + optional code + edit
         html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
-          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
-          +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>'
-          +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''  +p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
+          +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''  +p.slug+'\'  )">Show code</button>'
+          +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''  +p.slug+'\'  )"><i class="ti ti-edit"></i> Edit</button>'
+          +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''  +p.slug+'\'  )"><i class="ti ti-refresh"></i> Redo</button>'
           +'</div>'
-          +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
+          +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>'
+          +'<textarea id="copy-edit-'+p.slug+'" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box">'+esc(r.copy)+'</textarea>';
         // Next page button
         const curIdx = pages.findIndex(pp => pp.slug === p.slug);
         const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
@@ -1234,194 +1245,272 @@ function checkCopyAllDone() {
   } else { document.getElementById('copy-all-done').style.display = 'none'; }
 }
 
-// ── LAYOUT COMPONENT PICKER (zero tokens) ─────────────────────────
-const LAYOUT_COMPONENTS = [
-  // Hero
-  { id:'hero-center', group:'Hero', label:'Hero — Centred', desc:'Full-width headline + subtext + CTA, centered', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="25" y="16" width="50" height="6" rx="2" fill="#ccc"/><rect x="33" y="26" width="34" height="4" rx="2" fill="#ddd"/><rect x="35" y="34" width="30" height="8" rx="3" fill="#158E1D" opacity=".7"/>' },
-  { id:'hero-split-left', group:'Hero', label:'Hero — Split Left', desc:'Text left, image/video right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="38" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="30" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="30" height="3" rx="2" fill="#ddd"/><rect x="12" y="38" width="18" height="7" rx="3" fill="#158E1D" opacity=".7"/><rect x="56" y="12" width="34" height="36" rx="3" fill="#ddd"/>' },
-  { id:'hero-split-right', group:'Hero', label:'Hero — Split Right', desc:'Image left, text right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="34" height="36" rx="3" fill="#ddd"/><rect x="50" y="14" width="38" height="5" rx="2" fill="#ccc"/><rect x="50" y="23" width="30" height="3" rx="2" fill="#ddd"/><rect x="50" y="29" width="30" height="3" rx="2" fill="#ddd"/><rect x="50" y="38" width="18" height="7" rx="3" fill="#158E1D" opacity=".7"/>' },
-  // Social Proof
-  { id:'logo-strip', group:'Social Proof', label:'Logo Strip', desc:'Row of client/partner logos', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="30" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="48" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="66" y="22" width="14" height="8" rx="2" fill="#ddd"/><rect x="26" y="35" width="48" height="3" rx="2" fill="#e5e5e2"/>' },
-  { id:'stats-bar', group:'Social Proof', label:'Stats Bar', desc:'3–4 large numbers with labels', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="14" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="14" y="27" width="16" height="3" rx="2" fill="#ddd"/><rect x="38" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="38" y="27" width="16" height="3" rx="2" fill="#ddd"/><rect x="62" y="16" width="16" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="62" y="27" width="16" height="3" rx="2" fill="#ddd"/>' },
-  { id:'testimonial-strip', group:'Social Proof', label:'Testimonial Strip', desc:'2–3 quote cards in a row', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="18" height="12" rx="2" fill="#eee"/><rect x="14" y="34" width="10" height="3" rx="1" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="43" y="18" width="18" height="12" rx="2" fill="#eee"/><rect x="43" y="34" width="10" height="3" rx="1" fill="#ddd"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
-  // Problem / Solution
-  { id:'problem-text', group:'Problem / Solution', label:'Problem Block', desc:'2–3 paragraphs, dark background', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="18" y="14" width="64" height="5" rx="2" fill="rgba(255,255,255,.3)"/><rect x="14" y="23" width="72" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="29" width="60" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="35" width="68" height="3" rx="2" fill="rgba(255,255,255,.15)"/>' },
-  { id:'solution-split', group:'Problem / Solution', label:'Solution Split', desc:'Text + visual side by side', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="36" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="32" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="28" height="3" rx="2" fill="#ddd"/><rect x="54" y="12" width="36" height="36" rx="4" fill="#D8FF29" opacity=".5"/><rect x="60" y="20" width="24" height="3" rx="2" fill="rgba(0,0,0,.2)"/><rect x="60" y="26" width="18" height="3" rx="2" fill="rgba(0,0,0,.2)"/>' },
-  // Services
-  { id:'services-3col', group:'Services', label:'Services — 3 Col', desc:'3 service cards in a grid', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="16" width="8" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="14" y="27" width="16" height="3" rx="2" fill="#ccc"/><rect x="14" y="33" width="12" height="3" rx="2" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="43" y="16" width="8" height="8" rx="2" fill="#158E1D" opacity=".5"/><rect x="43" y="27" width="16" height="3" rx="2" fill="#ccc"/><rect x="43" y="33" width="12" height="3" rx="2" fill="#ddd"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
-  { id:'services-4col', group:'Services', label:'Services — 4 Col', desc:'4 service icon cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="13" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="13" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="32" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="35" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="35" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="54" y="14" width="18" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="57" y="17" width="6" height="6" rx="1" fill="#158E1D" opacity=".5"/><rect x="57" y="27" width="10" height="2" rx="1" fill="#ccc"/><rect x="76" y="14" width="14" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
-  { id:'services-alternating', group:'Services', label:'Services — Alternating', desc:'Text / image alternating rows', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="12" width="36" height="14" rx="2" fill="#e5e5e2"/><rect x="52" y="12" width="36" height="14" rx="2" fill="#ddd"/><rect x="52" y="30" width="36" height="14" rx="2" fill="#e5e5e2"/><rect x="12" y="30" width="36" height="14" rx="2" fill="#ddd"/>' },
-  // Process
-  { id:'process-steps', group:'Process', label:'Process — Numbered Steps', desc:'3–5 horizontal step cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><circle cx="22" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="20" y="23" font-size="6" fill="white" font-family="sans-serif">1</text><rect x="14" y="28" width="16" height="3" rx="2" fill="#ddd"/><rect x="27" y="19" width="8" height="1" fill="#ccc"/><circle cx="43" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="41" y="23" font-size="6" fill="white" font-family="sans-serif">2</text><rect x="35" y="28" width="16" height="3" rx="2" fill="#ddd"/><rect x="48" y="19" width="8" height="1" fill="#ccc"/><circle cx="64" cy="20" r="5" fill="#158E1D" opacity=".6"/><text x="62" y="23" font-size="6" fill="white" font-family="sans-serif">3</text><rect x="56" y="28" width="16" height="3" rx="2" fill="#ddd"/>' },
-  { id:'process-timeline', group:'Process', label:'Process — Timeline', desc:'Vertical timeline with steps', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><line x1="30" y1="12" x2="30" y2="48" stroke="#ddd" stroke-width="2"/><circle cx="30" cy="18" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="15" width="46" height="3" rx="2" fill="#ccc"/><circle cx="30" cy="30" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="27" width="36" height="3" rx="2" fill="#ccc"/><circle cx="30" cy="42" r="4" fill="#158E1D" opacity=".6"/><rect x="36" y="39" width="42" height="3" rx="2" fill="#ccc"/>' },
-  // Proof / Testimonials
-  { id:'testimonial-featured', group:'Testimonials', label:'Testimonial — Featured', desc:'Large single quote, dark bg', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="18" y="15" width="64" height="3" rx="2" fill="rgba(255,255,255,.3)"/><rect x="14" y="22" width="72" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="14" y="28" width="60" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="36" y="38" width="28" height="5" rx="2" fill="rgba(255,255,255,.1)"/>' },
-  { id:'case-study-cards', group:'Testimonials', label:'Case Study Cards', desc:'2–3 result-focused client cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="14" width="38" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="30" height="12" rx="2" fill="#ddd"/><rect x="14" y="34" width="20" height="3" rx="2" fill="#ccc"/><rect x="14" y="40" width="14" height="3" rx="2" fill="#ddd"/><rect x="52" y="14" width="38" height="32" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".6"/><rect x="56" y="18" width="30" height="12" rx="2" fill="#ddd"/>' },
-  // FAQ / Objections
-  { id:'faq-accordion', group:'FAQ', label:'FAQ — Accordion', desc:'Expandable Q&A list', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="13" width="70" height="7" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="23" width="70" height="7" rx="2" fill="#158E1D" opacity=".08" stroke="#158E1D" stroke-width=".5"/><rect x="12" y="33" width="70" height="7" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="43" width="70" height="5" rx="2" fill="white" stroke="#e0e0db" stroke-width="1"/>' },
-  { id:'objection-grid', group:'FAQ', label:'Objection Callout Grid', desc:'2–3 col "You might be thinking…" cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="38" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="14" y="18" width="8" height="8" rx="2" fill="#D8FF29"/><rect x="14" y="30" width="26" height="3" rx="2" fill="#ccc"/><rect x="14" y="36" width="20" height="3" rx="2" fill="#ddd"/><rect x="52" y="12" width="38" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".7"/>' },
-  // CTA
-  { id:'cta-dark', group:'CTA', label:'CTA — Dark Band', desc:'Dark bg with headline + button', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#111"/><rect x="22" y="16" width="56" height="6" rx="2" fill="rgba(255,255,255,.35)"/><rect x="34" y="26" width="32" height="3" rx="2" fill="rgba(255,255,255,.15)"/><rect x="35" y="33" width="30" height="8" rx="3" fill="#D8FF29" opacity=".85"/>' },
-  { id:'cta-lime', group:'CTA', label:'CTA — Lime Band', desc:'Lime bg, bold CTA', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#D8FF29"/><rect x="22" y="16" width="56" height="6" rx="2" fill="rgba(0,0,0,.25)"/><rect x="34" y="26" width="32" height="3" rx="2" fill="rgba(0,0,0,.15)"/><rect x="35" y="33" width="30" height="8" rx="3" fill="#111"/>' },
-  { id:'cta-split', group:'CTA', label:'CTA — Split', desc:'Text left, form/CTA card right', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="12" y="14" width="34" height="5" rx="2" fill="#ccc"/><rect x="12" y="23" width="26" height="3" rx="2" fill="#ddd"/><rect x="12" y="29" width="22" height="3" rx="2" fill="#ddd"/><rect x="52" y="12" width="36" height="36" rx="4" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="56" y="18" width="28" height="5" rx="2" fill="#eee"/><rect x="56" y="28" width="28" height="5" rx="2" fill="#eee"/><rect x="60" y="38" width="20" height="6" rx="3" fill="#158E1D" opacity=".7"/>' },
-  // Content
-  { id:'image-text-grid', group:'Content', label:'Image + Text Grid', desc:'Masonry or alternating image/text', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="18" rx="2" fill="#ddd"/><rect x="40" y="12" width="50" height="8" rx="2" fill="#ccc"/><rect x="40" y="24" width="42" height="3" rx="2" fill="#ddd"/><rect x="10" y="34" width="50" height="8" rx="2" fill="#ccc"/><rect x="64" y="34" width="26" height="18" rx="2" fill="#ddd"/>' },
-  { id:'full-width-image', group:'Content', label:'Full-Width Image', desc:'Edge-to-edge photo with optional caption', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#ddd"/><rect x="30" y="22" width="40" height="4" rx="2" fill="rgba(255,255,255,.5)"/><rect x="35" y="30" width="30" height="3" rx="2" fill="rgba(255,255,255,.3)"/>' },
-  { id:'team-grid', group:'Content', label:'Team Grid', desc:'3–4 col team member cards', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><circle cx="22" cy="22" r="7" fill="#ddd"/><rect x="14" y="32" width="16" height="3" rx="2" fill="#ccc"/><rect x="14" y="38" width="12" height="2" rx="2" fill="#ddd"/><circle cx="46" cy="22" r="7" fill="#ddd"/><rect x="38" y="32" width="16" height="3" rx="2" fill="#ccc"/><circle cx="70" cy="22" r="7" fill="#ddd"/><rect x="62" y="32" width="16" height="3" rx="2" fill="#ccc"/>' },
-  { id:'blog-preview', group:'Content', label:'Blog Preview Grid', desc:'3 col recent articles', svg:'<rect x="8" y="8" width="84" height="44" rx="3" fill="#f0f0ee"/><rect x="10" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="12" y="14" width="22" height="12" rx="2" fill="#ddd"/><rect x="12" y="30" width="16" height="3" rx="2" fill="#ccc"/><rect x="12" y="36" width="10" height="2" rx="2" fill="#ddd"/><rect x="39" y="12" width="26" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1"/><rect x="41" y="14" width="22" height="12" rx="2" fill="#ddd"/><rect x="41" y="30" width="16" height="3" rx="2" fill="#ccc"/><rect x="68" y="12" width="22" height="36" rx="3" fill="white" stroke="#e0e0db" stroke-width="1" opacity=".5"/>' },
-];
+// ── LAYOUT WIREFRAME GENERATOR ──────────────────────────────────
+let layoutCurrentPage = null;
 
-// Group components
-const LAYOUT_GROUPS = [...new Set(LAYOUT_COMPONENTS.map(c => c.group))];
+function showLayoutSettings() {
+  const panel = document.getElementById('layout-settings-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  const inp = document.getElementById('layout-figma-url');
+  if (inp && S.layout?._figmaUrl) inp.value = S.layout._figmaUrl;
+}
 
-let layoutCurrentSlug = null;
+function saveFigmaUrl() {
+  const url = document.getElementById('layout-figma-url').value.trim();
+  if (!S.layout) S.layout = {};
+  S.layout._figmaUrl = url;
+  scheduleSave();
+  const status = document.getElementById('layout-figma-status');
+  if (status) status.textContent = url ? '✓ Template URL saved — AI will reference this when generating wireframes.' : 'Cleared.';
+  setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+}
 
 function initLayout() {
-  const pages = orderedPages();
-  if (!pages.length) return;
-  // Ensure S.layout exists
   if (!S.layout) S.layout = {};
-  // Default to first page
-  if (!layoutCurrentSlug || !pages.find(p => p.slug === layoutCurrentSlug)) {
-    layoutCurrentSlug = pages[0].slug;
-  }
-  renderLayoutPageSelect();
-  renderLayoutBuilder();
+  renderLayoutQueue();
 }
 
-function renderLayoutPageSelect() {
+function renderLayoutQueue() {
   const pages = orderedPages();
-  const sel = document.getElementById('layout-page-select');
-  if (!sel) return;
-  sel.innerHTML = pages.map(p => {
-    const done = (S.layout[p.slug]||[]).length > 0;
-    return '<option value="'+esc(p.slug)+'"'+(p.slug===layoutCurrentSlug?' selected':'')+'>'+esc(p.page_name)+(done?' ✓':'')+'</option>';
-  }).join('');
-  document.getElementById('layout-page-prev-btn').style.display = pages.length > 1 ? '' : 'none';
-  document.getElementById('layout-page-next-btn').style.display = pages.length > 1 ? '' : 'none';
-}
+  if (!pages.length) { document.getElementById('layout-queue').innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px 0">Complete the Sitemap stage first.</div>'; return; }
 
-function layoutSelectPage(slug) {
-  layoutCurrentSlug = slug;
-  renderLayoutBuilder();
-}
-
-function layoutNavPage(dir) {
-  const pages = orderedPages();
-  const idx = pages.findIndex(p => p.slug === layoutCurrentSlug);
-  const next = pages[(idx + dir + pages.length) % pages.length];
-  layoutCurrentSlug = next.slug;
-  renderLayoutPageSelect();
-  renderLayoutBuilder();
-}
-
-function getPageLayout(slug) {
-  if (!S.layout[slug]) S.layout[slug] = [];
-  return S.layout[slug];
-}
-
-function layoutAddComponent(compId) {
-  const comp = LAYOUT_COMPONENTS.find(c => c.id === compId);
-  if (!comp) return;
-  const layout = getPageLayout(layoutCurrentSlug);
-  layout.push({ id: compId, label: comp.label, customLabel: '' });
-  S.layout[layoutCurrentSlug] = layout;
-  scheduleSave();
-  renderLayoutBuilder();
-  renderLayoutPageSelect();
-}
-
-function layoutRemoveItem(idx) {
-  const layout = getPageLayout(layoutCurrentSlug);
-  layout.splice(idx, 1);
-  scheduleSave();
-  renderLayoutBuilder();
-  renderLayoutPageSelect();
-}
-
-function layoutMoveItem(idx, dir) {
-  const layout = getPageLayout(layoutCurrentSlug);
-  const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= layout.length) return;
-  [layout[idx], layout[newIdx]] = [layout[newIdx], layout[idx]];
-  scheduleSave();
-  renderLayoutBuilder();
-}
-
-function layoutSaveLabel(idx, val) {
-  const layout = getPageLayout(layoutCurrentSlug);
-  if (layout[idx]) { layout[idx].customLabel = val; scheduleSave(); }
-}
-
-function renderLayoutBuilder() {
-  const page = orderedPages().find(p => p.slug === layoutCurrentSlug);
-  const layout = getPageLayout(layoutCurrentSlug);
-  let html = '<div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">';
-
-  // ── Left: canvas ──
-  html += '<div>';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    +'<div style="font-size:12px;font-weight:500;color:var(--dark)">'+(page?esc(page.page_name):'')+'<span style="color:var(--n2);font-weight:400;margin-left:6px">'+layout.length+' section'+(layout.length!==1?'s':'')+'</span></div>';
-  if (layout.length > 0) {
-    html += '<button class="btn btn-ghost sm" onclick="copyLayoutText()"><i class="ti ti-copy"></i> Copy Brief</button>';
+  const allDone = pages.every(p => (S.layout[p.slug]||{}).html);
+  let html = '';
+  if (allDone) {
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px">'
+      + '<button class="btn btn-primary" onclick="exportWireframes()"><i class="ti ti-download"></i> Export All Wireframes</button>'
+      + '<button class="btn btn-ghost" onclick="initSchema();goTo(\'schema\')"><i class="ti ti-arrow-right"></i> Proceed to Schema</button>'
+      + '</div>';
   }
-  html += '</div>';
 
-  if (layout.length === 0) {
-    html += '<div style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;color:var(--n2);font-size:13px">Pick sections from the library →</div>';
-  } else {
-    layout.forEach((item, idx) => {
-      const comp = LAYOUT_COMPONENTS.find(c => c.id === item.id) || {};
-      html += '<div style="border:1px solid var(--border);border-radius:8px;background:var(--white);margin-bottom:6px;display:flex;align-items:center;gap:8px;padding:9px 12px">';
-      html += '<span style="font-size:11px;color:var(--n2);font-weight:600;width:18px;text-align:center;flex-shrink:0">'+(idx+1)+'</span>';
-      html += '<svg viewBox="0 0 100 60" width="50" height="30" style="flex-shrink:0">'+( comp.svg||'')+'</svg>';
-      html += '<div style="flex:1;min-width:0">';
-      html += '<div style="font-size:12px;font-weight:500;color:var(--dark)">'+esc(comp.label||item.label)+'</div>';
-      html += '<input type="text" placeholder="Section note (optional)" value="'+esc(item.customLabel||'')+'" onchange="layoutSaveLabel('+idx+',this.value)" style="font-size:11px;color:var(--n2);background:none;border:none;outline:none;width:100%;font-family:var(--font);padding:0;margin-top:1px">';
-      html += '</div>';
-      html += '<div style="display:flex;gap:3px;flex-shrink:0">';
-      html += '<button onclick="layoutMoveItem('+idx+',-1)" '+(idx===0?'disabled':'')+' style="background:none;border:1px solid var(--border);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:'+(idx===0?'0.3':'1')+'"><i class="ti ti-chevron-up" style="font-size:10px"></i></button>';
-      html += '<button onclick="layoutMoveItem('+idx+',1)" '+(idx===layout.length-1?'disabled':'')+' style="background:none;border:1px solid var(--border);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:'+(idx===layout.length-1?'0.3':'1')+'"><i class="ti ti-chevron-down" style="font-size:10px"></i></button>';
-      html += '<button onclick="layoutRemoveItem('+idx+')" style="background:none;border:1px solid rgba(229,57,53,.2);border-radius:4px;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--error)"><i class="ti ti-x" style="font-size:10px"></i></button>';
-      html += '</div>';
-      html += '</div>';
-    });
-    // Done → advance to schema
-    html += '<div style="margin-top:12px;display:flex;gap:8px;align-items:center">';
-    html += '<button class="btn btn-primary" onclick="initSchema();goTo(\'schema\')"><i class="ti ti-arrow-right"></i> Proceed to Schema</button>';
-    html += '<span style="font-size:11px;color:var(--n2)">or continue adding sections</span>';
+  pages.forEach((p, i) => {
+    const r = S.layout[p.slug] || {};
+    const isDone = !!r.html, isErr = !!r.error;
+    const isRunning = layoutCurrentPage === p.slug;
+    const isExpanded = S.layoutExpandedSlug === p.slug;
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':(i+1);
+    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+
+    html += '<div style="border:1px solid var(--border);'+rowBorder+'border-radius:8px;margin-bottom:6px;overflow:hidden">';
+    // Header row
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none" onclick="toggleLayoutAccordion(\''+p.slug+'\')">';
+    html += '<div style="width:20px;height:20px;border-radius:50%;'+cirStyle+';display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:600;flex-shrink:0">'+cirContent+'</div>';
+    html += '<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>';
+    html += '<span style="font-size:11px;color:'+pColor+';margin-left:8px">'+esc(p.priority)+'</span>';
+    if (isDone) html += '<span style="font-size:11px;color:var(--n2);margin-left:8px">'+esc(p.primary_keyword)+'</span>';
     html += '</div>';
-  }
-  html += '</div>';
+    if (isDone && !isExpanded) html += '<span style="font-size:11px;color:var(--n2)">Done</span>';
+    html += '<i class="ti ti-chevron-'+(isExpanded?'up':'down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>';
+    html += '</div>';
 
-  // ── Right: component library ──
-  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:70vh;overflow-y:auto">';
-  html += '<div style="padding:10px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;position:sticky;top:0;background:var(--white);z-index:1">Section Library</div>';
-  LAYOUT_GROUPS.forEach(group => {
-    html += '<div style="padding:6px 12px 2px;font-size:10.5px;color:var(--n2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-top:4px">'+esc(group)+'</div>';
-    LAYOUT_COMPONENTS.filter(c => c.group === group).forEach(comp => {
-      html += '<div onclick="layoutAddComponent(\''+comp.id+'\')" style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-radius:4px;margin:0 4px 2px" onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'transparent\'">';
-      html += '<svg viewBox="0 0 100 60" width="44" height="26" style="flex-shrink:0;border-radius:3px;border:1px solid var(--border)">'+comp.svg+'</svg>';
-      html += '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--dark)">'+esc(comp.label)+'</div><div style="font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(comp.desc)+'</div></div>';
-      html += '<i class="ti ti-plus" style="font-size:11px;color:var(--n2);flex-shrink:0"></i>';
+    if (isExpanded) {
+      html += '<div style="border-top:1px solid var(--border);padding:14px">';
+      if (isRunning) {
+        html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="spinner" style="width:10px;height:10px"></span> Generating wireframe…</div>'
+          + '<div id="layout-stream-'+p.slug+'" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>'
+          + '<button class="btn btn-danger sm" style="margin-top:10px" onclick="stopLayout()"><i class="ti ti-player-stop"></i> Stop</button>';
+      } else if (isDone) {
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
+          + '<button class="btn btn-ghost sm" onclick="printWireframe(\''+p.slug+'\')"><i class="ti ti-printer"></i> Print / Export PDF</button>'
+          + '<button class="btn btn-ghost sm" onclick="toggleLayoutCode(\''+p.slug+'\')"><i class="ti ti-code"></i> Show HTML</button>'
+          + '<button class="btn btn-ghost sm" id="layout-edit-btn-'+p.slug+'" onclick="toggleLayoutEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
+          + '<button class="btn btn-danger sm" onclick="redoWireframe(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          + '</div>'
+          + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">'
+          + '<iframe srcdoc="'+esc(r.html)+'" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>'
+          + '</div>'
+          + '<div id="layout-code-'+p.slug+'" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.html)+'</div>'
+          + '<textarea id="layout-edit-'+p.slug+'" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box;margin-top:8px">'+esc(r.html)+'</textarea>';
+        // Next page
+        const nextP = pages.find((pp,ii) => ii > i && !(S.layout[pp.slug]||{}).html);
+        if (nextP) {
+          html += '<div style="margin-top:10px;display:flex;gap:8px">'
+            + '<button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=\''+nextP.slug+'\';renderLayoutQueue();runWireframe(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+            + '</div>';
+        }
+      } else if (isErr) {
+        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+          + '<button class="btn btn-primary sm" onclick="runWireframe(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+      } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+          + '<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword)+' · '+esc(p.page_type||'')+' · '+esc(p.word_count_target||1500)+' words target</div>'
+          + '<button class="btn btn-primary sm" onclick="runWireframe(\''+p.slug+'\')"><i class="ti ti-layout"></i> Generate Wireframe</button>'
+          + '</div>';
+      }
       html += '</div>';
-    });
+    }
+    html += '</div>';
   });
-  html += '</div>';
-  html += '</div>';
 
-  document.getElementById('layout-builder').innerHTML = html;
+  document.getElementById('layout-queue').innerHTML = html;
 }
 
-function copyLayoutText() {
-  const layout = getPageLayout(layoutCurrentSlug);
-  const page = orderedPages().find(p => p.slug === layoutCurrentSlug);
-  const text = (page ? page.page_name + ' — Page Layout\n' + '='.repeat(40) + '\n\n' : '')
-    + layout.map((item, i) => {
-      const comp = LAYOUT_COMPONENTS.find(c => c.id === item.id) || {};
-      return (i+1)+'. '+comp.label+(item.customLabel?' — '+item.customLabel:'');
-    }).join('\n');
-  copyToClip2(text);
+function toggleLayoutAccordion(slug) {
+  S.layoutExpandedSlug = S.layoutExpandedSlug === slug ? null : slug;
+  renderLayoutQueue();
+}
+
+function toggleLayoutCode(slug) {
+  const el = document.getElementById('layout-code-'+slug);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleLayoutEdit(slug) {
+  const editEl = document.getElementById('layout-edit-'+slug);
+  const previewEl = document.getElementById('layout-preview-'+slug);
+  const btn = document.getElementById('layout-edit-btn-'+slug);
+  if (!editEl) return;
+  const isEditing = editEl.style.display !== 'none';
+  if (isEditing) {
+    const newHtml = editEl.value;
+    S.layout[slug].html = newHtml;
+    if (previewEl) previewEl.innerHTML = '<iframe srcdoc="'+esc(newHtml)+'" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>';
+    document.getElementById('layout-code-'+slug) && (document.getElementById('layout-code-'+slug).textContent = newHtml);
+    scheduleSave();
+    editEl.style.display = 'none';
+    if (previewEl) previewEl.style.display = 'block';
+    if (btn) btn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+  } else {
+    editEl.style.display = 'block';
+    if (previewEl) previewEl.style.display = 'none';
+    if (btn) btn.innerHTML = '<i class="ti ti-check"></i> Save';
+    editEl.focus();
+  }
+}
+
+function autoResizeFrame(iframe) {
+  try {
+    const h = iframe.contentDocument.body.scrollHeight;
+    if (h > 100) iframe.style.minHeight = (h + 20) + 'px';
+  } catch(e) {}
+}
+
+function redoWireframe(slug) {
+  delete S.layout[slug];
+  S.layoutExpandedSlug = slug;
+  scheduleSave(); renderLayoutQueue();
+}
+
+let layoutStopFlag = false;
+function stopLayout() { layoutStopFlag = true; }
+
+async function runAllWireframes() {
+  const pages = orderedPages().filter(p => !(S.layout[p.slug]||{}).html);
+  for (const p of pages) {
+    if (layoutStopFlag) break;
+    S.layoutExpandedSlug = p.slug;
+    renderLayoutQueue();
+    await runWireframe(p.slug);
+    await sleep(400);
+  }
+}
+
+async function runWireframe(slug) {
+  const page = orderedPages().find(p => p.slug === slug);
+  if (!page) return;
+  layoutCurrentPage = slug;
+  layoutStopFlag = false;
+  S.layoutExpandedSlug = slug;
+  renderLayoutQueue();
+
+  const copyHtml = (S.copy[slug]||{}).copy || '';
+  const figmaUrl = S.layout?._figmaUrl || '';
+  const research = S.research || {};
+
+  const templateNote = figmaUrl
+    ? `\n\nTEMPLATE REFERENCE: The client uses a Figma template at ${figmaUrl}. Where relevant, note which template section to use (e.g. "[Use: Hero Split variant from template]") as a comment below each wireframe block.`
+    : '';
+
+  const systemPrompt = `You are a senior UX/UI designer at Setsail Marketing creating a full-page annotated wireframe document. Output self-contained HTML that renders as a clean printable wireframe — grey placeholder boxes, section labels, and annotated content outlines. No live images, no external fonts.
+
+WIREFRAME STYLE:
+- White background, system font (system-ui, -apple-system, sans-serif)
+- Each section = a distinct block with a light grey background (#f5f5f5) or white, separated by subtle borders
+- Use rectangle placeholders (background:#e0e0e0, border:1px solid #ccc) for images/media
+- Label every placeholder with its content type (e.g. "HERO IMAGE — 1440×700" or "CLIENT LOGO STRIP")
+- Every section has: a section type label (caps, small, grey), a heading, content outline bullets, and a CRO/layout note at the bottom in a yellow annotation box (#fffde7 background)
+- Font sizes: section-label 10px caps tracking, heading 18-24px, body 13px, annotation 11px italic
+- Max width 900px, centered, padding 0 40px
+- Print-friendly: avoid shadows, keep contrast high${templateNote}
+
+OUTPUT: Complete self-contained HTML file starting with <!DOCTYPE html>. No markdown, no fences.`;
+
+  const userPrompt = `Create a full annotated wireframe for this page:
+
+PAGE: ${page.page_name}
+SLUG: /${page.slug}
+TYPE: ${page.page_type}
+PRIMARY KEYWORD: ${page.primary_keyword}
+SUPPORTING KEYWORDS: ${(page.supporting_keywords||[]).map(k=>typeof k==='object'?k.kw:k).join(', ')}
+SEARCH INTENT: ${page.search_intent}
+WORD COUNT TARGET: ${page.word_count_target}
+
+BUSINESS: ${research.client_name||S.setup?.client||''}
+VALUE PROP: ${research.value_proposition||''}
+KEY DIFFERENTIATORS: ${(research.key_differentiators||[]).slice(0,3).join(' | ')}
+
+COPY CONTENT (use this to populate wireframe headings and outlines):
+${copyHtml ? copyHtml.replace(/<[^>]*>/g,'').slice(0,3000) : 'No copy generated yet — infer from keyword and page type.'}
+
+Generate a complete section-by-section wireframe. Include every section a high-converting ${page.page_type} page needs. Annotate each section with: layout choice rationale, content guidance, and CRO notes.`;
+
+  let full = '';
+  try {
+    full = await streamClaude(
+      [{ role: 'user', content: userPrompt }],
+      systemPrompt,
+      4096,
+      (partial) => {
+        const el = document.getElementById('layout-stream-'+slug);
+        if (el) el.textContent = partial.slice(-200);
+      }
+    );
+  } catch(e) {
+    S.layout[slug] = { error: e.message };
+    layoutCurrentPage = null;
+    renderLayoutQueue();
+    return;
+  }
+
+  if (layoutStopFlag) { layoutCurrentPage = null; renderLayoutQueue(); return; }
+
+  // Strip fences if any
+  let html = full.replace(/^```html\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+  // Ensure it's a full doc
+  if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+    html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:0;padding:40px;max-width:900px;margin:0 auto;color:#111}</style></head><body>' + html + '</body></html>';
+  }
+
+  S.layout[slug] = { html, generatedAt: Date.now() };
+  layoutCurrentPage = null;
+  scheduleSave();
+  renderLayoutQueue();
+}
+
+function printWireframe(slug) {
+  const html = (S.layout[slug]||{}).html;
+  if (!html) return;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 600);
+}
+
+function exportWireframes() {
+  const pages = orderedPages().filter(p => (S.layout[p.slug]||{}).html);
+  const combined = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(S.setup?.client||'Wireframes')}</title><style>
+  body{font-family:system-ui,sans-serif;margin:0;padding:0;background:#fff}
+  .page-break{page-break-after:always;border-bottom:3px solid #000;padding-bottom:40px;margin-bottom:40px}
+  @media print{.page-break{page-break-after:always}}
+  </style></head><body>
+  ${pages.map(p => '<div class="page-break">'+((S.layout[p.slug]||{}).html.replace(/<!DOCTYPE[^>]*>/i,'').replace(/<\/?html[^>]*>/gi,'').replace(/<\/?head>[\s\S]*?<\/head>/gi,'').replace(/<\/?body[^>]*>/gi,'').trim())+'</div>').join('\n')}
+  </body></html>`;
+  const blob = new Blob([combined], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=(S.setup?.client||'wireframes').toLowerCase().replace(/\s+/g,'-')+'-wireframes.html'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 let schemaStopFlag = false;

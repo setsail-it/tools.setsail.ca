@@ -121,43 +121,68 @@ export default {
     }
 
 
-    // ── AHREFS KEYWORD METRICS ───────────────────────────────────
+    // ── KEYWORD METRICS (DataForSEO primary, Ahrefs fallback) ────
     if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
       try {
-        if (!env.AHREFS_API_KEY) return new Response(JSON.stringify({
-          error: 'AHREFS_API_KEY secret not set in Cloudflare Workers. Add it via Workers & Pages → setsail-tools → Settings → Variables and Secrets.',
-          code: 'NO_KEY'
-        }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-
         const { keywords, country } = await request.json();
         if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords provided' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
 
-        const params = new URLSearchParams();
-        params.set('select', 'keyword,volume,difficulty');
-        params.set('country', (country || 'ca').toLowerCase().slice(0,2));
-        keywords.slice(0, 50).forEach(k => params.append('keywords[]', k)); // max 50
+        const kwList = keywords.slice(0, 100);
+        const cc = (country || 'CA').toUpperCase().slice(0, 2);
 
-        const ahrefsRes = await fetch('https://api.ahrefs.com/v3/keywords-explorer/overview?' + params.toString(), {
-          headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
-        });
-
-        const raw = await ahrefsRes.text();
-        let data;
-        try { data = JSON.parse(raw); } catch(e) { data = { error: 'Non-JSON response: ' + raw.slice(0,200) }; }
-
-        if (!ahrefsRes.ok) {
-          return new Response(JSON.stringify({
-            error: data?.detail || data?.message || data?.error || ('Ahrefs API error ' + ahrefsRes.status),
-            status: ahrefsRes.status,
-            detail: data
-          }), { status: ahrefsRes.status, headers: { 'Content-Type': 'application/json', ...cors } });
+        // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
+        if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {
+          const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+          const body = kwList.map(kw => ({
+            keyword: kw,
+            location_code: cc === 'CA' ? 2124 : cc === 'US' ? 2840 : cc === 'GB' ? 2826 : 2124,
+            language_code: 'en',
+            include_serp_info: false
+          }));
+          const dfsRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const dfsData = await dfsRes.json();
+          if (dfsRes.ok && dfsData?.tasks?.[0]?.result) {
+            const kwMap = {};
+            dfsData.tasks.forEach(task => {
+              (task.result || []).forEach(r => {
+                kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0 };
+              });
+            });
+            // Normalise to same shape as Ahrefs response
+            const normalized = { keywords: kwList.map(kw => ({ keyword: kw, volume: kwMap[kw]?.volume || 0, difficulty: kwMap[kw]?.kd || 0 })), source: 'dataforseo' };
+            return new Response(JSON.stringify(normalized), {
+              status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
         }
 
-        return new Response(JSON.stringify(data), {
-          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
-        });
+        // ── Ahrefs (fallback — Enterprise only) ──
+        if (env.AHREFS_API_KEY) {
+          const params = new URLSearchParams();
+          params.set('select', 'keyword,volume,difficulty');
+          params.set('country', cc.toLowerCase());
+          kwList.forEach(k => params.append('keywords[]', k));
+          const ahrefsRes = await fetch('https://api.ahrefs.com/v3/keywords-explorer/overview?' + params.toString(), {
+            headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
+          });
+          const raw = await ahrefsRes.text();
+          let data; try { data = JSON.parse(raw); } catch(e) { data = { error: raw.slice(0,200) }; }
+          if (!ahrefsRes.ok) return new Response(JSON.stringify({ error: data?.detail || data?.message || ('Ahrefs error ' + ahrefsRes.status), detail: data }), { status: ahrefsRes.status, headers: { 'Content-Type': 'application/json', ...cors } });
+          return new Response(JSON.stringify({ ...data, source: 'ahrefs' }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        // ── No key configured ──
+        return new Response(JSON.stringify({
+          error: 'No keyword API configured. Add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (recommended, ~$0.0005/keyword). Sign up at dataforseo.com.',
+          code: 'NO_KEY'
+        }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500, headers: { 'Content-Type': 'application/json', ...cors }
