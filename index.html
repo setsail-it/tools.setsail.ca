@@ -768,7 +768,15 @@ async function runResearch() {
     const result = await callClaude(P.research, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
     S.research = safeParseJSON(result);
     if (S.research) { wrap.style.display = 'none'; renderResearchResults(S.research); scheduleSave(); fetchKeywordResearch(); }
-    else streamEl.textContent = 'Could not parse JSON. Raw:\n\n' + result;
+    else {
+      streamEl.textContent = result;
+      // Add parse-retry button
+      const retryDiv = document.createElement('div');
+      retryDiv.style.cssText = 'padding:10px;background:rgba(0,0,0,0.3);display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+      retryDiv.innerHTML = '<span style="color:rgba(255,255,255,0.5);font-size:11px">Parse failed — try again or extract manually</span>'
+        + '<button onclick="attemptResearchParse()" style="background:var(--lime);border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--font)">⟳ Retry Parse</button>';
+      wrap.appendChild(retryDiv);
+    }
   } catch(e) { streamEl.textContent = 'Error: '+e.message; }
   btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
 }
@@ -836,6 +844,32 @@ function saveResearchEdits() {
   S.research.strategic_recommendations = val('r-edit-recommendations').split('\n').map(s=>s.trim()).filter(Boolean);
   scheduleSave();
   renderResearchResults(S.research, false);
+}
+
+function attemptResearchParse() {
+  const streamEl = document.getElementById('research-stream');
+  if (!streamEl) return;
+  const text = streamEl.textContent;
+  // Aggressive extraction: find first { to last }
+  let parsed = null;
+  // Try stripping fences
+  try { parsed = JSON.parse(text.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+  // Try { ... } extraction
+  if (!parsed) {
+    try {
+      const s = text.indexOf('{'), e = text.lastIndexOf('}');
+      if (s >= 0 && e > s) parsed = JSON.parse(text.slice(s, e+1));
+    } catch(e) {}
+  }
+  if (parsed) {
+    S.research = parsed;
+    document.getElementById('research-stream-wrap').style.display = 'none';
+    renderResearchResults(S.research);
+    scheduleSave();
+    fetchKeywordResearch();
+  } else {
+    alert('Still could not parse — try Re-run Analysis');
+  }
 }
 
 // ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────
