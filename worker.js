@@ -153,25 +153,52 @@ export default {
             language_code: 'en',
             include_serp_info: false
           }));
-          const dfsRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
-            method: 'POST',
-            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
-          const dfsData = await dfsRes.json();
-          if (dfsRes.ok && dfsData?.tasks?.[0]?.result) {
-            const kwMap = {};
-            dfsData.tasks.forEach(task => {
-              (task.result || []).forEach(r => {
-                kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0 };
-              });
+          let dfsRes, dfsData, dfsRaw;
+          try {
+            dfsRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+              method: 'POST',
+              headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
             });
-            // Normalise to same shape as Ahrefs response
-            const normalized = { keywords: kwList.map(kw => ({ keyword: kw, volume: kwMap[kw]?.volume || 0, difficulty: kwMap[kw]?.kd || 0 })), source: 'dataforseo' };
-            return new Response(JSON.stringify(normalized), {
-              status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+            dfsRaw = await dfsRes.text();
+            dfsData = JSON.parse(dfsRaw);
+          } catch(e) {
+            return new Response(JSON.stringify({ error: 'DataForSEO fetch failed: ' + e.message, raw: dfsRaw?.slice(0,300) }), {
+              status: 500, headers: { 'Content-Type': 'application/json', ...cors }
             });
           }
+
+          // Surface any API-level errors
+          if (!dfsRes.ok || dfsData?.status_code >= 400) {
+            return new Response(JSON.stringify({
+              error: 'DataForSEO error: ' + (dfsData?.status_message || dfsData?.error || ('HTTP ' + dfsRes.status)),
+              status_code: dfsData?.status_code,
+              raw: dfsRaw?.slice(0, 500)
+            }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+          }
+
+          // Check task-level errors
+          const task0 = dfsData?.tasks?.[0];
+          if (task0?.status_code >= 400) {
+            return new Response(JSON.stringify({
+              error: 'DataForSEO task error: ' + (task0?.status_message || 'unknown'),
+              status_code: task0?.status_code
+            }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+          }
+
+          const kwMap = {};
+          (dfsData?.tasks || []).forEach(task => {
+            (task.result || []).forEach(r => {
+              kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0 };
+            });
+          });
+          const normalized = {
+            keywords: kwList.map(kw => ({ keyword: kw, volume: kwMap[kw]?.volume || 0, difficulty: kwMap[kw]?.kd || 0 })),
+            source: 'dataforseo'
+          };
+          return new Response(JSON.stringify(normalized), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
         }
 
         // ── Ahrefs (fallback — Enterprise only) ──
