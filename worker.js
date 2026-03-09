@@ -282,7 +282,18 @@ export default {
         const keywords = Object.entries(kwMap).map(([kw, d]) => ({ keyword: kw, volume: d.volume, difficulty: d.kd, cpc: d.cpc }));
         const taskCount = (data.tasks || []).length;
         const resultCount = (data.tasks || []).reduce((n, t) => n + (t.result || []).length, 0);
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', _debug: { taskCount, resultCount, kwMapSize: keywords.length } }), {
+        // Sample first result item to show actual structure
+        const sampleTask = data.tasks?.[0];
+        const sampleResult = sampleTask?.result?.[0];
+        const sampleItem = sampleResult?.items?.[0];
+        const structureSample = {
+          taskKeys: sampleTask ? Object.keys(sampleTask) : [],
+          resultKeys: sampleResult ? Object.keys(sampleResult) : [],
+          itemKeys: sampleItem ? Object.keys(sampleItem) : [],
+          firstItem: sampleItem || null,
+          rawResultSlice: JSON.stringify(sampleResult).slice(0, 500)
+        };
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', _debug: { taskCount, resultCount, kwMapSize: keywords.length, structureSample } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {

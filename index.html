@@ -1362,7 +1362,9 @@ async function reviseKeywords(pageIdx) {
         `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
       ).join('\n');
       status.innerHTML = `<span style="font-size:10.5px;color:var(--warn)">⚠ Page expansion empty${reason} — using global pool</span>`;
-      console.warn('[reviseKeywords] expansion empty, seeds:', seeds, 'response:', expandData);
+      console.warn('[reviseKeywords] expansion empty. seeds:', seeds);
+      console.warn('[reviseKeywords] _debug:', JSON.stringify(expandData._debug, null, 2));
+      console.warn('[reviseKeywords] full response:', JSON.stringify(expandData).slice(0, 2000));
     }
   } catch(expandErr) {
     // Fallback gracefully — log real error
