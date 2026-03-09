@@ -9,180 +9,107 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.21.0/dist/tabler-icons.min.css">
 <style>
-:root {
-  --bg:#F0EFE9; --white:#fff; --panel:#E8E7E1; --n1:#E2E2DC;
-  --n2:#999990; --n3:#555550; --dark:#111; --green:#158E1D;
-  --lime:#D8FF29; --dg:#002A0F; --border:rgba(0,0,0,0.09);
-  --font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif;
-  --error:#E53935; --warn:#c07000;
-}
+:root{--bg:#F0EFE9;--white:#fff;--panel:#E8E7E1;--n1:#E2E2DC;--n2:#999990;--n3:#555550;--dark:#111;--green:#158E1D;--lime:#D8FF29;--dg:#002A0F;--border:rgba(0,0,0,0.09);--error:#E53935;--warn:#c07000;--font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 input,textarea,button,select{font-family:var(--font)!important}
 input::placeholder,textarea::placeholder{color:#bbb}
 
 /* NAV */
-#nav{display:flex;justify-content:space-between;align-items:center;padding:0 32px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.93);backdrop-filter:blur(10px)}
-.nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--dark);font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
+#nav{display:flex;justify-content:space-between;align-items:center;padding:0 28px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.95);backdrop-filter:blur(10px)}
+.nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
 .logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.logo-mark svg{width:11px;height:11px}
-.nav-meta{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--n2)}
+.nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
 .nav-divider{width:1px;height:14px;background:var(--border)}
-#client-name-nav{color:var(--dark)}
 #stage-bar{display:flex;align-items:center;gap:2px}
-.stage-pill{display:flex;align-items:center;gap:4px;padding:4px 11px;border-radius:20px;font-size:11.5px;transition:all .2s;white-space:nowrap;border:1px solid var(--border);color:var(--n2);background:transparent}
+.stage-pill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11.5px;border:1px solid var(--border);color:var(--n2);background:transparent;cursor:pointer;transition:all .15s;white-space:nowrap}
+.stage-pill:hover:not(.active){background:var(--n1)}
 .stage-pill.active{background:var(--dark);color:white;border-color:var(--dark)}
 .stage-pill.done{background:rgba(21,142,29,0.1);color:var(--green);border-color:rgba(21,142,29,0.25)}
-.stage-dot{width:6px;height:1px;background:var(--border)}
-.stage-dot.done{background:rgba(21,142,29,0.25)}
+.stage-dot{width:6px;height:1px;background:var(--border)}.stage-dot.done{background:rgba(21,142,29,0.25)}
 
-/* MOBILE STAGE */
-#mobile-stage{display:none;overflow-x:auto;padding:10px 16px;gap:4px;background:var(--white);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
-#mobile-stage::-webkit-scrollbar{display:none}
+/* SAVE INDICATOR */
+#save-indicator{font-size:11px;color:var(--n2);display:flex;align-items:center;gap:5px;transition:opacity .3s}
+#save-indicator.saving{color:var(--green)}
+#save-indicator.saved{color:var(--n2)}
+#save-indicator.error{color:var(--error)}
 
 /* MAIN */
-#main{max-width:1020px;margin:0 auto;padding:32px 32px 80px}
+#main{max-width:1020px;margin:0 auto;padding:32px 28px 80px}
+.screen{animation:fadeIn .25s ease;display:none}.screen.active{display:block}
 
-/* STAGE SCREENS */
-.screen{animation:fadeIn .3s ease;display:none}
-.screen.active{display:block}
-
-/* TYPOGRAPHY */
+/* TYPE */
 .eyebrow{font-size:11px;color:var(--n2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
-h2.page-h{font-size:30px;font-weight:500;letter-spacing:-0.03em;margin-bottom:4px}
-h2.page-h.sm{font-size:24px}
-.page-sub{color:var(--n2);font-size:13px;margin-bottom:20px}
+h2.ph{font-size:28px;font-weight:500;letter-spacing:-0.03em;margin-bottom:4px}
+h2.ph.sm{font-size:22px}
+.psub{color:var(--n2);font-size:13px;margin-bottom:20px}
 .section-mark{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .section-mark-label{background:var(--dark);color:white;font-size:10.5px;padding:3px 9px;border-radius:4px}
 .section-mark-line{flex:1;height:1px;background:var(--border)}
-label.field-label{font-size:12px;display:block;margin-bottom:5px;color:var(--dark)}
-label.field-label span{color:var(--n2)}
 
 /* CARD */
 .card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:8px}
 .card.dg{background:var(--dg);border-color:rgba(255,255,255,0.06)}
-.card.highlight-green{border-left:3px solid var(--green)}
-.card.highlight-border{border-color:rgba(21,142,29,0.22)}
+.card.hl{border-left:3px solid var(--green)}
 
 /* INPUTS */
-.inp{width:100%;background:var(--white);border:1px solid rgba(0,0,0,0.13);border-radius:6px;padding:9px 12px;color:var(--dark);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none}
-.inp:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(21,142,29,0.08)}
+.inp{width:100%;background:var(--white);border:1px solid rgba(0,0,0,0.13);border-radius:6px;padding:9px 12px;color:var(--dark);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+.inp:focus{border-color:var(--green)!important;box-shadow:0 0 0 3px rgba(21,142,29,0.08)!important}
 textarea.inp{resize:vertical}
 
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;border-radius:6px;padding:8px 16px;transition:all .15s;white-space:nowrap;border:none;min-height:36px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;border-radius:6px;padding:8px 16px;transition:all .15s;white-space:nowrap;border:none;min-height:36px;font-family:var(--font)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-primary{background:var(--lime);color:#111}
-.btn-primary:hover:not(:disabled){background:#cdf020}
-.btn-dark{background:var(--dark);color:white}
-.btn-dark:hover:not(:disabled){background:#2a2a2a}
-.btn-ghost{background:transparent;color:var(--dark);border:1px solid var(--border)}
-.btn-ghost:hover:not(:disabled){background:var(--n1);border-color:rgba(0,0,0,.18)}
-.btn-danger{background:transparent;color:var(--error);border:1px solid rgba(229,57,53,0.2)}
-.btn-danger:hover:not(:disabled){background:rgba(229,57,53,0.07);border-color:rgba(229,57,53,0.4)}
-.btn-dg{background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.18)}
-.btn-dg:hover:not(:disabled){color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.35)}
+.btn-primary{background:var(--lime);color:#111}.btn-primary:hover:not(:disabled){background:#cdf020}
+.btn-dark{background:var(--dark);color:white}.btn-dark:hover:not(:disabled){background:#2a2a2a}
+.btn-ghost{background:transparent;color:var(--dark);border:1px solid var(--border)}.btn-ghost:hover:not(:disabled){background:var(--n1);border-color:rgba(0,0,0,.18)}
+.btn-danger{background:transparent;color:var(--error);border:1px solid rgba(229,57,53,0.2)}.btn-danger:hover:not(:disabled){background:rgba(229,57,53,0.07)}
+.btn-dg{background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.18)}.btn-dg:hover:not(:disabled){color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.35)}
 .btn.sm{font-size:12px;padding:5px 11px;min-height:28px}
 .btn.full{width:100%}
 
-/* CHIP */
+/* STATUS */
+.spinner{display:inline-block;border:2px solid rgba(0,0,0,0.08);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0}
+.status-circle{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
+.progress-wrap{margin-bottom:14px}.progress-meta{display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px}
+.progress-track{height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
+.stream-box{background:var(--dg);border-radius:6px;padding:12px;min-height:44px;max-height:200px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin-top:8px}
+.success-banner{display:flex;align-items:center;gap:7px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:9px 14px;color:var(--green);font-size:13px}
+.error-banner{display:flex;align-items:center;gap:7px;background:rgba(229,57,53,0.06);border:1px solid rgba(229,57,53,0.18);border-radius:6px;padding:8px 12px;color:var(--error);font-size:13px;margin-bottom:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.page-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--white);border-radius:6px;border:1px solid var(--border);margin-bottom:5px;transition:border-color .2s}
+.page-row.running{border-color:var(--green)}.page-row.done{border-color:rgba(21,142,29,0.22)}.page-row.error{border-color:rgba(229,57,53,0.22)}
+.code-view{max-height:340px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px}
 .chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--n2);background:rgba(0,0,0,0.04)}
 .chip.green{color:var(--green);background:rgba(21,142,29,0.08);border-color:rgba(21,142,29,0.2)}
 .chip.warn{color:var(--warn);background:rgba(192,112,0,0.08);border-color:rgba(192,112,0,0.2)}
-
-/* SPINNER */
-.spinner{display:inline-block;border:2px solid rgba(0,0,0,0.08);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0}
-
-/* PROGRESS BAR */
-.progress-wrap{margin-bottom:14px}
-.progress-meta{display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px}
-.progress-meta .count{color:var(--n2)}
-.progress-meta .pct{color:var(--green);font-weight:500}
-.progress-track{height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
-.progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
-
-/* STREAM BOX */
-.stream-box{background:var(--dg);border-radius:6px;padding:12px;min-height:44px;max-height:220px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.5);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin-top:8px}
-
-/* GRID */
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-
-/* TABLE */
-.tbl-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tbl-head{display:grid;grid-template-columns:24px 1.4fr 1.2fr 160px 44px 68px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;min-width:600px}
-.tbl-row{display:grid;grid-template-columns:24px 1.4fr 1.2fr 160px 44px 68px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--white);align-items:start;min-width:600px}
-.tbl-row:last-child{border-bottom:none}
-.tbl-row:nth-child(even){background:rgba(240,239,233,0.5)}
-.tbl-page-name{color:var(--dark);font-size:12.5px}
-.tbl-slug{color:var(--n2);font-size:10.5px;margin-top:1px}
-.tbl-kw{color:var(--n3);font-size:12px}
-.tbl-support{font-size:11px;color:var(--n2);line-height:1.4}
-.tbl-kd{color:var(--n2);font-size:11px}
-.tbl-p1{color:var(--green);font-size:11px;font-weight:500}
-.tbl-p2{color:var(--warn);font-size:11px;font-weight:500}
-.tbl-p3{color:var(--n2);font-size:11px}
-
-/* PAGE ROW (copy/schema list) */
-.page-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--white);border-radius:6px;border:1px solid var(--border);transition:border-color .2s;margin-bottom:5px}
-.page-row.running{border-color:var(--green)}
-.page-row.done{border-color:rgba(21,142,29,0.22)}
-.page-row.error{border-color:rgba(229,57,53,0.22)}
-.status-circle{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
-.status-idle{background:var(--n1)}
-.status-done{background:var(--green)}
-.status-error{background:var(--error)}
-.status-running{background:transparent;border:1px solid var(--n1)}
-.page-row-name{flex:1;font-size:13px;color:var(--n2)}
-.page-row-name.done{color:var(--dark)}
-.page-row-slug{font-size:11px;color:var(--n2);margin-left:8px}
-.page-row-actions{display:flex;gap:6px;flex-shrink:0}
-
-/* INLINE CODE VIEW */
-.code-view{max-height:340px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px}
-
-/* SUCCESS BANNER */
-.success-banner{display:flex;align-items:center;gap:7px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:9px 14px;color:var(--green);font-size:13px}
-
-/* ERROR BANNER */
-.error-banner{display:flex;align-items:center;gap:7px;background:rgba(229,57,53,0.06);border:1px solid rgba(229,57,53,0.18);border-radius:6px;padding:8px 12px;color:var(--error);font-size:13px;margin-bottom:12px}
-
-/* STATS */
-.stat-card{display:flex;align-items:center;gap:12px;padding:14px 16px}
-.stat-icon{width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:var(--dark)}
-.stat-val{font-size:24px;font-weight:500;letter-spacing:-0.03em;line-height:1}
-.stat-lbl{font-size:11px;color:var(--n2);margin-top:2px}
-
-/* TABS */
-.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tbl-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.tbl-head{display:grid;grid-template-columns:24px 1.4fr 1.2fr 44px 68px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase}
+.tbl-row{display:grid;grid-template-columns:24px 1.4fr 1.2fr 44px 68px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--white);align-items:start}
+.tbl-row:last-child{border-bottom:none}.tbl-row:nth-child(even){background:rgba(240,239,233,0.5)}
+.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none}
 .tab-bar::-webkit-scrollbar{display:none}
-.tab-btn{padding:6px 14px;border-radius:6px;font-size:13px;background:transparent;color:var(--n2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:13px;background:transparent;color:var(--n2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:var(--font)}
 .tab-btn.active{background:var(--dark);color:white;border-color:var(--dark)}
 
-/* MOBILE CARDS */
-.mobile-page-card{background:var(--white);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:6px}
+/* PROJECT PICKER */
+#projects-screen{animation:fadeIn .25s ease}
+.project-card{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--white);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.project-card:hover{border-color:rgba(0,0,0,0.18);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+.project-dot{width:8px;height:8px;border-radius:50%;background:var(--n1);flex-shrink:0}
+.project-dot.research{background:var(--warn)}
+.project-dot.sitemap,.project-dot.copy,.project-dot.schema{background:var(--green)}
+.project-dot.export{background:var(--dark)}
+.project-stage-badge{font-size:10.5px;padding:2px 7px;border-radius:4px;background:var(--bg);color:var(--n2);border:1px solid var(--border)}
 
-/* RESPONSIVE */
 @media(max-width:700px){
-  #nav{padding:0 16px;height:48px}
-  #stage-bar{display:none}
-  #mobile-stage{display:flex}
-  #main{padding:20px 16px 60px}
-  .grid-2,.grid-3{grid-template-columns:1fr}
-  h2.page-h{font-size:22px}
-  .tbl-wrap{border-radius:6px}
-  .card{padding:14px}
-  .nav-meta .nav-divider:first-child{display:none}
-  .nav-meta .nav-meta-label{display:none}
-}
-@media(max-width:480px){
-  .grid-3{grid-template-columns:1fr 1fr}
+  #nav{padding:0 16px}#stage-bar{display:none}#main{padding:20px 16px 60px}
+  .grid-2,.grid-3{grid-template-columns:1fr}h2.ph{font-size:20px}.card{padding:14px}
 }
 </style>
 </head>
@@ -190,65 +117,81 @@ textarea.inp{resize:vertical}
 
 <!-- NAV -->
 <div id="nav">
-  <div style="display:flex;align-items:center;gap:16px">
-    <a href="#" class="nav-logo">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div class="nav-logo">
       <div class="logo-mark">
-        <svg viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <span>Setsail<em style="font-style:normal;color:var(--green)"> OS</em></span>
-    </a>
+    </div>
     <div class="nav-meta">
       <div class="nav-divider"></div>
-      <span class="nav-meta-label">Website Build Pipeline</span>
+      <span style="color:var(--n3)">Website Build Pipeline</span>
       <div class="nav-divider" id="nav-div2" style="display:none"></div>
-      <span id="client-name-nav"></span>
+      <span id="client-name-nav" style="color:var(--dark);font-weight:500"></span>
     </div>
   </div>
-  <div id="stage-bar"></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div id="save-indicator" style="opacity:0"></div>
+    <div id="stage-bar"></div>
+  </div>
 </div>
-
-<!-- MOBILE STAGE BAR -->
-<div id="mobile-stage"></div>
 
 <!-- MAIN -->
 <div id="main">
 
+  <!-- PROJECT PICKER -->
+  <div id="projects-screen">
+    <div style="max-width:640px">
+      <div class="eyebrow">SetSailOS</div>
+      <h2 class="ph" style="margin-bottom:4px">Website Build Pipeline</h2>
+      <p class="psub" style="margin-bottom:24px">Pick up where you left off or start a new project.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:500">Saved Projects</span>
+        <button class="btn btn-primary sm" onclick="startNewProject()"><i class="ti ti-plus"></i> New Project</button>
+      </div>
+      <div id="projects-list">
+        <div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0">
+          <span class="spinner" style="width:12px;height:12px"></span> Loading projects...
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- SETUP -->
-  <div class="screen active" id="screen-setup">
+  <div class="screen" id="screen-setup">
     <div style="max-width:680px">
-      <div class="eyebrow">Website Build Pipeline</div>
-      <h2 class="page-h">New project</h2>
-      <p class="page-sub">Fill in client details and paste the full strategy document.</p>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <button class="btn btn-ghost sm" onclick="showProjects()"><i class="ti ti-arrow-left"></i> Projects</button>
+      </div>
+      <div class="eyebrow">Stage 1 of 6</div>
+      <h2 class="ph">New project</h2>
+      <p class="psub">Fill in client details and paste the full strategy document.</p>
 
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client</span><div class="section-mark-line"></div></div>
         <div class="grid-2" style="margin-bottom:12px">
-          <div><label class="field-label">Client Name *</label><input class="inp" id="f-client" placeholder="e.g. Riverside Roofing"></div>
-          <div><label class="field-label">Website URL</label><input class="inp" id="f-url" placeholder="e.g. riversideroofing.ca"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Client Name *</label><input class="inp" id="f-client" placeholder="e.g. Riverside Roofing"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Website URL</label><input class="inp" id="f-url" placeholder="e.g. riversideroofing.ca"></div>
         </div>
         <div class="grid-2">
-          <div><label class="field-label">Target Geography</label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC — Canada-wide"></div>
-          <div><label class="field-label">Pricing to Mention</label><input class="inp" id="f-pricing" placeholder="e.g. From $2,400/mo flat"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Target Geography</label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Pricing to Mention</label><input class="inp" id="f-pricing" placeholder="e.g. From $2,400/mo flat"></div>
         </div>
       </div>
-
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Strategy</span><div class="section-mark-line"></div></div>
         <div style="margin-bottom:12px">
-          <label class="field-label">Strategy Document * <span>— paste discovery notes, brief, questionnaire, proposal</span></label>
-          <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Include services, audience, geography, competitors, pricing, tone, goals — everything."></textarea>
+          <label style="font-size:12px;display:block;margin-bottom:5px">Strategy Document * <span style="color:var(--n2)">— paste discovery notes, brief, questionnaire</span></label>
+          <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Services, audience, geography, competitors, pricing, tone — everything."></textarea>
         </div>
-        <div>
-          <label class="field-label">Brand Voice Notes</label>
-          <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. No jargon. Canadian spelling."></textarea>
-        </div>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Brand Voice Notes</label>
+        <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. Canadian spelling."></textarea>
       </div>
-
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Competitors</span><div class="section-mark-line"></div></div>
         <textarea class="inp" id="f-competitors" rows="3" placeholder="competitor1.ca&#10;competitor2.com"></textarea>
       </div>
-
       <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
       <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
     </div>
@@ -258,14 +201,14 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-research">
     <div style="max-width:780px">
       <div class="eyebrow">Stage 2 of 6</div>
-      <h2 class="page-h sm">Research Brief</h2>
-      <p class="page-sub">Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
+      <h2 class="ph sm">Research Brief</h2>
+      <p class="psub">Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
       <button class="btn btn-primary" id="research-run-btn" onclick="runResearch()"><i class="ti ti-brain"></i> Run Research Analysis</button>
       <div id="research-stream-wrap" style="display:none" class="card" style="margin-top:12px">
         <div class="eyebrow" style="margin-bottom:0">Analysis output</div>
         <div class="stream-box" id="research-stream"></div>
       </div>
-      <div id="research-results" style="display:none;margin-top:0;animation:fadeIn .3s ease"></div>
+      <div id="research-results" style="display:none;margin-top:0"></div>
     </div>
   </div>
 
@@ -275,8 +218,8 @@ textarea.inp{resize:vertical}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow">Stage 3 of 6</div>
-          <h2 class="page-h sm">Sitemap + Keyword Map</h2>
-          <p class="page-sub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
+          <h2 class="ph sm">Sitemap + Keyword Map</h2>
+          <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
         <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
       </div>
@@ -294,8 +237,8 @@ textarea.inp{resize:vertical}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow">Stage 4 of 6</div>
-          <h2 class="page-h sm">Copy Generation</h2>
-          <p class="page-sub" style="margin-bottom:0" id="copy-subtitle">P1 first. ~60–90s per page.</p>
+          <h2 class="ph sm">Copy Generation</h2>
+          <p class="psub" style="margin-bottom:0" id="copy-subtitle">P1 first. ~60–90s per page.</p>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" id="copy-run-btn" onclick="runAllCopy()"><i class="ti ti-player-play"></i> Generate All Pages</button>
@@ -303,10 +246,10 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div id="copy-progress" style="display:none" class="progress-wrap">
-        <div class="progress-meta"><span class="count" id="copy-count-label"></span><span class="pct" id="copy-pct-label"></span></div>
+        <div class="progress-meta"><span id="copy-count-label" style="color:var(--n2)"></span><span id="copy-pct-label" style="color:var(--green);font-weight:500"></span></div>
         <div class="progress-track"><div class="progress-fill" id="copy-progress-fill" style="width:0%"></div></div>
       </div>
-      <div id="copy-active-card" style="display:none" class="card highlight-green" style="margin-bottom:10px">
+      <div id="copy-active-card" style="display:none" class="card hl" style="margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
           <span class="spinner" style="width:12px;height:12px"></span>
           <span style="font-size:13px">Writing: <strong id="copy-active-name"></strong></span>
@@ -314,14 +257,14 @@ textarea.inp{resize:vertical}
         <div style="height:70px;overflow:hidden;background:var(--dg);border-radius:5px;padding:10px;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.5" id="copy-active-stream"></div>
       </div>
       <div id="copy-list"></div>
-      <div id="copy-preview-wrap" style="display:none" class="card" style="margin-bottom:14px">
+      <div id="copy-preview-wrap" style="display:none" class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div class="eyebrow" id="copy-preview-label" style="margin-bottom:0"></div>
-          <button class="btn btn-ghost sm" onclick="copyToClipboard('copy-preview-content','copy')"><i class="ti ti-copy"></i> Copy HTML</button>
+          <button class="btn btn-ghost sm" onclick="copyToClip('copy-preview-content')"><i class="ti ti-copy"></i> Copy HTML</button>
         </div>
         <div class="code-view" id="copy-preview-content"></div>
       </div>
-      <div id="copy-done-banner" style="display:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <div id="copy-done-banner" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
         <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label"></span></div>
         <button class="btn btn-primary" onclick="goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema + Meta</button>
       </div>
@@ -335,8 +278,8 @@ textarea.inp{resize:vertical}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow">Stage 5 of 6</div>
-          <h2 class="page-h sm">Schema + Meta Tags</h2>
-          <p class="page-sub" style="margin-bottom:0">JSON-LD, meta title, description, OG tags — paste-ready for Webflow.</p>
+          <h2 class="ph sm">Schema + Meta Tags</h2>
+          <p class="psub" style="margin-bottom:0">JSON-LD, meta title, description, OG tags — paste-ready for Webflow.</p>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-dark" id="schema-run-btn" onclick="runAllSchema()"><i class="ti ti-code"></i> Generate All Schema</button>
@@ -344,14 +287,14 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div id="schema-progress" style="display:none" class="progress-wrap">
-        <div class="progress-meta"><span class="count" id="schema-count-label"></span><span class="pct" id="schema-pct-label" style="color:var(--dark)"></span></div>
+        <div class="progress-meta"><span id="schema-count-label" style="color:var(--n2)"></span><span id="schema-pct-label" style="color:var(--dark);font-weight:500"></span></div>
         <div class="progress-track"><div class="progress-fill" id="schema-progress-fill" style="width:0%;background:var(--dark)"></div></div>
       </div>
       <div id="schema-list"></div>
-      <div id="schema-preview-wrap" style="display:none" class="card" style="margin-bottom:14px">
+      <div id="schema-preview-wrap" style="display:none" class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div class="eyebrow" id="schema-preview-label" style="margin-bottom:0"></div>
-          <button class="btn btn-ghost sm" onclick="copyToClipboard('schema-preview-content','schema')"><i class="ti ti-copy"></i> Copy Schema</button>
+          <button class="btn btn-ghost sm" onclick="copyToClip('schema-preview-content')"><i class="ti ti-copy"></i> Copy Schema</button>
         </div>
         <div class="code-view" id="schema-preview-content"></div>
       </div>
@@ -367,8 +310,8 @@ textarea.inp{resize:vertical}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow">Stage 6 of 6</div>
-          <h2 class="page-h sm">Export Package</h2>
-          <p class="page-sub" style="margin-bottom:0" id="export-subtitle"></p>
+          <h2 class="ph sm">Export Package</h2>
+          <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
         </div>
         <button class="btn btn-primary" onclick="downloadPackage()"><i class="ti ti-download"></i> Download Full Package</button>
       </div>
@@ -384,795 +327,803 @@ textarea.inp{resize:vertical}
     </div>
   </div>
 
-</div><!-- /main -->
+</div>
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────────
 const S = {
-  client:'', url:'', geo:'', pricing:'', strategy:'', voice:'', competitors:'',
-  research: null,   // parsed JSON
-  pages: [],        // sitemap pages
-  copy: {},         // slug -> {copy, page}
-  schema: {},       // slug -> {schema, page}
-  copyStop: false,
-  schemaStop: false,
-  copyRunning: false,
-  schemaRunning: false,
-  currentCopySlug: null,
-  currentSchemaSlug: null,
-  copyPreviewSlug: null,
-  schemaPreviewSlug: null,
-  currentTab: 'sitemap',
+  projectId: null, stage: 'setup',
+  setup: null, research: null, pages: [], copy: {}, schema: {},
+  copyStop: false, schemaStop: false,
+  copyRunning: false, schemaRunning: false,
+  copyPreviewSlug: null, schemaPreviewSlug: null,
 };
 
-const STAGES = ['setup','research','sitemap','copy','schema','export'];
+// ── PERSISTENCE ────────────────────────────────────────────────────
+let saveTimer = null;
+function scheduleSave() {
+  if (!S.projectId) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveProject, 1500);
+  showSaveIndicator('saving');
+}
 
-// ── CLAUDE API ─────────────────────────────────────────────────────
+async function saveProject() {
+  if (!S.projectId || !S.setup) return;
+  try {
+    showSaveIndicator('saving');
+    const payload = {
+      stage: S.stage,
+      setup: S.setup,
+      research: S.research,
+      pages: S.pages,
+      copy: S.copy,
+      schema: S.schema,
+      savedAt: Date.now(),
+    };
+    const res = await fetch('/api/projects/' + S.projectId, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Save failed');
+    showSaveIndicator('saved');
+  } catch(e) {
+    showSaveIndicator('error');
+  }
+}
+
+function showSaveIndicator(state) {
+  const el = document.getElementById('save-indicator');
+  el.style.opacity = '1';
+  if (state === 'saving') {
+    el.className = 'saving'; el.style.color = 'var(--n2)';
+    el.innerHTML = '<span class="spinner" style="width:10px;height:10px;border-top-color:var(--n2)"></span> Saving...';
+  } else if (state === 'saved') {
+    el.className = 'saved'; el.style.color = 'var(--n2)';
+    el.innerHTML = '<i class="ti ti-cloud-check" style="font-size:13px"></i> Saved';
+    setTimeout(() => { el.style.opacity = '0'; }, 2500);
+  } else {
+    el.className = 'error'; el.style.color = 'var(--error)';
+    el.innerHTML = '<i class="ti ti-cloud-off" style="font-size:13px"></i> Save failed';
+  }
+}
+
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/projects');
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function loadProject(id) {
+  const res = await fetch('/api/projects/' + id);
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+// ── PROJECT PICKER ─────────────────────────────────────────────────
+async function showProjects() {
+  document.getElementById('projects-screen').style.display = 'block';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('stage-bar').innerHTML = '';
+  document.getElementById('client-name-nav').textContent = '';
+  document.getElementById('nav-div2').style.display = 'none';
+  document.getElementById('save-indicator').style.opacity = '0';
+  S.projectId = null;
+
+  const listEl = document.getElementById('projects-list');
+  listEl.innerHTML = '<div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0"><span class="spinner" style="width:12px;height:12px"></span> Loading...</div>';
+
+  const projects = await loadProjects();
+  if (!projects.length) {
+    listEl.innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px 0">No saved projects yet. Start a new one.</div>';
+    return;
+  }
+
+  let html = '';
+  projects.forEach(p => {
+    const ts = p.updatedAt ? new Date(p.updatedAt).toLocaleDateString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const dotCls = 'project-dot ' + (p.stage||'setup');
+    html += '<div class="project-card" onclick="resumeProject(\'' + esc(p.id) + '\')">'
+      + '<div class="' + dotCls + '"></div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(p.name) + '</div>'
+      + (ts ? '<div style="font-size:11px;color:var(--n2);margin-top:1px">Last updated ' + esc(ts) + '</div>' : '')
+      + '</div>'
+      + '<span class="project-stage-badge">' + esc(p.stage||'setup') + '</span>'
+      + '<button class="btn btn-ghost sm" style="flex-shrink:0" onclick="event.stopPropagation();deleteProject(\'' + esc(p.id) + '\',this)"><i class="ti ti-trash" style="font-size:12px"></i></button>'
+      + '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+function startNewProject() {
+  S.projectId = 'proj-' + Date.now();
+  S.stage = 'setup'; S.setup = null; S.research = null;
+  S.pages = []; S.copy = {}; S.schema = {};
+  document.getElementById('projects-screen').style.display = 'none';
+  goTo('setup');
+}
+
+async function resumeProject(id) {
+  document.getElementById('projects-list').innerHTML = '<div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0"><span class="spinner" style="width:12px;height:12px"></span> Loading project...</div>';
+  const data = await loadProject(id);
+  if (!data) { showProjects(); return; }
+
+  S.projectId = id;
+  S.stage = data.stage || 'setup';
+  S.setup = data.setup || null;
+  S.research = data.research || null;
+  S.pages = data.pages || [];
+  S.copy = data.copy || {};
+  S.schema = data.schema || {};
+
+  document.getElementById('projects-screen').style.display = 'none';
+
+  if (S.setup?.client) {
+    document.getElementById('client-name-nav').textContent = S.setup.client;
+    document.getElementById('nav-div2').style.display = '';
+  }
+
+  // Pre-fill setup form if returning there
+  if (S.stage === 'setup' && S.setup) prefillSetup();
+
+  goTo(S.stage);
+
+  // Re-render stage content
+  if (S.stage === 'research' && S.research) renderResearchResults(S.research);
+  if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
+  if (S.stage === 'copy' && S.pages.length) { initCopy(); }
+  if (S.stage === 'schema' && S.pages.length) { initSchema(); }
+  if (S.stage === 'export') renderExport();
+}
+
+async function deleteProject(id, btn) {
+  if (!confirm('Delete this project? This cannot be undone.')) return;
+  btn.disabled = true;
+  await fetch('/api/projects/' + id, { method: 'DELETE' });
+  showProjects();
+}
+
+function prefillSetup() {
+  const s = S.setup;
+  if (!s) return;
+  document.getElementById('f-client').value = s.client || '';
+  document.getElementById('f-url').value = s.url || '';
+  document.getElementById('f-geo').value = s.geo || '';
+  document.getElementById('f-pricing').value = s.pricing || '';
+  document.getElementById('f-strategy').value = s.strategy || '';
+  document.getElementById('f-voice').value = s.voice || '';
+  document.getElementById('f-competitors').value = s.competitors || '';
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────────────
+const STAGES = [
+  {id:'setup',label:'Setup',icon:'ti-settings'},
+  {id:'research',label:'Research',icon:'ti-search'},
+  {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
+  {id:'copy',label:'Copy',icon:'ti-pencil'},
+  {id:'schema',label:'Schema',icon:'ti-code'},
+  {id:'export',label:'Export',icon:'ti-package-export'},
+];
+const STAGE_ORDER = STAGES.map(s => s.id);
+
+function goTo(stage) {
+  S.stage = stage;
+  document.getElementById('projects-screen').style.display = 'none';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + stage).classList.add('active');
+  renderStageBar(stage);
+  window.scrollTo(0,0);
+  if (stage === 'export') renderExport();
+  scheduleSave();
+}
+
+function renderStageBar(current) {
+  const idx = STAGES.findIndex(s => s.id === current);
+  let html = '';
+  STAGES.forEach((s, i) => {
+    const done = i < idx, active = i === idx;
+    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 4) || (i === 5 && S.pages.length > 0);
+    const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
+    const icon = done ? 'ti-check' : s.icon;
+    html += '<div class="' + cls + '" onclick="' + (canClick ? 'navToStage(\'' + s.id + '\')' : '') + '" style="' + (canClick && !active ? '' : 'cursor:default') + '">'
+      + '<i class="ti ' + icon + '" style="font-size:9px"></i>' + s.label + '</div>';
+    if (i < STAGES.length-1) html += '<div class="stage-dot' + (done?' done':'') + '"></div>';
+  });
+  document.getElementById('stage-bar').innerHTML = html;
+}
+
+function navToStage(stage) {
+  const from = STAGE_ORDER.indexOf(S.stage);
+  const to = STAGE_ORDER.indexOf(stage);
+  if (to <= from) {
+    goTo(stage);
+    if (stage === 'research' && S.research) renderResearchResults(S.research);
+    if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
+    if (stage === 'copy' && S.pages.length) initCopy();
+    if (stage === 'schema' && S.pages.length) initSchema();
+  } else {
+    goTo(stage);
+  }
+}
+
+// ── API ────────────────────────────────────────────────────────────
 async function callClaude(system, user, onChunk) {
   const res = await fetch('/api/claude', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8000,
-      stream: true,
-      system: system,
-      messages: [{role:'user', content:user}]
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:8000,
+      stream:true,
+      system,
+      messages:[{role:'user',content:user}]
     })
   });
   if (!res.ok) {
-    const e = await res.json().catch(function() { return {}; });
-    throw new Error((e.error && e.error.message) || ('API error ' + res.status));
+    const e = await res.json().catch(function(){return{};});
+    throw new Error((e.error&&e.error.message)||('API error '+res.status));
   }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let full = '';
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    const lines = dec.decode(chunk.value).split('\n').filter(function(l) { return l.startsWith('data: '); });
-    for (let i = 0; i < lines.length; i++) {
+  while(true) {
+    const {done,value} = await reader.read();
+    if(done) break;
+    for(const line of dec.decode(value).split('\n')) {
+      if(!line.startsWith('data: ')) continue;
       try {
-        const d = JSON.parse(lines[i].slice(6));
-        if (d.type === 'content_block_delta' && d.delta && d.delta.text) {
+        const d = JSON.parse(line.slice(6));
+        if(d.type==='content_block_delta'&&d.delta&&d.delta.text) {
           full += d.delta.text;
-          if (onChunk) onChunk(full);
+          if(onChunk) onChunk(full);
         }
-      } catch(e2) { /* ignore parse errors on SSE frames */ }
+      } catch(e2) {}
     }
   }
   return full;
 }
 
 function safeParseJSON(text) {
+  // Try direct parse after stripping fences
+  try { return JSON.parse(text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+  // Extract array
+  try { const m = text.match(/(\[[\s\S]*\])/); if(m) return JSON.parse(m[1]); } catch(e) {}
+  // Extract object
+  try { const m = text.match(/(\{[\s\S]*\})/); if(m) return JSON.parse(m[1]); } catch(e) {}
+  // Find first [ or { to last ] or }
   try {
-    const clean = text.replace(/```json[\s]*/g,'').replace(/```[\s]*/g,'').trim();
-    return JSON.parse(clean);
-  } catch(e) {
-    return null;
-  }
+    const s = text.search(/[\[{]/);
+    if(s>=0){const e=Math.max(text.lastIndexOf(']'),text.lastIndexOf('}'));if(e>s)return JSON.parse(text.slice(s,e+1));}
+  } catch(e) {}
+  return null;
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── PROMPTS ────────────────────────────────────────────────────────
-const PROMPTS = {
-research: `You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
-{"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","brand_notes":"","strategic_recommendations":[]}`,
+const P = {
+research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
+{"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap: `You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble:
+sitemap:`You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble, no markdown fences:
 [{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","supporting_keywords":[],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
-copy: `You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Not corporate. Leads with outcomes. Canadian spelling (analyse, optimise, colour). No fluff, no passive voice. H1 contains primary keyword. FAQ answers complete and conversational. Write COMPLETE page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">. Include: hero, problem/solution, service detail, process, social proof placeholders, FAQ (6+ questions), final CTA.`,
+copy:`You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Canadian spelling. Leads with outcomes. No fluff. H1 contains primary keyword. Include: hero, problem/solution, services, process, social proof placeholders, FAQ (6+ questions), CTA. Write complete page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
 
-schema: `You are a technical SEO specialist at Setsail Marketing. Rules: every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Add HowTo if process section exists. Use @id anchors. No "#1" or unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready to paste into <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
+schema:`You are a technical SEO specialist at Setsail Marketing. Every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Use @id anchors. No unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready for <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
 };
-
-// ── NAVIGATION ─────────────────────────────────────────────────────
-function goTo(stage) {
-  document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
-  document.getElementById('screen-' + stage).classList.add('active');
-  renderStageBar(stage);
-  window.scrollTo(0,0);
-  if (stage === 'export') renderExport();
-}
-
-function renderStageBar(current) {
-  const stages = [
-    {id:'setup',label:'Setup',icon:'ti-settings'},
-    {id:'research',label:'Research',icon:'ti-search'},
-    {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
-    {id:'copy',label:'Copy',icon:'ti-pencil'},
-    {id:'schema',label:'Schema',icon:'ti-code'},
-    {id:'export',label:'Export',icon:'ti-package-export'},
-  ];
-  const idx = stages.findIndex(function(s) { return s.id === current; });
-  
-  function makePill(s, i) {
-    const done = i < idx, active = i === idx;
-    const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
-    const icon = done ? '<i class="ti ti-check" style="font-size:9px"></i>' : '<i class="ti ' + s.icon + '" style="font-size:9px"></i>';
-    return '<div class="' + cls + '">' + icon + s.label + '</div>';
-  }
-
-  let html = '';
-  for (let i = 0; i < stages.length; i++) {
-    html += makePill(stages[i], i);
-    if (i < stages.length - 1) {
-      html += '<div class="stage-dot' + (i < idx ? ' done' : '') + '"></div>';
-    }
-  }
-  document.getElementById('stage-bar').innerHTML = html;
-
-  // Mobile
-  let mhtml = '';
-  for (let i = 0; i < stages.length; i++) {
-    mhtml += makePill(stages[i], i);
-  }
-  document.getElementById('mobile-stage').innerHTML = mhtml;
-  // Scroll active into view
-  const activePill = document.querySelector('#mobile-stage .active');
-  if (activePill) activePill.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'});
-}
 
 // ── SETUP ──────────────────────────────────────────────────────────
 function setupNext() {
   const client = document.getElementById('f-client').value.trim();
   const strategy = document.getElementById('f-strategy').value.trim();
-  if (!client) return showSetupError('Client name is required');
-  if (strategy.length < 80) return showSetupError('Strategy document is too short — paste the full brief');
-  
-  S.client = client;
-  S.url = document.getElementById('f-url').value.trim();
-  S.geo = document.getElementById('f-geo').value.trim();
-  S.pricing = document.getElementById('f-pricing').value.trim();
-  S.strategy = strategy;
-  S.voice = document.getElementById('f-voice').value.trim();
-  S.competitors = document.getElementById('f-competitors').value.trim();
-
+  if (!client) return showSetupErr('Client name is required');
+  if (strategy.length < 80) return showSetupErr('Strategy document is too short — paste the full brief');
+  hideSetupErr();
+  S.setup = {
+    client, url: document.getElementById('f-url').value.trim(),
+    geo: document.getElementById('f-geo').value.trim(),
+    pricing: document.getElementById('f-pricing').value.trim(),
+    strategy, voice: document.getElementById('f-voice').value.trim(),
+    competitors: document.getElementById('f-competitors').value.trim(),
+  };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-div2').style.display = '';
-  hideSetupError();
+  scheduleSave();
   goTo('research');
 }
-
-function showSetupError(msg) {
-  const el = document.getElementById('setup-error');
-  document.getElementById('setup-error-msg').textContent = msg;
-  el.style.display = 'flex';
-}
-function hideSetupError() {
-  document.getElementById('setup-error').style.display = 'none';
-}
+function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}
+function hideSetupErr(){document.getElementById('setup-error').style.display='none';}
 
 // ── RESEARCH ───────────────────────────────────────────────────────
 async function runResearch() {
   const btn = document.getElementById('research-run-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Analysing...';
-  
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Analysing...';
   const wrap = document.getElementById('research-stream-wrap');
   const streamEl = document.getElementById('research-stream');
-  wrap.style.display = 'block';
-  streamEl.textContent = '';
+  wrap.style.display = 'block'; streamEl.textContent = '';
   document.getElementById('research-results').style.display = 'none';
 
-  const userPrompt = 'CLIENT: ' + S.client + '\nWEBSITE: ' + (S.url||'N/A') + '\nGEOGRAPHY: ' + (S.geo||'N/A') + '\nPRICING: ' + (S.pricing||'N/A') + '\nCOMPETITORS:\n' + (S.competitors||'N/A') + '\nBRAND VOICE: ' + (S.voice||'N/A') + '\n\nSTRATEGY DOCUMENT:\n' + S.strategy;
-
+  const s = S.setup;
+  const prompt = 'CLIENT: '+s.client+'\nWEBSITE: '+(s.url||'N/A')+'\nGEOGRAPHY: '+(s.geo||'N/A')+'\nPRICING: '+(s.pricing||'N/A')+'\nCOMPETITORS:\n'+(s.competitors||'N/A')+'\nBRAND VOICE: '+(s.voice||'N/A')+'\n\nSTRATEGY DOCUMENT:\n'+s.strategy;
   try {
-    const result = await callClaude(PROMPTS.research, userPrompt, function(text) {
-      streamEl.textContent = text;
-      streamEl.scrollTop = streamEl.scrollHeight;
-    });
+    const result = await callClaude(P.research, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
     S.research = safeParseJSON(result);
-    if (S.research) {
-      renderResearchResults(S.research);
-      wrap.style.display = 'none';
-    } else {
-      streamEl.textContent = 'Could not parse response. Raw output:\n\n' + result;
-    }
-  } catch(err) {
-    streamEl.textContent = 'Error: ' + err.message;
-  }
-
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
+    if (S.research) { wrap.style.display = 'none'; renderResearchResults(S.research); scheduleSave(); }
+    else streamEl.textContent = 'Could not parse JSON. Raw:\n\n' + result;
+  } catch(e) { streamEl.textContent = 'Error: '+e.message; }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
 }
 
 function renderResearchResults(r) {
-  let html = '<div style="animation:fadeIn .3s ease">';
+  let html = '<div style="animation:fadeIn .25s ease">';
   html += '<div class="grid-2" style="margin-bottom:8px">';
-  html += '<div class="card"><div class="eyebrow">Business Overview</div><p style="color:var(--n3);font-size:13px;line-height:1.65">' + esc(r.business_overview||'') + '</p></div>';
-  html += '<div class="card"><div class="eyebrow">Value Proposition</div><p style="color:var(--n3);font-size:13px;line-height:1.65">' + esc(r.value_proposition||'') + '</p></div>';
+  html += '<div class="card"><div class="eyebrow">Business Overview</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.business_overview||'')+'</p></div>';
+  html += '<div class="card"><div class="eyebrow">Value Proposition</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.value_proposition||'')+'</p></div>';
   html += '</div>';
-
-  if (r.key_differentiators && r.key_differentiators.length) {
+  if (r.key_differentiators?.length) {
     html += '<div class="card" style="margin-bottom:8px"><div class="eyebrow">Key Differentiators</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">';
-    r.key_differentiators.forEach(function(d) {
-      html += '<li style="color:var(--n3);font-size:13px;display:flex;gap:8px"><span style="color:var(--green);flex-shrink:0">—</span>' + esc(d) + '</li>';
-    });
+    r.key_differentiators.forEach(d => { html += '<li style="color:var(--n3);font-size:13px;display:flex;gap:8px"><span style="color:var(--green)">—</span>'+esc(d)+'</li>'; });
     html += '</ul></div>';
   }
-
-  if (r.strategic_recommendations && r.strategic_recommendations.length) {
-    html += '<div class="card highlight-green" style="margin-bottom:20px"><div class="eyebrow">Strategic Recommendations</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
-    r.strategic_recommendations.forEach(function(rec) {
-      html += '<li style="color:var(--dark);font-size:13px;display:flex;gap:8px"><i class="ti ti-point-filled" style="color:var(--green);font-size:8px;margin-top:5px;flex-shrink:0"></i>' + esc(rec) + '</li>';
-    });
+  if (r.strategic_recommendations?.length) {
+    html += '<div class="card hl" style="margin-bottom:20px"><div class="eyebrow">Strategic Recommendations</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+    r.strategic_recommendations.forEach(rec => { html += '<li style="color:var(--dark);font-size:13px;display:flex;gap:8px"><span style="color:var(--green);font-size:8px;margin-top:5px">◆</span>'+esc(rec)+'</li>'; });
     html += '</ul></div>';
   }
-
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  html += '<div style="display:flex;gap:8px">';
   html += '<button class="btn btn-primary" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>';
   html += '<button class="btn btn-ghost" onclick="runResearch()"><i class="ti ti-refresh"></i> Re-run</button>';
   html += '</div></div>';
-
   const el = document.getElementById('research-results');
-  el.innerHTML = html;
-  el.style.display = 'block';
+  el.innerHTML = html; el.style.display = 'block';
 }
 
 // ── SITEMAP ────────────────────────────────────────────────────────
 async function runSitemap(withRevisions) {
   const btn = document.getElementById('sitemap-run-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...';
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...';
   document.getElementById('sitemap-results').style.display = 'none';
-  S.pages = [];
-
   const wrap = document.getElementById('sitemap-stream-wrap');
   const streamEl = document.getElementById('sitemap-stream');
-  wrap.style.display = 'block';
-  streamEl.textContent = '';
+  wrap.style.display = 'block'; streamEl.textContent = '';
 
-  const r = S.research || {};
+  const r = S.research||{};
   const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
-  let prompt = 'CLIENT: ' + S.client + '\nSERVICES: ' + ((r.primary_services||[]).join(', ')||'N/A') + '\nGEOGRAPHY: ' + ((r.geography&&r.geography.primary)||S.geo||'N/A') + '\nGEOGRAPHY SECONDARY: ' + ((r.geography&&r.geography.secondary||[]).join(', ')||'') + '\nCOMPETITORS: ' + ((r.competitors||[]).join(', ')||S.competitors||'') + '\nOVERVIEW: ' + (r.business_overview||'') + '\nVALUE PROP: ' + (r.value_proposition||'') + '\nPRICING: ' + (S.pricing||(r.pricing_notes||''));
-  if (withRevisions && revNote && revNote.value.trim()) {
-    prompt += '\n\nREVISION NOTES:\n' + revNote.value;
-  }
+  let prompt = 'CLIENT: '+S.setup.client+'\nSERVICES: '+((r.primary_services||[]).join(', ')||'N/A')+'\nGEOGRAPHY: '+(r.geography?.primary||S.setup.geo||'N/A')+'\nGEO SECONDARY: '+((r.geography?.secondary||[]).join(', '))+'\nCOMPETITORS: '+((r.competitors||[]).join(', ')||S.setup.competitors||'')+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nPRICING: '+(S.setup.pricing||r.pricing_notes||'');
+  if (withRevisions && revNote?.value.trim()) prompt += '\n\nREVISION NOTES:\n'+revNote.value;
 
   try {
-    const result = await callClaude(PROMPTS.sitemap, prompt, function(text) {
-      streamEl.textContent = text;
-      streamEl.scrollTop = streamEl.scrollHeight;
-    });
+    const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
     const parsed = safeParseJSON(result);
     if (Array.isArray(parsed) && parsed.length) {
-      S.pages = parsed;
-      wrap.style.display = 'none';
-      renderSitemapResults();
+      S.pages = parsed; wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave();
     } else {
-      streamEl.textContent = 'Could not parse sitemap. Raw:\n\n' + result;
+      streamEl.textContent = 'Could not parse sitemap JSON. Raw:\n\n'+result;
     }
-  } catch(err) {
-    streamEl.textContent = 'Error: ' + err.message;
-  }
-
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+  } catch(e) { streamEl.textContent = 'Error: '+e.message; }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
 }
 
-function renderSitemapResults() {
+function renderSitemapResults(approved) {
   const pages = S.pages;
-  const p1 = pages.filter(function(p) { return p.priority==='P1'; }).length;
-  const p2 = pages.filter(function(p) { return p.priority==='P2'; }).length;
-  const p3 = pages.filter(function(p) { return p.priority==='P3'; }).length;
-  const isMobile = window.innerWidth <= 700;
+  const p1 = pages.filter(p=>p.priority==='P1').length;
+  const p2 = pages.filter(p=>p.priority==='P2').length;
+  const p3 = pages.filter(p=>p.priority==='P3').length;
 
-  let html = '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
-  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">' + pages.length + ' pages</span>';
-  html += '<span class="chip green">P1: ' + p1 + '</span><span class="chip warn">P2: ' + p2 + '</span><span class="chip">P3: ' + p3 + '</span>';
+  let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
+  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
+  html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
   html += '</div>';
 
-  if (isMobile) {
-    // Mobile: stacked cards
-    html += '<div style="margin-bottom:8px">';
-    pages.forEach(function(p, i) {
-      const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-      html += '<div class="mobile-page-card">';
-      html += '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px">';
-      html += '<div><div style="color:var(--dark);font-size:13px">' + esc(p.page_name) + '</div><div style="color:var(--n2);font-size:10.5px">/' + esc(p.slug) + '</div></div>';
-      html += '<span style="color:' + pColor + ';font-size:11px;font-weight:500;flex-shrink:0">' + esc(p.priority) + '</span>';
-      html += '</div>';
-      html += '<div style="font-size:11px;color:var(--n3)">' + esc(p.primary_keyword) + (p.primary_kd ? ' <span style="color:var(--n2)">KD: ' + esc(p.primary_kd) + '</span>' : '') + '</div>';
-      html += '</div>';
-    });
+  html += '<div class="tbl-wrap">';
+  html += '<div class="tbl-head"><span>#</span><span>Page</span><span>Primary Keyword</span><span>KD</span><span>Priority</span></div>';
+  pages.forEach((p,i) => {
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    html += '<div class="tbl-row">';
+    html += '<span style="color:var(--n2);font-size:11px">'+(i+1)+'</span>';
+    html += '<div><div style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</div><div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div></div>';
+    html += '<div style="color:var(--n3);font-size:12px">'+esc(p.primary_keyword)+'</div>';
+    html += '<span style="color:var(--n2);font-size:11px">'+esc(p.primary_kd||'–')+'</span>';
+    html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     html += '</div>';
+  });
+  html += '</div>';
+
+  if (!approved) {
+    html += '<div class="card dg" style="margin-bottom:8px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><span style="color:var(--lime);font-size:14px">⛳</span><span style="color:var(--lime);font-weight:500;font-size:13px">Gate 1 — PM Sitemap Approval</span></div>';
+    html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.45);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
+    html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
+    html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
+    html += '</div></div>';
   } else {
-    // Desktop: table
-    html += '<div class="tbl-wrap" style="margin-bottom:8px">';
-    html += '<div class="tbl-head"><span>#</span><span>Page</span><span>Primary Keyword</span><span>Supporting</span><span>KD</span><span>Priority</span></div>';
-    pages.forEach(function(p, i) {
-      const pCls = p.priority==='P1'?'tbl-p1':p.priority==='P2'?'tbl-p2':'tbl-p3';
-      const supp = (p.supporting_keywords||[]).slice(0,2).join(', ') + ((p.supporting_keywords||[]).length > 2 ? ' +' + ((p.supporting_keywords||[]).length-2) : '');
-      html += '<div class="tbl-row">';
-      html += '<span style="color:var(--n2);font-size:11px">' + (i+1) + '</span>';
-      html += '<div><div class="tbl-page-name">' + esc(p.page_name) + '</div><div class="tbl-slug">/' + esc(p.slug) + '</div></div>';
-      html += '<div class="tbl-kw">' + esc(p.primary_keyword) + '</div>';
-      html += '<div class="tbl-support">' + esc(supp) + '</div>';
-      html += '<span class="tbl-kd">' + esc(p.primary_kd||'–') + '</span>';
-      html += '<span class="' + pCls + '">' + esc(p.priority||'–') + '</span>';
-      html += '</div>';
-    });
+    html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">';
+    html += '<div class="success-banner"><i class="ti ti-check"></i>Sitemap approved — '+pages.length+' pages locked</div>';
+    html += '<button class="btn btn-primary" onclick="initCopy();goTo(\'copy\')"><i class="ti ti-arrow-right"></i> Generate Copy</button>';
+    html += '<button class="btn btn-ghost" onclick="renderSitemapResults(false)"><i class="ti ti-pencil"></i> Revise</button>';
     html += '</div>';
   }
 
-  // Gate 1
-  html += '<div class="card dg" style="margin-bottom:8px">';
-  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><i class="ti ti-flag-2" style="color:var(--lime);font-size:14px"></i><span style="color:var(--lime);font-weight:500;font-size:13px">Gate 1 — PM Sitemap Approval</span></div>';
-  html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.5);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
-  html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
-  html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
-  html += '</div></div>';
-
   const el = document.getElementById('sitemap-results');
-  el.innerHTML = html;
-  el.style.display = 'block';
+  el.innerHTML = html; el.style.display = 'block';
 }
 
 function approveSitemap() {
-  const pages = S.pages;
-  let html = '<div class="success-banner" style="margin-bottom:12px"><i class="ti ti-check"></i>Sitemap approved — ' + pages.length + ' pages locked</div>';
-  html += '<button class="btn btn-primary" onclick="initCopy();goTo(\'copy\')"><i class="ti ti-arrow-right"></i> Generate Copy</button>';
-  
-  // Replace gate section
-  const results = document.getElementById('sitemap-results');
-  const dg = results.querySelector('.card.dg');
-  if (dg) {
-    dg.outerHTML = html;
-  } else {
-    results.innerHTML += html;
-  }
+  S.stage = 'sitemap'; scheduleSave();
+  renderSitemapResults(true);
 }
 
 // ── COPY ───────────────────────────────────────────────────────────
-function getOrderedPages() {
-  const p1 = S.pages.filter(function(p) { return p.priority==='P1'; });
-  const p2 = S.pages.filter(function(p) { return p.priority==='P2'; });
-  const p3 = S.pages.filter(function(p) { return p.priority==='P3'; });
-  return p1.concat(p2).concat(p3);
+function orderedPages() {
+  return [...S.pages].sort((a,b) => ({P1:0,P2:1,P3:2}[a.priority]||3)-({P1:0,P2:1,P3:2}[b.priority]||3));
 }
 
 function initCopy() {
-  const pages = getOrderedPages();
-  document.getElementById('copy-subtitle').textContent = pages.length + ' pages. P1 first. ~60–90s per page.';
+  const pages = orderedPages();
+  document.getElementById('copy-subtitle').textContent = pages.length+' pages · P1 first · ~60–90s per page';
   document.getElementById('copy-progress').style.display = 'block';
   renderCopyList();
-  updateCopyProgress();
-}
-
-function buildCopyPrompt(page) {
-  const r = S.research || {};
-  return 'CLIENT: ' + S.client + '\nPAGE: ' + page.page_name + ' | /' + page.slug + '\nPRIMARY KEYWORD: ' + page.primary_keyword + '\nSUPPORTING: ' + (page.supporting_keywords||[]).join(', ') + '\nINTENT: ' + page.search_intent + '\nWORD COUNT MIN: ' + (page.word_count_target||1500) + '\nOVERVIEW: ' + (r.business_overview||'') + '\nVALUE PROP: ' + (r.value_proposition||'') + '\nAUDIENCE: ' + ((r.target_audience||[]).map(function(a) { return a.persona; }).join(', ')) + '\nDIFFERENTIATORS: ' + (r.key_differentiators||[]).join('. ') + '\nGEOGRAPHY: ' + ((r.geography&&r.geography.primary)||S.geo||'') + '\nPRICING: ' + (S.pricing||(r.pricing_notes||'')) + '\nVOICE: ' + ((r.tone_and_voice)||S.voice||'Confident, direct, human. Canadian spelling.') + '\nNOTES: ' + (page.notes||'') + '\n\nWrite the complete page.';
-}
-
-async function runSingleCopy(page) {
-  S.currentCopySlug = page.slug;
-  updateCopyRow(page.slug, 'running');
-  
-  const activeCard = document.getElementById('copy-active-card');
-  const activeName = document.getElementById('copy-active-name');
-  const activeStream = document.getElementById('copy-active-stream');
-  activeCard.style.display = 'block';
-  activeName.textContent = page.page_name;
-  activeStream.textContent = '';
-
-  try {
-    const copy = await callClaude(PROMPTS.copy, buildCopyPrompt(page), function(text) {
-      activeStream.textContent = text.slice(-400);
-    });
-    S.copy[page.slug] = {copy: copy, page: page};
-    updateCopyRow(page.slug, 'done');
-  } catch(err) {
-    S.copy[page.slug] = {error: err.message, page: page};
-    updateCopyRow(page.slug, 'error', err.message);
-  }
-
-  S.currentCopySlug = null;
-  activeCard.style.display = 'none';
-  updateCopyProgress();
-}
-
-async function runAllCopy() {
-  if (S.copyRunning) return;
-  S.copyRunning = true;
-  S.copyStop = false;
-  document.getElementById('copy-run-btn').style.display = 'none';
-  document.getElementById('copy-stop-btn').style.display = '';
-
-  const pages = getOrderedPages();
-  for (let i = 0; i < pages.length; i++) {
-    if (S.copyStop) break;
-    if (S.copy[pages[i].slug] && S.copy[pages[i].slug].copy) continue;
-    await runSingleCopy(pages[i]);
-    await sleep(600);
-  }
-
-  S.copyRunning = false;
-  document.getElementById('copy-stop-btn').style.display = 'none';
-  document.getElementById('copy-run-btn').style.display = '';
   updateCopyProgress();
   checkCopyDone();
 }
 
-function stopCopy() {
-  S.copyStop = true;
+function buildCopyPrompt(page) {
+  const r = S.research||{}, s = S.setup;
+  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
 }
 
-function updateCopyProgress() {
-  const pages = getOrderedPages();
-  const done = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
-  const total = pages.length;
-  const pct = total > 0 ? Math.round(done/total*100) : 0;
-  document.getElementById('copy-count-label').textContent = done + '/' + total + ' complete';
-  document.getElementById('copy-pct-label').textContent = pct + '%';
-  document.getElementById('copy-progress-fill').style.width = pct + '%';
-}
-
-function checkCopyDone() {
-  const pages = getOrderedPages();
-  const done = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
-  if (done === pages.length && done > 0) {
-    document.getElementById('copy-done-label').textContent = 'All ' + done + ' pages complete';
-    document.getElementById('copy-done-banner').style.display = 'flex';
-    document.getElementById('copy-skip-btn').style.display = 'none';
-  } else if (done > 0) {
-    document.getElementById('copy-skip-btn').style.display = '';
+let copyStopFlag = false;
+async function runAllCopy() {
+  if (S.copyRunning) return;
+  S.copyRunning = true; copyStopFlag = false;
+  document.getElementById('copy-run-btn').style.display = 'none';
+  document.getElementById('copy-stop-btn').style.display = '';
+  const pages = orderedPages();
+  for (let i=0; i<pages.length; i++) {
+    if (copyStopFlag) break;
+    if (S.copy[pages[i].slug]?.copy) continue;
+    await runSingleCopy(pages[i]);
+    await sleep(500);
   }
+  S.copyRunning = false;
+  document.getElementById('copy-stop-btn').style.display = 'none';
+  document.getElementById('copy-run-btn').style.display = '';
+  updateCopyProgress(); checkCopyDone();
+  scheduleSave();
+}
+function stopCopy() { copyStopFlag = true; }
+
+async function runSingleCopy(page) {
+  S.copyPreviewSlug = null;
+  document.getElementById('copy-preview-wrap').style.display = 'none';
+  updateCopyRow(page.slug, 'running');
+  const activeCard = document.getElementById('copy-active-card');
+  document.getElementById('copy-active-name').textContent = page.page_name;
+  document.getElementById('copy-active-stream').textContent = '';
+  activeCard.style.display = 'block';
+  try {
+    const copy = await callClaude(P.copy, buildCopyPrompt(page), t => { document.getElementById('copy-active-stream').textContent = t.slice(-400); });
+    S.copy[page.slug] = {copy, page};
+    updateCopyRow(page.slug, 'done');
+    scheduleSave();
+  } catch(e) {
+    S.copy[page.slug] = {error: e.message, page};
+    updateCopyRow(page.slug, 'error', e.message);
+  }
+  activeCard.style.display = 'none';
+  updateCopyProgress();
 }
 
 function renderCopyList() {
-  const pages = getOrderedPages();
-  let html = '';
-  pages.forEach(function(page) {
-    const r = S.copy[page.slug];
-    const isDone = r && r.copy;
-    const isErr = r && r.error;
-    const status = isDone ? 'done' : isErr ? 'error' : 'idle';
-    html += makeCopyRow(page, status, isErr ? r.error : '');
-  });
-  document.getElementById('copy-list').innerHTML = html;
+  document.getElementById('copy-list').innerHTML = orderedPages().map(p => makeCopyRow(p)).join('');
 }
 
-function makeCopyRow(page, status, errMsg) {
-  const isDone = status === 'done';
-  const isErr = status === 'error';
-  const isRun = status === 'running';
-  let rowCls = 'page-row';
-  if (isRun) rowCls += ' running';
-  if (isDone) rowCls += ' done';
-  if (isErr) rowCls += ' error';
-  
-  let cirCls = 'status-circle status-idle';
-  let cirInner = '';
-  if (isRun) { cirCls = 'status-circle status-running'; cirInner = '<span class="spinner" style="width:10px;height:10px"></span>'; }
-  else if (isDone) { cirCls = 'status-circle status-done'; cirInner = '✓'; }
-  else if (isErr) { cirCls = 'status-circle status-error'; cirInner = '!'; }
-
+function makeCopyRow(page) {
+  const r = S.copy[page.slug];
+  const isDone = r?.copy, isErr = r?.error;
+  const status = isDone?'done':isErr?'error':'idle';
+  const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':'background:var(--n1)';
+  const cirContent = isDone?'✓':isErr?'!':'';
   let actions = '';
   if (isDone) {
-    const s = S.copyPreviewSlug === page.slug ? 'Hide' : 'Preview';
-    actions += '<button class="btn btn-ghost sm" onclick="toggleCopyPreview(\'' + page.slug + '\')"><i class="ti ti-eye"></i> ' + s + '</button>';
-    actions += '<button class="btn btn-ghost sm" onclick="copyText(S.copy[\'' + page.slug + '\'].copy)"><i class="ti ti-copy"></i> Copy</button>';
-  } else if (!isRun) {
-    actions += '<button class="btn btn-ghost sm" onclick="runSingleAndUpdate(\'' + page.slug + '\')">Run</button>';
+    const label = S.copyPreviewSlug === page.slug ? 'Hide' : 'Preview';
+    actions += '<button class="btn btn-ghost sm" onclick="toggleCopyPreview(\''+esc(page.slug)+'\')">'+label+'</button>';
+    actions += '<button class="btn btn-ghost sm" onclick="copyToClip2(S.copy[\''+esc(page.slug)+'\'].copy)"><i class="ti ti-copy"></i></button>';
+    actions += '<button class="btn btn-ghost sm" onclick="deleteCopyPage(\''+esc(page.slug)+'\')"><i class="ti ti-refresh" style="font-size:11px"></i> Redo</button>';
+  } else if (status !== 'running') {
+    actions += '<button class="btn btn-ghost sm" onclick="runSingleAndUpdate(\''+esc(page.slug)+'\')">Run</button>';
   }
-
-  let nameColor = isDone ? 'var(--dark)' : 'var(--n2)';
-  let errHtml = isErr ? '<span style="color:var(--error);font-size:11px;margin-left:8px;display:block">' + esc(errMsg||'') + '</span>' : '';
-  const p1Badge = page.priority === 'P1' ? '<span class="chip green" style="margin-left:6px">P1</span>' : '';
-  
-  return '<div class="' + rowCls + '" id="copy-row-' + page.slug + '">'
-    + '<div class="' + cirCls + '">' + cirInner + '</div>'
-    + '<div style="flex:1;min-width:0"><span class="page-row-name' + (isDone ? ' done' : '') + '">' + esc(page.page_name) + '</span>' + p1Badge + errHtml + '</div>'
-    + '<div class="page-row-actions">' + actions + '</div>'
-    + '</div>';
+  const p1badge = page.priority==='P1' ? '<span style="font-size:10.5px;color:var(--green);margin-left:6px;padding:1px 6px;background:rgba(21,142,29,0.1);border-radius:3px">P1</span>' : '';
+  return '<div class="page-row '+status+'" id="copy-row-'+page.slug+'">'
+    +'<div class="status-circle" style="'+cirStyle+'">'+cirContent+'</div>'
+    +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone?'var(--dark)':'var(--n2)')+'">'+esc(page.page_name)+'</span>'+p1badge
+    +(isErr?'<div style="font-size:11px;color:var(--error);margin-top:2px">'+esc(r.error)+'</div>':'')
+    +'</div>'
+    +'<div style="display:flex;gap:5px">'+actions+'</div>'
+    +'</div>';
 }
 
 function updateCopyRow(slug, status, errMsg) {
-  const pages = getOrderedPages();
-  const page = pages.find(function(p) { return p.slug === slug; });
+  const page = orderedPages().find(p => p.slug === slug);
   if (!page) return;
-  const el = document.getElementById('copy-row-' + slug);
-  if (el) el.outerHTML = makeCopyRow(page, status, errMsg||'');
+  if (status === 'running') {
+    const el = document.getElementById('copy-row-'+slug);
+    if (el) el.className = 'page-row running';
+    return;
+  }
+  const el = document.getElementById('copy-row-'+slug);
+  if (el) el.outerHTML = makeCopyRow(page);
 }
 
 function toggleCopyPreview(slug) {
   const wrap = document.getElementById('copy-preview-wrap');
   if (S.copyPreviewSlug === slug) {
-    S.copyPreviewSlug = null;
-    wrap.style.display = 'none';
-    updateCopyRow(slug, 'done');
-    return;
+    S.copyPreviewSlug = null; wrap.style.display = 'none';
+    renderCopyList(); return;
   }
   S.copyPreviewSlug = slug;
-  const pages = getOrderedPages();
-  const page = pages.find(function(p) { return p.slug === slug; });
-  if (!page) return;
-  document.getElementById('copy-preview-label').textContent = page.page_name;
+  const page = orderedPages().find(p => p.slug === slug);
+  document.getElementById('copy-preview-label').textContent = page?.page_name||slug;
   document.getElementById('copy-preview-content').textContent = S.copy[slug].copy;
   wrap.style.display = 'block';
-  updateCopyRow(slug, 'done');
+  renderCopyList();
+}
+
+function deleteCopyPage(slug) {
+  delete S.copy[slug];
+  S.copyPreviewSlug = null;
+  document.getElementById('copy-preview-wrap').style.display = 'none';
+  renderCopyList(); updateCopyProgress(); checkCopyDone(); scheduleSave();
 }
 
 async function runSingleAndUpdate(slug) {
-  const pages = getOrderedPages();
-  const page = pages.find(function(p) { return p.slug === slug; });
+  const page = orderedPages().find(p => p.slug === slug);
   if (!page) return;
   await runSingleCopy(page);
   checkCopyDone();
 }
 
+function updateCopyProgress() {
+  const pages = orderedPages();
+  const done = pages.filter(p => S.copy[p.slug]?.copy).length;
+  const pct = pages.length > 0 ? Math.round(done/pages.length*100) : 0;
+  document.getElementById('copy-count-label').textContent = done+'/'+pages.length+' complete';
+  document.getElementById('copy-pct-label').textContent = pct+'%';
+  document.getElementById('copy-progress-fill').style.width = pct+'%';
+}
+
+function checkCopyDone() {
+  const pages = orderedPages();
+  const done = pages.filter(p => S.copy[p.slug]?.copy).length;
+  const doneBanner = document.getElementById('copy-done-banner');
+  const skipBtn = document.getElementById('copy-skip-btn');
+  if (done === pages.length && done > 0) {
+    document.getElementById('copy-done-label').textContent = 'All '+done+' pages complete';
+    doneBanner.style.display = 'flex'; skipBtn.style.display = 'none';
+  } else if (done > 0) {
+    doneBanner.style.display = 'none'; skipBtn.style.display = '';
+  }
+}
+
 // ── SCHEMA ─────────────────────────────────────────────────────────
+let schemaStopFlag = false;
+
 function initSchema() {
   document.getElementById('schema-progress').style.display = 'block';
-  renderSchemaList();
-  updateSchemaProgress();
+  renderSchemaList(); updateSchemaProgress(); checkSchemaDone();
 }
 
 function buildSchemaPrompt(page) {
-  const base = 'https://www.' + (S.url || 'example.com');
-  return 'CLIENT: ' + S.client + '\nBASE URL: ' + base + '\nPAGE: ' + page.page_name + '\nURL: ' + base + '/' + page.slug + '\nTYPE: ' + page.page_type + '\nPRIMARY KW: ' + page.primary_keyword + '\nSUPPORTING KW: ' + (page.supporting_keywords||[]).join(', ') + '\nDESCRIPTION: ' + (page.notes||page.page_name) + '\nBREADCRUMB: Home > ' + page.page_name;
-}
-
-async function runSingleSchema(page) {
-  S.currentSchemaSlug = page.slug;
-  updateSchemaRow(page.slug, 'running');
-  try {
-    const schema = await callClaude(PROMPTS.schema, buildSchemaPrompt(page), null);
-    S.schema[page.slug] = {schema: schema, page: page};
-    updateSchemaRow(page.slug, 'done');
-  } catch(err) {
-    S.schema[page.slug] = {error: err.message, page: page};
-    updateSchemaRow(page.slug, 'error', err.message);
-  }
-  S.currentSchemaSlug = null;
-  updateSchemaProgress();
+  const base = 'https://www.'+(S.setup.url||'example.com');
+  return 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
 }
 
 async function runAllSchema() {
   if (S.schemaRunning) return;
-  S.schemaRunning = true;
-  S.schemaStop = false;
+  S.schemaRunning = true; schemaStopFlag = false;
   document.getElementById('schema-run-btn').style.display = 'none';
   document.getElementById('schema-stop-btn').style.display = '';
   initSchema();
-  for (let i = 0; i < S.pages.length; i++) {
-    if (S.schemaStop) break;
-    if (S.schema[S.pages[i].slug] && S.schema[S.pages[i].slug].schema) continue;
+  for (let i=0; i<S.pages.length; i++) {
+    if (schemaStopFlag) break;
+    if (S.schema[S.pages[i].slug]?.schema) continue;
     await runSingleSchema(S.pages[i]);
-    await sleep(500);
+    await sleep(400);
   }
   S.schemaRunning = false;
   document.getElementById('schema-stop-btn').style.display = 'none';
   document.getElementById('schema-run-btn').style.display = '';
-  checkSchemaDone();
+  checkSchemaDone(); scheduleSave();
 }
+function stopSchema() { schemaStopFlag = true; }
 
-function stopSchema() { S.schemaStop = true; }
-
-function updateSchemaProgress() {
-  const done = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
-  const total = S.pages.length;
-  const pct = total > 0 ? Math.round(done/total*100) : 0;
-  document.getElementById('schema-count-label').textContent = done + '/' + total + ' complete';
-  document.getElementById('schema-pct-label').textContent = pct + '%';
-  document.getElementById('schema-progress-fill').style.width = pct + '%';
-}
-
-function checkSchemaDone() {
-  const done = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
-  if (done > 0) document.getElementById('schema-next-btn').style.display = 'block';
+async function runSingleSchema(page) {
+  updateSchemaRow(page.slug, 'running');
+  try {
+    const schema = await callClaude(P.schema, buildSchemaPrompt(page), null);
+    S.schema[page.slug] = {schema, page};
+    updateSchemaRow(page.slug, 'done');
+    scheduleSave();
+  } catch(e) {
+    S.schema[page.slug] = {error: e.message, page};
+    updateSchemaRow(page.slug, 'error', e.message);
+  }
+  updateSchemaProgress();
 }
 
 function renderSchemaList() {
-  let html = '';
-  S.pages.forEach(function(page) {
-    const r = S.schema[page.slug];
-    const isDone = r && r.schema;
-    const isErr = r && r.error;
-    html += makeSchemaRow(page, isDone ? 'done' : isErr ? 'error' : 'idle', isErr ? r.error : '');
-  });
-  document.getElementById('schema-list').innerHTML = html;
+  document.getElementById('schema-list').innerHTML = S.pages.map(p => makeSchemaRow(p)).join('');
 }
 
-function makeSchemaRow(page, status, errMsg) {
-  const isDone = status === 'done', isRun = status === 'running';
-  let cirCls = 'status-circle status-idle', cirInner = '';
-  if (isRun) { cirCls = 'status-circle status-running'; cirInner = '<span class="spinner" style="width:10px;height:10px"></span>'; }
-  else if (isDone) { cirCls = 'status-circle status-done'; cirInner = '✓'; }
-
+function makeSchemaRow(page) {
+  const r = S.schema[page.slug];
+  const isDone = r?.schema, isErr = r?.error;
+  const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':'background:var(--n1)';
   let actions = '';
   if (isDone) {
-    actions += '<button class="btn btn-ghost sm" onclick="toggleSchemaPreview(\'' + page.slug + '\')"><i class="ti ti-eye"></i> View</button>';
-    actions += '<button class="btn btn-ghost sm" onclick="copyText(S.schema[\'' + page.slug + '\'].schema)"><i class="ti ti-copy"></i> Copy</button>';
-  } else if (!isRun) {
-    actions += '<button class="btn btn-ghost sm" onclick="runSingleSchemaAndUpdate(\'' + page.slug + '\')">Run</button>';
+    actions += '<button class="btn btn-ghost sm" onclick="toggleSchemaPreview(\''+esc(page.slug)+'\')">View</button>';
+    actions += '<button class="btn btn-ghost sm" onclick="copyToClip2(S.schema[\''+esc(page.slug)+'\'].schema)"><i class="ti ti-copy"></i></button>';
+    actions += '<button class="btn btn-ghost sm" onclick="deleteSchemaPage(\''+esc(page.slug)+'\')"><i class="ti ti-refresh" style="font-size:11px"></i> Redo</button>';
+  } else if (!isErr) {
+    actions += '<button class="btn btn-ghost sm" onclick="runSingleSchemaAndUpdate(\''+esc(page.slug)+'\')">Run</button>';
   }
-
-  return '<div class="page-row' + (isDone?' done':'') + (isRun?' running':'') + '" id="schema-row-' + page.slug + '">'
-    + '<div class="' + cirCls + '">' + cirInner + '</div>'
-    + '<div style="flex:1"><span class="page-row-name' + (isDone?' done':'') + '">' + esc(page.page_name) + '</span></div>'
-    + '<div class="page-row-actions">' + actions + '</div>'
-    + '</div>';
+  return '<div class="page-row '+(isDone?'done':isErr?'error':'idle')+'" id="schema-row-'+page.slug+'">'
+    +'<div class="status-circle" style="'+cirStyle+'">'+(isDone?'✓':isErr?'!':'')+'</div>'
+    +'<div style="flex:1"><span style="font-size:13px;color:'+(isDone?'var(--dark)':'var(--n2)')+'">'+esc(page.page_name)+'</span></div>'
+    +'<div style="display:flex;gap:5px">'+actions+'</div>'
+    +'</div>';
 }
 
-function updateSchemaRow(slug, status, errMsg) {
-  const page = S.pages.find(function(p) { return p.slug === slug; });
+function updateSchemaRow(slug, status) {
+  const page = S.pages.find(p => p.slug === slug);
   if (!page) return;
-  const el = document.getElementById('schema-row-' + slug);
-  if (el) el.outerHTML = makeSchemaRow(page, status, errMsg||'');
+  if (status === 'running') { const el = document.getElementById('schema-row-'+slug); if(el) el.className = 'page-row running'; return; }
+  const el = document.getElementById('schema-row-'+slug);
+  if (el) el.outerHTML = makeSchemaRow(page);
 }
 
 function toggleSchemaPreview(slug) {
   const wrap = document.getElementById('schema-preview-wrap');
-  if (S.schemaPreviewSlug === slug) {
-    S.schemaPreviewSlug = null;
-    wrap.style.display = 'none';
-    return;
-  }
+  if (S.schemaPreviewSlug === slug) { S.schemaPreviewSlug = null; wrap.style.display = 'none'; renderSchemaList(); return; }
   S.schemaPreviewSlug = slug;
-  const page = S.pages.find(function(p) { return p.slug === slug; });
-  if (!page) return;
-  document.getElementById('schema-preview-label').textContent = page.page_name;
+  const page = S.pages.find(p => p.slug === slug);
+  document.getElementById('schema-preview-label').textContent = page?.page_name||slug;
   document.getElementById('schema-preview-content').textContent = S.schema[slug].schema;
-  wrap.style.display = 'block';
+  wrap.style.display = 'block'; renderSchemaList();
+}
+
+function deleteSchemaPage(slug) {
+  delete S.schema[slug];
+  S.schemaPreviewSlug = null;
+  document.getElementById('schema-preview-wrap').style.display = 'none';
+  renderSchemaList(); updateSchemaProgress(); checkSchemaDone(); scheduleSave();
 }
 
 async function runSingleSchemaAndUpdate(slug) {
-  const page = S.pages.find(function(p) { return p.slug === slug; });
-  if (!page) return;
-  await runSingleSchema(page);
-  checkSchemaDone();
+  const page = S.pages.find(p => p.slug === slug);
+  if (page) { await runSingleSchema(page); checkSchemaDone(); }
+}
+
+function updateSchemaProgress() {
+  const done = S.pages.filter(p => S.schema[p.slug]?.schema).length;
+  const pct = S.pages.length > 0 ? Math.round(done/S.pages.length*100) : 0;
+  document.getElementById('schema-count-label').textContent = done+'/'+S.pages.length+' complete';
+  document.getElementById('schema-pct-label').textContent = pct+'%';
+  document.getElementById('schema-progress-fill').style.width = pct+'%';
+}
+
+function checkSchemaDone() {
+  const done = S.pages.filter(p => S.schema[p.slug]?.schema).length;
+  document.getElementById('schema-next-btn').style.display = done > 0 ? 'block' : 'none';
 }
 
 // ── EXPORT ─────────────────────────────────────────────────────────
+let exportCopySlug = null, exportSchemaSlug = null;
+
 function renderExport() {
   const pages = S.pages;
-  const copyCount = pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; }).length;
-  const schemaCount = pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; }).length;
-
-  document.getElementById('export-subtitle').textContent = S.client + ' — ' + pages.length + ' pages ready to hand off.';
-
-  // Stats
-  const stats = [
-    {val:pages.length, label:'Pages in Sitemap', icon:'ti-sitemap'},
-    {val:copyCount,    label:'Pages with Copy',  icon:'ti-pencil', green:true},
-    {val:schemaCount,  label:'Pages with Schema', icon:'ti-code'},
-  ];
-  let shtml = '';
-  stats.forEach(function(s) {
-    shtml += '<div class="card stat-card">';
-    shtml += '<div class="stat-icon"><i class="ti ' + s.icon + '"' + (s.green ? ' style="color:var(--green)"' : '') + '></i></div>';
-    shtml += '<div><div class="stat-val">' + s.val + '</div><div class="stat-lbl">' + s.label + '</div></div>';
-    shtml += '</div>';
-  });
-  document.getElementById('export-stats').innerHTML = shtml;
-
-  // Update tab labels
-  document.querySelectorAll('#export-tab-bar .tab-btn')[0].textContent = 'Sitemap (' + pages.length + ')';
-  document.querySelectorAll('#export-tab-bar .tab-btn')[1].textContent = 'Copy (' + copyCount + ')';
-  document.querySelectorAll('#export-tab-bar .tab-btn')[2].textContent = 'Schema (' + schemaCount + ')';
-
-  renderSitemapTab();
-  renderCopyTab();
-  renderSchemaTab();
+  const copyCount = pages.filter(p => S.copy[p.slug]?.copy).length;
+  const schemaCount = pages.filter(p => S.schema[p.slug]?.schema).length;
+  document.getElementById('export-subtitle').textContent = S.setup?.client+' — '+pages.length+' pages ready to hand off.';
+  document.getElementById('export-stats').innerHTML = [
+    {val:pages.length, label:'Pages in Sitemap', icon:'📄'},
+    {val:copyCount, label:'Pages with Copy', icon:'✍️', green:true},
+    {val:schemaCount, label:'Pages with Schema', icon:'🏷️'},
+  ].map(s => '<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">'
+    +'<div style="width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:14px">'+s.icon+'</div>'
+    +'<div><div style="font-size:24px;font-weight:500;letter-spacing:-0.03em;color:'+(s.green?'var(--green)':'var(--dark)')+'">'+s.val+'</div>'
+    +'<div style="font-size:11px;color:var(--n2);margin-top:2px">'+s.label+'</div></div></div>'
+  ).join('');
+  document.querySelectorAll('#export-tab-bar .tab-btn')[0].textContent = 'Sitemap ('+pages.length+')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[1].textContent = 'Copy ('+copyCount+')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[2].textContent = 'Schema ('+schemaCount+')';
+  renderSitemapTab(); renderCopyTab(); renderSchemaTab();
 }
 
 function renderSitemapTab() {
   const pages = S.pages;
-  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;overflow-x:auto">';
-  pages.forEach(function(p, i) {
+  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  pages.forEach((p,i) => {
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    const bg = i%2===0 ? 'var(--white)' : 'rgba(240,239,233,0.5)';
-    const supp = (p.supporting_keywords||[]).slice(0,2).join(', ');
-    html += '<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:' + (i<pages.length-1?'1px solid var(--border)':'none') + ';background:' + bg + ';align-items:flex-start;flex-wrap:wrap">';
-    html += '<span style="color:var(--n2);font-size:11px;padding-top:1px;flex-shrink:0;width:18px">' + (i+1) + '</span>';
-    html += '<div style="flex:1;min-width:120px"><span style="color:var(--dark);font-size:13px">' + esc(p.page_name) + '</span><span style="color:var(--n2);font-size:11px;margin-left:8px">/' + esc(p.slug) + '</span><div style="font-size:11px;color:var(--n2);margin-top:2px">' + esc(p.primary_keyword) + (supp ? ' · ' + esc(supp) : '') + '</div></div>';
-    html += '<div style="display:flex;gap:8px;flex-shrink:0"><span style="color:' + pColor + ';font-size:11px;font-weight:500">' + esc(p.priority) + '</span><span style="color:var(--n2);font-size:11px">' + (p.word_count_target||1500) + 'w</span></div>';
-    html += '</div>';
+    html += '<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(i%2===0?'var(--white)':'rgba(240,239,233,0.5)')+';align-items:center">';
+    html += '<span style="color:var(--n2);font-size:11px;width:18px;flex-shrink:0">'+(i+1)+'</span>';
+    html += '<div style="flex:1"><span style="color:var(--dark);font-size:13px">'+esc(p.page_name)+'</span><span style="color:var(--n2);font-size:11px;margin-left:8px">/'+esc(p.slug)+'</span><div style="font-size:11px;color:var(--n2);margin-top:2px">'+esc(p.primary_keyword)+'</div></div>';
+    html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority)+'</span></div>';
   });
   html += '</div>';
   document.getElementById('export-sitemap-tab').innerHTML = html;
 }
 
 function renderCopyTab() {
-  const pages = S.pages.filter(function(p) { return S.copy[p.slug] && S.copy[p.slug].copy; });
+  const pages = S.pages.filter(p => S.copy[p.slug]?.copy);
   if (!pages.length) { document.getElementById('export-copy-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No copy generated yet.</p>'; return; }
-  let html = '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px">';
-  pages.forEach(function(p, i) {
-    html += '<button class="tab-btn' + (i===0?' active':'') + '" style="flex-shrink:0" onclick="switchCopyPage(\'' + p.slug + '\',this)">' + esc(p.page_name) + '</button>';
-  });
+  exportCopySlug = exportCopySlug || pages[0].slug;
+  let html = '<div style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(p => { html += '<button class="tab-btn '+(exportCopySlug===p.slug?'active':'')+'" style="flex-shrink:0" onclick="switchExportCopy(\''+esc(p.slug)+'\',this)">'+esc(p.page_name)+'</button>'; });
   html += '</div>';
-  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyText(S.copy[currentExportCopySlug].copy)"><i class="ti ti-copy"></i> Copy HTML</button></div><div class="code-view" id="export-copy-view">' + esc(S.copy[pages[0].slug].copy) + '</div></div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyToClip2(S.copy[exportCopySlug].copy)"><i class="ti ti-copy"></i> Copy HTML</button></div><div class="code-view" id="export-copy-view">'+esc(S.copy[exportCopySlug]?.copy||'')+'</div></div>';
   document.getElementById('export-copy-tab').innerHTML = html;
-  window.currentExportCopySlug = pages[0].slug;
 }
 
-function switchCopyPage(slug, btn) {
-  window.currentExportCopySlug = slug;
-  document.querySelectorAll('#export-copy-tab .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+function switchExportCopy(slug, btn) {
+  exportCopySlug = slug;
+  document.querySelectorAll('#export-copy-tab .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('export-copy-view').textContent = S.copy[slug].copy;
+  document.getElementById('export-copy-view').textContent = S.copy[slug]?.copy||'';
 }
 
 function renderSchemaTab() {
-  const pages = S.pages.filter(function(p) { return S.schema[p.slug] && S.schema[p.slug].schema; });
+  const pages = S.pages.filter(p => S.schema[p.slug]?.schema);
   if (!pages.length) { document.getElementById('export-schema-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No schema generated yet.</p>'; return; }
-  let html = '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px">';
-  pages.forEach(function(p, i) {
-    html += '<button class="tab-btn' + (i===0?' active':'') + '" style="flex-shrink:0" onclick="switchSchemaPage(\'' + p.slug + '\',this)">' + esc(p.page_name) + '</button>';
-  });
+  exportSchemaSlug = exportSchemaSlug || pages[0].slug;
+  let html = '<div style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(p => { html += '<button class="tab-btn '+(exportSchemaSlug===p.slug?'active':'')+'" style="flex-shrink:0" onclick="switchExportSchema(\''+esc(p.slug)+'\',this)">'+esc(p.page_name)+'</button>'; });
   html += '</div>';
-  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyText(S.schema[currentExportSchemaSlug].schema)"><i class="ti ti-copy"></i> Copy Schema</button></div><div class="code-view" id="export-schema-view">' + esc(S.schema[pages[0].slug].schema) + '</div></div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyToClip2(S.schema[exportSchemaSlug].schema)"><i class="ti ti-copy"></i> Copy Schema</button></div><div class="code-view" id="export-schema-view">'+esc(S.schema[exportSchemaSlug]?.schema||'')+'</div></div>';
   document.getElementById('export-schema-tab').innerHTML = html;
-  window.currentExportSchemaSlug = pages[0].slug;
 }
 
-function switchSchemaPage(slug, btn) {
-  window.currentExportSchemaSlug = slug;
-  document.querySelectorAll('#export-schema-tab .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+function switchExportSchema(slug, btn) {
+  exportSchemaSlug = slug;
+  document.querySelectorAll('#export-schema-tab .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('export-schema-view').textContent = S.schema[slug].schema;
+  document.getElementById('export-schema-view').textContent = S.schema[slug]?.schema||'';
 }
 
 function switchTab(tab, btn) {
-  ['sitemap','copy','schema'].forEach(function(t) {
-    document.getElementById('export-' + t + '-tab').style.display = t===tab ? 'block' : 'none';
-  });
-  document.querySelectorAll('.tab-bar .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  ['sitemap','copy','schema'].forEach(t => { document.getElementById('export-'+t+'-tab').style.display = t===tab?'block':'none'; });
+  document.querySelectorAll('.tab-bar .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
 
 function downloadPackage() {
   const pages = S.pages;
-  let out = S.client + ' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n' + '='.repeat(60) + '\n\nSITEMAP (' + pages.length + ' pages)\n' + '-'.repeat(40) + '\n\n';
-  pages.forEach(function(p, i) {
-    out += (i+1) + '. ' + p.page_name + ' (/' + p.slug + ') [' + p.priority + ']\n   Primary: ' + p.primary_keyword + ' | KD: ' + (p.primary_kd||'?') + '\n   Supporting: ' + (p.supporting_keywords||[]).join(', ') + '\n\n';
-  });
-  out += '\n' + '='.repeat(60) + '\nCOPY BY PAGE\n' + '-'.repeat(40) + '\n\n';
-  pages.forEach(function(p) {
-    const c = S.copy[p.slug];
-    if (c && c.copy) out += '\n' + p.page_name.toUpperCase() + ' · /' + p.slug + '\n' + '-'.repeat(30) + '\n' + c.copy + '\n\n';
-  });
-  out += '\n' + '='.repeat(60) + '\nSCHEMA + META BY PAGE\n' + '-'.repeat(40) + '\n\n';
-  pages.forEach(function(p) {
-    const s = S.schema[p.slug];
-    if (s && s.schema) out += '\n' + p.page_name.toUpperCase() + ' · /' + p.slug + '\n' + '-'.repeat(30) + '\n' + s.schema + '\n\n';
-  });
-  const blob = new Blob([out], {type:'text/plain'});
+  let out = S.setup.client+' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n'+'='.repeat(60)+'\n\nSITEMAP ('+pages.length+' pages)\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach((p,i) => { out += (i+1)+'. '+p.page_name+' (/'+p.slug+') ['+p.priority+']\n   Primary: '+p.primary_keyword+' | KD: '+(p.primary_kd||'?')+'\n\n'; });
+  out += '\n'+'='.repeat(60)+'\nCOPY BY PAGE\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach(p => { if(S.copy[p.slug]?.copy) out += '\n'+p.page_name.toUpperCase()+' · /'+p.slug+'\n'+'-'.repeat(30)+'\n'+S.copy[p.slug].copy+'\n\n'; });
+  out += '\n'+'='.repeat(60)+'\nSCHEMA BY PAGE\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach(p => { if(S.schema[p.slug]?.schema) out += '\n'+p.page_name.toUpperCase()+' · /'+p.slug+'\n'+'-'.repeat(30)+'\n'+S.schema[p.slug].schema+'\n\n'; });
+  const blob = new Blob([out],{type:'text/plain'});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = S.client.toLowerCase().replace(/\s+/g,'-') + '-website-build.txt';
-  a.click();
+  const a = document.createElement('a'); a.href=url; a.download=S.setup.client.toLowerCase().replace(/\s+/g,'-')+'-website-build.txt'; a.click();
   URL.revokeObjectURL(url);
 }
 
 // ── UTILS ──────────────────────────────────────────────────────────
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
-function copyText(text) {
-  navigator.clipboard.writeText(text).catch(function() {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-  });
-}
-function copyToClipboard(elId, type) {
-  const el = document.getElementById(elId);
-  if (el) copyText(el.textContent);
-}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToClip2(el.textContent);}
+function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
 
 // ── INIT ───────────────────────────────────────────────────────────
-renderStageBar('setup');
-document.querySelectorAll('.inp').forEach(function(el) {
-  el.addEventListener('focus', function() { this.style.borderColor='var(--green)'; this.style.boxShadow='0 0 0 3px rgba(21,142,29,0.08)'; });
-  el.addEventListener('blur',  function() { this.style.borderColor='rgba(0,0,0,0.13)'; this.style.boxShadow='none'; });
-});
+showProjects();
 </script>
 </body>
 </html>
