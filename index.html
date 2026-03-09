@@ -237,45 +237,14 @@ textarea.inp{resize:vertical}
       <div style="margin-bottom:16px">
         <div class="eyebrow">Stage 4 of 6</div>
         <h2 class="ph sm">Copy Generation</h2>
+        <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
       <div id="copy-progress" style="display:none" class="progress-wrap">
         <div class="progress-meta"><span id="copy-count-label" style="color:var(--n2)"></span><span id="copy-pct-label" style="color:var(--green);font-weight:500"></span></div>
         <div class="progress-track"><div class="progress-fill" id="copy-progress-fill" style="width:0%"></div></div>
       </div>
-      <!-- Active writing panel -->
-      <div id="copy-active-panel" style="display:none" class="card hl" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span class="spinner" style="width:13px;height:13px"></span>
-            <span style="font-size:14px;font-weight:500" id="copy-active-name"></span>
-          </div>
-          <button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button>
-        </div>
-        <div style="height:100px;overflow:hidden;background:var(--dg);border-radius:5px;padding:10px;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.4);line-height:1.55" id="copy-active-stream"></div>
-      </div>
-      <!-- Result panel (after page completes) -->
-      <div id="copy-result-panel" style="display:none" class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="width:18px;height:18px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:9px;color:white;flex-shrink:0">&#10003;</span>
-            <span style="font-size:14px;font-weight:500" id="copy-result-name"></span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-ghost sm" onclick="copyToClip2(S.copy[S.copyCurrentSlug]&&S.copy[S.copyCurrentSlug].copy)"><i class="ti ti-copy"></i> Copy HTML</button>
-            <button class="btn btn-ghost sm" onclick="toggleCopyResultView()"><i class="ti ti-code"></i> <span id="copy-result-toggle-label">Show code</span></button>
-            <button class="btn btn-danger sm" onclick="redoCopyPage(S.copyCurrentSlug)"><i class="ti ti-refresh"></i> Redo</button>
-          </div>
-        </div>
-        <div id="copy-result-code" style="display:none;max-height:300px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)"></div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-primary" id="copy-next-btn" onclick="copyNextPage()"><i class="ti ti-arrow-right"></i> <span id="copy-next-label">Next Page</span></button>
-          <button class="btn btn-ghost" onclick="goTo('schema')"><i class="ti ti-code"></i> Skip to Schema</button>
-        </div>
-      </div>
-      <!-- Page queue -->
       <div id="copy-queue"></div>
-      <!-- All done -->
-      <div id="copy-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
+      <div id="copy-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
         <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label">All pages complete</span></div>
         <button class="btn btn-primary" onclick="goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema</button>
       </div>
@@ -548,6 +517,7 @@ function goTo(stage) {
   renderStageBar(stage);
   window.scrollTo(0,0);
   if (stage === 'export') renderExport();
+  if (stage === 'setup' && S.setup) prefillSetup();
   scheduleSave();
 }
 
@@ -642,7 +612,22 @@ research:`You are a senior SEO and content strategist at Setsail Marketing — a
 sitemap:`You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble, no markdown fences:
 [{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
-copy:`You are a senior copywriter at Setsail Marketing. Voice: confident, direct, human. Canadian spelling. Leads with outcomes. No fluff. H1 contains primary keyword. Include: hero, problem/solution, services, process, social proof placeholders, FAQ (6+ questions), CTA. Write complete page copy in clean semantic HTML. Use section/h1/h2/h3/p/ul/li. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
+copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
+
+1. HERO — H1 with primary keyword exact match. Outcome-first subheadline (what the client gets, not what we do). Single primary CTA button above the fold. One supporting trust signal (e.g. award, review rating, years in business).
+2. SOCIAL PROOF STRIP — logos or stat bar (3–5 credibility signals, use realistic placeholders like "[Client Logo]" or "★★★★★ 4.9/5 from 28 reviews").
+3. PROBLEM/AGITATION — 2–3 short paragraphs naming the pain the audience feels. Make them feel understood before offering a solution.
+4. SOLUTION BRIDGE — how the service/product solves exactly that problem. Outcome ownership framing, not activity-based.
+5. SERVICES / WHAT'S INCLUDED — H2 with supporting keyword. 3–6 service cards or feature list with benefit-led descriptions (not feature lists).
+6. PROCESS — 3–5 numbered steps showing how it works. Reduces friction and eliminates "what happens next?" anxiety.
+7. PROOF SECTION — 2–3 case study or testimonial placeholders with specific results (e.g. "[Company X] increased leads by 47% in 90 days — [Name, Title]").
+8. OBJECTION HANDLING — 3–5 short "You might be thinking..." callout blocks that pre-empt the top buying objections.
+9. FAQ — minimum 8 questions. Target long-tail keyword phrases. Answer concisely and naturally.
+10. FINAL CTA SECTION — restate the outcome, repeat the primary CTA, add a low-commitment secondary option (e.g. "Book a free audit" vs "Call us").
+
+SEO RULES: H1 = primary keyword verbatim. First paragraph includes primary keyword. H2s use supporting keywords naturally. Internal link placeholders where relevant.
+CRO RULES: Every section must earn the scroll. No filler copy. Lead with outcomes not activities. Canadian spelling. Direct, confident tone.
+OUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
 
 schema:`You are a technical SEO specialist at Setsail Marketing. Every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Use @id anchors. No unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready for <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
 };
@@ -838,82 +823,74 @@ function buildCopyPrompt(page) {
 }
 
 let copyStopFlag = false;
-function stopCopy() { copyStopFlag = true; }
 S.copyCurrentSlug = null;
+S.copyExpandedSlug = null; // which row is expanded
+
+function stopCopy() { copyStopFlag = true; }
+
+function initCopy() {
+  document.getElementById('copy-progress').style.display = 'block';
+  const next = orderedPages().find(p => !(S.copy[p.slug]||{}).copy);
+  if (next && !S.copyExpandedSlug) S.copyExpandedSlug = next.slug;
+  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+}
+
+function buildCopyPrompt(page) {
+  const r = S.research||{}, s = S.setup;
+  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
+}
 
 async function runCopyPage(slug) {
   const page = orderedPages().find(p => p.slug === slug);
   if (!page || S.copyRunning) return;
   S.copyRunning = true; copyStopFlag = false;
   S.copyCurrentSlug = slug;
-  document.getElementById('copy-result-panel').style.display = 'none';
-  document.getElementById('copy-all-done').style.display = 'none';
-  const activePanel = document.getElementById('copy-active-panel');
-  document.getElementById('copy-active-name').textContent = page.page_name;
-  document.getElementById('copy-active-stream').textContent = '';
-  activePanel.style.display = 'block';
+  S.copyExpandedSlug = slug;
   renderCopyQueue();
+  // Update the stream box inside this row
+  const streamEl = document.getElementById('copy-stream-'+slug);
+  if (streamEl) streamEl.textContent = '';
   try {
     const copy = await callClaude(P.copy, buildCopyPrompt(page), t => {
       if (copyStopFlag) return;
-      document.getElementById('copy-active-stream').textContent = t.slice(-500);
+      const el = document.getElementById('copy-stream-'+slug);
+      if (el) el.textContent = t.slice(-600);
     });
-    activePanel.style.display = 'none';
-    if (!copyStopFlag) { S.copy[slug] = {copy, page}; scheduleSave(); showCopyResult(slug); }
+    if (!copyStopFlag) {
+      S.copy[slug] = {copy, page};
+      scheduleSave();
+      // Auto-advance expanded to next incomplete
+      const pages = orderedPages();
+      const curIdx = pages.findIndex(p => p.slug === slug);
+      const next = pages.find((p,i) => i > curIdx && !(S.copy[p.slug]||{}).copy);
+      S.copyExpandedSlug = next ? next.slug : slug; // stay on done page if all done
+    }
   } catch(e) {
     S.copy[slug] = {error: e.message, page};
-    activePanel.style.display = 'none';
-    renderCopyQueue();
   }
+  S.copyCurrentSlug = null;
   S.copyRunning = false;
-  updateCopyProgress(); renderCopyQueue();
+  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
 }
 
-function showCopyResult(slug) {
-  const page = orderedPages().find(p => p.slug === slug);
-  if (!page) return;
-  S.copyCurrentSlug = slug;
-  document.getElementById('copy-result-name').textContent = page.page_name;
-  document.getElementById('copy-result-code').textContent = (S.copy[slug]||{}).copy || '';
-  document.getElementById('copy-result-code').style.display = 'none';
-  document.getElementById('copy-result-toggle-label').textContent = 'Show code';
-  const pages = orderedPages();
-  const curIdx = pages.indexOf(page);
-  const nextPage = pages.find((p,i) => i > curIdx && !(S.copy[p.slug]||{}).copy);
-  const nextBtn = document.getElementById('copy-next-btn');
-  if (nextPage) { document.getElementById('copy-next-label').textContent = 'Next: '+nextPage.page_name; nextBtn.style.display = ''; }
-  else { nextBtn.style.display = 'none'; }
-  document.getElementById('copy-result-panel').style.display = 'block';
-  renderCopyQueue(); checkCopyAllDone();
-}
-
-function toggleCopyResultView() {
-  const code = document.getElementById('copy-result-code');
-  const label = document.getElementById('copy-result-toggle-label');
-  if (code.style.display === 'none') { code.style.display = 'block'; label.textContent = 'Hide code'; }
-  else { code.style.display = 'none'; label.textContent = 'Show code'; }
-}
-
-function copyNextPage() {
-  const pages = orderedPages();
-  const cur = pages.find(p => p.slug === S.copyCurrentSlug);
-  const curIdx = cur ? pages.indexOf(cur) : -1;
-  const next = pages.find((p,i) => i > curIdx && !(S.copy[p.slug]||{}).copy);
-  if (next) { document.getElementById('copy-result-panel').style.display = 'none'; S.copyCurrentSlug = next.slug; renderCopyQueue(); runCopyPage(next.slug); }
+function toggleCopyExpand(slug) {
+  if (S.copyRunning) return;
+  S.copyExpandedSlug = S.copyExpandedSlug === slug ? null : slug;
+  renderCopyQueue();
 }
 
 function redoCopyPage(slug) {
   delete S.copy[slug];
-  document.getElementById('copy-result-panel').style.display = 'none';
-  updateCopyProgress(); scheduleSave(); renderCopyQueue();
-  runCopyPage(slug);
+  S.copyExpandedSlug = slug;
+  scheduleSave(); updateCopyProgress(); renderCopyQueue(); checkCopyAllDone();
 }
 
-function initCopy() {
-  document.getElementById('copy-progress').style.display = 'block';
-  const next = orderedPages().find(p => !(S.copy[p.slug]||{}).copy);
-  if (next) S.copyCurrentSlug = next.slug;
-  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+function toggleCopyCode(slug) {
+  const el = document.getElementById('copy-code-'+slug);
+  const btn = document.getElementById('copy-code-btn-'+slug);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = 'block'; btn.textContent = 'Hide code'; }
+  else { el.style.display = 'none'; btn.textContent = 'Show code'; }
 }
 
 function renderCopyQueue() {
@@ -922,32 +899,64 @@ function renderCopyQueue() {
   pages.forEach((p, i) => {
     const r = S.copy[p.slug]||{};
     const isDone = !!r.copy, isErr = !!r.error;
-    const isCurrent = p.slug === S.copyCurrentSlug && !isDone;
-    const isRunning = isCurrent && S.copyRunning;
+    const isRunning = S.copyCurrentSlug === p.slug;
+    const isExpanded = S.copyExpandedSlug === p.slug;
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isCurrent?'background:var(--dark)':'background:var(--n1)';
-    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'&#8226;':(i+1);
-    let right = '';
-    if (isDone) {
-      right = '<div style="display:flex;gap:5px">'
-        +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy" style="font-size:11px"></i></button>'
-        +'<button class="btn btn-ghost sm" onclick="showCopyResult(\''+p.slug+'\')">View</button>'
-        +'<button class="btn btn-ghost sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh" style="font-size:11px"></i></button>'
-        +'</div>';
-    } else if (!isRunning) {
-      const btnCls = isCurrent ? 'btn-primary' : 'btn-ghost';
-      const lbl = isCurrent ? '<i class=\"ti ti-player-play\"></i> Write Copy' : 'Run';
-      right = '<button class="btn '+btnCls+' sm" onclick="S.copyCurrentSlug=\''+p.slug+'\';renderCopyQueue();runCopyPage(\''+p.slug+'\')">'+lbl+'</button>';
-    }
-    const border = isCurrent?'border-color:var(--dark);border-width:1.5px':isDone?'border-color:rgba(21,142,29,0.22)':isErr?'border-color:rgba(229,57,53,0.22)':'';
-    html += '<div class="page-row" style="'+border+'">'
-      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500">'+cirContent+'</div>'
-      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone?'var(--dark)':isCurrent?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
+    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':(i+1);
+    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+    const rowBg = isExpanded&&!isDone&&!isRunning?'background:rgba(0,0,0,0.015);':'';
+
+    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+rowBg+'">';
+
+    // Row header — always visible, clickable
+    html += '<div onclick="toggleCopyExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
+      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
+      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
       +'<span style="font-size:10.5px;color:'+pColor+';margin-left:8px;padding:1px 6px;background:rgba(0,0,0,0.04);border-radius:3px">'+p.priority+'</span>'
-      +(isErr?'<div style="font-size:11px;color:var(--error);margin-top:2px">'+esc(r.error)+'</div>':'')
+      +(isErr&&!isExpanded?'<span style="font-size:11px;color:var(--error);margin-left:8px">Error</span>':'')
       +'</div>'
-      +'<div>'+right+'</div>'
+      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
       +'</div>';
+
+    // Expanded body
+    if (isExpanded) {
+      html += '<div style="border-top:1px solid var(--border);padding:14px 14px 14px">';
+      if (isRunning) {
+        // Live stream
+        html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
+          +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
+      } else if (isDone) {
+        // Done — show actions + optional code
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
+          +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>'
+          +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          +'</div>'
+          +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
+        // Next page button
+        const curIdx = pages.findIndex(pp => pp.slug === p.slug);
+        const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
+        if (nextP) {
+          html += '<div style="margin-top:10px;display:flex;gap:8px">'
+            +'<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+nextP.slug+'\';renderCopyQueue();runCopyPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+            +'<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>'
+            +'</div>';
+        }
+      } else if (isErr) {
+        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+          +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+      } else {
+        // Idle — prompt to generate
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword)+' · '+esc(p.search_intent||'')+' · '+esc(p.word_count_target||1500)+' words</div>'
+          +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
+          +'</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
   });
   document.getElementById('copy-queue').innerHTML = html;
 }
@@ -966,7 +975,6 @@ function checkCopyAllDone() {
   const done = pages.filter(p => (S.copy[p.slug]||{}).copy).length;
   if (done === pages.length && done > 0) {
     document.getElementById('copy-done-label').textContent = 'All '+done+' pages written';
-    document.getElementById('copy-result-panel').style.display = 'none';
     document.getElementById('copy-all-done').style.display = 'flex';
   } else { document.getElementById('copy-all-done').style.display = 'none'; }
 }
