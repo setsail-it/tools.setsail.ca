@@ -1343,11 +1343,12 @@ async function reviseKeywords(pageIdx) {
       status.innerHTML = '<span style="font-size:10.5px;color:var(--n2)">Using global keyword pool</span>';
     }
   } catch(expandErr) {
-    // Fallback gracefully
+    // Fallback gracefully — log real error
+    console.error('[reviseKeywords] expansion error:', expandErr);
     kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
       `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
     ).join('\n');
-    status.innerHTML = '<span style="font-size:10.5px;color:var(--warn)">⚠ Expansion failed — using global pool</span>';
+    status.innerHTML = '<span style="font-size:10.5px;color:var(--warn)">⚠ Expansion failed (' + expandErr.message + ') — using global pool</span>';
   }
 
   btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Analysing…';
