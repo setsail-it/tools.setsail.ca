@@ -110,7 +110,19 @@ textarea.inp{resize:vertical}
 @media(max-width:700px){
   #nav{padding:0 16px}#stage-bar{display:none}#main{padding:20px 16px 60px}
   .grid-2,.grid-3{grid-template-columns:1fr}h2.ph{font-size:20px}.card{padding:14px}
+  #mobile-menu-btn{display:flex!important}
+  .nav-meta span:last-child{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
+#mobile-nav-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.4)}
+#mobile-nav-drawer{position:fixed;top:0;right:-280px;width:260px;height:100%;background:white;z-index:1000;padding:20px;transition:right .25s ease;box-shadow:-4px 0 20px rgba(0,0,0,0.1)}
+#mobile-nav-drawer.open{right:0}
+#mobile-nav-overlay.open{display:block}
+.mobile-stage-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--n2)}
+.mobile-stage-item.done{color:var(--dark)}
+.mobile-stage-item.active{color:var(--dark);font-weight:500}
+.mobile-stage-item .msi-icon{width:26px;height:26px;border-radius:50%;background:var(--n1);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.mobile-stage-item.done .msi-icon{background:var(--dark);color:white}
+.mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
 </style>
 </head>
 <body>
@@ -131,9 +143,25 @@ textarea.inp{resize:vertical}
       <span id="client-name-nav" style="color:var(--dark);font-weight:500"></span>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:12px">
+  <div style="display:flex;align-items:center;gap:10px">
     <div id="save-indicator" style="opacity:0"></div>
     <div id="stage-bar"></div>
+    <button id="mobile-menu-btn" onclick="toggleMobileNav()" style="display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--white);cursor:pointer;flex-shrink:0">
+      <i class="ti ti-menu-2" style="font-size:14px;color:var(--dark)"></i>
+    </button>
+  </div>
+</div>
+
+<!-- MOBILE NAV DRAWER -->
+<div id="mobile-nav-overlay" onclick="closeMobileNav()"></div>
+<div id="mobile-nav-drawer">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <span style="font-size:13px;font-weight:500;color:var(--dark)">Navigation</span>
+    <button onclick="closeMobileNav()" style="background:none;border:none;cursor:pointer;padding:4px"><i class="ti ti-x" style="font-size:14px;color:var(--n2)"></i></button>
+  </div>
+  <div id="mobile-stage-list"></div>
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="showProjects();closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
   </div>
 </div>
 
@@ -253,7 +281,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-copy">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 4 of 6</div>
+        <div class="eyebrow">Stage 4 of 7</div>
         <h2 class="ph sm">Copy Generation</h2>
         <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
@@ -264,7 +292,27 @@ textarea.inp{resize:vertical}
       <div id="copy-queue"></div>
       <div id="copy-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
         <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label">All pages complete</span></div>
-        <button class="btn btn-primary" onclick="goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema</button>
+        <button class="btn btn-primary" onclick="initLayout();goTo('layout')"><i class="ti ti-arrow-right"></i> Generate Layout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYOUT -->
+  <div class="screen" id="screen-layout">
+    <div style="max-width:860px">
+      <div style="margin-bottom:16px">
+        <div class="eyebrow">Stage 5 of 7</div>
+        <h2 class="ph sm">Page Layout Briefs</h2>
+        <p class="psub" style="margin-bottom:0">Section-by-section layout and CRO briefs. Click any page to generate. Designer-ready for Webflow.</p>
+      </div>
+      <div id="layout-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span id="layout-count-label" style="color:var(--n2)"></span><span id="layout-pct-label" style="color:var(--green);font-weight:500"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="layout-progress-fill" style="width:0%"></div></div>
+      </div>
+      <div id="layout-queue"></div>
+      <div id="layout-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <div class="success-banner"><i class="ti ti-check"></i><span id="layout-done-label">All layout briefs complete</span></div>
+        <button class="btn btn-primary" onclick="initSchema();goTo('schema')"><i class="ti ti-arrow-right"></i> Generate Schema</button>
       </div>
     </div>
   </div>
@@ -273,7 +321,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-schema">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 5 of 6</div>
+        <div class="eyebrow">Stage 6 of 7</div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
         <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
       </div>
@@ -294,7 +342,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:920px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 6 of 6</div>
+          <div class="eyebrow">Stage 7 of 7</div>
           <h2 class="ph sm">Export Package</h2>
           <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
         </div>
@@ -346,6 +394,7 @@ async function saveProject() {
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
       sitemapApproved: S.sitemapApproved || false,
+      layout: S.layout || {},
       savedAt: Date.now(),
     };
     const res = await fetch('/api/projects/' + S.projectId, {
@@ -448,6 +497,7 @@ async function resumeProject(id) {
   S.schema = data.schema || {};
   S.kwMetrics = data.kwMetrics || {};
   S.sitemapApproved = data.sitemapApproved || false;
+  S.layout = data.layout || {};
 
   document.getElementById('projects-screen').style.display = 'none';
 
@@ -465,6 +515,7 @@ async function resumeProject(id) {
   if (S.stage === 'research' && S.research) renderResearchResults(S.research);
   if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
+  if (S.stage === 'layout' && S.pages.length) { initLayout(); }
   if (S.stage === 'schema' && S.pages.length) { initSchema(); }
   if (S.stage === 'export') renderExport();
 }
@@ -494,6 +545,7 @@ const STAGES = [
   {id:'research',label:'Research',icon:'ti-search'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
+  {id:'layout',label:'Layout',icon:'ti-layout'},
   {id:'schema',label:'Schema',icon:'ti-code'},
   {id:'export',label:'Export',icon:'ti-package-export'},
 ];
@@ -515,7 +567,7 @@ function renderStageBar(current) {
   let html = '';
   STAGES.forEach((s, i) => {
     const done = i < idx, active = i === idx;
-    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 4) || (i === 5 && S.pages.length > 0);
+    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
     const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
     const icon = done ? 'ti-check' : s.icon;
     html += '<div class="' + cls + '" onclick="' + (canClick ? 'navToStage(\'' + s.id + '\')' : '') + '" style="' + (canClick && !active ? '' : 'cursor:default') + '">'
@@ -534,6 +586,7 @@ function renderStageContent(stage) {
   if (stage === 'research' && S.research) renderResearchResults(S.research);
   if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
   if (stage === 'copy' && S.pages.length) initCopy();
+  if (stage === 'layout' && S.pages.length) initLayout();
   if (stage === 'schema' && S.pages.length) initSchema();
   if (stage === 'export') renderExport();
 }
@@ -597,8 +650,8 @@ const P = {
 research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON, no preamble, no markdown fences:
 {"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
 
-sitemap:`You are a senior SEO architect at Setsail Marketing. Rules: every page targets a real keyword. Service pages P1. Location/industry pages P2. Utility pages P3. Minimum 15 pages. Output ONLY a valid JSON array, no preamble, no markdown fences:
-[{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
+sitemap:`You are a senior SEO architect at Setsail Marketing. Build a comprehensive SEO-optimised sitemap. Rules: every page targets a real, searchable keyword with realistic search volume. Service pages = P1. Location/industry pages = P2. Utility/blog pages = P3. Minimum 15 pages. For primary keywords estimate realistic Canadian monthly search volume and KD (0-100). For supporting_keywords include an array of objects with kw and estimated vol. Output ONLY a valid JSON array, no preamble, no markdown fences:
+[{"page_name":"","slug":"","page_type":"home|service|industry|location|about|blog-index|utility","priority":"P1|P2|P3","primary_keyword":"","primary_kd":"","primary_vol":"","supporting_keywords":[{"kw":"","vol":""}],"search_intent":"transactional|commercial|informational|navigational","word_count_target":0,"notes":""}]`,
 
 copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
 
@@ -617,8 +670,56 @@ SEO RULES: H1 = primary keyword verbatim. First paragraph includes primary keywo
 CRO RULES: Every section must earn the scroll. No filler copy. Lead with outcomes not activities. Canadian spelling. Direct, confident tone.
 OUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
 
+layout:`You are a senior CRO-focused web strategist and Webflow designer at Setsail Marketing. Based on the provided page copy and keyword intent, generate a detailed section-by-section page layout brief that a Webflow designer can follow exactly.
+
+For each section output a JSON array of layout blocks. Every block must include:
+- section_id: kebab-case identifier
+- section_type: hero|social-proof|problem|solution|services|process|testimonials|objections|faq|cta|stats|team|comparison|gallery|blog-preview|custom
+- headline: the H2/heading for this section (pulled from copy)
+- layout_variant: one of: full-width-center|split-left-text|split-right-text|3-col-grid|4-col-grid|2-col-grid|alternating-rows|card-grid|timeline|accordion|sticky-sidebar|full-width-bg|banner
+- cro_note: 1-sentence CRO rationale for this layout choice
+- content_hooks: array of 2-4 key content items visible in this section
+- visual_cue: what imagery/icon/graphic style to use (e.g. "abstract geometric", "photo of team", "icon grid")
+- background: white|light-grey|dark|brand-green|brand-lime|image-overlay
+- cta_in_section: true|false
+- order: integer
+
+Output ONLY a valid JSON array. No preamble, no markdown fences.`,
+
 schema:`You are a technical SEO specialist at Setsail Marketing. Every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Use @id anchors. No unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready for <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
 };
+
+
+// ── MOBILE NAV ─────────────────────────────────────────────────────
+function toggleMobileNav() {
+  const drawer = document.getElementById('mobile-nav-drawer');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  renderMobileStageList();
+  drawer.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+
+function closeMobileNav() {
+  document.getElementById('mobile-nav-drawer').classList.remove('open');
+  document.getElementById('mobile-nav-overlay').classList.remove('open');
+}
+
+function renderMobileStageList() {
+  const idx = STAGE_ORDER.indexOf(S.stage);
+  let html = '';
+  STAGES.forEach((s, i) => {
+    const done = i < idx, active = i === idx;
+    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
+    const cls = 'mobile-stage-item' + (active?' active':done?' done':'');
+    const icon = done ? 'ti-check' : s.icon;
+    html += '<div class="'+cls+'" '+(canClick?'onclick="navToStage(''+s.id+'');closeMobileNav()"':'')+' style="'+(canClick?'':'opacity:0.4;cursor:default')+'">'
+      +'<div class="msi-icon"><i class="ti '+icon+'"></i></div>'
+      +s.label
+      +(active?'<span style="margin-left:auto;font-size:10px;color:var(--green)">Current</span>':'')
+      +'</div>';
+  });
+  document.getElementById('mobile-stage-list').innerHTML = html;
+}
 
 // ── SETUP ──────────────────────────────────────────────────────────
 function setupNext() {
@@ -662,28 +763,69 @@ async function runResearch() {
   btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Analysis';
 }
 
-function renderResearchResults(r) {
+function renderResearchResults(r, editMode) {
   let html = '<div style="animation:fadeIn .25s ease">';
-  html += '<div class="grid-2" style="margin-bottom:8px">';
-  html += '<div class="card"><div class="eyebrow">Business Overview</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.business_overview||'')+'</p></div>';
-  html += '<div class="card"><div class="eyebrow">Value Proposition</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.value_proposition||'')+'</p></div>';
-  html += '</div>';
-  if (r.key_differentiators?.length) {
-    html += '<div class="card" style="margin-bottom:8px"><div class="eyebrow">Key Differentiators</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">';
-    r.key_differentiators.forEach(d => { html += '<li style="color:var(--n3);font-size:13px;display:flex;gap:8px"><span style="color:var(--green)">—</span>'+esc(d)+'</li>'; });
-    html += '</ul></div>';
+  if (editMode) {
+    html += '<div class="card" style="margin-bottom:8px;border-color:var(--green)">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+      +'<div class="eyebrow" style="margin-bottom:0;color:var(--green)">Editing Research Brief</div>'
+      +'<button class="btn btn-ghost sm" onclick="saveResearchEdits()"><i class="ti ti-check"></i> Save Changes</button>'
+      +'</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:12px">';
+    const editField = (key, label, val, isLong) => {
+      const id = 'r-edit-'+key;
+      return '<div><label style="font-size:11px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">'+label+'</label>'
+        +(isLong?'<textarea id="'+id+'" rows="3"':'<input id="'+id+'" type="text"')+' style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box" value="'+(isLong?'':esc(val||''))+'">'+(isLong?esc(val||'')+'</textarea>':'</input>')+'</div>';
+    };
+    html += editField('business_overview','Business Overview', r.business_overview, true);
+    html += editField('value_proposition','Value Proposition', r.value_proposition, true);
+    html += editField('tone_and_voice','Tone & Voice', r.tone_and_voice, false);
+    html += editField('pricing_notes','Pricing Notes', r.pricing_notes, false);
+    html += '<div><label style="font-size:11px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Key Differentiators (one per line)</label>';
+    html += '<textarea id="r-edit-differentiators" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.key_differentiators||[]).join('
+'))+'</textarea></div>';
+    html += '<div><label style="font-size:11px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">Strategic Recommendations (one per line)</label>';
+    html += '<textarea id="r-edit-recommendations" rows="4" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box">'+esc((r.strategic_recommendations||[]).join('
+'))+'</textarea></div>';
+    html += '</div></div>';
+  } else {
+    html += '<div class="grid-2" style="margin-bottom:8px">';
+    html += '<div class="card"><div class="eyebrow">Business Overview</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.business_overview||'')+'</p></div>';
+    html += '<div class="card"><div class="eyebrow">Value Proposition</div><p style="color:var(--n3);font-size:13px;line-height:1.65">'+esc(r.value_proposition||'')+'</p></div>';
+    html += '</div>';
+    if (r.key_differentiators?.length) {
+      html += '<div class="card" style="margin-bottom:8px"><div class="eyebrow">Key Differentiators</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:4px">';
+      r.key_differentiators.forEach(d => { html += '<li style="color:var(--n3);font-size:13px;display:flex;gap:8px"><span style="color:var(--green)">—</span>'+esc(d)+'</li>'; });
+      html += '</ul></div>';
+    }
+    if (r.strategic_recommendations?.length) {
+      html += '<div class="card hl" style="margin-bottom:12px"><div class="eyebrow">Strategic Recommendations</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+      r.strategic_recommendations.forEach(rec => { html += '<li style="color:var(--dark);font-size:13px;display:flex;gap:8px"><span style="color:var(--green);font-size:8px;margin-top:5px">◆</span>'+esc(rec)+'</li>'; });
+      html += '</ul></div>';
+    }
   }
-  if (r.strategic_recommendations?.length) {
-    html += '<div class="card hl" style="margin-bottom:20px"><div class="eyebrow">Strategic Recommendations</div><ul style="list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:6px">';
-    r.strategic_recommendations.forEach(rec => { html += '<li style="color:var(--dark);font-size:13px;display:flex;gap:8px"><span style="color:var(--green);font-size:8px;margin-top:5px">◆</span>'+esc(rec)+'</li>'; });
-    html += '</ul></div>';
-  }
-  html += '<div style="display:flex;gap:8px">';
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
   html += '<button class="btn btn-primary" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>';
+  if (!editMode) html += '<button class="btn btn-ghost" onclick="renderResearchResults(S.research, true)"><i class="ti ti-edit"></i> Edit</button>';
   html += '<button class="btn btn-ghost" onclick="runResearch()"><i class="ti ti-refresh"></i> Re-run</button>';
   html += '</div></div>';
   const el = document.getElementById('research-results');
   el.innerHTML = html; el.style.display = 'block';
+}
+
+function saveResearchEdits() {
+  const g = id => document.getElementById(id);
+  const val = id => (g(id)||{}).value || '';
+  S.research.business_overview = val('r-edit-business_overview');
+  S.research.value_proposition = val('r-edit-value_proposition');
+  S.research.tone_and_voice = val('r-edit-tone_and_voice');
+  S.research.pricing_notes = val('r-edit-pricing_notes');
+  S.research.key_differentiators = val('r-edit-differentiators').split('
+').map(s=>s.trim()).filter(Boolean);
+  S.research.strategic_recommendations = val('r-edit-recommendations').split('
+').map(s=>s.trim()).filter(Boolean);
+  scheduleSave();
+  renderResearchResults(S.research, false);
 }
 
 // ── SITEMAP ────────────────────────────────────────────────────────
@@ -762,15 +904,27 @@ function renderSitemapResults(approved) {
   });
   html += '</div></div>';
 
-  // Supporting keywords accordion
+  // Supporting keywords section with volumes
   html += '<div style="margin-bottom:18px">';
   html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Supporting Keywords by Page</div>';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   pages.filter(p=>p.supporting_keywords?.length).forEach((p,i,arr) => {
     html += '<div style="padding:10px 14px;border-bottom:'+(i<arr.length-1?'1px solid var(--border)':'none')+';background:var(--white)">';
-    html += '<div style="font-size:12px;color:var(--dark);font-weight:500;margin-bottom:5px">'+esc(p.page_name)+'</div>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
-    (p.supporting_keywords||[]).forEach(kw => { html += '<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--n3)">'+esc(kw)+'</span>'; });
+    html += '<div style="font-size:12px;color:var(--dark);font-weight:500;margin-bottom:7px">'+esc(p.page_name)+'</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+    (p.supporting_keywords||[]).forEach(kwItem => {
+      // Support both old string format and new {kw, vol} object format
+      const isObj = typeof kwItem === 'object' && kwItem !== null;
+      const kwStr = isObj ? kwItem.kw : kwItem;
+      const volStr = isObj ? kwItem.vol : '';
+      // Check for live Ahrefs data too
+      const live = (S.kwMetrics||{})[kwStr];
+      const displayVol = live?.volume !== undefined ? live.volume.toLocaleString() : (volStr||'');
+      html += '<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 9px;font-size:11px;color:var(--n3);display:inline-flex;align-items:center;gap:5px">'
+        +esc(kwStr)
+        +(displayVol?'<span style="color:var(--n2);font-size:10px;border-left:1px solid var(--border);padding-left:5px;margin-left:2px">'+esc(String(displayVol))+'</span>':'')
+        +'</span>';
+    });
     html += '</div></div>';
   });
   html += '</div></div>';
@@ -1054,6 +1208,197 @@ function checkCopyAllDone() {
     document.getElementById('copy-done-label').textContent = 'All '+done+' pages written';
     document.getElementById('copy-all-done').style.display = 'flex';
   } else { document.getElementById('copy-all-done').style.display = 'none'; }
+}
+
+// ── LAYOUT ────────────────────────────────────────────────────────
+let layoutStopFlag = false;
+S.layoutCurrentSlug = null;
+S.layoutExpandedSlug = null;
+S.layout = S.layout || {};
+
+function initLayout() {
+  document.getElementById('layout-progress').style.display = 'block';
+  const next = orderedPages().find(p => !(S.layout[p.slug]||{}).blocks);
+  if (next && !S.layoutExpandedSlug) S.layoutExpandedSlug = next.slug;
+  renderLayoutQueue(); updateLayoutProgress(); checkLayoutAllDone();
+}
+
+function buildLayoutPrompt(page) {
+  const copyData = (S.copy[page.slug]||{}).copy || '';
+  return 'CLIENT: '+S.setup.client+'\nPAGE: '+page.page_name+' ('+page.page_type+')\nSLUG: /'+page.slug+'\nPRIMARY KEYWORD: '+page.primary_keyword+'\nSEARCH INTENT: '+page.search_intent+'\nWORD COUNT TARGET: '+(page.word_count_target||1500)+'\nNOTES: '+(page.notes||'')+'\nSTRATEGIC CONTEXT: '+(S.research?.value_proposition||'')+'\n'+(copyData?'PAGE COPY (first 3000 chars):\n'+copyData.slice(0,3000):'NO COPY YET — generate layout based on page type, keyword intent and industry context.')+'\n\nGenerate a complete layout brief for this page.';
+}
+
+async function runLayoutPage(slug) {
+  const page = orderedPages().find(p => p.slug === slug);
+  if (!page || S.layoutRunning) return;
+  S.layoutRunning = true; layoutStopFlag = false;
+  S.layoutCurrentSlug = slug;
+  S.layoutExpandedSlug = slug;
+  renderLayoutQueue();
+  try {
+    const raw = await callClaude(P.layout, buildLayoutPrompt(page), null);
+    if (!layoutStopFlag) {
+      const blocks = safeParseJSON(raw);
+      if (Array.isArray(blocks) && blocks.length) {
+        S.layout[slug] = { blocks, page };
+      } else {
+        S.layout[slug] = { error: 'Could not parse layout JSON', raw, page };
+      }
+      scheduleSave();
+      const pages = orderedPages();
+      const curIdx = pages.findIndex(p => p.slug === slug);
+      const next = pages.find((p,i) => i > curIdx && !(S.layout[p.slug]||{}).blocks);
+      S.layoutExpandedSlug = next ? next.slug : slug;
+    }
+  } catch(e) {
+    S.layout[slug] = { error: e.message, page };
+  }
+  S.layoutCurrentSlug = null;
+  S.layoutRunning = false;
+  renderLayoutQueue(); updateLayoutProgress(); checkLayoutAllDone();
+}
+
+function toggleLayoutExpand(slug) {
+  if (S.layoutRunning) return;
+  S.layoutExpandedSlug = S.layoutExpandedSlug === slug ? null : slug;
+  renderLayoutQueue();
+}
+
+function redoLayoutPage(slug) {
+  delete S.layout[slug];
+  S.layoutExpandedSlug = slug;
+  scheduleSave(); updateLayoutProgress(); renderLayoutQueue(); checkLayoutAllDone();
+}
+
+const LAYOUT_BG_COLORS = {
+  'white':'#ffffff','light-grey':'#f4f4f2','dark':'#111111','brand-green':'#158E1D',
+  'brand-lime':'#D8FF29','image-overlay':'#333333'
+};
+const LAYOUT_VARIANT_LABELS = {
+  'full-width-center':'Full Width Centre','split-left-text':'Split — Text Left',
+  'split-right-text':'Split — Text Right','3-col-grid':'3 Col Grid','4-col-grid':'4 Col Grid',
+  '2-col-grid':'2 Col Grid','alternating-rows':'Alternating Rows','card-grid':'Card Grid',
+  'timeline':'Timeline','accordion':'Accordion','sticky-sidebar':'Sticky Sidebar',
+  'full-width-bg':'Full Width BG','banner':'Banner'
+};
+
+function renderLayoutQueue() {
+  const pages = orderedPages();
+  let html = '';
+  pages.forEach((p, i) => {
+    const r = S.layout[p.slug]||{};
+    const isDone = Array.isArray(r.blocks) && r.blocks.length > 0;
+    const isErr = !!r.error && !isDone;
+    const isRunning = S.layoutCurrentSlug === p.slug;
+    const isExpanded = S.layoutExpandedSlug === p.slug;
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-color:rgba(255,255,255,0.3);border-top-color:white"></span>':(i+1);
+    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+
+    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+'">';
+    html += '<div onclick="toggleLayoutExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
+      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
+        +'<span style="font-size:10.5px;color:'+pColor+';margin-left:8px;padding:1px 6px;background:rgba(0,0,0,0.04);border-radius:3px">'+p.priority+'</span>'
+        +(isDone?'<span style="font-size:10.5px;color:var(--n2);margin-left:8px">'+r.blocks.length+' sections</span>':'')
+      +'</div>'
+      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
+      +'</div>';
+
+    if (isExpanded) {
+      html += '<div style="border-top:1px solid var(--border);padding:14px">';
+      if (isRunning) {
+        html += '<div style="display:flex;align-items:center;gap:8px;color:var(--n2);font-size:13px">'
+          +'<span class="spinner" style="width:12px;height:12px"></span> Building layout brief...</div>';
+      } else if (isDone) {
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+          +'<button class="btn btn-ghost sm" onclick="copyLayoutBrief(\''+p.slug+'\')"><i class="ti ti-copy"></i> Copy Brief</button>'
+          +'<button class="btn btn-danger sm" onclick="redoLayoutPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          +'</div>';
+        // Render layout blocks as visual wireframe cards
+        r.blocks.sort((a,b)=>(a.order||0)-(b.order||0)).forEach((block, bi) => {
+          const bg = block.background === 'dark'?'background:#111;color:white':
+                     block.background === 'brand-green'?'background:var(--green);color:white':
+                     block.background === 'brand-lime'?'background:var(--lime);color:var(--dark)':
+                     block.background === 'light-grey'?'background:var(--bg)':'background:var(--white)';
+          html += '<div style="border:1px solid var(--border);border-radius:7px;overflow:hidden;margin-bottom:8px;'+bg+'">';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid rgba(0,0,0,0.07);gap:8px;flex-wrap:wrap">';
+          html += '<div style="display:flex;align-items:center;gap:8px">'
+            +'<span style="font-size:10px;color:rgba(0,0,0,0.35);font-weight:600;background:rgba(0,0,0,0.06);padding:1px 7px;border-radius:3px">'+(bi+1)+'</span>'
+            +'<span style="font-size:12.5px;font-weight:500">'+esc(block.headline||block.section_type)+'</span>'
+            +'</div>';
+          html += '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+            +'<span style="font-size:10px;padding:1px 7px;background:rgba(0,0,0,0.07);border-radius:3px">'+esc(block.section_type)+'</span>'
+            +'<span style="font-size:10px;padding:1px 7px;background:rgba(0,0,0,0.07);border-radius:3px">'+esc(LAYOUT_VARIANT_LABELS[block.layout_variant]||block.layout_variant||'')+'</span>'
+            +(block.cta_in_section?'<span style="font-size:10px;padding:1px 7px;background:rgba(21,142,29,0.12);color:var(--green);border-radius:3px">CTA</span>':'')
+            +'</div>';
+          html += '</div>';
+          html += '<div style="padding:10px 12px;display:flex;flex-direction:column;gap:5px">';
+          if (block.content_hooks?.length) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:3px">';
+            block.content_hooks.forEach(h => { html += '<span style="font-size:11px;background:rgba(0,0,0,0.05);border-radius:4px;padding:2px 8px;color:inherit;opacity:0.75">'+esc(h)+'</span>'; });
+            html += '</div>';
+          }
+          if (block.cro_note) html += '<div style="font-size:11.5px;opacity:0.7;font-style:italic">✦ '+esc(block.cro_note)+'</div>';
+          if (block.visual_cue) html += '<div style="font-size:11px;opacity:0.5"><i class="ti ti-photo" style="font-size:9px"></i> '+esc(block.visual_cue)+'</div>';
+          html += '</div></div>';
+        });
+        const curIdx = pages.findIndex(pp => pp.slug === p.slug);
+        const nextP = pages.find((pp,ii) => ii > curIdx && !(S.layout[pp.slug]||{}).blocks);
+        if (nextP) {
+          html += '<div style="margin-top:10px;display:flex;gap:8px">'
+            +'<button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=\''+nextP.slug+'\';renderLayoutQueue();runLayoutPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+            +'<button class="btn btn-ghost sm" onclick="initSchema();goTo(\'schema\')">Skip to Schema</button>'
+            +'</div>';
+        }
+      } else if (isErr) {
+        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+          +'<button class="btn btn-primary sm" onclick="runLayoutPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+      } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type)+' · '+esc(p.search_intent||'')+' · CRO layout brief</div>'
+          +'<button class="btn btn-primary sm" onclick="runLayoutPage(\''+p.slug+'\')"><i class="ti ti-layout"></i> Generate Layout</button>'
+          +'</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  document.getElementById('layout-queue').innerHTML = html;
+}
+
+function copyLayoutBrief(slug) {
+  const r = S.layout[slug];
+  if (!r?.blocks) return;
+  const text = r.blocks.sort((a,b)=>(a.order||0)-(b.order||0)).map((b,i) =>
+    (i+1)+'. '+b.headline+' ['+b.section_type+' / '+b.layout_variant+']'
+    +'\n   CRO: '+b.cro_note
+    +'\n   Content: '+(b.content_hooks||[]).join(' · ')
+    +'\n   Visual: '+b.visual_cue
+    +'\n   BG: '+b.background
+    +(b.cta_in_section?'\n   ✓ CTA in section':'')
+  ).join('\n\n');
+  copyToClip2(text);
+}
+
+function updateLayoutProgress() {
+  const pages = orderedPages();
+  const done = pages.filter(p => (S.layout[p.slug]||{}).blocks?.length).length;
+  const pct = pages.length > 0 ? Math.round(done/pages.length*100) : 0;
+  document.getElementById('layout-count-label').textContent = done+'/'+pages.length+' pages complete';
+  document.getElementById('layout-pct-label').textContent = pct+'%';
+  document.getElementById('layout-progress-fill').style.width = pct+'%';
+}
+
+function checkLayoutAllDone() {
+  const pages = orderedPages();
+  const done = pages.filter(p => (S.layout[p.slug]||{}).blocks?.length).length;
+  if (done === pages.length && done > 0) {
+    document.getElementById('layout-done-label').textContent = 'All '+done+' pages complete';
+    document.getElementById('layout-all-done').style.display = 'flex';
+  } else { document.getElementById('layout-all-done').style.display = 'none'; }
 }
 
 let schemaStopFlag = false;
