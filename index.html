@@ -1471,6 +1471,13 @@ function showMermaidModal() {
 }
 
 function renderSitemapResults(approved) {
+  try { _renderSitemapResultsInner(approved); } catch(err) {
+    console.error('renderSitemapResults crash:', err);
+    const el = document.getElementById('sitemap-results');
+    if (el) { el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;font-size:12px;background:#fff1f0;border:1px solid #ffccc7;border-radius:8px;margin:8px 0"><strong>⚠ Render error</strong><br>' + err.message + '<br><br><small>' + (err.stack||'').split('\n').slice(0,4).join('<br>') + '</small></div>'; el.style.display='block'; }
+  }
+}
+function _renderSitemapResultsInner(approved) {
   const pages = S.pages;
   const p1 = pages.filter(p=>p.priority==='P1').length;
   const p2 = pages.filter(p=>p.priority==='P2').length;
@@ -1650,14 +1657,8 @@ function renderSitemapResults(approved) {
   }
 
   const el = document.getElementById('sitemap-results');
-  try {
-    el.innerHTML = html;
-    el.style.display = 'block';
-  } catch(err) {
-    console.error('renderSitemapResults error:', err);
-    el.innerHTML = '<div style="padding:20px;color:red;font-size:12px">Render error: ' + err.message + '</div>';
-    el.style.display = 'block';
-  }
+  el.innerHTML = html;
+  el.style.display = 'block';
 }
 
 function approveSitemap() {
