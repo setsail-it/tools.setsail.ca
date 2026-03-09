@@ -1285,24 +1285,44 @@ async function reviseKeywords(pageIdx) {
   resultEl.style.display = 'none';
 
   // ── Step 1: Build page-specific seeds ──
-  // Use the page's own assigned keywords as expansion seeds — not the global company-wide pool
+  // keywords_for_keywords works best with SHORT base terms (2-3 words), not full geo-phrases.
+  // Strategy: strip geo from assigned keywords → use as core seeds, add 1-2 geo combos separately.
   const currentPrimary = page.primary_keyword || '';
   const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
 
-  // Also seed with the stripped page name (e.g. "social media management" from "Social Media Management")
-  const pageName = (page.page_name || '').toLowerCase().replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
   const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
   const geoLower = geo.toLowerCase();
 
+  // Helper: strip trailing geo tokens from a keyword phrase
+  // e.g. "social media marketing vancouver" → "social media marketing"
+  const stripGeo = kw => {
+    if (!geoLower) return kw;
+    return kw.toLowerCase()
+      .replace(new RegExp('\\s+' + geoLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*$', 'i'), '')
+      .replace(new RegExp('^' + geoLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s+', 'i'), '')
+      .trim();
+  };
+
   const seedSet = new Set();
-  if (currentPrimary) seedSet.add(currentPrimary.toLowerCase());
-  currentSupporting.forEach(k => seedSet.add(k.toLowerCase()));
-  // Add page name + geo variants as seeds to pull topical neighbours
-  if (pageName) {
-    seedSet.add(pageName);
-    if (geoLower) seedSet.add(pageName + ' ' + geoLower);
+
+  // Core topical seeds — geo stripped so DataForSEO can expand broadly
+  const allAssigned = [currentPrimary, ...currentSupporting].filter(Boolean);
+  allAssigned.forEach(kw => {
+    const base = stripGeo(kw);
+    if (base.length > 3) seedSet.add(base);
+  });
+
+  // Page name as a seed (stripped of generic suffixes)
+  const pageName = (page.page_name || '').toLowerCase()
+    .replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
+  if (pageName.length > 3) seedSet.add(pageName);
+
+  // Add ONE geo+service combo to anchor results locally
+  if (geoLower && pageName.length > 3) {
+    seedSet.add(pageName + ' ' + geoLower);
   }
-  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 15);
+
+  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
 
   // Detect country from geo
   const geoStr = (geo + ' ' + geoLower).toLowerCase();
@@ -1336,11 +1356,13 @@ async function reviseKeywords(pageIdx) {
       kwList = top60.map(k => `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score})`).join('\n');
       status.innerHTML = `<span style="font-size:10.5px;color:var(--n2)">${top60.length} page-specific keywords found</span>`;
     } else {
-      // Fallback to global pool if expansion returns nothing
+      // Expansion returned nothing — fallback to global pool
+      const reason = expandData.error ? (' (' + expandData.error + ')') : ' (no results)';
       kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
         `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
       ).join('\n');
-      status.innerHTML = '<span style="font-size:10.5px;color:var(--n2)">Using global keyword pool</span>';
+      status.innerHTML = `<span style="font-size:10.5px;color:var(--warn)">⚠ Page expansion empty${reason} — using global pool</span>`;
+      console.warn('[reviseKeywords] expansion empty, seeds:', seeds, 'response:', expandData);
     }
   } catch(expandErr) {
     // Fallback gracefully — log real error
