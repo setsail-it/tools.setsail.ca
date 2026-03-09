@@ -1271,6 +1271,169 @@ async function enrichSitemapWithLiveData() {
   }
 }
 
+async function reviseKeywords(pageIdx) {
+  const page = S.pages[pageIdx];
+  if (!page) return;
+
+  const btn = document.getElementById('revise-kw-btn-' + pageIdx);
+  const status = document.getElementById('revise-kw-status-' + pageIdx);
+  const resultEl = document.getElementById('revise-kw-result-' + pageIdx);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Analysing…';
+  status.textContent = '';
+  resultEl.style.display = 'none';
+
+  // Build keyword list for Claude — top 80 from kwResearch
+  const kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
+    `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
+  ).join('\n');
+
+  const currentKws = [page.primary_keyword, ...((page.supporting_keywords||[]).map(sk => typeof sk==='object'?sk.kw:sk))].filter(Boolean).join(', ');
+
+  const system = `You are an SEO keyword strategist. Given a page brief and a keyword list, recommend the best primary keyword and up to 5 supporting keywords for that page.
+
+RULES:
+- primary_keyword MUST come from the provided keyword list (exact string match)
+- supporting_keywords MUST come from the provided keyword list (exact string matches)
+- Match keyword intent to the page type:
+  - home → brand/agency category keywords only
+  - service → service-specific + city terms
+  - location → city + service category terms
+  - about → brand navigational, trust, b-corp terms
+  - contact → conversion intent terms
+  - industry → industry + service terms
+  - blog → informational keywords
+- Prioritise: correct intent first, then highest score
+- Do NOT invent keywords not in the list
+- Output raw JSON only. No markdown, no backticks, no preamble.
+
+Output format:
+{"primary_keyword":"exact kw from list","primary_vol":0,"primary_kd":0,"primary_score":0,"supporting_keywords":[{"kw":"exact kw","vol":0,"kd":0},{"kw":"exact kw","vol":0,"kd":0}],"rationale":"1-2 sentence explanation"}`;
+
+  const user = `PAGE:
+Name: ${page.page_name}
+Type: ${page.page_type || 'service'}
+Slug: /${page.slug}
+Current primary keyword: ${page.primary_keyword || 'none'}
+Current supporting keywords: ${currentKws || 'none'}
+
+KEYWORD LIST (use only exact strings from here):
+${kwList || 'No keyword data available'}
+
+Recommend the best primary keyword and up to 5 supporting keywords for this page.`;
+
+  try {
+    let raw = '';
+    await callClaude(system, user, chunk => { raw += chunk; });
+
+    // Parse JSON
+    const clean = raw.replace(/```json|```/g,'').trim();
+    let result;
+    try { result = JSON.parse(clean); }
+    catch(e) {
+      const m = clean.match(/\{[\s\S]*\}/);
+      if (m) result = JSON.parse(m[0]);
+      else throw new Error('Could not parse response');
+    }
+
+    // Render suggestion panel
+    const scoreFn = (v,d) => v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+    const pScore = result.primary_score || scoreFn(result.primary_vol||0, result.primary_kd||0);
+    const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+
+    let rhtml = '<div style="background:rgba(21,142,29,0.04);border:1px solid rgba(21,142,29,0.18);border-radius:6px;margin:0 14px 8px;padding:10px 12px">';
+    rhtml += '<div style="font-size:10.5px;font-weight:500;color:var(--green);margin-bottom:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-sparkles"></i> AI Keyword Suggestions</div>';
+
+    // Primary
+    rhtml += '<div style="margin-bottom:6px">';
+    rhtml += '<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Primary</div>';
+    rhtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
+    rhtml += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(result.primary_keyword)}</span>`;
+    rhtml += `<span style="font-size:10.5px;color:var(--dark)">${(result.primary_vol||0).toLocaleString()}/mo</span>`;
+    rhtml += `<span style="font-size:10.5px;color:${kdCol(result.primary_kd||0)}">KD ${result.primary_kd||'?'}</span>`;
+    rhtml += `<span style="font-size:10px;color:var(--n2)">score ${pScore}</span>`;
+    rhtml += `<button onclick="acceptPrimaryKw(${pageIdx},'${(result.primary_keyword||'').replace(/'/g,'')}',${result.primary_vol||0},${result.primary_kd||0},${pScore})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">Use this</button>`;
+    rhtml += '</div></div>';
+
+    // Supporting
+    if (result.supporting_keywords?.length) {
+      rhtml += '<div style="margin-bottom:7px">';
+      rhtml += '<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Supporting</div>';
+      result.supporting_keywords.forEach((sk, si) => {
+        const sc2 = scoreFn(sk.vol||0, sk.kd||0);
+        rhtml += `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">`;
+        rhtml += `<span style="font-size:11px;color:var(--n3)">${esc(sk.kw)}</span>`;
+        rhtml += `<span style="font-size:10px;color:var(--n2)">${(sk.vol||0).toLocaleString()}/mo</span>`;
+        rhtml += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
+        rhtml += `<button onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0})" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
+        rhtml += '</div>';
+      });
+      rhtml += '</div>';
+    }
+
+    // Rationale
+    if (result.rationale) {
+      rhtml += `<div style="font-size:10.5px;color:var(--n2);font-style:italic;border-top:1px solid rgba(0,0,0,0.06);padding-top:6px;margin-top:2px">${esc(result.rationale)}</div>`;
+    }
+
+    rhtml += `<div style="margin-top:8px;display:flex;gap:6px">`;
+    rhtml += `<button onclick="acceptAllSuggestions(${pageIdx})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font)">Accept All</button>`;
+    rhtml += `<button onclick="document.getElementById('revise-kw-result-${pageIdx}').style.display='none'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font);color:var(--n2)">Dismiss</button>`;
+    rhtml += '</div>';
+    rhtml += '</div>';
+
+    // Store suggestion on page object for Accept All
+    S.pages[pageIdx]._suggestion = result;
+
+    resultEl.innerHTML = rhtml;
+    resultEl.style.display = 'block';
+    status.textContent = '';
+
+  } catch(err) {
+    status.textContent = '⚠ ' + err.message;
+    console.error('reviseKeywords error:', err);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:10px"></i> Revise Keywords';
+}
+
+function acceptPrimaryKw(pageIdx, kw, vol, kd, score) {
+  if (!S.pages[pageIdx]) return;
+  S.pages[pageIdx].primary_keyword = kw;
+  S.pages[pageIdx].primary_vol = vol;
+  S.pages[pageIdx].primary_kd = kd;
+  S.pages[pageIdx].score = score;
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function addSuggestedKw(pageIdx, kw, vol, kd) {
+  const page = S.pages[pageIdx];
+  if (!page) return;
+  const existing = (page.supporting_keywords||[]).map(sk=>(typeof sk==='object'?sk.kw:sk).toLowerCase());
+  if (existing.includes(kw.toLowerCase()) || (page.primary_keyword||'').toLowerCase()===kw.toLowerCase()) return;
+  if (!page.supporting_keywords) page.supporting_keywords = [];
+  page.supporting_keywords.push({ kw, vol, kd });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function acceptAllSuggestions(pageIdx) {
+  const page = S.pages[pageIdx];
+  const sug = page?._suggestion;
+  if (!sug) return;
+  if (sug.primary_keyword) {
+    const sc = sug.primary_score || (sug.primary_vol>0&&sug.primary_kd>0 ? Math.round((Math.log(sug.primary_vol+1)*100/sug.primary_kd)*10)/10 : 0);
+    acceptPrimaryKw(pageIdx, sug.primary_keyword, sug.primary_vol||0, sug.primary_kd||0, sc);
+  }
+  (sug.supporting_keywords||[]).forEach(sk => addSuggestedKw(pageIdx, sk.kw, sk.vol||0, sk.kd||0));
+  // acceptPrimaryKw already re-renders, but call once more to be safe
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
 async function addManualKeyword(pageIdx, rawKw) {
   const kw = rawKw.trim().toLowerCase();
   if (!kw) return;
@@ -1507,7 +1670,7 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]
-  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 58px 64px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
+  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px 90px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
     + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span>'
@@ -1581,16 +1744,27 @@ function _renderSitemapResultsInner(approved) {
         html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`;
       });
       html += '</select>';
-      // Actions column — ↑ ↓ 🗑
-      html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:2px">';
-      html += `<button onclick="movePage(${i},-1)" title="Move up" ${i===0?'disabled':''} style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 5px;cursor:pointer;font-size:11px;color:var(--n2);opacity:${i===0?'0.3':'1'}">↑</button>`;
-      html += `<button onclick="movePage(${i},1)" title="Move down" ${i===pages.length-1?'disabled':''} style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 5px;cursor:pointer;font-size:11px;color:var(--n2);opacity:${i===pages.length-1?'0.3':'1'}">↓</button>`;
-      html += `<button onclick="deletePage(${i})" title="Delete page" style="background:transparent;border:1px solid rgba(220,50,47,0.25);border-radius:4px;padding:2px 5px;cursor:pointer;font-size:11px;color:var(--error);opacity:0.7" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">🗑</button>`;
+      // Actions column — ↑ ↓ 🗑 compact icon buttons
+      const btnBase = 'border-radius:4px;padding:3px 6px;cursor:pointer;font-size:12px;line-height:1;font-family:var(--font)';
+      html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:3px;flex-wrap:nowrap">';
+      html += `<button onclick="movePage(${i},-1)" title="Move up" ${i===0?'disabled':''} style="background:transparent;border:1px solid var(--border);${btnBase};color:var(--n2);opacity:${i===0?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===0?'0.25':'0.7'}"">↑</button>`;
+      html += `<button onclick="movePage(${i},1)" title="Move down" ${i===pages.length-1?'disabled':''} style="background:transparent;border:1px solid var(--border);${btnBase};color:var(--n2);opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='${i===pages.length-1?'0.25':'0.7'}"">↓</button>`;
+      html += `<button onclick="deletePage(${i})" title="Delete page" style="background:transparent;border:1px solid rgba(220,50,47,0.3);${btnBase};color:var(--error);opacity:0.6" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">✕</button>`;
       html += '</div>';
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     }
     html += '</div>'; // end main row
+
+    // Revise Keywords row — edit mode only
+    if (sitemapEditMode) {
+      const revBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 14px 5px;background:${revBg};border-top:1px dashed rgba(0,0,0,0.05)">`;
+      html += `<button id="revise-kw-btn-${i}" onclick="reviseKeywords(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.35);border-radius:4px;padding:2px 10px;font-size:10.5px;color:var(--green);cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:4px"><i class="ti ti-sparkles" style="font-size:10px"></i> Revise Keywords</button>`;
+      html += `<span id="revise-kw-status-${i}" style="font-size:10.5px;color:var(--n2)"></span>`;
+      html += '</div>';
+      html += `<div id="revise-kw-result-${i}" style="display:none"></div>`;
+    }
 
     // Supporting keywords — mini grid rows aligned to main columns
     const suppKws = (p.supporting_keywords || []).filter(sk => {
