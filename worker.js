@@ -552,7 +552,11 @@ export default {
               })
             }
           );
-          if (!gemRes.ok) { lastError = `${model}: HTTP ${gemRes.status}`; continue; }
+          if (!gemRes.ok) {
+            const errBody = await gemRes.text().catch(() => '');
+            lastError = `${model}: HTTP ${gemRes.status} — ${errBody.slice(0, 300)}`;
+            continue;
+          }
           const gemData = await gemRes.json();
           imagePart = gemData.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
           if (imagePart) break;
