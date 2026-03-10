@@ -422,30 +422,18 @@ export default {
         const seen = new Set();
         const questions = [];
 
+        // Walk the full item tree — PAA questions are people_also_ask_element at any depth
         const extractPAA = (items, sourceKw) => {
           (items || []).forEach(item => {
-            if (item.type === 'people_also_ask') {
-              // PAA block: items[] contains people_also_ask_element entries
-              (item.items || []).forEach(q => {
-                const text = (q.title || q.question || '').trim();
-                if (text && !seen.has(text.toLowerCase())) {
-                  seen.add(text.toLowerCase());
-                  questions.push({ question: text, source: sourceKw });
-                }
-                // click_depth may add more PAA items nested inside
-                if (q.items) extractPAA(q.items, sourceKw);
-              });
-            } else if (item.type === 'people_also_ask_element') {
-              // Direct PAA element (from click_depth expansion)
+            if (item.type === 'people_also_ask_element') {
               const text = (item.title || item.question || '').trim();
               if (text && !seen.has(text.toLowerCase())) {
                 seen.add(text.toLowerCase());
                 questions.push({ question: text, source: sourceKw });
               }
-              if (item.items) extractPAA(item.items, sourceKw);
-            } else if (item.type === 'related_searches' || item.type === 'people_also_search') {
-              // Skip non-PAA items
             }
+            // Always recurse — PAA elements can be nested at any depth
+            if (item.items?.length) extractPAA(item.items, sourceKw);
           });
         };
 
