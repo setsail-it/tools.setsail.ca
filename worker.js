@@ -588,9 +588,15 @@ export default {
           return j;
         };
 
-        const [drData, metricsData, topPagesData] = await Promise.all([
-          ahrefsGet('site-explorer/domain-rating', base),
-          ahrefsGet('site-explorer/metrics', { ...base, mode: 'subdomains', country: cc }),
+        const [batchData, topPagesData] = await Promise.all([
+          fetch('https://api.ahrefs.com/v3/batch-analysis', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              select: ['domain_rating','ahrefs_rank','org_traffic','org_keywords','org_keywords_1_3','org_cost','refdomains','backlinks'],
+              targets: [{ url: domain, mode: 'subdomains', protocol: 'both' }],
+            }),
+          }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error('Ahrefs batch-analysis: ' + (j?.error?.message || j?.error || r.status)); return j; }),
           ahrefsGet('site-explorer/top-pages', {
             ...withMode,
             select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
@@ -599,6 +605,7 @@ export default {
             country: cc,
           }),
         ]);
+        const bm = batchData?.targets?.[0] || {};
 
         // Parse top pages + auto-derive slug
         const topPages = (topPagesData?.pages || []).map(p => {
@@ -625,14 +632,14 @@ export default {
           capturedAt: Date.now(),
           domain,
           domainMetrics: {
-            dr: drData?.domain_rating ?? null,
-            ahrefsRank: drData?.ahrefs_rank ?? null,
-            orgTraffic: metricsData?.org_traffic ?? 0,
-            orgKeywords: metricsData?.org_keywords ?? 0,
-            orgKeywords1_3: metricsData?.org_keywords_1_3 ?? 0,
-            orgCost: metricsData?.org_cost ?? 0,
-            liveRefdomains: null,
-            liveBacklinks: null,
+            dr: bm.domain_rating ?? null,
+            ahrefsRank: bm.ahrefs_rank ?? null,
+            orgTraffic: bm.org_traffic ?? 0,
+            orgKeywords: bm.org_keywords ?? 0,
+            orgKeywords1_3: bm.org_keywords_1_3 ?? 0,
+            orgCost: bm.org_cost ?? 0,
+            liveRefdomains: bm.refdomains ?? null,
+            liveBacklinks: bm.backlinks ?? null,
           },
           topPages,
           redirectMap,

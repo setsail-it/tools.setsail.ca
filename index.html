@@ -1055,8 +1055,8 @@ function renderSnapshot() {
     document.getElementById('snap-dr').textContent = m.dr != null ? Math.round(m.dr) : '—';
     document.getElementById('snap-traffic').textContent = m.orgTraffic ? m.orgTraffic.toLocaleString() : '0';
     document.getElementById('snap-keywords').textContent = m.orgKeywords ? m.orgKeywords.toLocaleString() : '0';
-    document.getElementById('snap-refdomains').textContent = m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '—';
-    document.getElementById('snap-backlinks').textContent = m.liveBacklinks != null ? m.liveBacklinks.toLocaleString() : '—';
+    document.getElementById('snap-refdomains').textContent = m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '0';
+    document.getElementById('snap-backlinks').textContent = m.liveBacklinks != null ? m.liveBacklinks.toLocaleString() : '0';
     const costUsd = m.orgCost ? (m.orgCost / 100) : 0;
     document.getElementById('snap-cost').textContent = costUsd ? '$' + Math.round(costUsd).toLocaleString() : '$0';
   }
