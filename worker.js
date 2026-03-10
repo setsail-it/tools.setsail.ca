@@ -589,13 +589,13 @@ export default {
         };
 
         const [drData, topPagesData] = await Promise.all([
-          ahrefsGet('site-explorer/domain-rating', base),
+          ahrefsGet('site-explorer/domain-rating', base).catch(() => null),
           ahrefsGet('site-explorer/top-pages', {
             ...withMode,
             select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
             limit: 50,
             order_by: 'sum_traffic:desc',
-          }),
+          }).catch(e => { throw e; }), // top-pages IS fatal — it's the core data
         ]);
 
         // Parse top pages + auto-derive slug
