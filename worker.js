@@ -329,35 +329,42 @@ export default {
     }
 
 
-    // ── PAA DEBUG (temporary — remove after fixing) ──────────────
-    if (url.pathname === '/api/paa-debug' && request.method === 'POST') {
+    // ── PAA DEBUG ─────────────────────────────────────────────────
+    if (url.pathname === '/api/paa-debug' && (request.method === 'GET' || request.method === 'POST')) {
       try {
         if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
           return new Response(JSON.stringify({ error: 'No creds' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
-        const { keyword } = await request.json();
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const body = [{ keyword: keyword || 'seo services vancouver', location_code: 2124, language_code: 'en', depth: 2 }];
+        const kw = url.searchParams.get('kw') || 'seo services vancouver';
+        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 2 }];
         const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
         const raw = await res.text();
-        // Return a slice of the raw structure for inspection
         let parsed;
-        try { parsed = JSON.parse(raw); } catch(e) { return new Response(JSON.stringify({ raw: raw.slice(0,1000) }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } }); }
-        const task = parsed?.tasks?.[0] || {};
-        const result0 = task?.result?.[0] || {};
-        const items = result0?.items || [];
+        try { parsed = JSON.parse(raw); } catch(e) {
+          return new Response(JSON.stringify({ parseError: e.message, raw: raw.slice(0,500) }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const task = (parsed?.tasks || [])[0] || {};
+        const results = task?.result || [];
+        // Walk the full result tree to show all types and question titles
+        const walk = (nodes, depth) => (nodes||[]).map(n => ({
+          type: n.type, title: n.title||null, xpath: n.xpath||null, depth,
+          children: n.items ? walk(n.items, depth+1) : undefined
+        }));
         return new Response(JSON.stringify({
+          http_status: res.status,
           task_status: task.status_code,
           task_msg: task.status_message,
-          result_count: (task.result||[]).length,
-          result0_keys: Object.keys(result0),
-          items_count: items.length,
-          item0: items[0] || null,
-          item0_nested: items[0]?.items?.slice(0,2) || null,
+          result_count: results.length,
+          result_tree: results.slice(0,3).map(r => ({
+            type: r.type, title: r.title||null,
+            items_count: (r.items||[]).length,
+            items: walk(r.items||[], 0).slice(0,10)
+          }))
         }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
       } catch(err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
