@@ -1272,139 +1272,39 @@ async function enrichSitemapWithLiveData() {
 }
 
 
-async function findMoreKeywords(pageIdx) {
+async function openKwFinder(pageIdx) {
   const page = S.pages[pageIdx];
   if (!page) return;
 
-  const btn = document.getElementById('find-kw-btn-' + pageIdx);
-  const statusEl = document.getElementById('revise-kw-status-' + pageIdx);
-  const resultEl = document.getElementById('find-kw-result-' + pageIdx);
+  const btn    = document.getElementById('kw-finder-btn-' + pageIdx);
+  const status = document.getElementById('kw-finder-status-' + pageIdx);
+  const panel  = document.getElementById('kw-finder-panel-' + pageIdx);
 
-  // Toggle off if already showing
-  if (resultEl && resultEl.style.display !== 'none') {
-    resultEl.style.display = 'none';
+  // Toggle: if panel is already open, collapse it
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
     return;
   }
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:7px;height:7px;display:inline-block;vertical-align:middle"></span>';
-  if (statusEl) statusEl.textContent = '';
-
-  // Same seed building as reviseKeywords
-  const currentPrimary = page.primary_keyword || '';
-  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
-  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
-  const geoLower = geo.toLowerCase();
-
-  const stripGeo = kw => {
-    if (!geoLower) return kw;
-    return kw.toLowerCase()
-      .replace(new RegExp('\\s+' + geoLower.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&') + '\\s*$', 'i'), '')
-      .replace(new RegExp('^' + geoLower.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&') + '\\s+', 'i'), '')
-      .trim();
-  };
-
-  const seedSet = new Set();
-  [currentPrimary, ...currentSupporting].filter(Boolean).forEach(kw => {
-    const base = stripGeo(kw);
-    if (base.length > 3) seedSet.add(base);
-  });
-  const pageName = (page.page_name || '').toLowerCase()
-    .replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
-  if (pageName.length > 3) seedSet.add(pageName);
-  if (geoLower && pageName.length > 3) seedSet.add(pageName + ' ' + geoLower);
-  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
-  const geoStr = (geo + ' ' + geoLower).toLowerCase();
-  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
-
-  try {
-    const expandRes = await fetch('/api/kw-expand', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seeds, country })
-    });
-    const expandData = await expandRes.json();
-
-    if (!expandData.keywords || !expandData.keywords.length) {
-      if (statusEl) statusEl.innerHTML = '<span style="font-size:10px;color:var(--warn)">⚠ No results' + (expandData.error?' ('+expandData.error+')':'') + '</span>';
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-search" style="font-size:9px"></i> Find More';
-      return;
-    }
-
-    // Score, rank, flag already-added
-    const existing = new Set([currentPrimary, ...currentSupporting].map(k => k.toLowerCase().trim()));
-    const seen = new Set();
-    const top40 = expandData.keywords
-      .filter(k => k.volume >= 10)
-      .map(k => {
-        const kd = k.difficulty > 0 ? k.difficulty : 50;
-        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10 };
-      })
-      .sort((a, b) => b.score - a.score)
-      .filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; })
-      .slice(0, 40);
-
-    const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
-    const vCol = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
-
-    let rhtml = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;margin:0 14px 6px;overflow:hidden">';
-    rhtml += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">';
-    rhtml += '<div style="font-size:10.5px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-search" style="font-size:10px"></i> '+top40.length+' Keywords for '+esc(page.page_name)+'</div>';
-    rhtml += `<button onclick="document.getElementById('find-kw-result-${pageIdx}').style.display='none'" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;font-family:var(--font);padding:0 2px;line-height:1">✕</button>`;
-    rhtml += '</div>';
-    rhtml += '<div style="max-height:260px;overflow-y:auto;padding:4px 0">';
-    top40.forEach(k => {
-      const added = existing.has(k.kw.toLowerCase().trim());
-      rhtml += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
-      const _geoF = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
-      rhtml += `<div style="flex:1;display:flex;align-items:center;gap:5px"><span style="font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>${intentBadge(k.kw,_geoF)}</div>`;
-      rhtml += `<span style="font-size:10px;color:${vCol(k.vol)};min-width:52px;text-align:right">${k.vol.toLocaleString()}/mo</span>`;
-      rhtml += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:38px;text-align:right">KD ${k.kd||'?'}</span>`;
-      rhtml += `<span style="font-size:10px;color:var(--n2);min-width:38px;text-align:right">${k.score}</span>`;
-      if (!added) {
-        rhtml += `<button data-add-kw="${k.kw.replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd},this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
-      } else {
-        rhtml += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--green)">✓</span>`;
-      }
-      rhtml += '</div>';
-    });
-    rhtml += '</div></div>';
-
-    resultEl.innerHTML = rhtml;
-    resultEl.style.display = 'block';
-    if (statusEl) statusEl.textContent = '';
-  } catch(err) {
-    if (statusEl) statusEl.innerHTML = '<span style="font-size:10px;color:var(--warn)">⚠ ' + err.message + '</span>';
+  // If we have cached results, just re-show — no fetch
+  if (page._kwCache) {
+    panel.style.display = 'block';
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    _renderKwFinderPanel(pageIdx, page._kwCache.keywords, page._kwCache.aiResult);
+    return;
   }
-  btn.disabled = false;
-  btn.innerHTML = '<i class="ti ti-search" style="font-size:9px"></i> Find More';
-}
 
-async function reviseKeywords(pageIdx) {
-  const page = S.pages[pageIdx];
-  if (!page) return;
-
-  const btn = document.getElementById('revise-kw-btn-' + pageIdx);
-  const status = document.getElementById('revise-kw-status-' + pageIdx);
-  const resultEl = document.getElementById('revise-kw-result-' + pageIdx);
-
+  // ── First open: fetch + run AI ──
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Expanding…';
-  status.textContent = '';
-  resultEl.style.display = 'none';
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span> Fetching…';
+  if (status) status.textContent = '';
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--n2)">Fetching keyword ideas…</div>';
 
-  // ── Step 1: Build page-specific seeds ──
-  // keywords_for_keywords works best with SHORT base terms (2-3 words), not full geo-phrases.
-  // Strategy: strip geo from assigned keywords → use as core seeds, add 1-2 geo combos separately.
-  const currentPrimary = page.primary_keyword || '';
-  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
-
-  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  // Build seeds (geo-stripped)
+  const geo      = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
   const geoLower = geo.toLowerCase();
-
-  // Helper: strip trailing geo tokens from a keyword phrase
-  // e.g. "social media marketing vancouver" → "social media marketing"
   const stripGeo = kw => {
     if (!geoLower) return kw;
     return kw.toLowerCase()
@@ -1413,210 +1313,195 @@ async function reviseKeywords(pageIdx) {
       .trim();
   };
 
-  const seedSet = new Set();
+  const currentPrimary    = page.primary_keyword || '';
+  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
+  const pageName          = (page.page_name || '').toLowerCase().replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
 
-  // Core topical seeds — geo stripped so DataForSEO can expand broadly
-  const allAssigned = [currentPrimary, ...currentSupporting].filter(Boolean);
-  allAssigned.forEach(kw => {
+  const seedSet = new Set();
+  [currentPrimary, ...currentSupporting].filter(Boolean).forEach(kw => {
     const base = stripGeo(kw);
     if (base.length > 3) seedSet.add(base);
   });
-
-  // Page name as a seed (stripped of generic suffixes)
-  const pageName = (page.page_name || '').toLowerCase()
-    .replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
   if (pageName.length > 3) seedSet.add(pageName);
-
-  // Add ONE geo+service combo to anchor results locally
-  if (geoLower && pageName.length > 3) {
-    seedSet.add(pageName + ' ' + geoLower);
-  }
-
+  if (geoLower && pageName.length > 3) seedSet.add(pageName + ' ' + geoLower);
   const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
 
-  // Detect country from geo
-  const geoStr = (geo + ' ' + geoLower).toLowerCase();
+  const geoStr  = (geo + ' ' + geoLower).toLowerCase();
   const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
 
-  // ── Step 2: Fetch page-specific keyword expansion ──
-  let kwList = '';
-  const currentKws = [currentPrimary, ...currentSupporting].filter(Boolean).join(', ');
+  let keywords = [];
   try {
-    status.innerHTML = '<span class="spinner" style="width:9px;height:9px;display:inline-block;vertical-align:middle"></span> <span style="font-size:10.5px;color:var(--n2)">Fetching page-specific keywords…</span>';
-    const expandRes = await fetch('/api/kw-expand', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seeds, country })
-    });
+    const expandRes  = await fetch('/api/kw-expand', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ seeds, country }) });
     const expandData = await expandRes.json();
 
     if (expandData.keywords && expandData.keywords.length) {
-      // Score and rank — same formula as global research
-      const scored = expandData.keywords
+      const seen = new Set();
+      keywords = expandData.keywords
         .filter(k => k.volume >= 10)
         .map(k => {
-          const kd = k.difficulty > 0 ? k.difficulty : 50;
-          const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
+          const kd    = k.difficulty > 0 ? k.difficulty : 50;
+          const score = Math.round((Math.log(k.volume + 1) * 100 / kd) * 10) / 10;
           return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score };
         })
-        .sort((a, b) => b.score - a.score);
-      // Deduplicate
-      const seen = new Set();
-      const top60 = scored.filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 60);
-      kwList = top60.map(k => `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score})`).join('\n');
-      status.innerHTML = `<span style="font-size:10.5px;color:var(--n2)">${top60.length} page-specific keywords found</span>`;
-    } else {
-      // Expansion returned nothing — fallback to global pool
-      const reason = expandData.error ? (' (' + expandData.error + ')') : ' (no results)';
-      kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
-        `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
-      ).join('\n');
-      status.innerHTML = `<span style="font-size:10.5px;color:var(--warn)">⚠ Page expansion empty${reason} — using global pool</span>`;
-      console.warn('[reviseKeywords] expansion empty. seeds:', seeds);
-      console.warn('[reviseKeywords] _debug:', JSON.stringify(expandData._debug, null, 2));
-      console.warn('[reviseKeywords] full response:', JSON.stringify(expandData).slice(0, 2000));
+        .sort((a, b) => b.score - a.score)
+        .filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; })
+        .slice(0, 60);
     }
-  } catch(expandErr) {
-    // Fallback gracefully — log real error
-    console.error('[reviseKeywords] expansion error:', expandErr);
-    kwList = (S.kwResearch?.keywords || []).slice(0, 80).map(k =>
-      `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score||0})`
-    ).join('\n');
-    status.innerHTML = '<span style="font-size:10.5px;color:var(--warn)">⚠ Expansion failed (' + expandErr.message + ') — using global pool</span>';
+  } catch(err) {
+    panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--error)">⚠ ' + err.message + '</div>';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    return;
   }
 
-  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block"></span> Analysing…';
+  if (!keywords.length) {
+    panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--warn)">⚠ No keywords found for these seeds.</div>';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    return;
+  }
 
-  const system = `You are an SEO keyword strategist. Given a page brief and a keyword list, recommend the best primary keyword and up to 5 supporting keywords for that page.
+  // ── Run AI in parallel (non-blocking) ──
+  panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--n2)"><span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:5px"></span>Asking AI for picks…</div>';
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span> Analysing…';
 
-RULES:
-- primary_keyword MUST come from the provided keyword list (exact string match)
-- supporting_keywords MUST come from the provided keyword list (exact string matches)
-- Match keyword intent to the page type:
-  - home → brand/agency category keywords only
-  - service → service-specific + city terms
-  - location → city + service category terms
-  - about → brand navigational, trust, b-corp terms
-  - contact → conversion intent terms
-  - industry → industry + service terms
-  - blog → informational keywords
-- Prioritise: correct intent first, then highest score
-- Do NOT invent keywords not in the list
-- Output raw JSON only. No markdown, no backticks, no preamble.
+  const kwList = keywords.slice(0, 60).map(k => `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score})`).join('\n');
+  const currentKws = [currentPrimary, ...currentSupporting].filter(Boolean).join(', ');
 
-Output format:
-{"primary_keyword":"exact kw from list","primary_vol":0,"primary_kd":0,"primary_score":0,"supporting_keywords":[{"kw":"exact kw","vol":0,"kd":0},{"kw":"exact kw","vol":0,"kd":0}],"rationale":"1-2 sentence explanation"}`;
+  const aiSystem = `You are an SEO keyword strategist. Given a page brief and keyword list, recommend the best primary keyword and up to 5 supporting keywords.\n\nRULES:\n- primary_keyword MUST be an exact string from the list\n- supporting_keywords MUST be exact strings from the list\n- Match intent to page type: home→brand/agency, service→service+city, location→city+service, about→brand/trust, blog→informational\n- Prioritise: correct intent first, then highest score\n- Output raw JSON only. No markdown, no backticks.\n\nFormat: {"primary_keyword":"...","primary_vol":0,"primary_kd":0,"primary_score":0,"supporting_keywords":[{"kw":"...","vol":0,"kd":0}],"rationale":"1-2 sentences"}`;
 
-  const user = `PAGE:
-Name: ${page.page_name}
-Type: ${page.page_type || 'service'}
-Slug: /${page.slug}
-Current primary keyword: ${page.primary_keyword || 'none'}
-Current supporting keywords: ${currentKws || 'none'}
+  const aiUser = `PAGE:\nName: ${page.page_name}\nType: ${page.page_type || 'service'}\nSlug: /${page.slug}\nCurrent primary: ${currentPrimary || 'none'}\nCurrent supporting: ${currentKws || 'none'}\n\nKEYWORD LIST:\n${kwList}\n\nRecommend primary + up to 5 supporting keywords.`;
 
-KEYWORD LIST (use only exact strings from here):
-${kwList || 'No keyword data available'}
-
-Recommend the best primary keyword and up to 5 supporting keywords for this page.`;
-
+  let aiResult = null;
   try {
     let raw = '';
-    await callClaude(system, user, chunk => { raw += chunk; });
-
-    // Parse JSON — find the best complete JSON object in the response
-    // Strategy: try all {...} matches from longest to shortest, pick first valid one
-    let result;
-    (function() {
-      const stripped = raw.replace(/```json\s*/gi,'').replace(/```/g,'');
-      // Find all positions of '{' and try to extract valid JSON from each
-      const candidates = [];
-      for (let si = 0; si < stripped.length; si++) {
-        if (stripped[si] !== '{') continue;
-        // Try to find matching closing brace
-        let depth = 0;
-        for (let ei = si; ei < stripped.length; ei++) {
-          if (stripped[ei] === '{') depth++;
-          else if (stripped[ei] === '}') {
-            depth--;
-            if (depth === 0) {
-              candidates.push(stripped.slice(si, ei+1));
-              break;
-            }
-          }
-        }
+    await callClaude(aiSystem, aiUser, chunk => { raw += chunk; });
+    const stripped = raw.replace(/```json\s*/gi,'').replace(/```/g,'');
+    const candidates = [];
+    for (let si = 0; si < stripped.length; si++) {
+      if (stripped[si] !== '{') continue;
+      let depth = 0;
+      for (let ei = si; ei < stripped.length; ei++) {
+        if (stripped[ei] === '{') depth++;
+        else if (stripped[ei] === '}') { depth--; if (depth === 0) { candidates.push(stripped.slice(si, ei+1)); break; } }
       }
-      // Sort by length descending — longest valid JSON wins
-      candidates.sort((a,b) => b.length - a.length);
-      for (const c of candidates) {
-        try { result = JSON.parse(c); if (result.primary_keyword) return; }
-        catch(e) {}
-      }
-      if (!result) throw new Error('No valid JSON found | raw: ' + raw.slice(0,150));
-    })();
-
-    // Render suggestion panel
-    const scoreFn = (v,d) => v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
-    const pScore = result.primary_score || scoreFn(result.primary_vol||0, result.primary_kd||0);
-    const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
-
-    let rhtml = '<div style="background:rgba(21,142,29,0.04);border:1px solid rgba(21,142,29,0.18);border-radius:6px;margin:0 14px 8px;padding:10px 12px">';
-    rhtml += '<div style="font-size:10.5px;font-weight:500;color:var(--green);margin-bottom:8px;display:flex;align-items:center;gap:5px"><i class="ti ti-sparkles"></i> AI Keyword Suggestions</div>';
-
-    // Primary
-    rhtml += '<div style="margin-bottom:6px">';
-    rhtml += '<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Primary</div>';
-    rhtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
-    const _geoAI = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
-    rhtml += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(result.primary_keyword)}</span>${intentBadge(result.primary_keyword,_geoAI)}`;
-    rhtml += `<span style="font-size:10.5px;color:var(--dark)">${(result.primary_vol||0).toLocaleString()}/mo</span>`;
-    rhtml += `<span style="font-size:10.5px;color:${kdCol(result.primary_kd||0)}">KD ${result.primary_kd||'?'}</span>`;
-    rhtml += `<span style="font-size:10px;color:var(--n2)">score ${pScore}</span>`;
-    rhtml += `<button onclick="acceptPrimaryKw(${pageIdx},'${(result.primary_keyword||'').replace(/'/g,'')}',${result.primary_vol||0},${result.primary_kd||0},${pScore})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">Use this</button>`;
-    rhtml += '</div></div>';
-
-    // Supporting
-    if (result.supporting_keywords?.length) {
-      rhtml += '<div style="margin-bottom:7px">';
-      rhtml += '<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Supporting</div>';
-      result.supporting_keywords.forEach((sk, si) => {
-        const sc2 = scoreFn(sk.vol||0, sk.kd||0);
-        rhtml += `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">`;
-        const _geoAS = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
-        rhtml += `<span style="font-size:11px;color:var(--n3)">${esc(sk.kw)}</span>${intentBadge(sk.kw,_geoAS)}`;
-        rhtml += `<span style="font-size:10px;color:var(--n2)">${(sk.vol||0).toLocaleString()}/mo</span>`;
-        rhtml += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
-        rhtml += `<button data-add-kw="${(sk.kw||'').replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0},this)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
-        rhtml += '</div>';
-      });
-      rhtml += '</div>';
     }
-
-    // Rationale
-    if (result.rationale) {
-      rhtml += `<div style="font-size:10.5px;color:var(--n2);font-style:italic;border-top:1px solid rgba(0,0,0,0.06);padding-top:6px;margin-top:2px">${esc(result.rationale)}</div>`;
+    candidates.sort((a,b) => b.length - a.length);
+    for (const c of candidates) {
+      try { aiResult = JSON.parse(c); if (aiResult.primary_keyword) break; } catch(e) {}
     }
-
-    rhtml += `<div style="margin-top:8px;display:flex;gap:6px">`;
-    rhtml += `<button onclick="acceptAllSuggestions(${pageIdx})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font)">Accept All</button>`;
-    rhtml += `<button onclick="document.getElementById('revise-kw-result-${pageIdx}').style.display='none'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font);color:var(--n2)">Dismiss</button>`;
-    rhtml += '</div>';
-    rhtml += '</div>';
-
-    // Store suggestion on page object for Accept All
-    S.pages[pageIdx]._suggestion = result;
-
-    resultEl.innerHTML = rhtml;
-    resultEl.style.display = 'block';
-    status.textContent = '';
-
-  } catch(err) {
-    status.textContent = '⚠ ' + err.message;
-    console.error('reviseKeywords error:', err);
+  } catch(aiErr) {
+    console.warn('[openKwFinder] AI failed:', aiErr.message);
   }
 
+  // Cache so re-open is instant
+  page._kwCache = { keywords, aiResult };
+  scheduleSave();
+
+  _renderKwFinderPanel(pageIdx, keywords, aiResult);
+
   btn.disabled = false;
-  btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:10px"></i> Revise Keywords';
+  btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
 }
+
+function _renderKwFinderPanel(pageIdx, keywords, aiResult) {
+  const page  = S.pages[pageIdx];
+  const panel = document.getElementById('kw-finder-panel-' + pageIdx);
+  if (!page || !panel) return;
+
+  const geo    = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const kdCol  = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+  const vCol   = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+  const scoreFn = (v,d) => v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+  const currentPrimary = (page.primary_keyword || '').toLowerCase();
+  const currentSupporting = new Set((page.supporting_keywords || []).map(sk => (typeof sk==='object'?sk.kw:sk).toLowerCase()));
+
+  let html = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;margin:0 14px 8px;overflow:hidden">';
+
+  // ── Header ──
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">';
+  html += `<div style="font-size:10.5px;font-weight:500;color:var(--dark)">Keywords for ${esc(page.page_name)}</div>`;
+  html += `<div style="display:flex;align-items:center;gap:8px">`;
+  html += `<button onclick="delete S.pages[${pageIdx}]._kwCache;openKwFinder(${pageIdx})" title="Refresh" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 2px"><i class="ti ti-refresh" style="font-size:11px"></i></button>`;
+  html += `<button onclick="document.getElementById('kw-finder-panel-${pageIdx}').style.display='none'" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:14px;line-height:1;padding:0 2px">✕</button>`;
+  html += '</div></div>';
+
+  // ── AI Picks section (if available) ──
+  if (aiResult && aiResult.primary_keyword) {
+    const pScore = aiResult.primary_score || scoreFn(aiResult.primary_vol||0, aiResult.primary_kd||0);
+    html += '<div style="padding:9px 12px;border-bottom:1px solid var(--border);background:rgba(21,142,29,0.03)">';
+    html += '<div style="font-size:9.5px;color:var(--green);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;display:flex;align-items:center;gap:4px"><i class="ti ti-sparkles" style="font-size:9px"></i> AI Picks</div>';
+
+    // Primary row
+    html += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap">';
+    html += `<span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em;min-width:56px">Primary</span>`;
+    html += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(aiResult.primary_keyword)}</span>${intentBadge(aiResult.primary_keyword, geo)}`;
+    html += `<span style="font-size:10px;color:${vCol(aiResult.primary_vol||0)}">${(aiResult.primary_vol||0).toLocaleString()}/mo</span>`;
+    html += `<span style="font-size:10px;color:${kdCol(aiResult.primary_kd||0)}">KD ${aiResult.primary_kd||'?'}</span>`;
+    const alreadyPrimary = currentPrimary === (aiResult.primary_keyword||'').toLowerCase();
+    if (alreadyPrimary) {
+      html += `<span style="font-size:10px;color:var(--green)">✓ current</span>`;
+    } else {
+      html += `<button onclick="acceptPrimaryKw(${pageIdx},'${(aiResult.primary_keyword||'').replace(/'/g,'')}',${aiResult.primary_vol||0},${aiResult.primary_kd||0},${pScore})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">Use this</button>`;
+    }
+    html += '</div>';
+
+    // Supporting rows
+    if (aiResult.supporting_keywords?.length) {
+      html += '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">';
+      html += `<span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em;min-width:56px">Supporting</span>`;
+      html += '</div>';
+      aiResult.supporting_keywords.forEach(sk => {
+        const added = currentSupporting.has((sk.kw||'').toLowerCase()) || currentPrimary === (sk.kw||'').toLowerCase();
+        html += `<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap;padding-left:64px">`;
+        html += `<span style="font-size:11px;color:${added?'var(--n2)':'var(--n3)'}">${esc(sk.kw)}</span>${intentBadge(sk.kw, geo)}`;
+        html += `<span style="font-size:10px;color:${vCol(sk.vol||0)}">${(sk.vol||0).toLocaleString()}/mo</span>`;
+        html += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
+        if (added) {
+          html += `<span style="font-size:10px;color:var(--green)">✓</span>`;
+        } else {
+          html += `<button data-add-kw="${(sk.kw||'').replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0},this)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
+        }
+        html += '</div>';
+      });
+    }
+
+    if (aiResult.rationale) {
+      html += `<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:4px;padding-top:5px;border-top:1px solid rgba(0,0,0,0.05)">${esc(aiResult.rationale)}</div>`;
+    }
+
+    // Accept All
+    html += `<div style="margin-top:7px"><button onclick="acceptAllSuggestions(${pageIdx})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font)">Accept All AI Picks</button></div>`;
+    html += '</div>';
+
+    // Store for acceptAllSuggestions
+    S.pages[pageIdx]._suggestion = aiResult;
+  }
+
+  // ── Full keyword list ──
+  html += '<div style="max-height:280px;overflow-y:auto;padding:4px 0">';
+  html += '<div style="padding:5px 12px 3px;font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;font-weight:500">All Keywords ('+keywords.length+')</div>';
+  keywords.forEach(k => {
+    const added = currentSupporting.has(k.kw.toLowerCase().trim()) || currentPrimary === k.kw.toLowerCase().trim();
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
+    html += `<div style="flex:1;display:flex;align-items:center;gap:5px"><span style="font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>${intentBadge(k.kw, geo)}</div>`;
+    html += `<span style="font-size:10px;color:${vCol(k.vol)};min-width:52px;text-align:right">${k.vol.toLocaleString()}/mo</span>`;
+    html += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:34px;text-align:right">KD ${k.kd||'?'}</span>`;
+    html += `<span style="font-size:10px;color:var(--n2);min-width:36px;text-align:right">${k.score}</span>`;
+    if (added) {
+      html += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--green)" id="kw-add-${pageIdx}-${k.kw.replace(/[^a-z0-9]/g,'-')}">✓</span>`;
+    } else {
+      html += `<button data-add-kw="${k.kw.replace(/"/g,'')}" data-page="${pageIdx}" id="kw-add-${pageIdx}-${k.kw.replace(/[^a-z0-9]/g,'-')}" onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd},this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '</div>'; // end panel
+
+  panel.innerHTML = html;
+  panel.style.display = 'block';
+}
+
 
 function acceptPrimaryKw(pageIdx, kw, vol, kd, score) {
   if (!S.pages[pageIdx]) return;
@@ -1963,9 +1848,8 @@ function _renderSitemapResultsInner(approved) {
       html += '<div style="display:flex;flex-direction:column;gap:4px">';
       html += '<input value="'+esc(p.primary_keyword||'')+'" placeholder="primary keyword…" onblur="updatePrimaryKw('+i+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" style="font-size:11px;color:var(--n3);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%;margin-top:2px"/>';
       html += '<div style="display:flex;gap:4px;align-items:center">';
-      html += `<button id="revise-kw-btn-${i}" onclick="reviseKeywords(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.4);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-sparkles" style="font-size:9px"></i> AI</button>`;
-      html += `<button id="find-kw-btn-${i}" onclick="findMoreKeywords(${i})" style="background:transparent;border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-search" style="font-size:9px"></i> Find More</button>`;
-      html += `<span id="revise-kw-status-${i}" style="font-size:10px;color:var(--n2)"></span>`;
+      html += `<button id="kw-finder-btn-${i}" onclick="openKwFinder(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.4);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords</button>`;
+      html += `<span id="kw-finder-status-${i}" style="font-size:10px;color:var(--n2)"></span>`;
       html += '</div></div>';
 
     } else {
@@ -1994,8 +1878,7 @@ function _renderSitemapResultsInner(approved) {
     html += '</div>'; // end main row
 
     // ── Inline result panels ──
-    html += `<div id="revise-kw-result-${i}" style="display:none"></div>`;
-    html += `<div id="find-kw-result-${i}" style="display:none"></div>`;
+    html += `<div id="kw-finder-panel-${i}" style="display:none"></div>`;
 
     // ── Supporting keywords ──
     const suppKws = (p.supporting_keywords || []).filter(sk => { const kw = typeof sk==='object'?sk.kw:sk; return kw && kw.length>0; });
