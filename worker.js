@@ -303,6 +303,119 @@ export default {
       }
     }
 
+
+    // ── PEOPLE ALSO ASK (DataForSEO SERP PAA) ────────────────────
+    if (url.pathname === '/api/paa' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const { keywords, country } = await request.json();
+        if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
+
+        // Fetch PAA for each keyword (max 6 to control cost)
+        const seeds = keywords.slice(0, 6);
+        const body = seeds.map(kw => ({ keyword: kw, location_code: locationCode, language_code: 'en', depth: 4 }));
+
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); } catch(e) {
+          return new Response(JSON.stringify({ error: 'PAA parse error: ' + raw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        // Flatten all questions with their source keyword, deduplicate
+        const seen = new Set();
+        const questions = [];
+        (data.tasks || []).forEach((task, ti) => {
+          const sourceKw = seeds[ti] || '';
+          (task.result || []).forEach(r => {
+            const flatten = (items, depth) => {
+              (items || []).forEach(item => {
+                if (item.type === 'people_also_ask_element' || item.title) {
+                  const q = (item.title || '').trim();
+                  if (q && !seen.has(q.toLowerCase())) {
+                    seen.add(q.toLowerCase());
+                    questions.push({ question: q, source: sourceKw, depth });
+                  }
+                  if (item.items) flatten(item.items, depth + 1);
+                }
+              });
+            };
+            flatten(r.items || [], 0);
+          });
+        });
+
+        return new Response(JSON.stringify({ questions, source: 'dataforseo-paa' }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // ── COMPETITOR KEYWORD GAP (DataForSEO keywords_for_site) ─────
+    if (url.pathname === '/api/competitor-gap' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const { domains, ownKeywords, country } = await request.json();
+        if (!domains?.length) return new Response(JSON.stringify({ error: 'No domains' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
+        const ownSet = new Set((ownKeywords || []).map(k => k.toLowerCase().trim()));
+
+        // Fetch top keywords for each competitor domain
+        const allKeywords = [];
+        const seen = new Set();
+
+        for (const domain of domains.slice(0, 3)) {
+          const body = [{ target: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), location_code: locationCode, language_code: 'en', limit: 100 }];
+          const res = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/keywords_for_site/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          const raw = await res.text();
+          let data;
+          try { data = JSON.parse(raw); } catch(e) { continue; }
+
+          (data.tasks || []).forEach(task => {
+            (task.result || []).forEach(r => {
+              (r.items || []).forEach(item => {
+                const kw = item.keyword_data?.keyword || '';
+                const vol = item.keyword_data?.keyword_info?.search_volume || 0;
+                const kd = item.keyword_data?.keyword_properties?.keyword_difficulty || 0;
+                if (!kw || seen.has(kw.toLowerCase())) return;
+                // Only include if NOT in our own keyword map
+                if (ownSet.has(kw.toLowerCase())) return;
+                seen.add(kw.toLowerCase());
+                allKeywords.push({ kw, vol, kd, domain, score: vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0 });
+              });
+            });
+          });
+        }
+
+        // Sort by score desc
+        allKeywords.sort((a, b) => b.score - a.score);
+
+        return new Response(JSON.stringify({ keywords: allKeywords.slice(0, 120), source: 'dataforseo-gap' }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // Everything else → static assets
     return env.ASSETS.fetch(request);
   }

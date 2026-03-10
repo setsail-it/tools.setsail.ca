@@ -1927,6 +1927,88 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
 
+  // ── Content Intelligence section ──
+  {
+    const ci = S.contentIntel || {};
+    const blogTopics = ci.blogTopics || [];
+    const paaDone   = (ci.paa?.questions?.length || 0);
+    const gapDone   = (ci.gap?.keywords?.length || 0);
+
+    // Parse competitor domains from setup for pre-fill
+    const competitorRaw = (S.setup?.competitors || '').replace(/\n/g,' ');
+    const competitorDomains = competitorRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
+    const competitorStr = competitorDomains.map(d=>d.replace(/^https?:\/\/(www\.)?/,'')).filter(Boolean).slice(0,4).join(', ');
+
+    html += '<div class="card" style="margin-bottom:8px">';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+    html += '<div>';
+    html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Content Intelligence</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Blog topic opportunities based on search behaviour + competitor gaps</div>';
+    html += '</div>';
+    if (blogTopics.length) {
+      html += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy ${blogTopics.length} Topic${blogTopics.length===1?'':'s'}</button>`;
+    }
+    html += '</div>';
+
+    // Two-column panels
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+
+    // ── PAA Panel ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
+    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-help-circle" style="font-size:12px;color:var(--n2)"></i> People Also Ask`;
+    if (paaDone) html += ` <span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${paaDone}</span>`;
+    else html += `<span id="ci-paa-count"></span>`;
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span id="ci-paa-status"></span>';
+    html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
+    html += '</div></div>';
+    html += '<div id="ci-paa-panel" style="max-height:320px;overflow-y:auto">';
+    if (paaDone) {
+      // Pre-render from cache
+      html += '</div>'; // close panel div early, render will fill it
+    } else {
+      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Click Run to fetch questions people search around your P1 keywords.</div></div>';
+    }
+    html += '</div>';
+
+    // ── Competitor Gap Panel ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
+    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-git-compare" style="font-size:12px;color:var(--n2)"></i> Competitor Keyword Gaps`;
+    if (gapDone) html += ` <span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${gapDone}</span>`;
+    else html += `<span id="ci-gap-count"></span>`;
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span id="ci-gap-status"></span>';
+    html += `<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${gapDone ? 'Refresh' : 'Run'}</button>`;
+    html += '</div></div>';
+    // Domain input
+    html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+    html += `<input id="ci-gap-domains" value="${competitorStr}" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
+    html += '</div>';
+    html += '<div id="ci-gap-panel" style="max-height:280px;overflow-y:auto">';
+    if (gapDone) {
+      html += '</div>';
+    } else {
+      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run to find keywords they rank for that you don\'t.</div></div>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // end grid
+
+    // ── Blog Topics bucket ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg)">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px"><i class="ti ti-notes" style="font-size:12px;color:var(--n2)"></i><span style="font-size:11px;font-weight:500;color:var(--dark)">Blog Topics</span><span style="font-size:10px;color:var(--n2)">(select + Blog on any item above)</span></div>';
+    html += '<div id="ci-topics-panel"></div>';
+    html += '</div>';
+
+    html += '</div>'; // end card
+  }
+
 
   if (!approved) {
     html += '<div class="card dg" style="margin-bottom:8px">';
@@ -1948,6 +2030,265 @@ function _renderSitemapResultsInner(approved) {
   const el = document.getElementById('sitemap-results');
   el.innerHTML = html;
   el.style.display = 'block';
+
+  // Restore cached Content Intelligence panels if data exists
+  if (S.contentIntel?.paa?.questions?.length) renderPAAPanel();
+  if (S.contentIntel?.gap?.keywords?.length)  renderGapPanel();
+  renderBlogTopics();
+}
+
+
+// ── CONTENT INTELLIGENCE ───────────────────────────────────────────
+
+async function runPAA() {
+  const btn    = document.getElementById('ci-paa-btn');
+  const status = document.getElementById('ci-paa-status');
+  const panel  = document.getElementById('ci-paa-panel');
+  if (!S.pages?.length) return;
+
+  // Use cached
+  if (S.contentIntel?.paa?.questions?.length) {
+    renderPAAPanel();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span>';
+  status.textContent = '';
+
+  // Seed: primary keywords of P1 pages (max 6)
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoStr = (geo + '').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+
+  const kwSeeds = (S.pages || [])
+    .filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural)
+    .map(p => p.primary_keyword)
+    .slice(0, 6);
+
+  if (!kwSeeds.length) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">No P1 keywords found</span>';
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/paa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: kwSeeds, country })
+    });
+    const data = await res.json();
+    if (!data.questions?.length) throw new Error(data.error || 'No questions returned');
+
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    S.contentIntel.paa = { questions: data.questions, fetchedAt: Date.now() };
+    scheduleSave();
+    renderPAAPanel();
+  } catch(err) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+}
+
+function renderPAAPanel() {
+  const panel  = document.getElementById('ci-paa-panel');
+  const badge  = document.getElementById('ci-paa-count');
+  if (!panel) return;
+  const questions = S.contentIntel?.paa?.questions || [];
+  if (!questions.length) { panel.innerHTML = ''; return; }
+
+  // Group by question word
+  const groups = {};
+  const qWord = q => {
+    const w = q.trim().toLowerCase();
+    if (w.startsWith('what')) return 'What';
+    if (w.startsWith('how')) return 'How';
+    if (w.startsWith('why')) return 'Why';
+    if (w.startsWith('when')) return 'When';
+    if (w.startsWith('who')) return 'Who';
+    if (w.startsWith('where')) return 'Where';
+    if (w.startsWith('which')) return 'Which';
+    if (w.startsWith('can') || w.startsWith('do ') || w.startsWith('does') || w.startsWith('is ') || w.startsWith('are ')) return 'Yes/No';
+    return 'Other';
+  };
+  questions.forEach(q => {
+    const g = qWord(q.question);
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(q);
+  });
+
+  const topics = new Set((S.contentIntel?.blogTopics || []).map(t => t.text));
+  if (badge) badge.textContent = questions.length;
+
+  let h = '';
+  const groupOrder = ['What','How','Why','When','Who','Where','Which','Yes/No','Other'];
+  groupOrder.forEach(g => {
+    if (!groups[g]?.length) return;
+    h += `<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;font-weight:500;padding:6px 12px 2px">${g}</div>`;
+    groups[g].forEach(q => {
+      const added = topics.has(q.question);
+      h += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)" id="paa-row-${btoa(q.question.slice(0,20)).replace(/[^a-z0-9]/gi,'').slice(0,12)}">`;
+      h += `<span style="flex:1;font-size:11.5px;color:var(--dark)">${esc(q.question)}</span>`;
+      h += `<span style="font-size:9.5px;color:var(--n2);white-space:nowrap">${esc(q.source)}</span>`;
+      if (added) {
+        h += `<span style="font-size:10px;color:var(--green);min-width:42px;text-align:center">✓ added</span>`;
+      } else {
+        h += `<button onclick="addBlogTopic('paa','${q.question.replace(/'/g,'')}','${(q.source||'').replace(/'/g,'')}',this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);white-space:nowrap;min-width:42px">+ Blog</button>`;
+      }
+      h += '</div>';
+    });
+  });
+
+  panel.innerHTML = h;
+  panel.style.display = 'block';
+  renderBlogTopics();
+}
+
+async function runCompetitorGap() {
+  const btn    = document.getElementById('ci-gap-btn');
+  const status = document.getElementById('ci-gap-status');
+  const panel  = document.getElementById('ci-gap-panel');
+
+  // Get domains from input
+  const domainInput = document.getElementById('ci-gap-domains');
+  const rawDomains = (domainInput?.value || '').trim();
+  const domains = rawDomains.split(/[\s,\n]+/).map(d => d.trim().replace(/^https?:\/\//,'')).filter(d => d.includes('.'));
+
+  if (!domains.length) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">Enter at least one competitor domain</span>';
+    return;
+  }
+
+  // Check cache (same domains)
+  const cacheKey = domains.sort().join(',');
+  if (S.contentIntel?.gap?.cacheKey === cacheKey && S.contentIntel.gap.keywords?.length) {
+    renderGapPanel();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span>';
+  status.textContent = '';
+
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoStr = (geo + '').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+
+  // Collect all our own keywords for cross-reference
+  const ownKeywords = [];
+  (S.pages || []).forEach(p => {
+    if (p.primary_keyword) ownKeywords.push(p.primary_keyword);
+    (p.supporting_keywords || []).forEach(sk => ownKeywords.push(typeof sk === 'object' ? sk.kw : sk));
+  });
+
+  try {
+    const res = await fetch('/api/competitor-gap', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains, ownKeywords, country })
+    });
+    const data = await res.json();
+    if (!data.keywords?.length) throw new Error(data.error || 'No gap keywords found');
+
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    S.contentIntel.gap = { keywords: data.keywords, domains, cacheKey, fetchedAt: Date.now() };
+    scheduleSave();
+    renderGapPanel();
+  } catch(err) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+}
+
+function renderGapPanel() {
+  const panel = document.getElementById('ci-gap-panel');
+  const badge = document.getElementById('ci-gap-count');
+  if (!panel) return;
+  const keywords = S.contentIntel?.gap?.keywords || [];
+  if (!keywords.length) { panel.innerHTML = ''; return; }
+
+  const topics = new Set((S.contentIntel?.blogTopics || []).map(t => t.text));
+  const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+  const vCol  = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+  const geo   = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+  if (badge) badge.textContent = keywords.length;
+
+  // Header row
+  let h = `<div style="display:grid;grid-template-columns:1fr 58px 40px 46px 42px;gap:4px;padding:4px 12px;border-bottom:1px solid var(--border)">`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">Keyword</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">Vol</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">KD</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">Score</span>`;
+  h += `<span></span></div>`;
+
+  keywords.slice(0, 80).forEach(k => {
+    const added = topics.has(k.kw);
+    h += `<div style="display:grid;grid-template-columns:1fr 58px 40px 46px 42px;gap:4px;align-items:center;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
+    h += `<div style="display:flex;align-items:center;gap:4px;min-width:0"><span style="font-size:11.5px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(k.kw)}</span>${intentBadge(k.kw,geo)}</div>`;
+    h += `<span style="font-size:10px;color:${vCol(k.vol)};text-align:right">${k.vol.toLocaleString()}</span>`;
+    h += `<span style="font-size:10px;color:${kdCol(k.kd)};text-align:right">${k.kd||'?'}</span>`;
+    h += `<span style="font-size:10px;color:var(--n2);text-align:right">${k.score}</span>`;
+    if (added) {
+      h += `<span style="font-size:10px;color:var(--green);text-align:center">✓</span>`;
+    } else {
+      h += `<button onclick="addBlogTopic('gap','${k.kw.replace(/'/g,'')}','${(k.domain||'').replace(/'/g,'')}',this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 5px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Blog</button>`;
+    }
+    h += '</div>';
+  });
+
+  panel.innerHTML = h;
+  panel.style.display = 'block';
+  renderBlogTopics();
+}
+
+function addBlogTopic(source, text, meta, btn) {
+  if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+  if (!S.contentIntel.blogTopics) S.contentIntel.blogTopics = [];
+  const exists = S.contentIntel.blogTopics.some(t => t.text === text);
+  if (exists) return;
+  S.contentIntel.blogTopics.push({ text, source, meta });
+  scheduleSave();
+  // Update button in-place
+  if (btn) { btn.textContent = '✓ added'; btn.disabled = true; btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)'; }
+  renderBlogTopics();
+}
+
+function removeBlogTopic(text) {
+  if (!S.contentIntel?.blogTopics) return;
+  S.contentIntel.blogTopics = S.contentIntel.blogTopics.filter(t => t.text !== text);
+  scheduleSave();
+  renderPAAPanel();
+  renderGapPanel();
+}
+
+function renderBlogTopics() {
+  const el = document.getElementById('ci-topics-panel');
+  if (!el) return;
+  const topics = S.contentIntel?.blogTopics || [];
+  if (!topics.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:4px 0">No topics selected yet — click + Blog on any question or gap keyword above.</div>';
+    return;
+  }
+  let h = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">';
+  topics.forEach(t => {
+    const srcColor = t.source === 'paa' ? 'var(--green)' : 'var(--n2)';
+    h += `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--n1);border:1px solid var(--border);border-radius:14px;padding:3px 8px 3px 10px;font-size:11px;color:var(--dark);max-width:320px">`;
+    h += `<span style="font-size:9px;color:${srcColor};font-weight:500;text-transform:uppercase;letter-spacing:.04em">${t.source==='paa'?'PAA':'GAP'}</span>`;
+    h += `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.text)}">${esc(t.text)}</span>`;
+    h += `<button onclick="removeBlogTopic('${t.text.replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0;line-height:1;margin-left:2px" title="Remove">✕</button>`;
+    h += '</div>';
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function copyBlogTopics() {
+  const topics = S.contentIntel?.blogTopics || [];
+  if (!topics.length) return;
+  const text = topics.map((t,i) => `${i+1}. [${t.source.toUpperCase()}] ${t.text}`).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('ci-copy-btn');
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i> Copy Topics', 2000); }
+  });
 }
 
 function approveSitemap() {
