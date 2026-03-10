@@ -594,7 +594,7 @@ export default {
             headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               select: ['domain_rating','ahrefs_rank','org_traffic','org_keywords','org_keywords_1_3','org_cost','refdomains','backlinks'],
-              targets: [{ url: domain, mode: 'subdomains', protocol: 'both' }],
+              targets: [{ url: 'https://' + domain, mode: 'subdomains', protocol: 'both' }],
             }),
           }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error('Ahrefs batch-analysis: ' + (j?.error?.message || j?.error || r.status)); return j; }),
           ahrefsGet('site-explorer/top-pages', {
@@ -605,7 +605,7 @@ export default {
             country: cc,
           }),
         ]);
-        const bm = batchData?.targets?.[0] || {};
+        const bm = (batchData?.targets || batchData?.results || (Array.isArray(batchData) ? batchData : []))[0] || {};
 
         // Parse top pages + auto-derive slug
         const topPages = (topPagesData?.pages || []).map(p => {
