@@ -2627,72 +2627,114 @@ function populateCopyPreviews() {
 
 function renderCopyQueue() {
   const pages = orderedPages();
+
+  const groups = [
+    { key:'core',     label:'Core Pages',         icon:'ti-layout-2',         types:['home','about','utility','contact'] },
+    { key:'service',  label:'Services',            icon:'ti-briefcase',        types:['service'] },
+    { key:'industry', label:'Industry & Location', icon:'ti-map-pin',          types:['industry','location'] },
+    { key:'blog',     label:'Blog Posts',          icon:'ti-article',          types:['blog'] },
+    { key:'other',    label:'Other',               icon:'ti-file',             types:[] }
+  ];
+
+  const grouped = {};
+  groups.forEach(g => grouped[g.key] = []);
+  pages.forEach(p => {
+    const g = groups.find(g => g.types.includes(p.page_type));
+    if (g) grouped[g.key].push(p);
+    else grouped['other'].push(p);
+  });
+
+  const typeIcon = t => ({
+    home:'ti-home', about:'ti-info-circle', utility:'ti-settings', contact:'ti-mail',
+    service:'ti-briefcase', industry:'ti-building-factory', location:'ti-map-pin', blog:'ti-article'
+  }[t] || 'ti-file');
+
   let html = '';
-  pages.forEach((p, i) => {
-    const r = S.copy[p.slug]||{};
-    const isDone = !!r.copy, isErr = !!r.error;
-    const isRunning = S.copyCurrentSlug === p.slug;
-    const isExpanded = S.copyExpandedSlug === p.slug;
-    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
-    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':(i+1);
-    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
-    const rowBg = isExpanded&&!isDone&&!isRunning?'background:rgba(0,0,0,0.015);':'';
+  let globalIdx = 0;
+  let firstGroup = true;
 
-    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+rowBg+'">';
+  groups.forEach(group => {
+    const gPages = grouped[group.key];
+    if (!gPages.length) return;
+    const doneCount = gPages.filter(p => !!(S.copy[p.slug]||{}).copy).length;
 
-    // Row header — always visible, clickable
-    html += '<div onclick="toggleCopyExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
-      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
-      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
-      +'<span style="font-size:10.5px;color:'+pColor+';margin-left:8px;padding:1px 6px;background:rgba(0,0,0,0.04);border-radius:3px">'+p.priority+'</span>'
-      +(isErr&&!isExpanded?'<span style="font-size:11px;color:var(--error);margin-left:8px">Error</span>':'')
-      +'</div>'
-      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
-      +'</div>';
+    // Section header
+    html += `<div style="display:flex;align-items:center;gap:7px;margin-top:${firstGroup?'0':'18px'};margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid var(--border)">`;
+    html += `<i class="ti ${group.icon}" style="font-size:11px;color:var(--n2)"></i>`;
+    html += `<span style="font-size:10.5px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">${group.label}</span>`;
+    html += `<span style="font-size:10px;color:${doneCount===gPages.length?'var(--green)':'var(--n2)'};background:rgba(0,0,0,0.04);border-radius:10px;padding:0px 6px">${doneCount}/${gPages.length}</span>`;
+    html += `</div>`;
+    firstGroup = false;
 
-    // Expanded body
-    if (isExpanded) {
-      html += '<div style="border-top:1px solid var(--border);padding:14px 14px 14px">';
-      if (isRunning) {
-        // Live stream
-        html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
-          +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
-      } else if (isDone) {
-        // Done — preview by default, code on demand
-        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
-          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
-          +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')" style="">Show code</button>'
-          +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')" ><i class="ti ti-edit"></i> Edit</button>'
-          +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')" ><i class="ti ti-refresh"></i> Redo</button>'
-          +'</div>'
-          +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
-          +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>'
+    gPages.forEach(p => {
+      globalIdx++;
+      const r = S.copy[p.slug]||{};
+      const isDone = !!r.copy, isErr = !!r.error;
+      const isRunning = S.copyCurrentSlug === p.slug;
+      const isExpanded = S.copyExpandedSlug === p.slug;
+      const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+      const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
+      const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+      const rowBg = isExpanded&&!isDone&&!isRunning?'background:rgba(0,0,0,0.015);':'';
 
-        // Next page button
-        const curIdx = pages.findIndex(pp => pp.slug === p.slug);
-        const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
-        if (nextP) {
-          html += '<div style="margin-top:10px;display:flex;gap:8px">'
-            +'<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+nextP.slug+'\';renderCopyQueue();runCopyPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
-            +'<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>'
+      html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:5px;${rowBorder}${rowBg}">`;
+
+      // Row header
+      html += `<div onclick="toggleCopyExpand('${p.slug}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none">`;
+      html += `<div class="status-circle" style="${cirStyle};font-size:9px;font-weight:500;flex-shrink:0">${cirContent}</div>`;
+      html += `<i class="ti ${typeIcon(p.page_type)}" style="font-size:12px;color:${isDone?'var(--green)':'var(--n2)'};flex-shrink:0"></i>`;
+      html += `<div style="flex:1;min-width:0">`;
+      html += `<div style="display:flex;align-items:baseline;gap:6px">`;
+      html += `<span style="font-size:13px;color:${isDone||isExpanded?'var(--dark)':'var(--n3)'};font-weight:${isDone?'500':'400'}">${esc(p.page_name)}</span>`;
+      html += `<span style="font-size:10px;color:${pColor};padding:0px 5px;background:rgba(0,0,0,0.04);border-radius:3px;flex-shrink:0">${p.priority}</span>`;
+      if (isErr&&!isExpanded) html += `<span style="font-size:11px;color:var(--error)">Error</span>`;
+      html += `</div>`;
+      html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
+      html += `</div>`;
+      html += `<i class="ti ${isExpanded?'ti-chevron-up':'ti-chevron-down'}" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
+      html += `</div>`;
+
+      // Expanded body
+      if (isExpanded) {
+        html += '<div style="border-top:1px solid var(--border);padding:14px 14px 14px">';
+        if (isRunning) {
+          html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
+            +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
+        } else if (isDone) {
+          html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+            +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
+            +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>'
+            +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
+            +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+            +'</div>'
+            +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
+            +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
+
+          const curIdx = pages.findIndex(pp => pp.slug === p.slug);
+          const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
+          if (nextP) {
+            html += '<div style="margin-top:10px;display:flex;gap:8px">'
+              +'<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+nextP.slug+'\';renderCopyQueue();runCopyPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+              +'<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>'
+              +'</div>';
+          }
+        } else if (isErr) {
+          html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+            +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+        } else {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+            +'<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
+            +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
             +'</div>';
         }
-      } else if (isErr) {
-        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
-          +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
-      } else {
-        // Idle — prompt to generate
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword)+' · '+esc(p.search_intent||'')+' · '+esc(p.word_count_target||1500)+' words</div>'
-          +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
-          +'</div>';
+        html += '</div>';
       }
-      html += '</div>';
-    }
 
-    html += '</div>';
+      html += '</div>';
+    });
   });
+
   document.getElementById('copy-queue').innerHTML = html;
   setTimeout(populateCopyPreviews, 0);
 }
