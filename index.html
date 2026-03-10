@@ -1712,8 +1712,9 @@ function updatePageField(idx, field, val) {
   if (!S.pages[idx]) return;
   S.pages[idx][field] = val;
   // Recompute is_structural when page_type changes
+  // Only truly utility/boilerplate pages are structural — home/about/contact/blog all need copy & images
   if (field === 'page_type') {
-    S.pages[idx].is_structural = ['home','about','contact','case-studies','blog'].includes(val) && !['blog'].includes(val);
+    S.pages[idx].is_structural = val === 'utility';
   }
   scheduleSave();
 }
@@ -2833,20 +2834,18 @@ function getGlobalImageStyle() {
 }
 
 function initImageStage() {
-  // Initialise slot state for all pages that don't have it yet
+  // Initialise slot state for all content pages (exclude only explicit utility/structural with no keyword)
   (S.pages || []).forEach(p => {
-    if (!p.is_structural) {
-      if (!S.images[p.slug]) {
-        S.images[p.slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((sl, i) => ({
-          status: 'empty', prompt: buildImagePrompt(p, i, null), b64: null, mimeType: null
-        }))};
-      } else {
-        // Ensure 5 slots exist (in case of old data)
-        const existing = S.images[p.slug];
-        while ((existing.slots || []).length < 5) {
-          const i = existing.slots.length;
-          existing.slots.push({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null });
-        }
+    if (!S.images[p.slug]) {
+      S.images[p.slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((sl, i) => ({
+        status: 'empty', prompt: buildImagePrompt(p, i, null), b64: null, mimeType: null
+      }))};
+    } else {
+      // Ensure 5 slots exist (in case of old data)
+      const existing = S.images[p.slug];
+      while ((existing.slots || []).length < 5) {
+        const i = existing.slots.length;
+        existing.slots.push({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null });
       }
     }
   });
@@ -2895,7 +2894,7 @@ function saveGlobalImageStyle() {
   scheduleSave();
   // Regenerate prompts for any empty slots
   (S.pages || []).forEach(p => {
-    if (!p.is_structural && S.images[p.slug]) {
+    if (S.images[p.slug]) {
       const imgData = S.images[p.slug];
       imgData.slots.forEach((sl, i) => {
         if (sl.status === 'empty') sl.prompt = buildImagePrompt(p, i, imgData.styleOverride);
@@ -2910,11 +2909,11 @@ let imageExpandedSlug = null;
 function renderImageQueue() {
   const el = document.getElementById('image-queue');
   if (!el) return;
-  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const pages = S.pages || [];
   if (!pages.length) { el.innerHTML = '<p style="color:var(--n2);font-size:13px">No pages yet — complete Stage 3 first.</p>'; return; }
 
   const groups = [
-    { label: 'Core Pages',           icon: 'ti-home',         types: ['home','about','utility'] },
+    { label: 'Core Pages',           icon: 'ti-home',         types: ['home','about','contact','case-studies','utility'] },
     { label: 'Services',             icon: 'ti-tool',         types: ['service'] },
     { label: 'Industry & Location',  icon: 'ti-map-pin',      types: ['industry','location'] },
     { label: 'Blog Posts',           icon: 'ti-article',      types: ['blog'] },
@@ -3140,7 +3139,7 @@ async function generateAllPagesImages() {
   document.getElementById('image-stop-btn').style.display = '';
   document.getElementById('image-progress').style.display = 'block';
 
-  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const pages = S.pages || [];
   for (const page of pages) {
     if (S.imageGenStop) break;
     imageExpandedSlug = page.slug;
@@ -3163,7 +3162,7 @@ function stopImageGen() {
 }
 
 function updateImageProgress() {
-  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const pages = S.pages || [];
   const total = pages.length * 5;
   const done = pages.reduce((acc, p) => {
     return acc + ((S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length);
@@ -3180,7 +3179,7 @@ function updateImageProgress() {
 }
 
 function checkImageAllDone() {
-  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const pages = S.pages || [];
   const allDone = pages.length > 0 && pages.every(p =>
     (S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length === 5
   );
