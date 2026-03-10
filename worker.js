@@ -369,13 +369,16 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
 
-        // PAA data is embedded in the organic SERP advanced endpoint
-        // Strip location modifiers — PAA only appears for informational queries, not local/commercial ones
-        const locationWords = /\b(vancouver|victoria|burnaby|surrey|toronto|calgary|edmonton|montreal|canada|bc|ontario|near me)\b/gi;
+        // Strip location modifiers — Google shows PAA for informational queries, not local/commercial ones
+        const locationWords = /\b(vancouver|victoria|burnaby|surrey|richmond|langley|coquitlam|toronto|calgary|edmonton|montreal|ottawa|canada|bc|ontario|alberta|near me)\b/gi;
         const seeds = [...new Set(
-          keywords.slice(0, 6).map(kw => kw.replace(locationWords, '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+          keywords.slice(0, 6).map(kw => kw.replace(locationWords, '').replace(/\s+/g, ' ').trim()).filter(kw => kw.length > 2)
         )].slice(0, 4);
-        const body = seeds.map(kw => ({
+
+        // If all seeds stripped to nothing, fall back to raw keywords (better than nothing)
+        const finalSeeds = seeds.length ? seeds : keywords.slice(0, 4);
+
+        const body = finalSeeds.map(kw => ({
           keyword: kw,
           location_code: locationCode,
           language_code: 'en',
@@ -383,7 +386,7 @@ export default {
           people_also_ask_click_depth: 4
         }));
 
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -414,23 +417,23 @@ export default {
         };
 
         (data.tasks || []).forEach((task, ti) => {
-          const sourceKw = seeds[ti] || '';
+          const sourceKw = finalSeeds[ti] || '';
           (task.result || []).forEach(r => extractPAA(r.items || [], sourceKw));
         });
 
         if (!questions.length) {
           // Debug info to help diagnose
           const debug = (data.tasks || []).map((t, ti) => ({
-            kw: seeds[ti], status: t.status_code, msg: t.status_message,
+            kw: finalSeeds[ti], status: t.status_code, msg: t.status_message,
             resultCount: (t.result || []).length,
             itemTypes: [...new Set((t.result?.[0]?.items || []).map(i => i.type))]
           }));
-          return new Response(JSON.stringify({ questions: [], debug, source: 'dataforseo-paa' }), {
+          return new Response(JSON.stringify({ questions: [], debug, cleanedSeeds: finalSeeds, source: 'dataforseo-paa' }), {
             status: 200, headers: { 'Content-Type': 'application/json', ...cors }
           });
         }
 
-        return new Response(JSON.stringify({ questions, source: 'dataforseo-paa' }), {
+        return new Response(JSON.stringify({ questions, cleanedSeeds: finalSeeds, source: 'dataforseo-paa' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
