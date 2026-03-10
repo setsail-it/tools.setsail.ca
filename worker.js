@@ -350,21 +350,26 @@ export default {
         }
         const task = (parsed?.tasks || [])[0] || {};
         const results = task?.result || [];
-        // Walk the full result tree to show all types and question titles
-        const walk = (nodes, depth) => (nodes||[]).map(n => ({
-          type: n.type, title: n.title||null, xpath: n.xpath||null, depth,
-          children: n.items ? walk(n.items, depth+1) : undefined
-        }));
+        const firstItems = results[0]?.items || [];
+        // Count ALL item types at top level
+        const typeCounts = {};
+        firstItems.forEach(i => { typeCounts[i.type] = (typeCounts[i.type]||0)+1; });
+        // Pull out any PAA blocks and their questions
+        const paaBlocks = firstItems.filter(i => i.type === 'people_also_ask');
+        const paaQuestions = [];
+        paaBlocks.forEach(block => {
+          (block.items||[]).forEach(q => paaQuestions.push({ title: q.title, type: q.type, hasSubItems: !!(q.items?.length) }));
+        });
         return new Response(JSON.stringify({
           http_status: res.status,
           task_status: task.status_code,
           task_msg: task.status_message,
           result_count: results.length,
-          result_tree: results.slice(0,3).map(r => ({
-            type: r.type, title: r.title||null,
-            items_count: (r.items||[]).length,
-            items: walk(r.items||[], 0).slice(0,10)
-          }))
+          top_level_item_count: firstItems.length,
+          type_counts: typeCounts,
+          paa_blocks_found: paaBlocks.length,
+          paa_questions: paaQuestions,
+          first_5_items: firstItems.slice(0,5).map(i => ({ type: i.type, title: i.title||null, items_count: (i.items||[]).length }))
         }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
       } catch(err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
