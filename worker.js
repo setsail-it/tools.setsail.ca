@@ -634,7 +634,7 @@ export default {
           redirectMap,
         };
 
-        return new Response(JSON.stringify(result), {
+        return new Response(JSON.stringify({ ...result, _debug: { drData, metricsData, blData, topPagesRaw: topPagesData } }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
