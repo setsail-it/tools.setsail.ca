@@ -2121,18 +2121,30 @@ function redoCopyPage(slug) {
 }
 
 function toggleCopyCode(slug) {
-  const el = document.getElementById('copy-code-'+slug);
+  const el      = document.getElementById('copy-code-'+slug);
   const preview = document.getElementById('copy-preview-'+slug);
-  const btn = document.getElementById('copy-code-btn-'+slug);
+  const btn     = document.getElementById('copy-code-btn-'+slug);
   if (!el) return;
+  // Exit edit mode first if active
+  if (preview && preview.contentEditable === 'true') {
+    if (!S.copy[slug]) S.copy[slug] = {};
+    S.copy[slug].copy = preview.innerHTML;
+    preview.contentEditable = 'false';
+    preview.style.border = '1px solid var(--border)';
+    preview.style.boxShadow = 'none';
+    preview.style.cursor = 'default';
+    const editBtn = document.getElementById('copy-edit-btn-'+slug);
+    if (editBtn) editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+    scheduleSave();
+    // Update code view with latest content
+    el.textContent = preview.innerHTML;
+  }
   const showingCode = el.style.display !== 'none';
   if (showingCode) {
-    // Back to preview
     el.style.display = 'none';
     if (preview) preview.style.display = 'block';
     btn.textContent = 'Show code';
   } else {
-    // Show raw code, hide preview
     el.style.display = 'block';
     if (preview) preview.style.display = 'none';
     btn.textContent = 'Hide code';
@@ -2140,30 +2152,44 @@ function toggleCopyCode(slug) {
 }
 
 function toggleCopyEdit(slug) {
-  const codeEl = document.getElementById('copy-code-'+slug);
   const previewEl = document.getElementById('copy-preview-'+slug);
-  const editEl = document.getElementById('copy-edit-'+slug);
-  const editBtn = document.getElementById('copy-edit-btn-'+slug);
-  if (!editEl) return;
-  const isEditing = editEl.style.display !== 'none';
+  const codeEl    = document.getElementById('copy-code-'+slug);
+  const editBtn   = document.getElementById('copy-edit-btn-'+slug);
+  if (!previewEl) return;
+
+  const isEditing = previewEl.contentEditable === 'true';
+
   if (isEditing) {
-    // Save — update state + refresh preview
-    const newVal = editEl.value;
-    S.copy[slug].copy = newVal;
+    // ── Save ── serialise innerHTML back to state
+    previewEl.contentEditable = 'false';
+    previewEl.style.outline  = 'none';
+    previewEl.style.boxShadow = 'none';
+    previewEl.style.border   = '1px solid var(--border)';
+    previewEl.style.cursor   = 'default';
+    if (!S.copy[slug]) S.copy[slug] = {};
+    S.copy[slug].copy = previewEl.innerHTML;
+    // Also keep code view in sync
+    if (codeEl) codeEl.textContent = previewEl.innerHTML;
     scheduleSave();
-    editEl.style.display = 'none';
-    if (codeEl) codeEl.style.display = 'none';
-    if (previewEl) { previewEl.innerHTML = newVal; previewEl.style.display = 'block'; }
-    document.getElementById('copy-code-btn-'+slug) && (document.getElementById('copy-code-btn-'+slug).textContent = 'Show code');
     editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
   } else {
-    // Open editor — hide both preview and code
-    editEl.style.display = 'block';
-    if (codeEl) codeEl.style.display = 'none';
-    if (previewEl) previewEl.style.display = 'none';
-    document.getElementById('copy-code-btn-'+slug) && (document.getElementById('copy-code-btn-'+slug).textContent = 'Show code');
+    // ── Edit ── make preview directly editable
+    if (codeEl) { codeEl.style.display = 'none'; document.getElementById('copy-code-btn-'+slug) && (document.getElementById('copy-code-btn-'+slug).textContent = 'Show code'); }
+    previewEl.style.display = 'block';
+    previewEl.contentEditable = 'true';
+    previewEl.style.outline  = 'none';
+    previewEl.style.border   = '1.5px solid var(--green)';
+    previewEl.style.boxShadow = '0 0 0 3px rgba(21,142,29,0.08)';
+    previewEl.style.cursor   = 'text';
+    previewEl.focus();
+    // Place cursor at end
+    const range = document.createRange();
+    range.selectNodeContents(previewEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
     editBtn.innerHTML = '<i class="ti ti-check"></i> Save';
-    editEl.focus();
   }
 }
 
@@ -2240,7 +2266,7 @@ function renderCopyQueue() {
           +'</div>'
           +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
           +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>'
-          +'<textarea id="copy-edit-'+p.slug+'" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box">'+esc(r.copy)+'</textarea>';
+
         // Next page button
         const curIdx = pages.findIndex(pp => pp.slug === p.slug);
         const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
