@@ -2072,6 +2072,10 @@ async function runPAA() {
     return;
   }
 
+  // Run a quick structure probe first (using paa-debug) so we always have raw info
+  fetch('/api/paa-debug', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ keyword: kwSeeds[0] }) })
+    .then(r=>r.json()).then(d=>console.log('[PAA structure probe]', JSON.stringify(d, null, 2)));
+
   try {
     const res = await fetch('/api/paa', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2079,7 +2083,7 @@ async function runPAA() {
     });
     const data = await res.json();
     if (!data.questions?.length) {
-      console.warn('[PAA debug]', JSON.stringify(data.debug));
+      console.warn('[PAA debug]', JSON.stringify(data.debug, null, 2));
       throw new Error(data.error || 'No questions returned — check console for debug');
     }
 
