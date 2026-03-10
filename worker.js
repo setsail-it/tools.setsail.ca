@@ -190,7 +190,7 @@ export default {
         });
 
         const kwList = keywords.slice(0, 100);
-        const cc = (country || 'CA').toUpperCase().slice(0, 2);
+        const cc = (country || 'ca').toLowerCase().slice(0, 2);
 
         // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
         if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {
@@ -574,7 +574,7 @@ export default {
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        const cc = (country || 'CA').toUpperCase().slice(0, 2);
+        const cc = (country || 'ca').toLowerCase().slice(0, 2);
         const today = new Date().toISOString().slice(0, 10);
         const base = { target: domain, date: today };
         const withMode = { ...base, mode: 'subdomains' };
