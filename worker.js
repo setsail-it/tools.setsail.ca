@@ -534,8 +534,8 @@ export default {
 
         // Try Nano Banana 2 (Gemini 3.1 Flash Image) first, fall back to Nano Banana (2.5 Flash)
         const models = [
-          'gemini-3.1-flash-image-preview',
-          'gemini-2.5-flash-preview-image-generation',
+          'gemini-3.1-flash-image-preview',   // Nano Banana 2
+          'gemini-2.5-flash-image',            // Nano Banana (original)
         ];
 
         let imagePart = null;
