@@ -2858,11 +2858,13 @@ function initImageStage() {
   loadAllPageImages();
 }
 
+function imgKey(slug) { return encodeURIComponent(slug || '_root'); }
+
 async function savePageImages(slug) {
   if (!S.projectId || !S.images?.[slug]) return;
   try {
     const payload = JSON.stringify(S.images[slug]);
-    await fetch('/api/images/' + S.projectId + '/' + encodeURIComponent(slug), {
+    await fetch('/api/images/' + S.projectId + '/' + imgKey(slug), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: payload
@@ -2878,9 +2880,10 @@ async function loadAllPageImages() {
     const { slugs } = await listRes.json();
     if (!slugs?.length) return;
     let anyLoaded = false;
-    await Promise.all(slugs.map(async slug => {
+    await Promise.all(slugs.map(async kvSlug => {
+      const slug = kvSlug === '_root' ? '' : decodeURIComponent(kvSlug);
       try {
-        const res = await fetch('/api/images/' + S.projectId + '/' + encodeURIComponent(slug));
+        const res = await fetch('/api/images/' + S.projectId + '/' + imgKey(slug));
         if (!res.ok) return;
         const data = await res.json();
         if (!data?.slots) return;
