@@ -583,6 +583,9 @@ async function resumeProject(id) {
   if (S.stage === 'layout' && S.pages.length) { initLayout(); }
   if (S.stage === 'schema' && S.pages.length) { initSchema(); }
   if (S.stage === 'export') renderExport();
+
+  // Always restore image b64 into memory (needed for Layout Reinject button even when not on Stage 5)
+  if (S.stage !== 'images') loadAllPageImages();
 }
 
 async function deleteProject(id, btn) {
@@ -2901,7 +2904,11 @@ async function loadAllPageImages() {
         anyLoaded = true;
       } catch(e) { console.warn('[IMG] load failed for', slug, e); }
     }));
-    if (anyLoaded) { renderImageQueue(); updateImageProgress(); }
+    if (anyLoaded) {
+      renderImageQueue();
+      updateImageProgress();
+      if (S.stage === 'layout') renderLayoutQueue(); // refresh Reinject button visibility
+    }
   } catch(e) { console.warn('[IMG] loadAllPageImages failed:', e); }
 }
 
