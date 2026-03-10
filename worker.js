@@ -313,7 +313,7 @@ export default {
         const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
         const seeds = (keywords || ['seo services vancouver']).slice(0, 2);
         const body = seeds.map(kw => ({ keyword: kw, location_code: locationCode, language_code: 'en', depth: 2 }));
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live', {
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -337,8 +337,8 @@ export default {
         }
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const kw = url.searchParams.get('kw') || 'seo services vancouver';
-        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 2 }];
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live', {
+        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 10, calculate_rectangles: false }];
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -371,7 +371,7 @@ export default {
       }
     }
 
-    // ── PEOPLE ALSO ASK (DataForSEO SERP PAA) ────────────────────
+    // ── PEOPLE ALSO ASK (via SERP organic/live/advanced — PAA embedded in results) ──
     if (url.pathname === '/api/paa' && request.method === 'POST') {
       try {
         if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
@@ -383,11 +383,17 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
 
-        // Fetch PAA for each keyword (max 6 to control cost)
-        const seeds = keywords.slice(0, 6);
-        const body = seeds.map(kw => ({ keyword: kw, location_code: locationCode, language_code: 'en', depth: 4 }));
+        // PAA data is embedded in the organic SERP advanced endpoint
+        const seeds = keywords.slice(0, 4); // limit to 4 — each SERP call is more expensive
+        const body = seeds.map(kw => ({
+          keyword: kw,
+          location_code: locationCode,
+          language_code: 'en',
+          calculate_rectangles: false,
+          depth: 10
+        }));
 
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live', {
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -395,45 +401,48 @@ export default {
         const raw = await res.text();
         let data;
         try { data = JSON.parse(raw); } catch(e) {
-          return new Response(JSON.stringify({ error: 'PAA parse error: ' + raw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+          return new Response(JSON.stringify({ error: 'PAA parse error: ' + raw.slice(0, 300) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
-        // Flatten all questions with their source keyword, deduplicate
+        // Extract PAA items from organic SERP results
         const seen = new Set();
         const questions = [];
-        (data.tasks || []).forEach((task, ti) => {
-          const sourceKw = seeds[ti] || '';
-          // DataForSEO PAA: result is an array, items are on each result item
-          (task.result || []).forEach(r => {
-            // r may be the item itself (title directly) or have an items array
-            const flatten = (node, depth) => {
-              if (!node) return;
-              // Direct question node
-              const q = (node.title || node.question || '').trim();
-              if (q && !seen.has(q.toLowerCase())) {
-                seen.add(q.toLowerCase());
-                questions.push({ question: q, source: sourceKw, depth });
+
+        const extractPAA = (items, sourceKw) => {
+          (items || []).forEach(item => {
+            if (item.type === 'people_also_ask') {
+              // PAA block: items[] contains the actual questions
+              (item.items || []).forEach(q => {
+                const text = (q.title || q.question || '').trim();
+                if (text && !seen.has(text.toLowerCase())) {
+                  seen.add(text.toLowerCase());
+                  questions.push({ question: text, source: sourceKw });
+                }
+                // Each PAA item may have nested related PAA
+                if (q.items) extractPAA(q.items, sourceKw);
+              });
+            } else if (item.type === 'people_also_ask_element') {
+              const text = (item.title || item.question || '').trim();
+              if (text && !seen.has(text.toLowerCase())) {
+                seen.add(text.toLowerCase());
+                questions.push({ question: text, source: sourceKw });
               }
-              // Recurse into child items
-              if (Array.isArray(node.items)) node.items.forEach(child => flatten(child, depth + 1));
-            };
-            // r itself might be a PAA item or have items[]
-            if (r.type === 'people_also_ask_element' || r.title) {
-              flatten(r, 0);
-            } else {
-              (r.items || []).forEach(item => flatten(item, 0));
+              if (item.items) extractPAA(item.items, sourceKw);
             }
           });
+        };
+
+        (data.tasks || []).forEach((task, ti) => {
+          const sourceKw = seeds[ti] || '';
+          (task.result || []).forEach(r => extractPAA(r.items || [], sourceKw));
         });
 
-        // Debug: return raw tasks summary if empty
         if (!questions.length) {
-          const debug = (data.tasks || []).map(t => ({
-            status: t.status_code,
-            msg: t.status_message,
+          // Debug info to help diagnose
+          const debug = (data.tasks || []).map((t, ti) => ({
+            kw: seeds[ti], status: t.status_code, msg: t.status_message,
             resultCount: (t.result || []).length,
-            firstResultKeys: t.result?.[0] ? Object.keys(t.result[0]) : [],
-            firstItemType: t.result?.[0]?.items?.[0]?.type || t.result?.[0]?.type || 'none'
+            itemTypes: [...new Set((t.result?.[0]?.items || []).map(i => i.type))]
           }));
           return new Response(JSON.stringify({ questions: [], debug, source: 'dataforseo-paa' }), {
             status: 200, headers: { 'Content-Type': 'application/json', ...cors }
