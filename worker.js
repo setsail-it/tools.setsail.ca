@@ -576,16 +576,19 @@ export default {
         });
         const cc = (country || 'CA').toUpperCase().slice(0, 2);
         const today = new Date().toISOString().slice(0, 10);
+        const base = { target: domain, date: today };
+        const withMode = { ...base, mode: 'subdomains' };
         const ahrefsGet = (endpoint, params) => fetch(
-          'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams({ target: domain, date: today, mode: 'subdomains', ...params }).toString(),
+          'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams(params).toString(),
           { headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY } }
         ).then(r => r.json());
 
         const [drData, metricsData, blData, topPagesData] = await Promise.all([
-          ahrefsGet('site-explorer/domain-rating', {}),
-          ahrefsGet('site-explorer/metrics', { country: cc }),
-          ahrefsGet('site-explorer/backlinks-stats', {}),
-          ahrefsGet('site-explorer/top-pages', {
+          ahrefsGet('site-explorer/domain-rating', base),                           // no mode
+          ahrefsGet('site-explorer/metrics', { ...base, country: cc }),             // no mode
+          ahrefsGet('site-explorer/backlinks-stats', withMode),                     // mode ok
+          ahrefsGet('site-explorer/top-pages', {                                    // mode ok
+            ...withMode,
             select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
             limit: 50,
             order_by: 'sum_traffic:desc',
