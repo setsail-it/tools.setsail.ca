@@ -601,17 +601,17 @@ export default {
         // items[].url_with_params, items[].metrics.organic.etv (traffic), items[].metrics.organic.count (keywords)
         const rawPages = pagesResult?.items || [];
         const topPages = rawPages.map(p => {
-          const pageUrl = p.url_with_params || p.url || '';
+          const pageUrl = p.page_address || p.url_with_params || p.url || '';
           let slug = '';
           try { const u = new URL(pageUrl); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
           return {
             url: pageUrl,
             slug,
             traffic: Math.round(p.metrics?.organic?.etv || 0),
-            topKeyword: p.top_keyword || '',
-            topKeywordPosition: p.top_keyword_position || null,
-            referringDomains: p.referring_domains || 0,
-            keywords: p.metrics?.organic?.count || 0,
+            topKeyword: '',
+            topKeywordPosition: null,
+            referringDomains: p.metrics?.organic?.etv ? 0 : 0,
+            keywords: (p.metrics?.organic?.pos_1||0)+(p.metrics?.organic?.pos_2_3||0)+(p.metrics?.organic?.pos_4_10||0)+(p.metrics?.organic?.pos_11_20||0)+(p.metrics?.organic?.pos_21_30||0)+(p.metrics?.organic?.pos_31_40||0)+(p.metrics?.organic?.pos_41_50||0)+(p.metrics?.organic?.pos_51_60||0)+(p.metrics?.organic?.pos_61_70||0)+(p.metrics?.organic?.pos_71_80||0)+(p.metrics?.organic?.pos_81_90||0)+(p.metrics?.organic?.pos_91_100||0),
             ur: 0,
           };
         });
