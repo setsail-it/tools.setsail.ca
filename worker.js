@@ -601,10 +601,11 @@ export default {
         // items[].url_with_params, items[].metrics.organic.etv (traffic), items[].metrics.organic.count (keywords)
         const rawPages = pagesResult?.items || [];
         const topPages = rawPages.map(p => {
+          const pageUrl = p.url_with_params || p.url || '';
           let slug = '';
-          try { const u = new URL(p.url_with_params); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
+          try { const u = new URL(pageUrl); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
           return {
-            url: p.url_with_params || '',
+            url: pageUrl,
             slug,
             traffic: Math.round(p.metrics?.organic?.etv || 0),
             topKeyword: p.top_keyword || '',
