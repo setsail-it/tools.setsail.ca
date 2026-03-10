@@ -564,6 +564,83 @@ export default {
       }
     }
 
+    // ── SITE SNAPSHOT (Ahrefs) ────────────────────────────────────
+    if (url.pathname === '/api/snapshot' && request.method === 'POST') {
+      if (!env.AHREFS_API_KEY) return new Response(JSON.stringify({ error: 'AHREFS_API_KEY not set' }), {
+        status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+      });
+      try {
+        const { domain, country } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const cc = (country || 'CA').toUpperCase().slice(0, 2);
+        const today = new Date().toISOString().slice(0, 10);
+        const ahrefsGet = (endpoint, params) => fetch(
+          'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams({ target: domain, date: today, mode: 'subdomains', ...params }).toString(),
+          { headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY } }
+        ).then(r => r.json());
+
+        const [drData, metricsData, blData, topPagesData] = await Promise.all([
+          ahrefsGet('site-explorer/domain-rating', {}),
+          ahrefsGet('site-explorer/metrics', { country: cc }),
+          ahrefsGet('site-explorer/backlinks-stats', {}),
+          ahrefsGet('site-explorer/top-pages', {
+            select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
+            limit: 50,
+            order_by: 'sum_traffic:desc',
+            country: cc,
+          }),
+        ]);
+
+        // Parse top pages + auto-derive slug
+        const topPages = (topPagesData?.pages || []).map(p => {
+          let slug = '';
+          try { const u = new URL(p.url); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
+          return {
+            url: p.url,
+            slug,
+            traffic: p.sum_traffic || 0,
+            topKeyword: p.top_keyword || '',
+            topKeywordPosition: p.top_keyword_best_position || null,
+            referringDomains: p.referring_domains || 0,
+            keywords: p.keywords || 0,
+            ur: p.ur || 0,
+          };
+        });
+
+        // Build redirect map from top pages (anything with traffic or backlinks)
+        const redirectMap = topPages
+          .filter(p => p.traffic > 0 || p.referringDomains > 0)
+          .map(p => ({ oldUrl: p.url, oldSlug: p.slug, newSlug: '', status: 'pending' }));
+
+        const result = {
+          capturedAt: Date.now(),
+          domain,
+          domainMetrics: {
+            dr: drData?.domain_rating ?? null,
+            ahrefsRank: drData?.ahrefs_rank ?? null,
+            orgTraffic: metricsData?.org_traffic ?? 0,
+            orgKeywords: metricsData?.org_keywords ?? 0,
+            orgKeywords1_3: metricsData?.org_keywords_1_3 ?? 0,
+            orgCost: metricsData?.org_cost ?? 0,
+            liveRefdomains: blData?.live_refdomains ?? 0,
+            liveBacklinks: blData?.live ?? 0,
+          },
+          topPages,
+          redirectMap,
+        };
+
+        return new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     // ── GENERATE IMAGE (Gemini / Nano Banana 2) ──────────────────
     if (url.pathname === '/api/generate-image' && request.method === 'POST') {
       try {

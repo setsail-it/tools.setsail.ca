@@ -225,8 +225,114 @@ textarea.inp{resize:vertical}
         <label style="font-size:12px;display:block;margin-bottom:5px">Global Image Style Guidelines <span style="color:var(--n2)">— applied to all AI-generated images by default (overrideable per page in Stage 5)</span></label>
         <textarea class="inp" id="f-image-style" rows="3" placeholder="e.g. Professional photography style, clean and modern, neutral backgrounds, construction/trades industry context, no people unless requested, bright natural lighting"></textarea>
       </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Site Type</span><div class="section-mark-line"></div></div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="f-existing-site" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+          <span style="font-size:13px;color:var(--dark)">This is an <strong>existing site</strong> — run a pre-build snapshot to protect rankings &amp; map 301 redirects</span>
+        </label>
+      </div>
       <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
       <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
+    </div>
+  </div>
+
+  <!-- SNAPSHOT -->
+  <div class="screen" id="screen-snapshot">
+    <div style="max-width:860px">
+      <div class="eyebrow">Stage 2 of 9</div>
+      <h2 class="ph">Site Snapshot</h2>
+      <p class="psub">Ahrefs audit of the existing site — captures what's ranking, what has backlinks, and builds the 301 redirect map before we touch anything.</p>
+
+      <!-- Domain metrics bar -->
+      <div id="snapshot-metrics-bar" style="display:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-dr">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Domain Rating</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-traffic">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Monthly Org. Traffic</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-keywords">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Ranking Keywords</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-refdomains">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Referring Domains</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-backlinks">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Live Backlinks</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--green)" id="snap-cost">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Traffic Value/mo</div>
+        </div>
+      </div>
+
+      <!-- Run button / status -->
+      <div id="snapshot-run-area" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="snapshot-run-btn" onclick="runSnapshot()"><i class="ti ti-radar"></i> Run Site Snapshot</button>
+          <div id="snapshot-status" style="font-size:12px;color:var(--n2)"></div>
+        </div>
+        <div id="snapshot-error" class="error-banner" style="display:none;margin-top:10px"><i class="ti ti-alert-circle"></i><span id="snapshot-error-msg"></span></div>
+      </div>
+
+      <!-- Top Pages table -->
+      <div id="snapshot-pages-wrap" style="display:none;margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:500">Top Pages by Organic Traffic</div>
+          <div style="font-size:11px;color:var(--n2)" id="snap-pages-count"></div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">URL</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3);white-space:nowrap">Traffic</th>
+                <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--n3)">Top Keyword</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">Pos</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">KWs</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">RDs</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">UR</th>
+              </tr>
+            </thead>
+            <tbody id="snap-pages-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 301 Redirect Map -->
+      <div id="snapshot-redirects-wrap" style="display:none;margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:13px;font-weight:500">301 Redirect Map</div>
+            <div style="font-size:11px;color:var(--n2);margin-top:2px">Map old URLs to new slugs. Complete after Stage 3 (Sitemap). Exports as CSV + Cloudflare _redirects in Stage 8.</div>
+          </div>
+          <button class="btn btn-ghost sm" onclick="autoMatchRedirects()"><i class="ti ti-wand"></i> Auto-match</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">Old URL</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">Traffic</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">RDs</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">New Slug</th>
+                <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--n3)">Status</th>
+              </tr>
+            </thead>
+            <tbody id="snap-redirect-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="snapshot-next-wrap" style="display:none">
+        <button class="btn btn-primary" onclick="goTo('research');runResearch && document.getElementById('research-run-btn')"><i class="ti ti-arrow-right"></i> Continue to Research</button>
+      </div>
     </div>
   </div>
 
@@ -420,7 +526,7 @@ textarea.inp{resize:vertical}
 // ── STATE ──────────────────────────────────────────────────────────
 const S = {
   projectId: null, stage: 'setup',
-  setup: null, research: null, pages: [], copy: {}, schema: {}, images: {},
+  setup: null, snapshot: null, research: null, pages: [], copy: {}, schema: {}, images: {},
   copyStop: false, schemaStop: false,
   copyRunning: false, schemaRunning: false,
   copyPreviewSlug: null, schemaPreviewSlug: null,
@@ -444,6 +550,7 @@ async function saveProject() {
     const payload = {
       stage: S.stage,
       setup: S.setup,
+      snapshot: S.snapshot || null,
       research: S.research,
       pages: S.pages,
       copy: S.copy,
@@ -553,6 +660,7 @@ async function resumeProject(id) {
   S.projectId = id;
   S.stage = data.stage || 'setup';
   S.setup = data.setup || null;
+  S.snapshot = data.snapshot || null;
   S.research = data.research || null;
   S.pages = data.pages || [];
   S.copy = data.copy || {};
@@ -576,6 +684,7 @@ async function resumeProject(id) {
   goTo(S.stage);
 
   // Re-render stage content
+  if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (S.stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
@@ -607,11 +716,14 @@ function prefillSetup() {
   document.getElementById('f-competitors').value = s.competitors || '';
   const imgStyleEl = document.getElementById('f-image-style');
   if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
+  const existingEl = document.getElementById('f-existing-site');
+  if (existingEl) existingEl.checked = !!s.isExistingSite;
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
 const STAGES = [
   {id:'setup',label:'Setup',icon:'ti-settings'},
+  {id:'snapshot',label:'Snapshot',icon:'ti-camera'},
   {id:'research',label:'Research',icon:'ti-search'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
@@ -654,6 +766,7 @@ function navToStage(stage) {
 }
 
 function renderStageContent(stage) {
+  if (stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
   if (stage === 'copy' && S.pages.length) initCopy();
@@ -873,6 +986,7 @@ function setupNext() {
   if (!client) return showSetupErr('Client name is required');
   if (strategy.length < 80) return showSetupErr('Strategy document is too short — paste the full brief');
   hideSetupErr();
+  const isExistingSite = document.getElementById('f-existing-site')?.checked || false;
   S.setup = {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
@@ -880,14 +994,169 @@ function setupNext() {
     strategy, voice: document.getElementById('f-voice').value.trim(),
     competitors: document.getElementById('f-competitors').value.trim(),
     imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
+    isExistingSite,
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-div2').style.display = '';
   scheduleSave();
-  goTo('research');
+  goTo(isExistingSite ? 'snapshot' : 'research');
 }
 function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}
 function hideSetupErr(){document.getElementById('setup-error').style.display='none';}
+
+// ── SNAPSHOT ───────────────────────────────────────────────────────
+async function runSnapshot() {
+  const domain = (S.setup?.url || '').replace(/^https?:\/\//,'').replace(/\/.*$/,'').trim();
+  if (!domain) {
+    document.getElementById('snapshot-error-msg').textContent = 'Add a Website URL in Setup first';
+    document.getElementById('snapshot-error').style.display = 'flex';
+    return;
+  }
+  document.getElementById('snapshot-error').style.display = 'none';
+  const btn = document.getElementById('snapshot-run-btn');
+  const status = document.getElementById('snapshot-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Running Ahrefs audit…';
+  status.textContent = 'Pulling domain metrics, top pages and backlink data…';
+
+  try {
+    const geo = (S.setup?.geo || '').toUpperCase();
+    const country = geo.includes('US') ? 'US' : 'CA';
+    const res = await fetch('/api/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, country })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Snapshot failed');
+    S.snapshot = data;
+    scheduleSave();
+    renderSnapshot();
+    status.textContent = 'Snapshot complete — ' + data.topPages.length + ' pages captured.';
+  } catch(e) {
+    document.getElementById('snapshot-error-msg').textContent = e.message;
+    document.getElementById('snapshot-error').style.display = 'flex';
+    status.textContent = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Snapshot';
+  }
+}
+
+function renderSnapshot() {
+  const snap = S.snapshot;
+  if (!snap) return;
+  const m = snap.domainMetrics || {};
+
+  // Metrics bar
+  const bar = document.getElementById('snapshot-metrics-bar');
+  if (bar) {
+    bar.style.display = 'grid';
+    document.getElementById('snap-dr').textContent = m.dr != null ? Math.round(m.dr) : '—';
+    document.getElementById('snap-traffic').textContent = m.orgTraffic ? m.orgTraffic.toLocaleString() : '0';
+    document.getElementById('snap-keywords').textContent = m.orgKeywords ? m.orgKeywords.toLocaleString() : '0';
+    document.getElementById('snap-refdomains').textContent = m.liveRefdomains ? m.liveRefdomains.toLocaleString() : '0';
+    document.getElementById('snap-backlinks').textContent = m.liveBacklinks ? m.liveBacklinks.toLocaleString() : '0';
+    const costUsd = m.orgCost ? (m.orgCost / 100) : 0;
+    document.getElementById('snap-cost').textContent = costUsd ? '$' + Math.round(costUsd).toLocaleString() : '$0';
+  }
+
+  // Top pages table
+  const pagesWrap = document.getElementById('snapshot-pages-wrap');
+  const tbody = document.getElementById('snap-pages-tbody');
+  if (pagesWrap && tbody && snap.topPages?.length) {
+    pagesWrap.style.display = 'block';
+    document.getElementById('snap-pages-count').textContent = snap.topPages.length + ' pages';
+    tbody.innerHTML = snap.topPages.map((p, i) => {
+      const hasRd = p.referringDomains > 0;
+      const slug = p.slug || '/';
+      return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':'background:white'}">
+        <td style="padding:7px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${hasRd ? '<i class="ti ti-link" style="font-size:10px;color:var(--green);margin-right:4px" title="Has backlinks"></i>' : ''}
+          <span title="${esc(p.url)}" style="color:var(--dark);font-family:monospace;font-size:11px">${esc(slug || '/')}</span>
+        </td>
+        <td style="padding:7px 10px;text-align:right;color:var(--dark);font-weight:500">${(p.traffic||0).toLocaleString()}</td>
+        <td style="padding:7px 10px;color:var(--n3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.topKeyword||'—')}</td>
+        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${p.topKeywordPosition||'—'}</td>
+        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${(p.keywords||0).toLocaleString()}</td>
+        <td style="padding:7px 10px;text-align:right;color:${hasRd?'var(--green)':'var(--n3)'};font-weight:${hasRd?'500':'400'}">${p.referringDomains||0}</td>
+        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${p.ur ? Math.round(p.ur) : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Redirect map
+  renderRedirectMap();
+
+  // Show next button
+  const nextWrap = document.getElementById('snapshot-next-wrap');
+  if (nextWrap) nextWrap.style.display = 'block';
+}
+
+function renderRedirectMap() {
+  const snap = S.snapshot;
+  if (!snap?.redirectMap?.length) return;
+  const wrap = document.getElementById('snapshot-redirects-wrap');
+  const tbody = document.getElementById('snap-redirect-tbody');
+  if (!wrap || !tbody) return;
+  wrap.style.display = 'block';
+
+  const pageSlugSet = new Set((S.pages||[]).map(p => p.slug));
+
+  tbody.innerHTML = snap.redirectMap.map((r, i) => {
+    const autoSlug = r.newSlug || '';
+    const matched = autoSlug && pageSlugSet.has(autoSlug);
+    const statusBadge = r.newSlug
+      ? `<span style="background:rgba(21,142,29,0.12);color:var(--green);padding:2px 7px;border-radius:10px;font-size:10px">Mapped</span>`
+      : `<span style="background:var(--n1);color:var(--n2);padding:2px 7px;border-radius:10px;font-size:10px">Pending</span>`;
+    const pageInfo = S.pages?.find(p => p.slug === r.oldSlug);
+    const pageTraffic = snap.topPages?.find(p => p.slug === r.oldSlug);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 12px;font-family:monospace;font-size:11px;color:var(--dark);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.oldUrl)}">${esc(r.oldSlug||'/')}</td>
+      <td style="padding:7px 10px;text-align:right;color:var(--n3);font-size:11px">${(pageTraffic?.traffic||0).toLocaleString()}</td>
+      <td style="padding:7px 10px;text-align:right;color:${(pageTraffic?.referringDomains||0)>0?'var(--green)':'var(--n3)'};font-size:11px">${pageTraffic?.referringDomains||0}</td>
+      <td style="padding:7px 12px">
+        <input value="${esc(autoSlug)}" onchange="updateRedirectSlug(${i}, this.value)" style="font-family:monospace;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);width:100%;outline:none;box-sizing:border-box" placeholder="/new-slug">
+      </td>
+      <td style="padding:7px 10px;text-align:center">${statusBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateRedirectSlug(idx, val) {
+  if (!S.snapshot?.redirectMap?.[idx]) return;
+  S.snapshot.redirectMap[idx].newSlug = val.trim();
+  S.snapshot.redirectMap[idx].status = val.trim() ? 'mapped' : 'pending';
+  scheduleSave();
+  renderRedirectMap();
+}
+
+function autoMatchRedirects() {
+  if (!S.snapshot?.redirectMap || !S.pages?.length) return;
+  const pageMap = {};
+  S.pages.forEach(p => { pageMap[p.slug] = p.slug; });
+
+  S.snapshot.redirectMap.forEach(r => {
+    if (r.newSlug) return; // don't overwrite manual entries
+    // Exact match
+    if (pageMap[r.oldSlug] !== undefined) {
+      r.newSlug = r.oldSlug;
+      r.status = 'mapped';
+      return;
+    }
+    // Fuzzy: find page whose slug shares the most overlap
+    const oldParts = r.oldSlug.replace(/^\//, '').split(/[-/]/);
+    let best = null, bestScore = 0;
+    S.pages.forEach(p => {
+      const newParts = p.slug.replace(/^\//, '').split(/[-/]/);
+      const common = oldParts.filter(w => newParts.includes(w) && w.length > 2).length;
+      if (common > bestScore) { bestScore = common; best = p.slug; }
+    });
+    if (best && bestScore >= 1) { r.newSlug = best; r.status = 'mapped'; }
+  });
+  scheduleSave();
+  renderRedirectMap();
+}
 
 // ── RESEARCH ───────────────────────────────────────────────────────
 async function runResearch() {
