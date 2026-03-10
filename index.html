@@ -1053,10 +1053,13 @@ function renderSnapshot() {
   if (bar) {
     bar.style.display = 'grid';
     document.getElementById('snap-dr').textContent = m.dr != null ? Math.round(m.dr) : '—';
-    document.getElementById('snap-traffic').textContent = m.orgTraffic ? m.orgTraffic.toLocaleString() : '0';
-    document.getElementById('snap-keywords').textContent = m.orgKeywords ? m.orgKeywords.toLocaleString() : '0';
-    document.getElementById('snap-refdomains').textContent = m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '0';
-    document.getElementById('snap-backlinks').textContent = m.liveBacklinks != null ? m.liveBacklinks.toLocaleString() : '0';
+    // Derive traffic + keywords from top pages (Standard plan — metrics endpoint requires Advanced)
+    const derivedTraffic = (snap.topPages || []).reduce((s, p) => s + (p.traffic || 0), 0);
+    const derivedKeywords = (snap.topPages || []).reduce((s, p) => s + (p.keywords || 0), 0);
+    document.getElementById('snap-traffic').textContent = derivedTraffic ? derivedTraffic.toLocaleString() : '0';
+    document.getElementById('snap-keywords').textContent = derivedKeywords ? derivedKeywords.toLocaleString() : '0';
+    document.getElementById('snap-refdomains').textContent = '—';
+    document.getElementById('snap-backlinks').textContent = '—';
     const costUsd = m.orgCost ? (m.orgCost / 100) : 0;
     document.getElementById('snap-cost').textContent = costUsd ? '$' + Math.round(costUsd).toLocaleString() : '$0';
   }

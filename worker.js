@@ -588,15 +588,13 @@ export default {
           return j;
         };
 
-        const [drData, metricsData, topPagesData] = await Promise.all([
+        const [drData, topPagesData] = await Promise.all([
           ahrefsGet('site-explorer/domain-rating', base),
-          ahrefsGet('site-explorer/metrics', { ...withMode, country: cc }),
           ahrefsGet('site-explorer/top-pages', {
             ...withMode,
             select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
             limit: 50,
             order_by: 'sum_traffic:desc',
-            country: cc,
           }),
         ]);
 
@@ -627,10 +625,10 @@ export default {
           domainMetrics: {
             dr: drData?.domain_rating ?? null,
             ahrefsRank: drData?.ahrefs_rank ?? null,
-            orgTraffic: metricsData?.org_traffic ?? 0,
-            orgKeywords: metricsData?.org_keywords ?? 0,
-            orgKeywords1_3: metricsData?.org_keywords_1_3 ?? 0,
-            orgCost: metricsData?.org_cost ?? 0,
+            orgTraffic: null,  // requires Advanced plan
+            orgKeywords: null, // requires Advanced plan
+            orgKeywords1_3: null,
+            orgCost: null,
             liveRefdomains: null,
             liveBacklinks: null,
           },
