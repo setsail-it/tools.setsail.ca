@@ -566,7 +566,7 @@ export default {
 
     // ── SITE SNAPSHOT (Ahrefs) ────────────────────────────────────
     if (url.pathname === '/api/snapshot' && request.method === 'POST') {
-      if (!env.AHREFS_API_KEY) return new Response(JSON.stringify({ error: 'AHREFS_API_KEY not set' }), {
+      if (!env.DATAFORSEO_LOGIN) return new Response(JSON.stringify({ error: 'DATAFORSEO credentials not set' }), {
         status: 500, headers: { 'Content-Type': 'application/json', ...cors }
       });
       try {
@@ -574,45 +574,49 @@ export default {
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        const cc = (country || 'ca').toLowerCase().slice(0, 2);
-        const today = new Date().toISOString().slice(0, 10);
-        const base = { target: domain, date: today };
-        const withMode = { ...base, mode: 'subdomains' };
-        const ahrefsGet = async (endpoint, params) => {
-          const r = await fetch(
-            'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams(params).toString(),
-            { headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY } }
-          );
+        const locationCode = (country || '').toUpperCase() === 'US' ? 2840 : 2124; // CA=2124, US=2840
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const dfsPost = async (path, body) => {
+          const r = await fetch('https://api.dataforseo.com' + path, {
+            method: 'POST',
+            headers: { Authorization: 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify([body]),
+          });
           const j = await r.json();
-          if (!r.ok) throw new Error('Ahrefs ' + endpoint + ': ' + (j?.error?.message || j?.error || r.status));
-          return j;
+          if (!r.ok || j.status_code >= 40000) throw new Error('DataForSEO ' + path + ': ' + (j.status_message || r.status));
+          return j.tasks?.[0]?.result?.[0] || null;
         };
 
-        const [drData, topPagesData] = await Promise.all([
-          ahrefsGet('site-explorer/domain-rating', base).catch(() => null),
-          ahrefsGet('site-explorer/top-pages', {
-            ...withMode,
-            select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
-            limit: 50,
-            order_by: 'sum_traffic:desc',
-          }).catch(e => { throw e; }), // top-pages IS fatal — it's the core data
+        const [overviewResult, pagesResult] = await Promise.all([
+          dfsPost('/v3/dataforseo_labs/google/domain_rank_overview/live', {
+            target: domain, location_code: locationCode, language_code: 'en',
+          }).catch(() => null),
+          dfsPost('/v3/dataforseo_labs/google/relevant_pages/live', {
+            target: domain, location_code: locationCode, language_code: 'en',
+            order_by: ['metrics.organic.etv,desc'], limit: 50,
+          }),
         ]);
 
-        // Parse top pages + auto-derive slug
-        const topPages = (topPagesData?.pages || []).map(p => {
+        // Parse top pages from DataForSEO relevant_pages response
+        // items[].url_with_params, items[].metrics.organic.etv (traffic), items[].metrics.organic.count (keywords)
+        const rawPages = pagesResult?.items || [];
+        const topPages = rawPages.map(p => {
           let slug = '';
-          try { const u = new URL(p.url); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
+          try { const u = new URL(p.url_with_params); slug = u.pathname.replace(/\/$/, '') || ''; } catch(e) {}
           return {
-            url: p.url,
+            url: p.url_with_params || '',
             slug,
-            traffic: p.sum_traffic || 0,
+            traffic: Math.round(p.metrics?.organic?.etv || 0),
             topKeyword: p.top_keyword || '',
-            topKeywordPosition: p.top_keyword_best_position || null,
+            topKeywordPosition: p.top_keyword_position || null,
             referringDomains: p.referring_domains || 0,
-            keywords: p.keywords || 0,
-            ur: p.ur || 0,
+            keywords: p.metrics?.organic?.count || 0,
+            ur: 0,
           };
         });
+
+        // Domain-level metrics from overview
+        const orgMetrics = overviewResult?.items?.[0]?.metrics?.organic || {};
 
         // Build redirect map from top pages (anything with traffic or backlinks)
         const redirectMap = topPages
@@ -623,11 +627,10 @@ export default {
           capturedAt: Date.now(),
           domain,
           domainMetrics: {
-            dr: drData?.domain_rating ?? null,
-            ahrefsRank: drData?.ahrefs_rank ?? null,
-            orgTraffic: null,  // requires Advanced plan
-            orgKeywords: null, // requires Advanced plan
-            orgKeywords1_3: null,
+            dr: null,
+            orgTraffic: Math.round(overviewResult?.items?.[0]?.metrics?.organic?.etv || 0),
+            orgKeywords: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0)+(orgMetrics.pos_4_10||0)+(orgMetrics.pos_11_20||0)+(orgMetrics.pos_21_30||0)+(orgMetrics.pos_31_40||0)+(orgMetrics.pos_41_50||0)+(orgMetrics.pos_51_60||0)+(orgMetrics.pos_61_70||0)+(orgMetrics.pos_71_80||0)+(orgMetrics.pos_81_90||0)+(orgMetrics.pos_91_100||0),
+            orgKeywords1_3: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0),
             orgCost: null,
             liveRefdomains: null,
             liveBacklinks: null,
@@ -636,7 +639,7 @@ export default {
           redirectMap,
         };
 
-        return new Response(JSON.stringify({ ...result, _debug: { drData, metricsData, blData, topPagesRaw: topPagesData } }), {
+        return new Response(JSON.stringify(result), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
