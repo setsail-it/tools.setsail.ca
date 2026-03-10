@@ -2854,7 +2854,54 @@ function initImageStage() {
   if (gEl) gEl.value = getGlobalImageStyle();
   renderImageQueue();
   updateImageProgress();
+  // Load persisted images from KV in background
+  loadAllPageImages();
 }
+
+async function savePageImages(slug) {
+  if (!S.projectId || !S.images?.[slug]) return;
+  try {
+    const payload = JSON.stringify(S.images[slug]);
+    await fetch('/api/images/' + S.projectId + '/' + encodeURIComponent(slug), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  } catch(e) { console.warn('[IMG] savePageImages failed:', e); }
+}
+
+async function loadAllPageImages() {
+  if (!S.projectId) return;
+  try {
+    const listRes = await fetch('/api/images/' + S.projectId);
+    if (!listRes.ok) return;
+    const { slugs } = await listRes.json();
+    if (!slugs?.length) return;
+    let anyLoaded = false;
+    await Promise.all(slugs.map(async slug => {
+      try {
+        const res = await fetch('/api/images/' + S.projectId + '/' + encodeURIComponent(slug));
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.slots) return;
+        if (!S.images[slug]) S.images[slug] = data;
+        else {
+          // Restore b64 into existing slots
+          data.slots.forEach((sl, i) => {
+            if (sl?.b64 && S.images[slug].slots[i]) {
+              S.images[slug].slots[i].b64 = sl.b64;
+              S.images[slug].slots[i].mimeType = sl.mimeType || 'image/png';
+              S.images[slug].slots[i].status = 'done';
+            }
+          });
+        }
+        anyLoaded = true;
+      } catch(e) { console.warn('[IMG] load failed for', slug, e); }
+    }));
+    if (anyLoaded) { renderImageQueue(); updateImageProgress(); }
+  } catch(e) { console.warn('[IMG] loadAllPageImages failed:', e); }
+}
+
 
 function buildImagePrompt(page, slotIdx, styleOverride) {
   const style = (styleOverride || '').trim() || getGlobalImageStyle();
@@ -3088,6 +3135,7 @@ async function generateImage(slug, slotIdx, customPrompt) {
       slot.b64 = data.imageData;
       slot.mimeType = data.mimeType || 'image/png';
       slot.errorMsg = null;
+      savePageImages(slug); // persist to KV immediately
     } else {
       slot.status = 'error';
       slot.errorMsg = data.error || 'Unknown error';

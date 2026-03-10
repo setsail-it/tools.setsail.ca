@@ -120,8 +120,56 @@ export default {
       }
     }
 
+    // ── Per-page image storage ────────────────────────────────────
+    // PUT /api/images/:projectId/:slug — save page images (with b64)
+    const imgPutMatch = url.pathname.match(/^\/api\/images\/([^/]+)\/([^/]+)$/);
+    if (imgPutMatch && request.method === 'PUT') {
+      const [, projectId, slug] = imgPutMatch;
+      try {
+        const body = await request.text();
+        await env.SETSAIL_OS.put('img:' + projectId + ':' + slug, body);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
 
-    // ── DEBUG (secrets check) ─────────────────────────────────────
+    // GET /api/images/:projectId/:slug — load page images
+    const imgGetMatch = url.pathname.match(/^\/api\/images\/([^/]+)\/([^/]+)$/);
+    if (imgGetMatch && request.method === 'GET') {
+      const [, projectId, slug] = imgGetMatch;
+      try {
+        const val = await env.SETSAIL_OS.get('img:' + projectId + ':' + slug);
+        if (!val) return new Response(JSON.stringify(null), { headers: { 'Content-Type': 'application/json', ...cors } });
+        return new Response(val, { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // GET /api/images/:projectId — list slugs that have saved images
+    const imgListMatch = url.pathname.match(/^\/api\/images\/([^/]+)$/);
+    if (imgListMatch && request.method === 'GET') {
+      const [, projectId] = imgListMatch;
+      try {
+        const prefix = 'img:' + projectId + ':';
+        const list = await env.SETSAIL_OS.list({ prefix });
+        const slugs = list.keys.map(k => k.name.slice(prefix.length));
+        return new Response(JSON.stringify({ slugs }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+
     if (url.pathname === '/api/debug-env' && request.method === 'GET') {
       return new Response(JSON.stringify({
         has_anthropic: !!env.ANTHROPIC_API_KEY,
