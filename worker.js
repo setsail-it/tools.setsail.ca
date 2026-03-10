@@ -558,7 +558,7 @@ export default {
             if (gemRes.status === 404) return { skip: true, error: `${model}: not available on this key` };
             if (gemRes.status === 429) {
               if (attempt < retries - 1) continue;
-              return { skip: false, error: `${model}: rate limited — free tier is ~2/min, wait 30s and retry` };
+              return { skip: true, error: `${model}: rate limited — trying next model` };
             }
             if (!gemRes.ok) {
               const body = await gemRes.text().catch(() => '');
@@ -582,9 +582,13 @@ export default {
         }
 
         if (!imagePart) {
-          return new Response(JSON.stringify({ error: 'Image generation failed', detail: lastError }), {
-            status: 500, headers: { 'Content-Type': 'application/json', ...cors }
-          });
+          const isRateLimit = lastError && lastError.includes('rate limited');
+          return new Response(JSON.stringify({
+            error: isRateLimit
+              ? 'Rate limited — billing may take a few minutes to activate. Wait 30s and try again.'
+              : 'Image generation failed',
+            detail: lastError
+          }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
         }
 
         return new Response(JSON.stringify({
