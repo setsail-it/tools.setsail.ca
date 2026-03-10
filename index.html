@@ -3291,6 +3291,8 @@ function renderLayoutQueue() {
       html += `<div style="display:flex;align-items:baseline;gap:6px">`;
       html += `<span style="font-size:13px;color:${isDone||isExpanded?'var(--dark)':'var(--n3)'};font-weight:${isDone?'500':'400'}">${esc(p.page_name)}</span>`;
       html += `<span style="font-size:10px;color:${pColor};padding:0 5px;background:rgba(0,0,0,0.04);border-radius:3px;flex-shrink:0">${p.priority}</span>`;
+      const imgsDone = (S.images?.[p.slug]?.slots||[]).filter(s=>s.b64).length;
+      if (imgsDone > 0) html += `<span style="font-size:10px;color:#158E1D;background:rgba(21,142,29,0.1);border-radius:3px;padding:0 5px;flex-shrink:0"><i class="ti ti-photo-check" style="font-size:10px"></i> ${imgsDone} img${imgsDone>1?'s':''}</span>`;
       if (isErr&&!isExpanded) html += `<span style="font-size:11px;color:var(--error)">Error</span>`;
       html += `</div>`;
       html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
@@ -3305,10 +3307,12 @@ function renderLayoutQueue() {
             + '<div id="layout-stream-'+p.slug+'" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>'
             + '<button class="btn btn-danger sm" style="margin-top:10px" onclick="stopLayout()"><i class="ti ti-player-stop"></i> Stop</button>';
         } else if (isDone) {
+          const hasNewImgs = (S.images?.[p.slug]?.slots||[]).some(s=>s.b64);
           html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
             + '<button class="btn btn-ghost sm" onclick="printWireframe(\''+p.slug+'\')"><i class="ti ti-printer"></i> Print / Export PDF</button>'
             + '<button class="btn btn-ghost sm" onclick="toggleLayoutCode(\''+p.slug+'\')"><i class="ti ti-code"></i> Show HTML</button>'
             + '<button class="btn btn-ghost sm" id="layout-edit-btn-'+p.slug+'" onclick="toggleLayoutEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
+            + (hasNewImgs ? '<button class="btn btn-ghost sm" onclick="reinjectImages(\''+p.slug+'\')" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>' : '')
             + '<button class="btn btn-danger sm" onclick="redoWireframe(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
             + '</div>'
             + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">'
@@ -3418,17 +3422,27 @@ async function runWireframe(slug) {
     ? `\n\nTEMPLATE REFERENCE: The client uses a Figma template at ${figmaUrl}. Where relevant, note which template section to use (e.g. "[Use: Hero Split variant from template]") as a comment below each wireframe block.`
     : '';
 
-  const systemPrompt = `You are a senior UX/UI designer at Setsail Marketing creating a full-page annotated wireframe document. Output self-contained HTML that renders as a clean printable wireframe — grey placeholder boxes, section labels, and annotated content outlines. No live images, no external fonts.
+  const systemPrompt = `You are a senior UX/UI designer at Setsail Marketing creating a full-page annotated wireframe document. Output self-contained HTML that renders as a clean printable wireframe with real images, section labels, and annotated content outlines.
 
 WIREFRAME STYLE:
 - White background, system font (system-ui, -apple-system, sans-serif)
 - Each section = a distinct block with a light grey background (#f5f5f5) or white, separated by subtle borders
-- Use rectangle placeholders (background:#e0e0e0, border:1px solid #ccc) for images/media
-- Label every placeholder with its content type (e.g. "HERO IMAGE — 1440×700" or "CLIENT LOGO STRIP")
 - Every section has: a section type label (caps, small, grey), a heading, content outline bullets, and a CRO/layout note at the bottom in a yellow annotation box (#fffde7 background)
 - Font sizes: section-label 10px caps tracking, heading 18-24px, body 13px, annotation 11px italic
 - Max width 900px, centered, padding 0 40px
-- Print-friendly: avoid shadows, keep contrast high${templateNote}
+- Print-friendly: avoid shadows, keep contrast high
+
+IMAGE PLACEHOLDERS: For every image/photo/visual in the layout, use EXACTLY this HTML (single non-nested div, no children other than text):
+<div class="img-slot" data-slot="SLOT_NAME" style="background:#e0e0e0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:11px;color:#888;font-style:italic;text-align:center;padding:8px;min-height:200px;">SLOT_NAME placeholder</div>
+
+Use these SLOT_NAME values (choose the best fit, one use per slot):
+- hero-banner → main hero image (wide, top of page)
+- section-feature → mid-page feature or about image
+- detail-close-up → close-up detail, icon-style, or testimonial visual
+- content-blog → editorial, blog, or supporting content image
+- cta-closing → closing CTA or footer visual
+
+Each slot name can only be used ONCE per page. For logo strips, team grids, or decorative elements use standard grey divs without data-slot.${templateNote}
 
 OUTPUT: Complete self-contained HTML file starting with <!DOCTYPE html>. No markdown, no fences.`;
 
@@ -3477,13 +3491,41 @@ Generate a complete section-by-section wireframe. Include every section a high-c
     html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:0;padding:40px;max-width:900px;margin:0 auto;color:#111}</style></head><body>' + html + '</body></html>';
   }
 
+  html = injectImagesIntoWireframe(slug, html);
+
   S.layout[slug] = { html, generatedAt: Date.now() };
   layoutCurrentPage = null;
   scheduleSave();
   renderLayoutQueue();
 }
 
-function printWireframe(slug) {
+function injectImagesIntoWireframe(slug, html) {
+  const slotMap = { 'hero-banner': 0, 'section-feature': 1, 'detail-close-up': 2, 'content-blog': 3, 'cta-closing': 4 };
+  const imgData = S.images?.[slug];
+  if (!imgData) return html;
+  let result = html;
+  for (const [slotKey, idx] of Object.entries(slotMap)) {
+    const slot = (imgData.slots || [])[idx];
+    if (!slot?.b64) continue;
+    // Match the data-slot div (single line or simple content, no nested divs)
+    const re = new RegExp('<div[^>]*data-slot=["\']' + slotKey + '["\'][^>]*>[^<]*<\\/div>', 'gi');
+    const style = slotKey === 'hero-banner' || slotKey === 'cta-closing'
+      ? 'width:100%;max-height:420px;object-fit:cover;display:block;border-radius:4px'
+      : 'width:100%;max-height:320px;object-fit:cover;display:block;border-radius:4px';
+    result = result.replace(re, `<img src="data:${slot.mimeType};base64,${slot.b64}" style="${style}" alt="${slotKey}">`);
+  }
+  return result;
+}
+
+function reinjectImages(slug) {
+  const layout = S.layout?.[slug];
+  if (!layout?.html) return;
+  // Strip existing injected imgs, re-run inject (can't un-inject, so just note if images updated)
+  S.layout[slug].html = injectImagesIntoWireframe(slug, layout.html);
+  scheduleSave();
+  renderLayoutQueue();
+}
+
   const html = (S.layout[slug]||{}).html;
   if (!html) return;
   const win = window.open('', '_blank');
