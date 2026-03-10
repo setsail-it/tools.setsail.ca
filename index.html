@@ -192,7 +192,7 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
         <button class="btn btn-ghost sm" onclick="showProjects()"><i class="ti ti-arrow-left"></i> Projects</button>
       </div>
-      <div class="eyebrow">Stage 1 of 6</div>
+      <div class="eyebrow">Stage 1 of 8</div>
       <h2 class="ph">New project</h2>
       <p class="psub">Fill in client details and paste the full strategy document.</p>
 
@@ -220,6 +220,11 @@ textarea.inp{resize:vertical}
         <div class="section-mark"><span class="section-mark-label">Competitors</span><div class="section-mark-line"></div></div>
         <textarea class="inp" id="f-competitors" rows="3" placeholder="competitor1.ca&#10;competitor2.com"></textarea>
       </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Image Style</span><div class="section-mark-line"></div></div>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Global Image Style Guidelines <span style="color:var(--n2)">— applied to all AI-generated images by default (overrideable per page in Stage 5)</span></label>
+        <textarea class="inp" id="f-image-style" rows="3" placeholder="e.g. Professional photography style, clean and modern, neutral backgrounds, construction/trades industry context, no people unless requested, bright natural lighting"></textarea>
+      </div>
       <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
       <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
     </div>
@@ -228,7 +233,7 @@ textarea.inp{resize:vertical}
   <!-- RESEARCH -->
   <div class="screen" id="screen-research">
     <div style="max-width:780px">
-      <div class="eyebrow">Stage 2 of 6</div>
+      <div class="eyebrow">Stage 2 of 8</div>
       <h2 class="ph sm">Research Brief</h2>
       <p class="psub">Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
       <button class="btn btn-primary" id="research-run-btn" onclick="runResearch()"><i class="ti ti-brain"></i> Run Research Analysis</button>
@@ -245,7 +250,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 3 of 6</div>
+          <div class="eyebrow">Stage 3 of 8</div>
           <h2 class="ph sm">Sitemap + Keyword Map</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
@@ -281,7 +286,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-copy">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 4 of 7</div>
+        <div class="eyebrow">Stage 4 of 8</div>
         <h2 class="ph sm">Copy Generation</h2>
         <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
@@ -292,6 +297,47 @@ textarea.inp{resize:vertical}
       <div id="copy-queue"></div>
       <div id="copy-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
         <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label">All pages complete</span></div>
+        <button class="btn btn-primary" onclick="initImageStage();goTo('images')"><i class="ti ti-photo"></i> Generate Images</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMAGES -->
+  <div class="screen" id="screen-images">
+    <div style="max-width:900px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="eyebrow">Stage 5 of 8</div>
+          <h2 class="ph sm">Image Generation</h2>
+          <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost sm" onclick="toggleImageStylePanel()"><i class="ti ti-palette"></i> Style Guide</button>
+          <button class="btn btn-ghost sm" id="image-stop-btn" onclick="stopImageGen()" style="display:none"><i class="ti ti-player-stop"></i> Stop</button>
+          <button class="btn btn-primary" onclick="generateAllPagesImages()"><i class="ti ti-player-play"></i> Generate All</button>
+        </div>
+      </div>
+
+      <!-- Global style panel -->
+      <div id="image-style-panel" style="display:none;background:var(--panel);border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:8px">Global Image Style <span style="font-weight:400;color:var(--n2)">— applied to all pages unless overridden below</span></div>
+        <textarea id="image-style-global-edit" rows="2" style="width:100%;font-size:12px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.5"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-ghost sm" onclick="saveGlobalImageStyle()"><i class="ti ti-check"></i> Save</button>
+          <button class="btn btn-ghost sm" onclick="document.getElementById('image-style-panel').style.display='none'">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div id="image-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span id="image-count-label" style="color:var(--n2)"></span><span id="image-pct-label" style="color:var(--green);font-weight:500"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="image-progress-fill" style="width:0%"></div></div>
+      </div>
+
+      <div id="image-queue"></div>
+
+      <div id="image-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <div class="success-banner"><i class="ti ti-check"></i><span>All images generated</span></div>
         <button class="btn btn-primary" onclick="initLayout();goTo('layout')"><i class="ti ti-arrow-right"></i> Generate Layout</button>
       </div>
     </div>
@@ -302,7 +348,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 5 of 7</div>
+          <div class="eyebrow">Stage 6 of 8</div>
           <h2 class="ph sm">Page Wireframes</h2>
           <p class="psub" style="margin-bottom:0">AI generates full annotated wireframes — ready to hand to a designer.</p>
         </div>
@@ -329,7 +375,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-schema">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 6 of 7</div>
+        <div class="eyebrow">Stage 7 of 8</div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
         <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
       </div>
@@ -350,7 +396,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:920px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 7 of 7</div>
+          <div class="eyebrow">Stage 8 of 8</div>
           <h2 class="ph sm">Export Package</h2>
           <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
         </div>
@@ -374,10 +420,11 @@ textarea.inp{resize:vertical}
 // ── STATE ──────────────────────────────────────────────────────────
 const S = {
   projectId: null, stage: 'setup',
-  setup: null, research: null, pages: [], copy: {}, schema: {},
+  setup: null, research: null, pages: [], copy: {}, schema: {}, images: {},
   copyStop: false, schemaStop: false,
   copyRunning: false, schemaRunning: false,
   copyPreviewSlug: null, schemaPreviewSlug: null,
+  imageGenRunning: false, imageGenStop: false,
 };
 let sitemapEditMode = false;
 
@@ -405,6 +452,11 @@ async function saveProject() {
       kwResearch: S.kwResearch || null,
       sitemapApproved: S.sitemapApproved || false,
       layout: S.layout || {},
+      // Strip base64 image data before saving (too large for KV) — keep prompts/status only
+      images: Object.fromEntries(Object.entries(S.images || {}).map(([slug, data]) => [
+        slug,
+        { ...data, slots: (data.slots||[]).map(sl => ({ status: sl.status, prompt: sl.prompt, mimeType: sl.mimeType })) }
+      ])),
       savedAt: Date.now(),
     };
     const res = await fetch('/api/projects/' + S.projectId, {
@@ -488,7 +540,7 @@ async function showProjects() {
 function startNewProject() {
   S.projectId = 'proj-' + Date.now();
   S.stage = 'setup'; S.setup = null; S.research = null;
-  S.pages = []; S.copy = {}; S.schema = {};
+  S.pages = []; S.copy = {}; S.schema = {}; S.images = {};
   document.getElementById('projects-screen').style.display = 'none';
   goTo('setup');
 }
@@ -509,6 +561,7 @@ async function resumeProject(id) {
   S.kwResearch = data.kwResearch || null;
   S.sitemapApproved = data.sitemapApproved || false;
   S.layout = data.layout || {};
+  S.images = data.images || {};
 
   document.getElementById('projects-screen').style.display = 'none';
 
@@ -526,6 +579,7 @@ async function resumeProject(id) {
   if (S.stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
+  if (S.stage === 'images' && S.pages.length) { initImageStage(); }
   if (S.stage === 'layout' && S.pages.length) { initLayout(); }
   if (S.stage === 'schema' && S.pages.length) { initSchema(); }
   if (S.stage === 'export') renderExport();
@@ -548,6 +602,8 @@ function prefillSetup() {
   document.getElementById('f-strategy').value = s.strategy || '';
   document.getElementById('f-voice').value = s.voice || '';
   document.getElementById('f-competitors').value = s.competitors || '';
+  const imgStyleEl = document.getElementById('f-image-style');
+  if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
@@ -556,6 +612,7 @@ const STAGES = [
   {id:'research',label:'Research',icon:'ti-search'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
+  {id:'images',label:'Images',icon:'ti-photo'},
   {id:'layout',label:'Layout',icon:'ti-layout'},
   {id:'schema',label:'Schema',icon:'ti-code'},
   {id:'export',label:'Export',icon:'ti-package-export'},
@@ -597,6 +654,7 @@ function renderStageContent(stage) {
   if (stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
   if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
   if (stage === 'copy' && S.pages.length) initCopy();
+  if (stage === 'images' && S.pages.length) initImageStage();
   if (stage === 'layout' && S.pages.length) initLayout();
   if (stage === 'schema' && S.pages.length) initSchema();
   if (stage === 'export') renderExport();
@@ -818,6 +876,7 @@ function setupNext() {
     pricing: document.getElementById('f-pricing').value.trim(),
     strategy, voice: document.getElementById('f-voice').value.trim(),
     competitors: document.getElementById('f-competitors').value.trim(),
+    imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-div2').style.display = '';
@@ -2755,6 +2814,378 @@ function checkCopyAllDone() {
     document.getElementById('copy-done-label').textContent = 'All '+done+' pages written';
     document.getElementById('copy-all-done').style.display = 'flex';
   } else { document.getElementById('copy-all-done').style.display = 'none'; }
+}
+
+// ── IMAGE GENERATION (Stage 5) ───────────────────────────────────
+
+const IMAGE_SLOTS = [
+  { label: 'Hero Banner',       ratio: '16:9 wide',   hint: 'main hero banner, dramatic wide composition, professional' },
+  { label: 'Section Feature',   ratio: '4:3',         hint: 'supporting section image, feature highlight, clean background' },
+  { label: 'Detail / Close-up', ratio: '1:1 square',  hint: 'detailed close-up or icon-style visual, square format' },
+  { label: 'Content / Blog',    ratio: '3:2',         hint: 'content illustration or editorial visual, natural lighting' },
+  { label: 'CTA / Closing',     ratio: '16:9 wide',   hint: 'call-to-action or closing visual, warm inviting tone' },
+];
+
+const DEFAULT_IMAGE_STYLE = 'Professional commercial photography style. Clean, modern, well-lit. Neutral or white backgrounds. No text overlays. No watermarks. Business-appropriate.';
+
+function getGlobalImageStyle() {
+  return (S.setup?.imageStyle || '').trim() || DEFAULT_IMAGE_STYLE;
+}
+
+function initImageStage() {
+  // Initialise slot state for all pages that don't have it yet
+  (S.pages || []).forEach(p => {
+    if (!p.is_structural) {
+      if (!S.images[p.slug]) {
+        S.images[p.slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((sl, i) => ({
+          status: 'empty', prompt: buildImagePrompt(p, i, null), b64: null, mimeType: null
+        }))};
+      } else {
+        // Ensure 5 slots exist (in case of old data)
+        const existing = S.images[p.slug];
+        while ((existing.slots || []).length < 5) {
+          const i = existing.slots.length;
+          existing.slots.push({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null });
+        }
+      }
+    }
+  });
+  // Prefill global style edit box
+  const gEl = document.getElementById('image-style-global-edit');
+  if (gEl) gEl.value = getGlobalImageStyle();
+  renderImageQueue();
+  updateImageProgress();
+}
+
+function buildImagePrompt(page, slotIdx, styleOverride) {
+  const style = (styleOverride || '').trim() || getGlobalImageStyle();
+  const slot = IMAGE_SLOTS[slotIdx] || IMAGE_SLOTS[0];
+  const client = S.setup?.client || '';
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const industry = (S.research?.primary_services || []).slice(0,2).join(', ') || page.keyword_cluster || '';
+  const pageDesc = page.page_type === 'blog'
+    ? `blog post titled "${page.page_name}" about ${page.primary_keyword || page.page_name}`
+    : `${page.page_type} page for "${page.page_name}" (${page.primary_keyword || page.page_name})`;
+
+  let prompt = `${style}\n\n`;
+  prompt += `Create a ${slot.label.toLowerCase()} image (${slot.ratio}) for a ${pageDesc}.`;
+  if (client) prompt += ` Business: ${client}.`;
+  if (geo) prompt += ` Location: ${geo}.`;
+  if (industry) prompt += ` Industry: ${industry}.`;
+  prompt += ` Style note: ${slot.hint}.`;
+  return prompt;
+}
+
+function toggleImageStylePanel() {
+  const panel = document.getElementById('image-style-panel');
+  const gEl = document.getElementById('image-style-global-edit');
+  if (panel.style.display === 'none') {
+    gEl.value = getGlobalImageStyle();
+    panel.style.display = 'block';
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function saveGlobalImageStyle() {
+  const val = (document.getElementById('image-style-global-edit')?.value || '').trim();
+  if (!S.setup) return;
+  S.setup.imageStyle = val;
+  document.getElementById('image-style-panel').style.display = 'none';
+  scheduleSave();
+  // Regenerate prompts for any empty slots
+  (S.pages || []).forEach(p => {
+    if (!p.is_structural && S.images[p.slug]) {
+      const imgData = S.images[p.slug];
+      imgData.slots.forEach((sl, i) => {
+        if (sl.status === 'empty') sl.prompt = buildImagePrompt(p, i, imgData.styleOverride);
+      });
+    }
+  });
+  renderImageQueue();
+}
+
+let imageExpandedSlug = null;
+
+function renderImageQueue() {
+  const el = document.getElementById('image-queue');
+  if (!el) return;
+  const pages = (S.pages || []).filter(p => !p.is_structural);
+  if (!pages.length) { el.innerHTML = '<p style="color:var(--n2);font-size:13px">No pages yet — complete Stage 3 first.</p>'; return; }
+
+  const groups = [
+    { label: 'Core Pages',           icon: 'ti-home',         types: ['home','about','utility'] },
+    { label: 'Services',             icon: 'ti-tool',         types: ['service'] },
+    { label: 'Industry & Location',  icon: 'ti-map-pin',      types: ['industry','location'] },
+    { label: 'Blog Posts',           icon: 'ti-article',      types: ['blog'] },
+    { label: 'Other',                icon: 'ti-file',         types: [] },
+  ];
+  const typeIconMap = { home:'ti-home', about:'ti-info-circle', service:'ti-tool', industry:'ti-building-factory', location:'ti-map-pin', blog:'ti-article', utility:'ti-settings-2' };
+
+  let html = '';
+  groups.forEach(group => {
+    const gPages = group.types.length
+      ? pages.filter(p => group.types.includes(p.page_type))
+      : pages.filter(p => !['home','about','utility','service','industry','location','blog'].includes(p.page_type));
+    if (!gPages.length) return;
+
+    const doneCount = gPages.filter(p => {
+      const imgData = S.images[p.slug];
+      return imgData && imgData.slots.filter(s => s.status === 'done').length === 5;
+    }).length;
+
+    html += `<div style="margin-bottom:20px">`;
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:2px solid var(--n1);margin-bottom:8px">`;
+    html += `<i class="ti ${group.icon}" style="color:var(--n2);font-size:14px"></i>`;
+    html += `<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--n2)">${group.label}</span>`;
+    html += `<span style="font-size:11px;color:var(--n2);margin-left:auto">${doneCount}/${gPages.length}</span>`;
+    html += `</div>`;
+
+    gPages.forEach(p => {
+      const imgData = S.images[p.slug] || { slots: [], styleOverride: null };
+      const doneSlots = (imgData.slots || []).filter(s => s.status === 'done').length;
+      const allDone = doneSlots === 5;
+      const isExpanded = imageExpandedSlug === p.slug;
+      const tIcon = typeIconMap[p.page_type] || 'ti-file';
+      const pBadgeColor = p.priority === 'P1' ? 'var(--dark)' : p.priority === 'P2' ? 'var(--n2)' : '#bbb';
+
+      html += `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden${allDone ? ';border-color:var(--green)' : ''}">`;
+      // Row header
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--white)" onclick="toggleImageExpand('${p.slug}')">`;
+      html += `<i class="ti ${tIcon}" style="color:var(--n2);font-size:13px;flex-shrink:0"></i>`;
+      html += `<div style="flex:1;min-width:0">`;
+      html += `<div style="font-size:13px;font-weight:500;color:var(--dark)">${esc(p.page_name)}</div>`;
+      html += `<div style="font-size:11px;color:var(--n2);margin-top:1px">/${esc(p.slug)}</div>`;
+      html += `</div>`;
+      // Slot mini-previews
+      html += `<div style="display:flex;gap:3px;align-items:center">`;
+      for (let i = 0; i < 5; i++) {
+        const sl = (imgData.slots || [])[i] || { status: 'empty' };
+        const dot = sl.status === 'done' ? 'var(--green)' : sl.status === 'generating' ? 'var(--lime)' : sl.status === 'error' ? '#E53935' : 'var(--n1)';
+        html += `<div style="width:8px;height:8px;border-radius:2px;background:${dot}"></div>`;
+      }
+      html += `</div>`;
+      html += `<span style="font-size:10px;font-weight:600;color:${pBadgeColor};background:${p.priority==='P1'?'var(--dark)':p.priority==='P2'?'var(--n1)':'var(--n1)'};color:${p.priority==='P1'?'white':'var(--n2)'};padding:2px 6px;border-radius:10px;flex-shrink:0">${p.priority}</span>`;
+      html += `<button class="btn btn-ghost sm" style="flex-shrink:0" onclick="event.stopPropagation();generateAllImages('${p.slug}')"><i class="ti ti-player-play"></i> Generate All</button>`;
+      html += `<i class="ti ${isExpanded ? 'ti-chevron-up' : 'ti-chevron-down'}" style="color:var(--n2);font-size:13px;flex-shrink:0"></i>`;
+      html += `</div>`;
+
+      // Expanded panel
+      if (isExpanded) {
+        html += `<div style="padding:12px 14px 14px;border-top:1px solid var(--border);background:var(--white)">`;
+        // Per-page style override
+        html += `<div style="margin-bottom:12px">`;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">`;
+        html += `<span style="font-size:11px;font-weight:500;color:var(--dark)">Page Style Override</span>`;
+        if (imgData.styleOverride) html += `<span style="font-size:10px;background:var(--lime);color:var(--dark);padding:1px 6px;border-radius:10px">active</span>`;
+        html += `</div>`;
+        html += `<div style="display:flex;gap:6px;align-items:flex-start">`;
+        html += `<textarea id="img-style-override-${p.slug}" rows="2" style="flex:1;font-size:12px;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.5" placeholder="Leave blank to use global style. Describe specific photography/art direction for this page only...">${esc(imgData.styleOverride || '')}</textarea>`;
+        html += `<div style="display:flex;flex-direction:column;gap:4px">`;
+        html += `<button class="btn btn-ghost sm" onclick="savePageImageStyle('${p.slug}')"><i class="ti ti-check"></i> Save</button>`;
+        if (imgData.styleOverride) html += `<button class="btn btn-ghost sm" onclick="clearPageImageStyle('${p.slug}')"><i class="ti ti-x"></i> Clear</button>`;
+        html += `</div></div></div>`;
+
+        // 5 image slots
+        html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">`;
+        IMAGE_SLOTS.forEach((slotDef, i) => {
+          const sl = (imgData.slots || [])[i] || { status: 'empty', prompt: '' };
+          html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel)">`;
+          // Image area
+          if (sl.status === 'done' && sl.b64) {
+            html += `<div style="aspect-ratio:1;overflow:hidden;background:#f0f0f0"><img src="data:${sl.mimeType||'image/png'};base64,${sl.b64}" style="width:100%;height:100%;object-fit:cover"></div>`;
+          } else if (sl.status === 'generating') {
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--panel)"><span class="spinner" style="width:20px;height:20px"></span></div>`;
+          } else if (sl.status === 'error') {
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#fff0f0;flex-direction:column;gap:4px"><i class="ti ti-alert-circle" style="color:#E53935;font-size:20px"></i><span style="font-size:10px;color:#E53935;text-align:center;padding:0 6px">Error</span></div>`;
+          } else {
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--panel);flex-direction:column;gap:4px"><i class="ti ti-photo" style="color:var(--n2);font-size:24px"></i><span style="font-size:10px;color:var(--n2)">${slotDef.ratio}</span></div>`;
+          }
+          // Slot footer
+          html += `<div style="padding:7px 8px">`;
+          html += `<div style="font-size:10px;font-weight:600;color:var(--dark);margin-bottom:4px">${esc(slotDef.label)}</div>`;
+          html += `<div style="display:flex;gap:4px;flex-wrap:wrap">`;
+          if (sl.status !== 'generating') {
+            html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="generateImage('${p.slug}',${i})"><i class="ti ti-refresh" style="font-size:10px"></i> ${sl.status === 'done' ? 'Redo' : 'Generate'}</button>`;
+          }
+          if (sl.status !== 'generating') {
+            html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="openPromptEditor('${p.slug}',${i})"><i class="ti ti-edit" style="font-size:10px"></i> Prompt</button>`;
+          }
+          html += `</div>`;
+          // Prompt editor (inline)
+          html += `<div id="prompt-editor-${p.slug}-${i}" style="display:none;margin-top:6px">`;
+          html += `<textarea id="prompt-text-${p.slug}-${i}" rows="4" style="width:100%;font-size:10px;padding:5px 7px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.4">${esc(sl.prompt || '')}</textarea>`;
+          html += `<div style="display:flex;gap:4px;margin-top:4px">`;
+          html += `<button class="btn btn-primary sm" style="font-size:10px;padding:3px 8px" onclick="generateImageWithCustomPrompt('${p.slug}',${i})"><i class="ti ti-player-play" style="font-size:10px"></i> Generate</button>`;
+          html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="document.getElementById('prompt-editor-${p.slug}-${i}').style.display='none'">Cancel</button>`;
+          html += `</div></div>`;
+          html += `</div></div>`;
+        });
+        html += `</div></div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  el.innerHTML = html;
+}
+
+function toggleImageExpand(slug) {
+  imageExpandedSlug = imageExpandedSlug === slug ? null : slug;
+  renderImageQueue();
+}
+
+function openPromptEditor(slug, slotIdx) {
+  const editorEl = document.getElementById(`prompt-editor-${slug}-${slotIdx}`);
+  if (!editorEl) return;
+  editorEl.style.display = editorEl.style.display === 'none' ? 'block' : 'none';
+}
+
+function savePageImageStyle(slug) {
+  const val = (document.getElementById(`img-style-override-${slug}`)?.value || '').trim();
+  if (!S.images[slug]) return;
+  S.images[slug].styleOverride = val || null;
+  // Rebuild empty slot prompts with new override
+  const page = S.pages.find(p => p.slug === slug);
+  if (page) {
+    S.images[slug].slots.forEach((sl, i) => {
+      if (sl.status === 'empty') sl.prompt = buildImagePrompt(page, i, val || null);
+    });
+  }
+  scheduleSave();
+  renderImageQueue();
+}
+
+function clearPageImageStyle(slug) {
+  if (!S.images[slug]) return;
+  S.images[slug].styleOverride = null;
+  scheduleSave();
+  renderImageQueue();
+}
+
+async function generateImage(slug, slotIdx, customPrompt) {
+  if (!S.images[slug]) return;
+  const page = S.pages.find(p => p.slug === slug);
+  if (!page) return;
+  const slot = S.images[slug].slots[slotIdx];
+  if (!slot) return;
+
+  const prompt = customPrompt || slot.prompt || buildImagePrompt(page, slotIdx, S.images[slug].styleOverride);
+  slot.prompt = prompt;
+  slot.status = 'generating';
+  slot.b64 = null;
+  renderImageQueue();
+
+  try {
+    const res = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (data.imageData) {
+      slot.status = 'done';
+      slot.b64 = data.imageData;
+      slot.mimeType = data.mimeType || 'image/png';
+    } else {
+      slot.status = 'error';
+      console.error('[IMG] generation error:', data.error, data.detail);
+    }
+  } catch (err) {
+    slot.status = 'error';
+    console.error('[IMG] fetch error:', err);
+  }
+
+  scheduleSave();
+  renderImageQueue();
+  updateImageProgress();
+  checkImageAllDone();
+}
+
+async function generateImageWithCustomPrompt(slug, slotIdx) {
+  const textarea = document.getElementById(`prompt-text-${slug}-${slotIdx}`);
+  const customPrompt = textarea?.value?.trim();
+  if (!customPrompt) return;
+  if (S.images[slug]?.slots[slotIdx]) {
+    S.images[slug].slots[slotIdx].prompt = customPrompt;
+  }
+  await generateImage(slug, slotIdx, customPrompt);
+}
+
+async function generateAllImages(slug) {
+  if (S.imageGenRunning) return;
+  S.imageGenRunning = true;
+  S.imageGenStop = false;
+  document.getElementById('image-stop-btn').style.display = '';
+  document.getElementById('image-progress').style.display = 'block';
+  imageExpandedSlug = slug;
+  renderImageQueue();
+
+  for (let i = 0; i < 5; i++) {
+    if (S.imageGenStop) break;
+    await generateImage(slug, i);
+    await new Promise(r => setTimeout(r, 500)); // small delay between requests
+  }
+
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+  renderImageQueue();
+  checkImageAllDone();
+}
+
+async function generateAllPagesImages() {
+  if (S.imageGenRunning) return;
+  S.imageGenRunning = true;
+  S.imageGenStop = false;
+  document.getElementById('image-stop-btn').style.display = '';
+  document.getElementById('image-progress').style.display = 'block';
+
+  const pages = (S.pages || []).filter(p => !p.is_structural);
+  for (const page of pages) {
+    if (S.imageGenStop) break;
+    imageExpandedSlug = page.slug;
+    for (let i = 0; i < 5; i++) {
+      if (S.imageGenStop) break;
+      await generateImage(page.slug, i);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+  checkImageAllDone();
+}
+
+function stopImageGen() {
+  S.imageGenStop = true;
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+}
+
+function updateImageProgress() {
+  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const total = pages.length * 5;
+  const done = pages.reduce((acc, p) => {
+    return acc + ((S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length);
+  }, 0);
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const countEl = document.getElementById('image-count-label');
+  const pctEl = document.getElementById('image-pct-label');
+  const fill = document.getElementById('image-progress-fill');
+  if (countEl) countEl.textContent = `${done} of ${total} images`;
+  if (pctEl) pctEl.textContent = ` ${pct}%`;
+  if (fill) fill.style.width = pct + '%';
+  const prog = document.getElementById('image-progress');
+  if (prog) prog.style.display = total > 0 && done > 0 ? 'block' : 'none';
+}
+
+function checkImageAllDone() {
+  const pages = (S.pages || []).filter(p => !p.is_structural);
+  const allDone = pages.length > 0 && pages.every(p =>
+    (S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length === 5
+  );
+  const el = document.getElementById('image-all-done');
+  if (el) el.style.display = allDone ? 'flex' : 'none';
 }
 
 // ── LAYOUT WIREFRAME GENERATOR ──────────────────────────────────

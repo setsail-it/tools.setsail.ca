@@ -516,6 +516,67 @@ export default {
       }
     }
 
+    // ── GENERATE IMAGE (Gemini / Nano Banana 2) ──────────────────
+    if (url.pathname === '/api/generate-image' && request.method === 'POST') {
+      try {
+        const geminiKey = env.GEMINI_API_KEY;
+        if (!geminiKey) {
+          return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured — add it as a Worker secret' }), {
+            status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const { prompt } = await request.json();
+        if (!prompt) {
+          return new Response(JSON.stringify({ error: 'prompt required' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        // Try Nano Banana 2 (Gemini 3.1 Flash Image) first, fall back to Nano Banana (2.5 Flash)
+        const models = [
+          'gemini-3.1-flash-image-preview',
+          'gemini-2.5-flash-preview-image-generation',
+        ];
+
+        let imagePart = null;
+        let lastError = null;
+        for (const model of models) {
+          const gemRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { responseModalities: ['IMAGE'] }
+              })
+            }
+          );
+          if (!gemRes.ok) { lastError = `${model}: HTTP ${gemRes.status}`; continue; }
+          const gemData = await gemRes.json();
+          imagePart = gemData.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+          if (imagePart) break;
+          lastError = `${model}: no image in response — ${JSON.stringify(gemData).slice(0,200)}`;
+        }
+
+        if (!imagePart) {
+          return new Response(JSON.stringify({ error: 'Image generation failed', detail: lastError }), {
+            status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        return new Response(JSON.stringify({
+          imageData: imagePart.inlineData.data,
+          mimeType: imagePart.inlineData.mimeType || 'image/png'
+        }), { headers: { 'Content-Type': 'application/json', ...cors } });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     // Everything else → static assets
     return env.ASSETS.fetch(request);
   }
