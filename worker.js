@@ -305,30 +305,6 @@ export default {
 
 
 
-    // ── PAA DEBUG (temporary — remove after diagnosing) ──────────
-    if (url.pathname === '/api/paa-debug' && request.method === 'POST') {
-      try {
-        const { keywords, country } = await request.json();
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
-        const seeds = (keywords || ['seo services vancouver']).slice(0, 2);
-        const body = seeds.map(kw => ({ keyword: kw, location_code: locationCode, language_code: 'en', depth: 2 }));
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const raw = await res.text();
-        // Return first 8000 chars of raw response so we can see the structure
-        return new Response(JSON.stringify({ httpStatus: res.status, rawSlice: raw.slice(0, 8000) }), {
-          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
-        });
-      } catch(err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
-      }
-    }
-
-
     // ── PAA DEBUG ─────────────────────────────────────────────────
     if (url.pathname === '/api/paa-debug' && (request.method === 'GET' || request.method === 'POST')) {
       try {
