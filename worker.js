@@ -313,7 +313,7 @@ export default {
         const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
         const seeds = (keywords || ['seo services vancouver']).slice(0, 2);
         const body = seeds.map(kw => ({ keyword: kw, location_code: locationCode, language_code: 'en', depth: 2 }));
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -337,8 +337,8 @@ export default {
         }
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const kw = url.searchParams.get('kw') || 'seo services vancouver';
-        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 10, calculate_rectangles: false }];
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 4 }];
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -350,26 +350,29 @@ export default {
         }
         const task = (parsed?.tasks || [])[0] || {};
         const results = task?.result || [];
-        const firstItems = results[0]?.items || [];
-        // Count ALL item types at top level
-        const typeCounts = {};
-        firstItems.forEach(i => { typeCounts[i.type] = (typeCounts[i.type]||0)+1; });
-        // Pull out any PAA blocks and their questions
-        const paaBlocks = firstItems.filter(i => i.type === 'people_also_ask');
-        const paaQuestions = [];
-        paaBlocks.forEach(block => {
-          (block.items||[]).forEach(q => paaQuestions.push({ title: q.title, type: q.type, hasSubItems: !!(q.items?.length) }));
-        });
+        // Dump first result raw (truncated) to understand the structure
+        const firstResult = results[0] || null;
+        const firstResultKeys = firstResult ? Object.keys(firstResult) : [];
+        // Try to find questions at various paths
+        const topItems = firstResult?.items || [];
+        const questions = [];
+        const walk = (nodes, depth) => {
+          (nodes||[]).forEach(n => {
+            const q = n.title || n.question || '';
+            if (q) questions.push({ q, type: n.type, depth, subItems: (n.items||[]).length });
+            if (n.items) walk(n.items, depth+1);
+          });
+        };
+        walk(topItems, 0);
         return new Response(JSON.stringify({
           http_status: res.status,
           task_status: task.status_code,
           task_msg: task.status_message,
           result_count: results.length,
-          top_level_item_count: firstItems.length,
-          type_counts: typeCounts,
-          paa_blocks_found: paaBlocks.length,
-          paa_questions: paaQuestions,
-          first_5_items: firstItems.slice(0,5).map(i => ({ type: i.type, title: i.title||null, items_count: (i.items||[]).length }))
+          first_result_keys: firstResultKeys,
+          top_item_count: topItems.length,
+          all_questions_found: questions.slice(0, 20),
+          first_result_raw: JSON.stringify(firstResult).slice(0, 2000)
         }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
       } catch(err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
@@ -394,11 +397,10 @@ export default {
           keyword: kw,
           location_code: locationCode,
           language_code: 'en',
-          calculate_rectangles: false,
-          depth: 10
+          depth: 4
         }));
 
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
