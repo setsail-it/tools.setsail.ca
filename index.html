@@ -1357,7 +1357,8 @@ async function findMoreKeywords(pageIdx) {
     top40.forEach(k => {
       const added = existing.has(k.kw.toLowerCase().trim());
       rhtml += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
-      rhtml += `<span style="flex:1;font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>`;
+      const _geoF = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+      rhtml += `<div style="flex:1;display:flex;align-items:center;gap:5px"><span style="font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>${intentBadge(k.kw,_geoF)}</div>`;
       rhtml += `<span style="font-size:10px;color:${vCol(k.vol)};min-width:52px;text-align:right">${k.vol.toLocaleString()}/mo</span>`;
       rhtml += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:38px;text-align:right">KD ${k.kd||'?'}</span>`;
       rhtml += `<span style="font-size:10px;color:var(--n2);min-width:38px;text-align:right">${k.score}</span>`;
@@ -1565,7 +1566,8 @@ Recommend the best primary keyword and up to 5 supporting keywords for this page
     rhtml += '<div style="margin-bottom:6px">';
     rhtml += '<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Primary</div>';
     rhtml += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
-    rhtml += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(result.primary_keyword)}</span>`;
+    const _geoAI = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+    rhtml += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(result.primary_keyword)}</span>${intentBadge(result.primary_keyword,_geoAI)}`;
     rhtml += `<span style="font-size:10.5px;color:var(--dark)">${(result.primary_vol||0).toLocaleString()}/mo</span>`;
     rhtml += `<span style="font-size:10.5px;color:${kdCol(result.primary_kd||0)}">KD ${result.primary_kd||'?'}</span>`;
     rhtml += `<span style="font-size:10px;color:var(--n2)">score ${pScore}</span>`;
@@ -1579,7 +1581,8 @@ Recommend the best primary keyword and up to 5 supporting keywords for this page
       result.supporting_keywords.forEach((sk, si) => {
         const sc2 = scoreFn(sk.vol||0, sk.kd||0);
         rhtml += `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">`;
-        rhtml += `<span style="font-size:11px;color:var(--n3)">${esc(sk.kw)}</span>`;
+        const _geoAS = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+        rhtml += `<span style="font-size:11px;color:var(--n3)">${esc(sk.kw)}</span>${intentBadge(sk.kw,_geoAS)}`;
         rhtml += `<span style="font-size:10px;color:var(--n2)">${(sk.vol||0).toLocaleString()}/mo</span>`;
         rhtml += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
         rhtml += `<button onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0})" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
@@ -1955,7 +1958,8 @@ function _renderSitemapResultsInner(approved) {
       html += '<div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       html += '</div>';
-      html += '<div style="color:var(--n3);font-size:12px;padding-top:1px">'+esc(p.primary_keyword||'–')+'</div>';
+      const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+      html += '<div style="display:flex;align-items:center;gap:5px;padding-top:1px"><span style="color:var(--n3);font-size:12px">'+esc(p.primary_keyword||'–')+'</span>'+(p.primary_keyword?intentBadge(p.primary_keyword,_geo1):'')+'</div>';
     }
 
     html += volHtml;
@@ -1986,7 +1990,8 @@ function _renderSitemapResultsInner(approved) {
         const vColor = v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
         html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:3px 14px;background:'+rowBg+';border-top:1px dashed rgba(0,0,0,0.06);align-items:center">';
         html += '<span style="color:var(--n1);font-size:11px;padding-left:4px">↳</span>';
-        html += '<span style="color:var(--n2);font-size:11px">'+esc(kw)+'</span>';
+        const _geoS = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+        html += '<div style="display:flex;align-items:center;gap:5px"><span style="color:var(--n2);font-size:11px">'+esc(kw)+'</span>'+intentBadge(kw,_geoS)+'</div>';
         html += '<span></span>';
         html += '<span style="color:'+vColor+';font-size:11px">'+(v>0?v.toLocaleString():'–')+'</span>';
         html += '<span style="color:'+dColor+';font-size:11px">'+(d>0?d:'–')+'</span>';
@@ -2879,6 +2884,54 @@ function downloadPackage() {
 }
 
 // ── UTILS ──────────────────────────────────────────────────────────
+
+// ── Keyword Intent Classification ──────────────────────────────────────────
+// Rule-based, client-side, no API cost. Priority: local > transactional > commercial > informational > navigational
+function classifyIntent(kw, geo) {
+  if (!kw) return 'unknown';
+  const k = kw.toLowerCase().trim();
+  const g = (geo || '').toLowerCase().replace(/,.*$/, '').trim();
+
+  // Local — contains geo token or "near me"
+  if (g && k.includes(g)) return 'local';
+  if (/\bnear me\b/.test(k)) return 'local';
+  const geoTokens = ['vancouver','calgary','toronto','edmonton','winnipeg','victoria','burnaby','surrey','kelowna','bc','alberta','ontario'];
+  if (geoTokens.some(t => k.includes(t))) return 'local';
+
+  // Transactional — strong purchase/hire signals
+  if (/\b(hire|get a quote|get quote|pricing|cost|price|rates?|packages?|affordable|cheap|buy|order|book|schedule|for sale|near me)\b/.test(k)) return 'transactional';
+  if (/\b(agency|company|firm|consultant|freelancer|provider|contractor)s?\b/.test(k) && !/\bhow\b/.test(k)) return 'transactional';
+
+  // Informational — question/research signals
+  if (/^(how|what|why|when|where|who|which|can|does|is |are |do )/.test(k)) return 'informational';
+  if (/\b(guide|tutorial|tips?|ideas?|examples?|learn|training|course|explained?|definition|meaning|template|checklist|strategy|strategies)\b/.test(k)) return 'informational';
+
+  // Commercial — comparison/evaluation signals
+  if (/\b(best|top|vs\.?|compare|comparison|review|rating|alternative|alternative to|tools?|software|platform|solution)\b/.test(k)) return 'commercial';
+  if (/\b(services?|management|marketing|optimization|advertising|seo|ppc|sem|smm|social media|digital|web)\b/.test(k)) return 'commercial';
+
+  // Navigational — likely brand lookups (short, no modifiers)
+  if (k.split(' ').length <= 2) return 'navigational';
+
+  return 'commercial'; // safe default for B2B marketing terms
+}
+
+const INTENT_STYLE = {
+  local:         { label: 'local',    bg: 'rgba(14,165,233,0.1)',  color: '#0ea5e9',  border: 'rgba(14,165,233,0.3)'  },
+  transactional: { label: 'trans',    bg: 'rgba(21,142,29,0.1)',   color: '#158E1D',  border: 'rgba(21,142,29,0.3)'   },
+  commercial:    { label: 'comm',     bg: 'rgba(230,153,0,0.1)',   color: '#b87800',  border: 'rgba(230,153,0,0.3)'   },
+  informational: { label: 'info',     bg: 'rgba(139,92,246,0.1)',  color: '#7c3aed',  border: 'rgba(139,92,246,0.3)'  },
+  navigational:  { label: 'nav',      bg: 'rgba(0,0,0,0.05)',      color: '#666',     border: 'rgba(0,0,0,0.12)'      },
+  unknown:       { label: '?',        bg: 'rgba(0,0,0,0.04)',      color: '#999',     border: 'rgba(0,0,0,0.1)'       },
+};
+
+function intentBadge(kw, geo) {
+  const intent = classifyIntent(kw, geo);
+  const s = INTENT_STYLE[intent] || INTENT_STYLE.unknown;
+  return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid ${s.border};background:${s.bg};color:${s.color};white-space:nowrap;line-height:1.6;font-weight:500;letter-spacing:.02em">${s.label}</span>`;
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToClip2(el.textContent);}
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
