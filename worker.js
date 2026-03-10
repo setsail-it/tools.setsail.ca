@@ -588,11 +588,10 @@ export default {
           return j;
         };
 
-        const [drData, metricsData, blData, topPagesData] = await Promise.all([
-          ahrefsGet('site-explorer/domain-rating', base),                           // no mode
-          ahrefsGet('site-explorer/metrics', { ...base, country: cc }),             // no mode
-          ahrefsGet('site-explorer/backlinks-stats', withMode),                     // mode ok
-          ahrefsGet('site-explorer/top-pages', {                                    // mode ok
+        const [drData, metricsData, topPagesData] = await Promise.all([
+          ahrefsGet('site-explorer/domain-rating', base),
+          ahrefsGet('site-explorer/metrics', { ...base, mode: 'subdomains', country: cc }),
+          ahrefsGet('site-explorer/top-pages', {
             ...withMode,
             select: 'url,sum_traffic,top_keyword,top_keyword_best_position,referring_domains,keywords,ur',
             limit: 50,
@@ -632,8 +631,8 @@ export default {
             orgKeywords: metricsData?.org_keywords ?? 0,
             orgKeywords1_3: metricsData?.org_keywords_1_3 ?? 0,
             orgCost: metricsData?.org_cost ?? 0,
-            liveRefdomains: blData?.live_refdomains ?? 0,
-            liveBacklinks: blData?.live ?? 0,
+            liveRefdomains: null,
+            liveBacklinks: null,
           },
           topPages,
           redirectMap,
