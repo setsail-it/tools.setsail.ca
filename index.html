@@ -1948,7 +1948,17 @@ function _renderSitemapResultsInner(approved) {
     html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Blog topic opportunities based on search behaviour + competitor gaps</div>';
     html += '</div>';
     if (blogTopics.length) {
-      html += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy ${blogTopics.length} Topic${blogTopics.length===1?'':'s'}</button>`;
+      html += `<div style="display:flex;gap:6px;align-items:center">`;
+      // Count how many aren't already pages
+      const existingSlugs = new Set((S.pages||[]).map(p=>p.slug));
+      const newCount = blogTopics.filter(t => !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))).length;
+      if (newCount > 0) {
+        html += `<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ${newCount} to Copy Queue</button>`;
+      } else {
+        html += `<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>`;
+      }
+      html += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>`;
+      html += `</div>`;
     }
     html += '</div>';
 
@@ -2298,8 +2308,37 @@ function copyBlogTopics() {
   const text = topics.map((t,i) => `${i+1}. [${t.source.toUpperCase()}] ${t.text}`).join('\n');
   navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById('ci-copy-btn');
-    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i> Copy Topics', 2000); }
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i> Copy', 2000); }
   });
+}
+
+function addBlogPagesToSitemap() {
+  if (!S.contentIntel?.blogTopics?.length) return;
+  const existingSlugs = new Set((S.pages||[]).map(p => p.slug));
+  let added = 0;
+  S.contentIntel.blogTopics.forEach(t => {
+    const slug = 'blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 60);
+    if (existingSlugs.has(slug)) return;
+    existingSlugs.add(slug);
+    S.pages.push({
+      page_name: t.text,
+      slug,
+      page_type: 'blog',
+      is_structural: false,
+      priority: 'P3',
+      primary_keyword: t.text,
+      primary_vol: 0, primary_kd: 0, score: 0,
+      supporting_keywords: [],
+      search_intent: 'informational',
+      word_count_target: 1200,
+      notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`
+    });
+    added++;
+  });
+  if (added > 0) {
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+  }
 }
 
 function approveSitemap() {
@@ -2404,10 +2443,7 @@ function focusCopyPage(slug) {
   renderCopyQueue();
 }
 
-function buildCopyPrompt(page) {
-  const r = S.research||{}, s = S.setup;
-  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
-}
+
 
 let copyStopFlag = false;
 S.copyCurrentSlug = null;
@@ -2424,7 +2460,21 @@ function initCopy() {
 
 function buildCopyPrompt(page) {
   const r = S.research||{}, s = S.setup;
-  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
+  const kws = (page.supporting_keywords||[]).map(k => k.kw||k).filter(Boolean).join(', ');
+  if (page.page_type === 'blog') {
+    return `CLIENT: ${s.client}
+BLOG POST TITLE: ${page.page_name}
+PRIMARY KEYWORD: ${page.primary_keyword}
+SUPPORTING KEYWORDS: ${kws}
+TARGET WORD COUNT: ${page.word_count_target || 1200}
+BUSINESS OVERVIEW: ${r.business_overview||''}
+GEOGRAPHY: ${r.geography?.primary||s.geo||''}
+VOICE: ${r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.'}
+NOTES: ${page.notes||''}
+
+Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client's services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.`;
+  }
+  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+kws+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
 }
 
 async function runCopyPage(slug) {
