@@ -337,8 +337,10 @@ export default {
         }
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const kw = url.searchParams.get('kw') || 'seo services vancouver';
-        const body = [{ keyword: kw, location_code: 2124, language_code: 'en', depth: 4 }];
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
+        // Strip location modifiers so Google returns PAA (not just local pack)
+        const cleanKw = kw.replace(/\b(vancouver|victoria|burnaby|surrey|toronto|calgary|edmonton|montreal|canada|bc|ontario|near me)\b/gi, '').replace(/\s+/g, ' ').trim() || kw;
+        const body = [{ keyword: cleanKw, location_code: 2124, language_code: 'en', depth: 10, people_also_ask_click_depth: 4 }];
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -392,12 +394,17 @@ export default {
         const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
 
         // PAA data is embedded in the organic SERP advanced endpoint
-        const seeds = keywords.slice(0, 4); // limit to 4 — each SERP call is more expensive
+        // Strip location modifiers — PAA only appears for informational queries, not local/commercial ones
+        const locationWords = /\b(vancouver|victoria|burnaby|surrey|toronto|calgary|edmonton|montreal|canada|bc|ontario|near me)\b/gi;
+        const seeds = [...new Set(
+          keywords.slice(0, 6).map(kw => kw.replace(locationWords, '').replace(/\s+/g, ' ').trim()).filter(Boolean)
+        )].slice(0, 4);
         const body = seeds.map(kw => ({
           keyword: kw,
           location_code: locationCode,
           language_code: 'en',
-          depth: 4
+          depth: 10,
+          people_also_ask_click_depth: 4
         }));
 
         const res = await fetch('https://api.dataforseo.com/v3/serp/google/people_also_ask/live/advanced', {
@@ -418,23 +425,26 @@ export default {
         const extractPAA = (items, sourceKw) => {
           (items || []).forEach(item => {
             if (item.type === 'people_also_ask') {
-              // PAA block: items[] contains the actual questions
+              // PAA block: items[] contains people_also_ask_element entries
               (item.items || []).forEach(q => {
                 const text = (q.title || q.question || '').trim();
                 if (text && !seen.has(text.toLowerCase())) {
                   seen.add(text.toLowerCase());
                   questions.push({ question: text, source: sourceKw });
                 }
-                // Each PAA item may have nested related PAA
+                // click_depth may add more PAA items nested inside
                 if (q.items) extractPAA(q.items, sourceKw);
               });
             } else if (item.type === 'people_also_ask_element') {
+              // Direct PAA element (from click_depth expansion)
               const text = (item.title || item.question || '').trim();
               if (text && !seen.has(text.toLowerCase())) {
                 seen.add(text.toLowerCase());
                 questions.push({ question: text, source: sourceKw });
               }
               if (item.items) extractPAA(item.items, sourceKw);
+            } else if (item.type === 'related_searches' || item.type === 'people_also_search') {
+              // Skip non-PAA items
             }
           });
         };
