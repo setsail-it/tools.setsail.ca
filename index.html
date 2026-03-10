@@ -3526,6 +3526,7 @@ function reinjectImages(slug) {
   renderLayoutQueue();
 }
 
+function printWireframe(slug) {
   const html = (S.layout[slug]||{}).html;
   if (!html) return;
   const win = window.open('', '_blank');
