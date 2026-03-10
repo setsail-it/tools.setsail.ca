@@ -2078,7 +2078,10 @@ async function runPAA() {
       body: JSON.stringify({ keywords: kwSeeds, country })
     });
     const data = await res.json();
-    if (!data.questions?.length) throw new Error(data.error || 'No questions returned');
+    if (!data.questions?.length) {
+      console.warn('[PAA debug]', JSON.stringify(data.debug));
+      throw new Error(data.error || 'No questions returned — check console for debug');
+    }
 
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
     S.contentIntel.paa = { questions: data.questions, fetchedAt: Date.now() };
@@ -2187,7 +2190,10 @@ async function runCompetitorGap() {
       body: JSON.stringify({ domains, ownKeywords, country })
     });
     const data = await res.json();
-    if (!data.keywords?.length) throw new Error(data.error || 'No gap keywords found');
+    if (!data.keywords?.length) {
+      console.warn('[Gap debug]', JSON.stringify(data.debug));
+      throw new Error(data.error || 'No gap keywords found — check console for debug');
+    }
 
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
     S.contentIntel.gap = { keywords: data.keywords, domains, cacheKey, fetchedAt: Date.now() };

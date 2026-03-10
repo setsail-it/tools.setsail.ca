@@ -336,22 +336,42 @@ export default {
         const questions = [];
         (data.tasks || []).forEach((task, ti) => {
           const sourceKw = seeds[ti] || '';
+          // DataForSEO PAA: result is an array, items are on each result item
           (task.result || []).forEach(r => {
-            const flatten = (items, depth) => {
-              (items || []).forEach(item => {
-                if (item.type === 'people_also_ask_element' || item.title) {
-                  const q = (item.title || '').trim();
-                  if (q && !seen.has(q.toLowerCase())) {
-                    seen.add(q.toLowerCase());
-                    questions.push({ question: q, source: sourceKw, depth });
-                  }
-                  if (item.items) flatten(item.items, depth + 1);
-                }
-              });
+            // r may be the item itself (title directly) or have an items array
+            const flatten = (node, depth) => {
+              if (!node) return;
+              // Direct question node
+              const q = (node.title || node.question || '').trim();
+              if (q && !seen.has(q.toLowerCase())) {
+                seen.add(q.toLowerCase());
+                questions.push({ question: q, source: sourceKw, depth });
+              }
+              // Recurse into child items
+              if (Array.isArray(node.items)) node.items.forEach(child => flatten(child, depth + 1));
             };
-            flatten(r.items || [], 0);
+            // r itself might be a PAA item or have items[]
+            if (r.type === 'people_also_ask_element' || r.title) {
+              flatten(r, 0);
+            } else {
+              (r.items || []).forEach(item => flatten(item, 0));
+            }
           });
         });
+
+        // Debug: return raw tasks summary if empty
+        if (!questions.length) {
+          const debug = (data.tasks || []).map(t => ({
+            status: t.status_code,
+            msg: t.status_message,
+            resultCount: (t.result || []).length,
+            firstResultKeys: t.result?.[0] ? Object.keys(t.result[0]) : [],
+            firstItemType: t.result?.[0]?.items?.[0]?.type || t.result?.[0]?.type || 'none'
+          }));
+          return new Response(JSON.stringify({ questions: [], debug, source: 'dataforseo-paa' }), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
 
         return new Response(JSON.stringify({ questions, source: 'dataforseo-paa' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
@@ -391,16 +411,31 @@ export default {
 
           (data.tasks || []).forEach(task => {
             (task.result || []).forEach(r => {
-              (r.items || []).forEach(item => {
-                const kw = item.keyword_data?.keyword || '';
-                const vol = item.keyword_data?.keyword_info?.search_volume || 0;
-                const kd = item.keyword_data?.keyword_properties?.keyword_difficulty || 0;
+              // keywords_for_site returns items[] with keyword_data on each
+              const items = r.items || [];
+              items.forEach(item => {
+                // Two possible structures depending on DataForSEO version
+                const kd_obj = item.keyword_data || item;
+                const kw = kd_obj.keyword || item.keyword || '';
+                const info = kd_obj.keyword_info || kd_obj;
+                const props = kd_obj.keyword_properties || kd_obj;
+                const vol = info.search_volume || item.search_volume || 0;
+                const kd = props.keyword_difficulty ?? item.keyword_difficulty ?? 0;
                 if (!kw || seen.has(kw.toLowerCase())) return;
-                // Only include if NOT in our own keyword map
                 if (ownSet.has(kw.toLowerCase())) return;
                 seen.add(kw.toLowerCase());
                 allKeywords.push({ kw, vol, kd, domain, score: vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0 });
               });
+              // Also handle flat result (no items wrapper)
+              if (!items.length && (r.keyword || r.keyword_data)) {
+                const kw = r.keyword || r.keyword_data?.keyword || '';
+                const vol = r.search_volume || r.keyword_data?.keyword_info?.search_volume || 0;
+                const kd = r.keyword_difficulty || r.keyword_data?.keyword_properties?.keyword_difficulty || 0;
+                if (kw && !seen.has(kw.toLowerCase()) && !ownSet.has(kw.toLowerCase())) {
+                  seen.add(kw.toLowerCase());
+                  allKeywords.push({ kw, vol, kd, domain, score: vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0 });
+                }
+              }
             });
           });
         }
@@ -408,7 +443,12 @@ export default {
         // Sort by score desc
         allKeywords.sort((a, b) => b.score - a.score);
 
-        return new Response(JSON.stringify({ keywords: allKeywords.slice(0, 120), source: 'dataforseo-gap' }), {
+        // Debug info if nothing found
+        let gapDebug = null;
+        if (!allKeywords.length) {
+          gapDebug = { domainsAttempted: domains.slice(0,3), ownKwCount: ownSet.size, note: 'check domain format and dataforseo_labs access' };
+        }
+        return new Response(JSON.stringify({ keywords: allKeywords.slice(0, 120), debug: gapDebug, source: 'dataforseo-gap' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
