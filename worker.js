@@ -532,35 +532,53 @@ export default {
           });
         }
 
-        // Try Nano Banana 2 (Gemini 3.1 Flash Image) first, fall back to Nano Banana (2.5 Flash)
+        // Try Nano Banana 2 first, fall back to 2.5-flash-image
+        // Free tier: ~2 req/min — retry up to 3x with backoff on 429
         const models = [
-          'gemini-3.1-flash-image-preview',   // Nano Banana 2
-          'gemini-2.5-flash-image',            // Nano Banana (original)
+          'gemini-3.1-flash-image-preview',
+          'gemini-2.5-flash-image',
         ];
+
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function tryGenerate(model, retries = 3) {
+          for (let attempt = 0; attempt < retries; attempt++) {
+            if (attempt > 0) await sleep(attempt * 4000);
+            const gemRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: prompt }] }],
+                  generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+                })
+              }
+            );
+            if (gemRes.status === 404) return { skip: true, error: `${model}: not available on this key` };
+            if (gemRes.status === 429) {
+              if (attempt < retries - 1) continue;
+              return { skip: false, error: `${model}: rate limited — free tier is ~2/min, wait 30s and retry` };
+            }
+            if (!gemRes.ok) {
+              const body = await gemRes.text().catch(() => '');
+              return { skip: false, error: `${model}: HTTP ${gemRes.status} — ${body.slice(0, 200)}` };
+            }
+            const gemData = await gemRes.json();
+            const part = gemData.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+            if (part) return { part };
+            return { skip: false, error: `${model}: no image part — ${JSON.stringify(gemData).slice(0,150)}` };
+          }
+          return { skip: false, error: `${model}: all retries exhausted` };
+        }
 
         let imagePart = null;
         let lastError = null;
         for (const model of models) {
-          const gemRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
-              })
-            }
-          );
-          if (!gemRes.ok) {
-            const errBody = await gemRes.text().catch(() => '');
-            lastError = `${model}: HTTP ${gemRes.status} — ${errBody.slice(0, 300)}`;
-            continue;
-          }
-          const gemData = await gemRes.json();
-          imagePart = gemData.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-          if (imagePart) break;
-          lastError = `${model}: no image in response — ${JSON.stringify(gemData).slice(0,200)}`;
+          const result = await tryGenerate(model);
+          if (result.part) { imagePart = result.part; break; }
+          lastError = result.error;
+          if (!result.skip) break;
         }
 
         if (!imagePart) {
