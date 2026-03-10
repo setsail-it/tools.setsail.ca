@@ -1363,9 +1363,9 @@ async function findMoreKeywords(pageIdx) {
       rhtml += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:38px;text-align:right">KD ${k.kd||'?'}</span>`;
       rhtml += `<span style="font-size:10px;color:var(--n2);min-width:38px;text-align:right">${k.score}</span>`;
       if (!added) {
-        rhtml += `<button onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd});this.textContent='✓';this.disabled=true;this.style.color='var(--green)';this.style.borderColor='var(--green)'" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
+        rhtml += `<button data-add-kw="${k.kw.replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd},this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
       } else {
-        rhtml += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--n2)">✓</span>`;
+        rhtml += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--green)">✓</span>`;
       }
       rhtml += '</div>';
     });
@@ -1585,7 +1585,7 @@ Recommend the best primary keyword and up to 5 supporting keywords for this page
         rhtml += `<span style="font-size:11px;color:var(--n3)">${esc(sk.kw)}</span>${intentBadge(sk.kw,_geoAS)}`;
         rhtml += `<span style="font-size:10px;color:var(--n2)">${(sk.vol||0).toLocaleString()}/mo</span>`;
         rhtml += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
-        rhtml += `<button onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0})" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
+        rhtml += `<button data-add-kw="${(sk.kw||'').replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0},this)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
         rhtml += '</div>';
       });
       rhtml += '</div>';
@@ -1628,7 +1628,7 @@ function acceptPrimaryKw(pageIdx, kw, vol, kd, score) {
   renderSitemapResults(S.sitemapApproved);
 }
 
-function addSuggestedKw(pageIdx, kw, vol, kd) {
+function addSuggestedKw(pageIdx, kw, vol, kd, btn) {
   const page = S.pages[pageIdx];
   if (!page) return;
   const existing = (page.supporting_keywords||[]).map(sk=>(typeof sk==='object'?sk.kw:sk).toLowerCase());
@@ -1636,7 +1636,18 @@ function addSuggestedKw(pageIdx, kw, vol, kd) {
   if (!page.supporting_keywords) page.supporting_keywords = [];
   page.supporting_keywords.push({ kw, vol, kd });
   scheduleSave();
-  renderSitemapResults(S.sitemapApproved);
+  // Mark button in-place — no full re-render so Find More / AI panels stay open
+  if (btn) {
+    btn.textContent = '✓';
+    btn.disabled = true;
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+  }
+  // Also update any other button for same kw across both panels
+  document.querySelectorAll('[data-add-kw="'+kw.replace(/"/g,'')+'"][data-page="'+pageIdx+'"]').forEach(el => {
+    el.textContent = '✓'; el.disabled = true;
+    el.style.color = 'var(--green)'; el.style.borderColor = 'var(--green)';
+  });
 }
 
 function acceptAllSuggestions(pageIdx) {
@@ -1644,13 +1655,21 @@ function acceptAllSuggestions(pageIdx) {
   const sug = page?._suggestion;
   if (!sug) return;
   if (sug.primary_keyword) {
-    const sc = sug.primary_score || (sug.primary_vol>0&&sug.primary_kd>0 ? Math.round((Math.log(sug.primary_vol+1)*100/sug.primary_kd)*10)/10 : 0);
-    acceptPrimaryKw(pageIdx, sug.primary_keyword, sug.primary_vol||0, sug.primary_kd||0, sc);
+    page.primary_keyword = sug.primary_keyword;
+    page.primary_vol = sug.primary_vol || 0;
+    page.primary_kd = sug.primary_kd || 0;
+    const sc = sug.primary_score || (page.primary_vol>0&&page.primary_kd>0 ? Math.round((Math.log(page.primary_vol+1)*100/page.primary_kd)*10)/10 : 0);
+    page.score = sc;
   }
-  (sug.supporting_keywords||[]).forEach(sk => addSuggestedKw(pageIdx, sk.kw, sk.vol||0, sk.kd||0));
-  // acceptPrimaryKw already re-renders, but call once more to be safe
+  const existing = new Set((page.supporting_keywords||[]).map(sk=>(typeof sk==='object'?sk.kw:sk).toLowerCase()));
+  (sug.supporting_keywords||[]).forEach(sk => {
+    if (!existing.has((sk.kw||'').toLowerCase())) {
+      if (!page.supporting_keywords) page.supporting_keywords = [];
+      page.supporting_keywords.push({ kw: sk.kw, vol: sk.vol||0, kd: sk.kd||0 });
+    }
+  });
   scheduleSave();
-  renderSitemapResults(S.sitemapApproved);
+  renderSitemapResults(S.sitemapApproved); // full re-render only on Accept All
 }
 
 async function addManualKeyword(pageIdx, rawKw) {
