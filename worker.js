@@ -548,7 +548,7 @@ export default {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseModalities: ['IMAGE'] }
+                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
               })
             }
           );
