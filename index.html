@@ -451,7 +451,7 @@ async function saveProject() {
       kwMetrics: S.kwMetrics || {},
       kwResearch: S.kwResearch || null,
       sitemapApproved: S.sitemapApproved || false,
-      layout: S.layout || {},
+      layout: Object.fromEntries(Object.entries(S.layout || {}).map(([slug, v]) => [slug, v?.rawHtml ? { ...v, rawHtml: undefined } : v])),
       // Strip base64 image data before saving (too large for KV) — keep prompts/status only
       images: Object.fromEntries(Object.entries(S.images || {}).map(([slug, data]) => [
         slug,
@@ -3542,9 +3542,10 @@ Generate a complete section-by-section wireframe. Include every section a high-c
     html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:0;padding:40px;max-width:900px;margin:0 auto;color:#111}</style></head><body>' + html + '</body></html>';
   }
 
+  const rawHtml = html;
   html = injectImagesIntoWireframe(slug, html);
 
-  S.layout[slug] = { html, generatedAt: Date.now() };
+  S.layout[slug] = { html, rawHtml, generatedAt: Date.now() };
   layoutCurrentPage = null;
   scheduleSave();
   renderLayoutQueue();
@@ -3571,8 +3572,9 @@ function injectImagesIntoWireframe(slug, html) {
 function reinjectImages(slug) {
   const layout = S.layout?.[slug];
   if (!layout?.html) return;
-  // Strip existing injected imgs, re-run inject (can't un-inject, so just note if images updated)
-  S.layout[slug].html = injectImagesIntoWireframe(slug, layout.html);
+  // Always inject from rawHtml (pre-injection template) so data-slot divs are always present
+  const source = layout.rawHtml || layout.html;
+  S.layout[slug].html = injectImagesIntoWireframe(slug, source);
   scheduleSave();
   renderLayoutQueue();
 }
