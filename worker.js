@@ -578,10 +578,15 @@ export default {
         const today = new Date().toISOString().slice(0, 10);
         const base = { target: domain, date: today };
         const withMode = { ...base, mode: 'subdomains' };
-        const ahrefsGet = (endpoint, params) => fetch(
-          'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams(params).toString(),
-          { headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY } }
-        ).then(r => r.json());
+        const ahrefsGet = async (endpoint, params) => {
+          const r = await fetch(
+            'https://api.ahrefs.com/v3/' + endpoint + '?' + new URLSearchParams(params).toString(),
+            { headers: { Authorization: 'Bearer ' + env.AHREFS_API_KEY } }
+          );
+          const j = await r.json();
+          if (!r.ok) throw new Error('Ahrefs ' + endpoint + ': ' + (j?.error?.message || j?.error || r.status));
+          return j;
+        };
 
         const [drData, metricsData, blData, topPagesData] = await Promise.all([
           ahrefsGet('site-explorer/domain-rating', base),                           // no mode
