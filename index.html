@@ -3444,6 +3444,87 @@ function autoResizeFrame(iframe) {
   } catch(e) {}
 }
 
+// ── Image picker for wireframe slots ─────────────────────────────
+let _imgPickTarget = null; // { slug, slotKey }
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'img-pick') {
+    openImagePicker(e.data.slug, e.data.slotKey);
+  }
+});
+
+function openImagePicker(slug, slotKey) {
+  _imgPickTarget = { slug, slotKey };
+  const modal = document.getElementById('img-pick-modal');
+  const grid = document.getElementById('img-pick-grid');
+  const title = document.getElementById('img-pick-title');
+  if (!modal) return;
+  title.textContent = 'Select image for: ' + slotKey + ' on /' + (slug || '');
+
+  // Build grid of all available images across all pages
+  const slotLabels = ['Hero Banner','Section Feature','Detail / Close-up','Content / Blog','CTA / Closing'];
+  let html = '';
+  let count = 0;
+  (S.pages || []).forEach(p => {
+    const imgData = S.images?.[p.slug];
+    if (!imgData?.slots) return;
+    imgData.slots.forEach((sl, i) => {
+      if (!sl?.b64) return;
+      count++;
+      html += `<div onclick="pickImage('${p.slug}',${i})" style="cursor:pointer;border:2px solid transparent;border-radius:6px;overflow:hidden;background:var(--n1);transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor='transparent'">
+        <img src="data:${sl.mimeType};base64,${sl.b64}" style="width:100%;height:110px;object-fit:cover;display:block">
+        <div style="padding:5px 7px;font-size:10px;color:var(--n3);line-height:1.3">
+          <div style="font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.page_name)}</div>
+          <div style="color:var(--n2)">${slotLabels[i]||''}</div>
+        </div>
+      </div>`;
+    });
+  });
+
+  if (!count) {
+    grid.innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px;text-align:center">No images generated yet. Go to Stage 5 and generate images first.</div>';
+  } else {
+    grid.innerHTML = html;
+  }
+  modal.style.display = 'flex';
+}
+
+function pickImage(srcSlug, srcSlotIdx) {
+  if (!_imgPickTarget) return;
+  const { slug, slotKey } = _imgPickTarget;
+  const srcSlot = S.images?.[srcSlug]?.slots?.[srcSlotIdx];
+  if (!srcSlot?.b64) return;
+
+  // Ensure target page image data exists
+  if (!S.images[slug]) S.images[slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((_,i) => ({ status:'empty', prompt:'', b64:null, mimeType:null })) };
+
+  // Find slot index for this slotKey
+  const slotKeyMap = { 'hero-banner':0, 'section-feature':1, 'detail-close-up':2, 'content-blog':3, 'cta-closing':4 };
+  const targetIdx = slotKeyMap[slotKey];
+  if (targetIdx !== undefined) {
+    S.images[slug].slots[targetIdx] = { ...S.images[slug].slots[targetIdx], b64: srcSlot.b64, mimeType: srcSlot.mimeType, status: 'done' };
+    savePageImages(slug);
+  }
+
+  // Re-inject into wireframe
+  const layout = S.layout?.[slug];
+  if (layout) {
+    const source = layout.rawHtml || layout.html;
+    S.layout[slug].html = injectImagesIntoWireframe(slug, source);
+    scheduleSave();
+  }
+
+  closeImagePicker();
+  renderLayoutQueue();
+}
+
+function closeImagePicker() {
+  const modal = document.getElementById('img-pick-modal');
+  if (modal) modal.style.display = 'none';
+  _imgPickTarget = null;
+}
+
+
 function redoWireframe(slug) {
   delete S.layout[slug];
   S.layoutExpandedSlug = slug;
@@ -3561,18 +3642,24 @@ Generate a complete section-by-section wireframe. Include every section a high-c
 function injectImagesIntoWireframe(slug, html) {
   const slotMap = { 'hero-banner': 0, 'section-feature': 1, 'detail-close-up': 2, 'content-blog': 3, 'cta-closing': 4 };
   const imgData = S.images?.[slug];
-  if (!imgData) return html;
   let result = html;
+
+  // Replace data-slot divs with clickable imgs (if b64 available) or clickable placeholders
   for (const [slotKey, idx] of Object.entries(slotMap)) {
-    const slot = (imgData.slots || [])[idx];
-    if (!slot?.b64) continue;
-    // Match the data-slot div (single line or simple content, no nested divs)
     const re = new RegExp('<div[^>]*data-slot=["\']' + slotKey + '["\'][^>]*>[^<]*<\\/div>', 'gi');
-    const style = slotKey === 'hero-banner' || slotKey === 'cta-closing'
-      ? 'width:100%;max-height:420px;object-fit:cover;display:block;border-radius:4px'
-      : 'width:100%;max-height:320px;object-fit:cover;display:block;border-radius:4px';
-    result = result.replace(re, `<img src="data:${slot.mimeType};base64,${slot.b64}" style="${style}" alt="${slotKey}">`);
+    const slot = (imgData?.slots || [])[idx];
+    const clickAttr = `onclick="window.parent.postMessage({type:'img-pick',slug:'${slug}',slotKey:'${slotKey}'},\'*\')" style="cursor:pointer" title="Click to swap image"`;
+    if (slot?.b64) {
+      const imgStyle = slotKey === 'hero-banner' || slotKey === 'cta-closing'
+        ? 'width:100%;max-height:420px;object-fit:cover;display:block;border-radius:4px;cursor:pointer'
+        : 'width:100%;max-height:320px;object-fit:cover;display:block;border-radius:4px;cursor:pointer';
+      result = result.replace(re, `<img src="data:${slot.mimeType};base64,${slot.b64}" data-slot="${slotKey}" style="${imgStyle}" alt="${slotKey}" onclick="window.parent.postMessage({type:'img-pick',slug:'${slug}',slotKey:'${slotKey}'},'*')" title="Click to swap image">`);
+    } else {
+      // Make placeholder clickable too
+      result = result.replace(re, `<div class="img-slot" data-slot="${slotKey}" ${clickAttr} style="background:#e0e0e0;border:2px dashed #bbb;display:flex;align-items:center;justify-content:center;font-size:11px;color:#888;font-style:italic;text-align:center;padding:8px;min-height:200px;">📷 Click to assign image<br><small>${slotKey}</small></div>`);
+    }
   }
+
   return result;
 }
 
@@ -3897,5 +3984,20 @@ function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const 
 // ── INIT ───────────────────────────────────────────────────────────
 showProjects();
 </script>
+
+<!-- Image Picker Modal -->
+<div id="img-pick-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg);border-radius:10px;width:100%;max-width:780px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--dark)" id="img-pick-title">Select Image</div>
+        <div style="font-size:11px;color:var(--n2);margin-top:2px">Click any image to place it in this slot</div>
+      </div>
+      <button onclick="closeImagePicker()" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:18px;padding:4px;line-height:1"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="img-pick-grid" style="overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;flex:1"></div>
+  </div>
+</div>
+
 </body>
 </html>
