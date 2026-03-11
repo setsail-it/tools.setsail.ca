@@ -313,10 +313,18 @@ textarea.inp{resize:vertical}
       <div class="eyebrow">Stage 3 of 9</div>
       <h2 class="ph sm">Client Research</h2>
       <p class="psub">AI-enriched client intelligence. Every field feeds copy, schema, and layout stages downstream.</p>
-      <div id="research-tab-nav" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px;flex-wrap:wrap"></div>
-      <div id="research-enrich-status" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--panel);border-radius:8px;font-size:12px;color:var(--n3)">
-        <span class="spinner" style="width:12px;height:12px;display:inline-block;margin-right:8px"></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
+        <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
+        <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
+          <button id="research-enrich-btn" class="btn btn-primary" onclick="enrichAll()" style="white-space:nowrap"><i class="ti ti-sparkles"></i> Enrich with AI</button>
+          <button class="btn btn-ghost" onclick="goTo('sitemap')" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>
+        </div>
+      </div>
+      <div style="border-bottom:2px solid var(--border);margin-bottom:16px"></div>
+      <div id="research-enrich-status" style="display:none;margin-bottom:14px;padding:10px 14px;background:var(--panel);border-radius:8px;font-size:12px;color:var(--n3);align-items:center;gap:8px">
+        <span class="spinner" style="width:12px;height:12px;flex-shrink:0"></span>
         <span id="research-enrich-msg">Enriching...</span>
+        <span id="research-enrich-progress" style="margin-left:auto;color:var(--n2);font-size:11px"></span>
       </div>
       <div id="research-tab-content"></div>
     </div>
@@ -1254,12 +1262,9 @@ function rField(key, label, value, type, opts) {
   return `<div style="${span}">${lHtml}${input}</div>`;
 }
 
-function rSec(title, fieldsHtml, enrichTab) {
-  const btn = enrichTab ? `<button class="btn btn-ghost sm" onclick="enrichRTab('${enrichTab}')" style="font-size:11px;padding:4px 10px"><i class="ti ti-sparkles"></i> Enrich</button>` : '';
+function rSec(title, fieldsHtml) {
   return `<div class="card" style="margin-bottom:10px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="eyebrow" style="margin-bottom:0">${title}</div>${btn}
-    </div>
+    <div class="eyebrow" style="margin-bottom:14px">${title}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${fieldsHtml}</div>
   </div>`;
 }
@@ -1334,12 +1339,7 @@ function removeRFRep(key, idx) {
 
 // ── Tab renderers ─────────────────────────────────────────────────
 
-function rTabActions(tab) {
-  return `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-    <button class="btn btn-primary" onclick="enrichRTab('${tab}')"><i class="ti ti-sparkles"></i> Enrich with AI</button>
-    ${tab==='business'?'<button class="btn btn-ghost" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>':''}
-  </div>`;
-}
+function rTabActions(tab) { return ''; }
 
 function renderRBusiness(r) {
   let html = rTabActions('business');
@@ -1491,17 +1491,33 @@ function renderRKeywords(el) {
 
 // ── AI Enrichment ─────────────────────────────────────────────────
 
+async function enrichAll() {
+  const tabs = ['business','audience','brand','schema','competitors'];
+  const btn = document.getElementById('research-enrich-btn');
+  const statusEl = document.getElementById('research-enrich-status');
+  const msgEl = document.getElementById('research-enrich-msg');
+  const progEl = document.getElementById('research-enrich-progress');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
+  if (statusEl) statusEl.style.display = 'flex';
+  for (let i = 0; i < tabs.length; i++) {
+    const label = tabs[i].charAt(0).toUpperCase()+tabs[i].slice(1);
+    if (msgEl) msgEl.textContent = 'Enriching ' + label + '...';
+    if (progEl) progEl.textContent = (i+1)+' / '+tabs.length;
+    await enrichRTab(tabs[i]);
+  }
+  if (msgEl) msgEl.textContent = 'All sections enriched ✓';
+  if (progEl) progEl.textContent = '';
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; }
+  setTimeout(function(){
+    if (statusEl) statusEl.style.display = 'none';
+    if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI';
+  }, 2500);
+}
+
 async function enrichRTab(tab) {
   const r = S.research || researchDefaults();
   const s = S.setup || {};
-  const statusEl = document.getElementById('research-enrich-status');
-  const msgEl = document.getElementById('research-enrich-msg');
-  if (statusEl) { statusEl.style.display = 'flex'; statusEl.style.alignItems = 'center'; }
-  const setBtnLoading = function(loading) {
-    const btns = document.querySelectorAll('[onclick="enrichRTab(\''+tab+'\')"]');
-    btns.forEach(function(b){ b.disabled = loading; b.innerHTML = loading ? '<span class="spinner" style="width:12px;height:12px"></span> Enriching...' : '<i class="ti ti-sparkles"></i> Enrich with AI'; });
-  };
-  setBtnLoading(true);
+
 
   const ctx = 'CLIENT: '+(s.client||r.client_name||'')+'\nURL: '+(s.url||'')+'\nGEO: '+(s.geo||'')+'\nSTRATEGY DOCUMENT:\n'+(s.strategy||'N/A');
   const sys = 'You are a senior digital marketing strategist at Setsail Marketing. Analyse the client context provided and return ONLY valid JSON with the requested fields. No preamble. No markdown fences. Raw JSON only.';
@@ -1540,14 +1556,10 @@ async function enrichRTab(tab) {
     }
   } catch(e) { if(msgEl) msgEl.textContent = 'Error: '+e.message; }
 
-  setBtnLoading(false);
-  if (statusEl) setTimeout(function(){ statusEl.style.display='none'; }, 2000);
 }
 
 async function runResearch() {
-  // Legacy shim — enrich business tab and kick off keyword research
-  await enrichRTab('business');
-  await enrichRTab('audience');
+  await enrichAll();
   fetchKeywordResearch();
 }
 
