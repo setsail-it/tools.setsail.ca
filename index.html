@@ -1616,9 +1616,13 @@ async function enrichAll(forceAll) {
   if (progEl) progEl.textContent = '';
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; btn.setAttribute('onclick','enrichAll(true)'); }
   renderResearchNav();
+  // Switch back to business tab to show filled data
+  _rTab = 'business';
+  renderResearchNav();
+  renderResearchTabContent();
   setTimeout(function(){
     if (statusEl) statusEl.style.display = 'none';
-    if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI'; btn.setAttribute('onclick','enrichAll()');
+    if (btn) { btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI'; btn.setAttribute('onclick','enrichAll()'); }
   }, 2500);
 }
 
@@ -1683,6 +1687,10 @@ async function enrichRTab(tab, forceAll) {
       + b + '"objections_top5": ["real objection 1", "real objection 2", "real objection 3", "real objection 4", "real objection 5"],\n'
       + b + '"lead_channels_today": ["current lead source 1", "current lead source 2"],\n'
       + b + '"sales_cycle_length": "one of: same_day 1_7_days 14_30_days 30_plus_days",\n'
+      + b + '"close_rate_estimate": "percentage as string e.g. 30% or empty string if unknown",\n'
+      + b + '"lead_qualification_criteria": "what makes a lead qualified for this business",\n'
+      + b + '"top_reasons_leads_dont_close": "main reasons deals fall through",\n'
+      + b + '"booking_flow_description": "how a prospect becomes a client - steps in the intake process",\n'
       + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
       + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
@@ -1742,7 +1750,9 @@ async function enrichRTab(tab, forceAll) {
       scheduleSave();
       renderResearchTabContent();
     } else {
-      console.warn('enrichRTab ['+tab+']: parse failed. Raw:', result.slice(0,300));
+      console.warn('enrichRTab ['+tab+']: parse failed. Raw:', result.slice(0,500));
+      var _emsg2 = document.getElementById('research-enrich-msg');
+      if (_emsg2) _emsg2.textContent = '\u26a0 ' + tab + ': could not parse AI response \u2014 check console';
     }
   } catch(e) {
     var _emsg = document.getElementById('research-enrich-msg');
