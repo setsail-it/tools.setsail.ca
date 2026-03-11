@@ -293,11 +293,7 @@ textarea.inp{resize:vertical}
               <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
                 <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">URL</th>
                 <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3);white-space:nowrap">Traffic</th>
-                <th style="padding:8px 10px;text-align:left;font-weight:500;color:var(--n3)">Top Keyword</th>
-                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">Pos</th>
                 <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">KWs</th>
-                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">RDs</th>
-                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">UR</th>
               </tr>
             </thead>
             <tbody id="snap-pages-tbody"></tbody>
@@ -1071,7 +1067,1078 @@ function renderSnapshot() {
     pagesWrap.style.display = 'block';
     document.getElementById('snap-pages-count').textContent = snap.topPages.length + ' pages';
     tbody.innerHTML = snap.topPages.map((p, i) => {
-      const hasRd = p.referringDomains > 0;
+      const slug = p.slug || '/';
+      return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':'background:white'}">
+        <td style="padding:7px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+PE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetSailOS — Website Build Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.21.0/dist/tabler-icons.min.css">
+<style>
+:root{--bg:#ffffff;--white:#fff;--panel:#E8E7E1;--n1:#E2E2DC;--n2:#999990;--n3:#555550;--dark:#111;--green:#158E1D;--lime:#D8FF29;--dg:#002A0F;--border:rgba(0,0,0,0.09);--error:#E53935;--warn:#c07000;--font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:#ffffff;color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+input,textarea,button,select{font-family:var(--font)!important}
+input::placeholder,textarea::placeholder{color:#bbb}
+
+/* NAV */
+#nav{display:flex;justify-content:space-between;align-items:center;padding:0 28px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.95);backdrop-filter:blur(10px)}
+.nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
+.logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
+.nav-divider{width:1px;height:14px;background:var(--border)}
+#stage-bar{display:flex;align-items:center;gap:2px}
+.stage-pill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11.5px;border:1px solid var(--border);color:var(--n2);background:transparent;cursor:pointer;transition:all .15s;white-space:nowrap}
+.stage-pill:hover:not(.active){background:var(--n1)}
+.stage-pill.active{background:var(--dark);color:white;border-color:var(--dark)}
+.stage-pill.done{background:rgba(21,142,29,0.1);color:var(--green);border-color:rgba(21,142,29,0.25)}
+.stage-dot{width:6px;height:1px;background:var(--border)}.stage-dot.done{background:rgba(21,142,29,0.25)}
+
+/* SAVE INDICATOR */
+#save-indicator{font-size:11px;color:var(--n2);display:flex;align-items:center;gap:5px;transition:opacity .3s}
+#save-indicator.saving{color:var(--green)}
+#save-indicator.saved{color:var(--n2)}
+#save-indicator.error{color:var(--error)}
+
+/* MAIN */
+#main{max-width:1020px;margin:0 auto;padding:32px 28px 80px}
+.screen{animation:fadeIn .25s ease;display:none}.screen.active{display:block}
+
+/* TYPE */
+.eyebrow{font-size:11px;color:var(--n2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
+h2.ph{font-size:28px;font-weight:500;letter-spacing:-0.03em;margin-bottom:4px}
+h2.ph.sm{font-size:22px}
+.psub{color:var(--n2);font-size:13px;margin-bottom:20px}
+.section-mark{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.section-mark-label{background:var(--dark);color:white;font-size:10.5px;padding:3px 9px;border-radius:4px}
+.section-mark-line{flex:1;height:1px;background:var(--border)}
+
+/* CARD */
+.card{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:8px}
+.card.dg{background:var(--dg);border-color:rgba(255,255,255,0.06)}
+.card.hl{border-left:3px solid var(--green)}
+
+/* INPUTS */
+.inp{width:100%;background:var(--white);border:1px solid rgba(0,0,0,0.13);border-radius:6px;padding:9px 12px;color:var(--dark);font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+.inp:focus{border-color:var(--green)!important;box-shadow:0 0 0 3px rgba(21,142,29,0.08)!important}
+textarea.inp{resize:vertical}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;border-radius:6px;padding:8px 16px;transition:all .15s;white-space:nowrap;border:none;min-height:36px;font-family:var(--font)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:var(--lime);color:#111}.btn-primary:hover:not(:disabled){background:#cdf020}
+.btn-dark{background:var(--dark);color:white}.btn-dark:hover:not(:disabled){background:#2a2a2a}
+.btn-ghost{background:transparent;color:var(--dark);border:1px solid var(--border)}.btn-ghost:hover:not(:disabled){background:var(--n1);border-color:rgba(0,0,0,.18)}
+.btn-danger{background:transparent;color:var(--error);border:1px solid rgba(229,57,53,0.2)}.btn-danger:hover:not(:disabled){background:rgba(229,57,53,0.07)}
+.btn-dg{background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.18)}.btn-dg:hover:not(:disabled){color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.35)}
+.btn.sm{font-size:12px;padding:5px 11px;min-height:28px}
+.btn.full{width:100%}
+
+/* STATUS */
+.spinner{display:inline-block;border:2px solid rgba(0,0,0,0.08);border-top-color:var(--green);border-radius:50%;animation:spin .75s linear infinite;flex-shrink:0}
+.status-circle{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
+.progress-wrap{margin-bottom:14px}.progress-meta{display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px}
+.progress-track{height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--green);border-radius:3px;transition:width .4s ease}
+.stream-box{background:var(--dg);border-radius:6px;padding:12px;min-height:44px;max-height:200px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word;margin-top:8px}
+.success-banner{display:flex;align-items:center;gap:7px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:9px 14px;color:var(--green);font-size:13px}
+.error-banner{display:flex;align-items:center;gap:7px;background:rgba(229,57,53,0.06);border:1px solid rgba(229,57,53,0.18);border-radius:6px;padding:8px 12px;color:var(--error);font-size:13px;margin-bottom:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.page-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--white);border-radius:6px;border:1px solid var(--border);margin-bottom:5px;transition:border-color .2s}
+.page-row.running{border-color:var(--green)}.page-row.done{border-color:rgba(21,142,29,0.22)}.page-row.error{border-color:rgba(229,57,53,0.22)}
+.code-view{max-height:340px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--n2);background:rgba(0,0,0,0.04)}
+.chip.green{color:var(--green);background:rgba(21,142,29,0.08);border-color:rgba(21,142,29,0.2)}
+.chip.warn{color:var(--warn);background:rgba(192,112,0,0.08);border-color:rgba(192,112,0,0.2)}
+.tbl-wrap{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:8px}
+.tbl-head{display:grid;grid-template-columns:24px 1.4fr 1.2fr 44px 68px;background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase}
+.tbl-row{display:grid;grid-template-columns:24px 1.4fr 1.2fr 44px 68px;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--white);align-items:start}
+.tbl-row:last-child{border-bottom:none}.tbl-row:nth-child(even){background:rgba(240,239,233,0.5)}
+.tab-bar{display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab-btn{padding:6px 14px;border-radius:6px;font-size:13px;background:transparent;color:var(--n2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .15s;font-family:var(--font)}
+.tab-btn.active{background:var(--dark);color:white;border-color:var(--dark)}
+
+/* PROJECT PICKER */
+#projects-screen{animation:fadeIn .25s ease}
+.project-card{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--white);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.project-card:hover{border-color:rgba(0,0,0,0.18);transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+.project-dot{width:8px;height:8px;border-radius:50%;background:var(--n1);flex-shrink:0}
+.project-dot.research{background:var(--warn)}
+.project-dot.sitemap,.project-dot.copy,.project-dot.schema{background:var(--green)}
+.project-dot.export{background:var(--dark)}
+.project-stage-badge{font-size:10.5px;padding:2px 7px;border-radius:4px;background:var(--bg);color:var(--n2);border:1px solid var(--border)}
+
+@media(max-width:700px){
+  #nav{padding:0 16px}#stage-bar{display:none}#main{padding:20px 16px 60px}
+  .grid-2,.grid-3{grid-template-columns:1fr}h2.ph{font-size:20px}.card{padding:14px}
+  #mobile-menu-btn{display:flex!important}
+  .nav-meta span:last-child{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+#mobile-nav-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.4)}
+#mobile-nav-drawer{position:fixed;top:0;right:-280px;width:260px;height:100%;background:white;z-index:1000;padding:20px;transition:right .25s ease;box-shadow:-4px 0 20px rgba(0,0,0,0.1)}
+#mobile-nav-drawer.open{right:0}
+#mobile-nav-overlay.open{display:block}
+.mobile-stage-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--n2)}
+.mobile-stage-item.done{color:var(--dark)}
+.mobile-stage-item.active{color:var(--dark);font-weight:500}
+.mobile-stage-item .msi-icon{width:26px;height:26px;border-radius:50%;background:var(--n1);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+.mobile-stage-item.done .msi-icon{background:var(--dark);color:white}
+.mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<div id="nav">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div class="nav-logo">
+      <div class="logo-mark">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span>Setsail<em style="font-style:normal;color:var(--green)"> OS</em></span>
+    </div>
+    <div class="nav-meta">
+      <div class="nav-divider"></div>
+      <span style="color:var(--n3);cursor:pointer;transition:color .15s" onmouseover="this.style.color='var(--dark)'" onmouseout="this.style.color='var(--n3)'" onclick="showProjects()">Website Build Pipeline</span>
+      <div class="nav-divider" id="nav-div2" style="display:none"></div>
+      <span id="client-name-nav" style="color:var(--dark);font-weight:500"></span>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="save-indicator" style="opacity:0"></div>
+    <div id="stage-bar"></div>
+    <button id="mobile-menu-btn" onclick="toggleMobileNav()" style="display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--white);cursor:pointer;flex-shrink:0">
+      <i class="ti ti-menu-2" style="font-size:14px;color:var(--dark)"></i>
+    </button>
+  </div>
+</div>
+
+<!-- MOBILE NAV DRAWER -->
+<div id="mobile-nav-overlay" onclick="closeMobileNav()"></div>
+<div id="mobile-nav-drawer">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <span style="font-size:13px;font-weight:500;color:var(--dark)">Navigation</span>
+    <button onclick="closeMobileNav()" style="background:none;border:none;cursor:pointer;padding:4px"><i class="ti ti-x" style="font-size:14px;color:var(--n2)"></i></button>
+  </div>
+  <div id="mobile-stage-list"></div>
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="showProjects();closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- PROJECT PICKER -->
+  <div id="projects-screen">
+    <div style="max-width:640px">
+      <div class="eyebrow">SetSailOS</div>
+      <h2 class="ph" style="margin-bottom:4px">Website Build Pipeline</h2>
+      <p class="psub" style="margin-bottom:24px">Pick up where you left off or start a new project.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:500">Saved Projects</span>
+        <button class="btn btn-primary sm" onclick="startNewProject()"><i class="ti ti-plus"></i> New Project</button>
+      </div>
+      <div id="projects-list">
+        <div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0">
+          <span class="spinner" style="width:12px;height:12px"></span> Loading projects...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="screen" id="screen-setup">
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <button class="btn btn-ghost sm" onclick="showProjects()"><i class="ti ti-arrow-left"></i> Projects</button>
+      </div>
+      <div class="eyebrow">Stage 1 of 8</div>
+      <h2 class="ph">New project</h2>
+      <p class="psub">Fill in client details and paste the full strategy document.</p>
+
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Client</span><div class="section-mark-line"></div></div>
+        <div class="grid-2" style="margin-bottom:12px">
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Client Name *</label><input class="inp" id="f-client" placeholder="e.g. Riverside Roofing"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Website URL</label><input class="inp" id="f-url" placeholder="e.g. riversideroofing.ca"></div>
+        </div>
+        <div class="grid-2">
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Target Geography</label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Pricing to Mention</label><input class="inp" id="f-pricing" placeholder="e.g. From $2,400/mo flat"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Strategy</span><div class="section-mark-line"></div></div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;display:block;margin-bottom:5px">Strategy Document * <span style="color:var(--n2)">— paste discovery notes, brief, questionnaire</span></label>
+          <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Services, audience, geography, competitors, pricing, tone — everything."></textarea>
+        </div>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Brand Voice Notes</label>
+        <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. Canadian spelling."></textarea>
+      </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Competitors</span><div class="section-mark-line"></div></div>
+        <textarea class="inp" id="f-competitors" rows="3" placeholder="competitor1.ca&#10;competitor2.com"></textarea>
+      </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Image Style</span><div class="section-mark-line"></div></div>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Global Image Style Guidelines <span style="color:var(--n2)">— applied to all AI-generated images by default (overrideable per page in Stage 5)</span></label>
+        <textarea class="inp" id="f-image-style" rows="3" placeholder="e.g. Professional photography style, clean and modern, neutral backgrounds, construction/trades industry context, no people unless requested, bright natural lighting"></textarea>
+      </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Site Type</span><div class="section-mark-line"></div></div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="f-existing-site" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
+          <span style="font-size:13px;color:var(--dark)">This is an <strong>existing site</strong> — run a pre-build snapshot to protect rankings &amp; map 301 redirects</span>
+        </label>
+      </div>
+      <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
+      <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
+    </div>
+  </div>
+
+  <!-- SNAPSHOT -->
+  <div class="screen" id="screen-snapshot">
+    <div style="max-width:860px">
+      <div class="eyebrow">Stage 2 of 9</div>
+      <h2 class="ph">Site Snapshot</h2>
+      <p class="psub">Ahrefs audit of the existing site — captures what's ranking, what has backlinks, and builds the 301 redirect map before we touch anything.</p>
+
+      <!-- Domain metrics bar -->
+      <div id="snapshot-metrics-bar" style="display:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-dr">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Domain Rating</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-traffic">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Monthly Org. Traffic</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-keywords">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Ranking Keywords</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-refdomains">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Referring Domains</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-backlinks">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Live Backlinks</div>
+        </div>
+        <div class="card" style="padding:12px 14px;text-align:center">
+          <div style="font-size:22px;font-weight:600;color:var(--green)" id="snap-cost">—</div>
+          <div style="font-size:11px;color:var(--n2);margin-top:2px">Traffic Value/mo</div>
+        </div>
+      </div>
+
+      <!-- Run button / status -->
+      <div id="snapshot-run-area" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="snapshot-run-btn" onclick="runSnapshot()"><i class="ti ti-radar"></i> Run Site Snapshot</button>
+          <div id="snapshot-status" style="font-size:12px;color:var(--n2)"></div>
+        </div>
+        <div id="snapshot-error" class="error-banner" style="display:none;margin-top:10px"><i class="ti ti-alert-circle"></i><span id="snapshot-error-msg"></span></div>
+      </div>
+
+      <!-- Top Pages table -->
+      <div id="snapshot-pages-wrap" style="display:none;margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:500">Top Pages by Organic Traffic</div>
+          <div style="font-size:11px;color:var(--n2)" id="snap-pages-count"></div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">URL</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3);white-space:nowrap">Traffic</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">KWs</th>
+              </tr>
+            </thead>
+            <tbody id="snap-pages-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 301 Redirect Map -->
+      <div id="snapshot-redirects-wrap" style="display:none;margin-bottom:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div>
+            <div style="font-size:13px;font-weight:500">301 Redirect Map</div>
+            <div style="font-size:11px;color:var(--n2);margin-top:2px">Map old URLs to new slugs. Complete after Stage 3 (Sitemap). Exports as CSV + Cloudflare _redirects in Stage 8.</div>
+          </div>
+          <button class="btn btn-ghost sm" onclick="autoMatchRedirects()"><i class="ti ti-wand"></i> Auto-match</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">Old URL</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">Traffic</th>
+                <th style="padding:8px 10px;text-align:right;font-weight:500;color:var(--n3)">RDs</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--n3)">New Slug</th>
+                <th style="padding:8px 10px;text-align:center;font-weight:500;color:var(--n3)">Status</th>
+              </tr>
+            </thead>
+            <tbody id="snap-redirect-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="snapshot-next-wrap" style="display:none">
+        <button class="btn btn-primary" onclick="goTo('research');runResearch && document.getElementById('research-run-btn')"><i class="ti ti-arrow-right"></i> Continue to Research</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESEARCH -->
+  <div class="screen" id="screen-research">
+    <div style="max-width:780px">
+      <div class="eyebrow">Stage 2 of 8</div>
+      <h2 class="ph sm">Research Brief</h2>
+      <p class="psub">Claude reads the strategy document and extracts intelligence that drives every downstream stage.</p>
+      <button class="btn btn-primary" id="research-run-btn" onclick="runResearch()"><i class="ti ti-brain"></i> Run Research Analysis</button>
+      <div id="research-stream-wrap" style="display:none" class="card" style="margin-top:12px">
+        <div class="eyebrow" style="margin-bottom:0">Analysis output</div>
+        <div class="stream-box" id="research-stream"></div>
+      </div>
+      <div id="research-results" style="display:none;margin-top:0"></div>
+    </div>
+  </div>
+
+  <!-- SITEMAP -->
+  <div class="screen" id="screen-sitemap">
+    <div style="max-width:960px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 3 of 8</div>
+          <h2 class="ph sm">Sitemap + Keyword Map</h2>
+          <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-file-import"></i> Import Existing</button>
+          <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
+        </div>
+      </div>
+      <!-- Import existing sitemap panel -->
+      <div id="sitemap-import-panel" style="display:none;margin-bottom:14px" class="card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-file-import" style="color:var(--green)"></i> Import Existing Sitemap</div>
+        <p style="font-size:12px;color:var(--n2);margin-bottom:10px">Paste existing page URLs (one per line). Claude will compare against the generated sitemap and surface missing page opportunities.</p>
+        <textarea id="sitemap-import-urls" rows="5" placeholder="https://example.com/services/plumbing&#10;https://example.com/about&#10;https://example.com/contact" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--dark);font-size:12px;font-family:var(--font);resize:vertical;outline:none;box-sizing:border-box"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="sitemap-gap-btn" onclick="runGapAnalysis()"><i class="ti ti-search"></i> Analyse Gaps</button>
+          <span style="font-size:11px;color:var(--n2)">Compares existing pages against AI-generated recommendations</span>
+        </div>
+        <div id="sitemap-gap-stream-wrap" style="display:none;margin-top:10px">
+          <div class="eyebrow" style="margin-bottom:4px">Analysing gaps...</div>
+          <div class="stream-box" id="sitemap-gap-stream"></div>
+        </div>
+        <div id="sitemap-gap-results" style="display:none;margin-top:10px"></div>
+      </div>
+      <div id="sitemap-stream-wrap" style="display:none" class="card">
+        <div class="eyebrow" style="margin-bottom:0">Building sitemap...</div>
+        <div class="stream-box" id="sitemap-stream"></div>
+      </div>
+      <div id="sitemap-results" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- COPY -->
+  <div class="screen" id="screen-copy">
+    <div style="max-width:860px">
+      <div style="margin-bottom:16px">
+        <div class="eyebrow">Stage 4 of 8</div>
+        <h2 class="ph sm">Copy Generation</h2>
+        <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
+      </div>
+      <div id="copy-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span id="copy-count-label" style="color:var(--n2)"></span><span id="copy-pct-label" style="color:var(--green);font-weight:500"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="copy-progress-fill" style="width:0%"></div></div>
+      </div>
+      <div id="copy-queue"></div>
+      <div id="copy-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <div class="success-banner"><i class="ti ti-check"></i><span id="copy-done-label">All pages complete</span></div>
+        <button class="btn btn-primary" onclick="initImageStage();goTo('images')"><i class="ti ti-photo"></i> Generate Images</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMAGES -->
+  <div class="screen" id="screen-images">
+    <div style="max-width:900px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="eyebrow">Stage 5 of 8</div>
+          <h2 class="ph sm">Image Generation</h2>
+          <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost sm" onclick="toggleImageStylePanel()"><i class="ti ti-palette"></i> Style Guide</button>
+          <button class="btn btn-ghost sm" id="image-stop-btn" onclick="stopImageGen()" style="display:none"><i class="ti ti-player-stop"></i> Stop</button>
+          <button class="btn btn-primary" onclick="generateAllPagesImages()"><i class="ti ti-player-play"></i> Generate All</button>
+        </div>
+      </div>
+
+      <!-- Global style panel -->
+      <div id="image-style-panel" style="display:none;background:var(--panel);border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:8px">Global Image Style <span style="font-weight:400;color:var(--n2)">— applied to all pages unless overridden below</span></div>
+        <textarea id="image-style-global-edit" rows="2" style="width:100%;font-size:12px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.5"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-ghost sm" onclick="saveGlobalImageStyle()"><i class="ti ti-check"></i> Save</button>
+          <button class="btn btn-ghost sm" onclick="document.getElementById('image-style-panel').style.display='none'">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Progress bar -->
+      <div id="image-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span id="image-count-label" style="color:var(--n2)"></span><span id="image-pct-label" style="color:var(--green);font-weight:500"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="image-progress-fill" style="width:0%"></div></div>
+      </div>
+
+      <div id="image-queue"></div>
+
+      <div id="image-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <div class="success-banner"><i class="ti ti-check"></i><span>All images generated</span></div>
+        <button class="btn btn-primary" onclick="initLayout();goTo('layout')"><i class="ti ti-arrow-right"></i> Generate Layout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LAYOUT -->
+  <div class="screen" id="screen-layout">
+    <div style="max-width:960px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="eyebrow">Stage 6 of 8</div>
+          <h2 class="ph sm">Page Wireframes</h2>
+          <p class="psub" style="margin-bottom:0">AI generates full annotated wireframes — ready to hand to a designer.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-ghost sm" onclick="showLayoutSettings()"><i class="ti ti-settings"></i> Template</button>
+          <button class="btn btn-primary" onclick="runAllWireframes()"><i class="ti ti-player-play"></i> Generate All</button>
+        </div>
+      </div>
+      <!-- Template/Figma settings panel -->
+      <div id="layout-settings-panel" style="display:none;background:var(--panel);border-radius:8px;padding:14px 16px;margin-bottom:16px;border:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:10px">Template Reference <span style="font-weight:400;color:var(--n2)">(optional — paste a Figma URL to map sections to your template)</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="layout-figma-url" type="text" placeholder="https://figma.com/design/..." style="flex:1;min-width:240px;font-size:12px;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none">
+          <button class="btn btn-ghost sm" onclick="saveFigmaUrl()"><i class="ti ti-check"></i> Save</button>
+          <button class="btn btn-ghost sm" onclick="document.getElementById('layout-settings-panel').style.display='none'">Cancel</button>
+        </div>
+        <div id="layout-figma-status" style="font-size:11px;color:var(--n2);margin-top:6px"></div>
+      </div>
+      <div id="layout-queue"></div>
+    </div>
+  </div>
+
+  <!-- SCHEMA -->
+  <div class="screen" id="screen-schema">
+    <div style="max-width:860px">
+      <div style="margin-bottom:16px">
+        <div class="eyebrow">Stage 7 of 8</div>
+        <h2 class="ph sm">Schema + Meta Tags</h2>
+        <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
+      </div>
+      <div id="schema-progress" style="display:none" class="progress-wrap">
+        <div class="progress-meta"><span id="schema-count-label" style="color:var(--n2)"></span><span id="schema-pct-label" style="color:var(--dark);font-weight:500"></span></div>
+        <div class="progress-track"><div class="progress-fill" id="schema-progress-fill" style="width:0%;background:var(--dark)"></div></div>
+      </div>
+      <div id="schema-queue"></div>
+      <div id="schema-all-done" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+        <div class="success-banner"><i class="ti ti-check"></i><span id="schema-done-label">All schema complete</span></div>
+        <button class="btn btn-primary" onclick="goTo('export')"><i class="ti ti-package-export"></i> View Export Package</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="screen" id="screen-export">
+    <div style="max-width:920px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 8 of 8</div>
+          <h2 class="ph sm">Export Package</h2>
+          <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
+        </div>
+        <button class="btn btn-primary" onclick="downloadPackage()"><i class="ti ti-download"></i> Download Full Package</button>
+      </div>
+      <div class="grid-3" style="margin-bottom:16px" id="export-stats"></div>
+      <div class="tab-bar" id="export-tab-bar">
+        <button class="tab-btn active" onclick="switchTab('sitemap',this)">Sitemap</button>
+        <button class="tab-btn" onclick="switchTab('copy',this)">Copy</button>
+        <button class="tab-btn" onclick="switchTab('schema',this)">Schema</button>
+      </div>
+      <div id="export-sitemap-tab"></div>
+      <div id="export-copy-tab" style="display:none"></div>
+      <div id="export-schema-tab" style="display:none"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────
+const S = {
+  projectId: null, stage: 'setup',
+  setup: null, snapshot: null, research: null, pages: [], copy: {}, schema: {}, images: {},
+  copyStop: false, schemaStop: false,
+  copyRunning: false, schemaRunning: false,
+  copyPreviewSlug: null, schemaPreviewSlug: null,
+  imageGenRunning: false, imageGenStop: false,
+};
+let sitemapEditMode = false;
+
+// ── PERSISTENCE ────────────────────────────────────────────────────
+let saveTimer = null;
+function scheduleSave() {
+  if (!S.projectId) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveProject, 1500);
+  showSaveIndicator('saving');
+}
+
+async function saveProject() {
+  if (!S.projectId || !S.setup) return;
+  try {
+    showSaveIndicator('saving');
+    const payload = {
+      stage: S.stage,
+      setup: S.setup,
+      snapshot: S.snapshot || null,
+      research: S.research,
+      pages: S.pages,
+      copy: S.copy,
+      schema: S.schema,
+      kwMetrics: S.kwMetrics || {},
+      kwResearch: S.kwResearch || null,
+      sitemapApproved: S.sitemapApproved || false,
+      layout: Object.fromEntries(Object.entries(S.layout || {}).map(([slug, v]) => [slug, v?.rawHtml ? { ...v, rawHtml: undefined } : v])),
+      // Strip base64 image data before saving (too large for KV) — keep prompts/status only
+      images: Object.fromEntries(Object.entries(S.images || {}).map(([slug, data]) => [
+        slug,
+        { ...data, slots: (data.slots||[]).map(sl => ({ status: sl.status, prompt: sl.prompt, mimeType: sl.mimeType })) }
+      ])),
+      savedAt: Date.now(),
+    };
+    const res = await fetch('/api/projects/' + S.projectId, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('Save failed');
+    showSaveIndicator('saved');
+  } catch(e) {
+    showSaveIndicator('error');
+  }
+}
+
+function showSaveIndicator(state) {
+  const el = document.getElementById('save-indicator');
+  el.style.opacity = '1';
+  if (state === 'saving') {
+    el.className = 'saving'; el.style.color = 'var(--n2)';
+    el.innerHTML = '<span class="spinner" style="width:10px;height:10px;border-top-color:var(--n2)"></span> Saving...';
+  } else if (state === 'saved') {
+    el.className = 'saved'; el.style.color = 'var(--n2)';
+    el.innerHTML = '<i class="ti ti-cloud-check" style="font-size:13px"></i> Saved';
+    setTimeout(() => { el.style.opacity = '0'; }, 2500);
+  } else {
+    el.className = 'error'; el.style.color = 'var(--error)';
+    el.innerHTML = '<i class="ti ti-cloud-off" style="font-size:13px"></i> Save failed';
+  }
+}
+
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/projects');
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function loadProject(id) {
+  const res = await fetch('/api/projects/' + id);
+  if (!res.ok) return null;
+  return await res.json();
+}
+
+// ── PROJECT PICKER ─────────────────────────────────────────────────
+async function showProjects() {
+  document.getElementById('projects-screen').style.display = 'block';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('stage-bar').innerHTML = '';
+  document.getElementById('client-name-nav').textContent = '';
+  document.getElementById('nav-div2').style.display = 'none';
+  document.getElementById('save-indicator').style.opacity = '0';
+  S.projectId = null;
+
+  const listEl = document.getElementById('projects-list');
+  listEl.innerHTML = '<div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0"><span class="spinner" style="width:12px;height:12px"></span> Loading...</div>';
+
+  const projects = await loadProjects();
+  if (!projects.length) {
+    listEl.innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px 0">No saved projects yet. Start a new one.</div>';
+    return;
+  }
+
+  let html = '';
+  projects.forEach(p => {
+    const ts = p.updatedAt ? new Date(p.updatedAt).toLocaleDateString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+    const dotCls = 'project-dot ' + (p.stage||'setup');
+    html += '<div class="project-card" onclick="resumeProject(\'' + esc(p.id) + '\')">'
+      + '<div class="' + dotCls + '"></div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(p.name) + '</div>'
+      + (ts ? '<div style="font-size:11px;color:var(--n2);margin-top:1px">Last updated ' + esc(ts) + '</div>' : '')
+      + '</div>'
+      + '<span class="project-stage-badge">' + esc(p.stage||'setup') + '</span>'
+      + '<button class="btn btn-ghost sm" style="flex-shrink:0" onclick="event.stopPropagation();deleteProject(\'' + esc(p.id) + '\',this)"><i class="ti ti-trash" style="font-size:12px"></i></button>'
+      + '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+function startNewProject() {
+  S.projectId = 'proj-' + Date.now();
+  S.stage = 'setup'; S.setup = null; S.research = null;
+  S.pages = []; S.copy = {}; S.schema = {}; S.images = {};
+  document.getElementById('projects-screen').style.display = 'none';
+  goTo('setup');
+}
+
+async function resumeProject(id) {
+  document.getElementById('projects-list').innerHTML = '<div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0"><span class="spinner" style="width:12px;height:12px"></span> Loading project...</div>';
+  const data = await loadProject(id);
+  if (!data) { showProjects(); return; }
+
+  S.projectId = id;
+  S.stage = data.stage || 'setup';
+  S.setup = data.setup || null;
+  S.snapshot = data.snapshot || null;
+  S.research = data.research || null;
+  S.pages = data.pages || [];
+  S.copy = data.copy || {};
+  S.schema = data.schema || {};
+  S.kwMetrics = data.kwMetrics || {};
+  S.kwResearch = data.kwResearch || null;
+  S.sitemapApproved = data.sitemapApproved || false;
+  S.layout = data.layout || {};
+  S.images = data.images || {};
+
+  document.getElementById('projects-screen').style.display = 'none';
+
+  if (S.setup?.client) {
+    document.getElementById('client-name-nav').textContent = S.setup.client;
+    document.getElementById('nav-div2').style.display = '';
+  }
+
+  // Pre-fill setup form if returning there
+  if (S.stage === 'setup' && S.setup) prefillSetup();
+
+  goTo(S.stage);
+
+  // Re-render stage content
+  if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
+  if (S.stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
+  if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
+  if (S.stage === 'copy' && S.pages.length) { initCopy(); }
+  if (S.stage === 'images' && S.pages.length) { initImageStage(); }
+  if (S.stage === 'layout' && S.pages.length) { initLayout(); }
+  if (S.stage === 'schema' && S.pages.length) { initSchema(); }
+  if (S.stage === 'export') renderExport();
+
+  // Always restore image b64 into memory (needed for Layout Reinject button even when not on Stage 5)
+  if (S.stage !== 'images') loadAllPageImages();
+}
+
+async function deleteProject(id, btn) {
+  if (!confirm('Delete this project? This cannot be undone.')) return;
+  btn.disabled = true;
+  await fetch('/api/projects/' + id, { method: 'DELETE' });
+  showProjects();
+}
+
+function prefillSetup() {
+  const s = S.setup;
+  if (!s) return;
+  document.getElementById('f-client').value = s.client || '';
+  document.getElementById('f-url').value = s.url || '';
+  document.getElementById('f-geo').value = s.geo || '';
+  document.getElementById('f-pricing').value = s.pricing || '';
+  document.getElementById('f-strategy').value = s.strategy || '';
+  document.getElementById('f-voice').value = s.voice || '';
+  document.getElementById('f-competitors').value = s.competitors || '';
+  const imgStyleEl = document.getElementById('f-image-style');
+  if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
+  const existingEl = document.getElementById('f-existing-site');
+  if (existingEl) existingEl.checked = !!s.isExistingSite;
+}
+
+// ── NAVIGATION ─────────────────────────────────────────────────────
+const STAGES = [
+  {id:'setup',label:'Setup',icon:'ti-settings'},
+  {id:'snapshot',label:'Snapshot',icon:'ti-camera'},
+  {id:'research',label:'Research',icon:'ti-search'},
+  {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
+  {id:'copy',label:'Copy',icon:'ti-pencil'},
+  {id:'images',label:'Images',icon:'ti-photo'},
+  {id:'layout',label:'Layout',icon:'ti-layout'},
+  {id:'schema',label:'Schema',icon:'ti-code'},
+  {id:'export',label:'Export',icon:'ti-package-export'},
+];
+const STAGE_ORDER = STAGES.map(s => s.id);
+
+function goTo(stage) {
+  S.stage = stage;
+  document.getElementById('projects-screen').style.display = 'none';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + stage).classList.add('active');
+  renderStageBar(stage);
+  window.scrollTo(0,0);
+  if (stage === 'setup' && S.setup) prefillSetup();
+  scheduleSave();
+}
+
+function renderStageBar(current) {
+  const idx = STAGES.findIndex(s => s.id === current);
+  let html = '';
+  STAGES.forEach((s, i) => {
+    const done = i < idx, active = i === idx;
+    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
+    const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
+    const icon = done ? 'ti-check' : s.icon;
+    html += '<div class="' + cls + '" onclick="' + (canClick ? 'navToStage(\'' + s.id + '\')' : '') + '" style="' + (canClick && !active ? '' : 'cursor:default') + '">'
+      + '<i class="ti ' + icon + '" style="font-size:9px"></i>' + s.label + '</div>';
+    if (i < STAGES.length-1) html += '<div class="stage-dot' + (done?' done':'') + '"></div>';
+  });
+  document.getElementById('stage-bar').innerHTML = html;
+}
+
+function navToStage(stage) {
+  goTo(stage);
+  renderStageContent(stage);
+}
+
+function renderStageContent(stage) {
+  if (stage === 'snapshot' && S.snapshot) renderSnapshot();
+  if (stage === 'research' && S.research) { renderResearchResults(S.research); if (S.kwResearch) renderKwResearchCard(); }
+  if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
+  if (stage === 'copy' && S.pages.length) initCopy();
+  if (stage === 'images' && S.pages.length) initImageStage();
+  if (stage === 'layout' && S.pages.length) initLayout();
+  if (stage === 'schema' && S.pages.length) initSchema();
+  if (stage === 'export') renderExport();
+}
+
+// ── API ────────────────────────────────────────────────────────────
+async function callClaude(system, user, onChunk) {
+  const res = await fetch('/api/claude', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-20250514',
+      max_tokens:8000,
+      stream:true,
+      system,
+      messages:[{role:'user',content:user}]
+    })
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(function(){return{};});
+    throw new Error((e.error&&e.error.message)||('API error '+res.status));
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let full = '';
+  while(true) {
+    const {done,value} = await reader.read();
+    if(done) break;
+    for(const line of dec.decode(value).split('\n')) {
+      if(!line.startsWith('data: ')) continue;
+      try {
+        const d = JSON.parse(line.slice(6));
+        if(d.type==='content_block_delta'&&d.delta&&d.delta.text) {
+          full += d.delta.text;
+          if(onChunk) onChunk(full);
+        }
+      } catch(e2) {}
+    }
+  }
+  return full;
+}
+
+function safeParseJSON(text) {
+  // Try direct parse after stripping fences
+  try { return JSON.parse(text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+  // Extract array
+  try { const m = text.match(/(\[[\s\S]*\])/); if(m) return JSON.parse(m[1]); } catch(e) {}
+  // Extract object
+  try { const m = text.match(/(\{[\s\S]*\})/); if(m) return JSON.parse(m[1]); } catch(e) {}
+  // Find first [ or { to last ] or }
+  try {
+    const s = text.search(/[\[{]/);
+    if(s>=0){const e=Math.max(text.lastIndexOf(']'),text.lastIndexOf('}'));if(e>s)return JSON.parse(text.slice(s,e+1));}
+  } catch(e) {}
+  return null;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ── PROMPTS ────────────────────────────────────────────────────────
+const P = {
+research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON. No preamble. No markdown fences. No backticks. Raw JSON only:
+{"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
+
+sitemap:`You are a senior SEO architect. Build a performance-first sitemap by mapping keyword clusters to pages based on strict intent matching rules.
+
+## TWO TYPES OF PAGES
+
+**TYPE A — STRUCTURAL** (always build, vol:0 acceptable):
+- / homepage
+- /about
+- /contact
+- /case-studies (if client has results)
+
+**TYPE B — SEO** (only build with keyword justification):
+- /services/[slug] — requires vol > 0 in cluster
+- /industries/[slug] — requires vol > 100
+- /locations/[slug] — requires vol > 100
+- /blog/[slug] — requires vol > 50
+
+## KEYWORD INTENT RULES — follow exactly, no exceptions
+
+**Homepage ( / )**
+→ Brand/agency CATEGORY keywords only: "[city] digital marketing agency", "marketing agency [city]"
+→ NEVER assign specific service terms here (e.g. "seo services vancouver" belongs on the SEO page)
+
+**Service pages ( /services/ )**
+→ Service-SPECIFIC keywords only: "[service] [city]", "[service] agency", "[service] company bc"
+→ Each service gets its own page if it has a distinct keyword cluster
+→ Do NOT put homepage brand keywords here
+
+**Location pages ( /locations/ )**
+→ "[city] [service category]", "digital marketing [city]", "[city] marketing agency"
+→ vol > 100 required
+
+**Industry pages ( /industries/ )**
+→ "marketing for [industry]", "[industry] marketing agency"
+→ vol > 100 required
+
+**/about**
+→ ALWAYS assign a keyword. Look for: "[agency name] [city]", "b corp marketing agency", "ethical marketing agency", "certified b corp", "[agency name] reviews", "marketing agency team"
+→ If none exist verbatim, find the closest brand/trust keyword in the list — vol:0 is fine
+
+**/contact**
+→ ALWAYS assign a keyword. Look for: "free marketing audit", "marketing consultation [city]", "hire marketing agency", "marketing agency quote", "get marketing help"
+→ If none exist verbatim, find the closest conversion-intent keyword in the list — vol:0 is fine
+
+**/blog**
+→ Informational keywords only: "how to...", "what is...", "[topic] guide"
+
+## KEYWORD RULES
+1. primary_keyword MUST be exact string from the KEYWORD LIST — no paraphrasing
+2. supporting_keywords must also be exact strings from the list
+3. Group semantically related keywords into one page — don't fragment one topic across pages
+4. Assign the highest-scoring keyword within the CORRECT CLUSTER for each page type
+5. Do not assign the globally highest-scoring keyword to the wrong page type
+6. Structural pages (/about, /contact) must ALWAYS have a primary_keyword — never output an empty string. Use the closest match from the list even at vol:0.
+
+## OUTPUT
+JSON array, each object:
+{
+  "page_name": "string",
+  "slug": "services/seo-vancouver",
+  "page_type": "home|service|industry|location|about|blog|utility",
+  "is_structural": false,
+  "priority": "P1|P2|P3",
+  "primary_keyword": "EXACT string from list",
+  "primary_vol": 1600,
+  "primary_kd": 1,
+  "score": 737.8,
+  "keyword_cluster": "service_seo|brand_agency|service_ppc|location|industry|informational",
+  "supporting_keywords": [{"kw": "exact string", "vol": 2900, "kd": 4}],
+  "search_intent": "commercial|transactional|informational|navigational",
+  "word_count_target": 2500,
+  "rationale": "only if vol < 50 or is_structural",
+  "notes": "brief build note"
+}
+
+No markdown. No backticks. No preamble. Raw JSON array only.`,
+
+copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:
+
+1. HERO — H1 with primary keyword exact match. Outcome-first subheadline (what the client gets, not what we do). Single primary CTA button above the fold. One supporting trust signal (e.g. award, review rating, years in business).
+2. SOCIAL PROOF STRIP — logos or stat bar (3–5 credibility signals, use realistic placeholders like "[Client Logo]" or "★★★★★ 4.9/5 from 28 reviews").
+3. PROBLEM/AGITATION — 2–3 short paragraphs naming the pain the audience feels. Make them feel understood before offering a solution.
+4. SOLUTION BRIDGE — how the service/product solves exactly that problem. Outcome ownership framing, not activity-based.
+5. SERVICES / WHAT'S INCLUDED — H2 with supporting keyword. 3–6 service cards or feature list with benefit-led descriptions (not feature lists).
+6. PROCESS — 3–5 numbered steps showing how it works. Reduces friction and eliminates "what happens next?" anxiety.
+7. PROOF SECTION — 2–3 case study or testimonial placeholders with specific results (e.g. "[Company X] increased leads by 47% in 90 days — [Name, Title]").
+8. OBJECTION HANDLING — 3–5 short "You might be thinking..." callout blocks that pre-empt the top buying objections.
+9. FAQ — minimum 8 questions. Target long-tail keyword phrases. Answer concisely and naturally.
+10. FINAL CTA SECTION — restate the outcome, repeat the primary CTA, add a low-commitment secondary option (e.g. "Book a free audit" vs "Call us").
+
+SEO RULES: H1 = primary keyword verbatim. First paragraph includes primary keyword. H2s use supporting keywords naturally. Internal link placeholders where relevant.
+CRO RULES: Every section must earn the scroll. No filler copy. Lead with outcomes not activities. Canadian spelling. Direct, confident tone.
+OUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
+
+layout:`You are a senior CRO-focused web strategist and Webflow designer at Setsail Marketing. Based on the provided page copy and keyword intent, generate a detailed section-by-section page layout brief that a Webflow designer can follow exactly.
+
+For each section output a JSON array of layout blocks. Every block must include:
+- section_id: kebab-case identifier
+- section_type: hero|social-proof|problem|solution|services|process|testimonials|objections|faq|cta|stats|team|comparison|gallery|blog-preview|custom
+- headline: the H2/heading for this section (pulled from copy)
+- layout_variant: one of: full-width-center|split-left-text|split-right-text|3-col-grid|4-col-grid|2-col-grid|alternating-rows|card-grid|timeline|accordion|sticky-sidebar|full-width-bg|banner
+- cro_note: 1-sentence CRO rationale for this layout choice
+- content_hooks: array of 2-4 key content items visible in this section
+- visual_cue: what imagery/icon/graphic style to use (e.g. "abstract geometric", "photo of team", "icon grid")
+- background: white|light-grey|dark|brand-green|brand-lime|image-overlay
+- cta_in_section: true|false
+- order: integer
+
+Output ONLY a valid JSON array. No preamble, no markdown fences.`,
+
+schema:`You are a technical SEO specialist at Setsail Marketing. Every page gets WebPage + BreadcrumbList. Service pages: Service + FAQPage (6+ Q) + Product. Use @id anchors. No unverifiable claims. priceValidUntil = current year end. Output ONLY raw JSON-LD script tags ready for <head>. Then add HTML comment with: title (50-60 chars), meta description (150-160 chars), og:title, og:description.`
+};
+
+
+// ── MOBILE NAV ─────────────────────────────────────────────────────
+function toggleMobileNav() {
+  const drawer = document.getElementById('mobile-nav-drawer');
+  const overlay = document.getElementById('mobile-nav-overlay');
+  renderMobileStageList();
+  drawer.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+
+function closeMobileNav() {
+  document.getElementById('mobile-nav-drawer').classList.remove('open');
+  document.getElementById('mobile-nav-overlay').classList.remove('open');
+}
+
+function renderMobileStageList() {
+  const idx = STAGE_ORDER.indexOf(S.stage);
+  let html = '';
+  STAGES.forEach((s, i) => {
+    const done = i < idx, active = i === idx;
+    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
+    const cls = 'mobile-stage-item' + (active?' active':done?' done':'');
+    const icon = done ? 'ti-check' : s.icon;
+    html += '<div class="'+cls+'" '+(canClick?'onclick="navToStage(\''+s.id+'\');closeMobileNav()"':'')+' style="'+(canClick?'':'opacity:0.4;cursor:default')+'">'
+      +'<div class="msi-icon"><i class="ti '+icon+'"></i></div>'
+      +s.label
+      +(active?'<span style="margin-left:auto;font-size:10px;color:var(--green)">Current</span>':'')
+      +'</div>';
+  });
+  document.getElementById('mobile-stage-list').innerHTML = html;
+}
+
+// ── SETUP ──────────────────────────────────────────────────────────
+function setupNext() {
+  const client = document.getElementById('f-client').value.trim();
+  const strategy = document.getElementById('f-strategy').value.trim();
+  if (!client) return showSetupErr('Client name is required');
+  if (strategy.length < 80) return showSetupErr('Strategy document is too short — paste the full brief');
+  hideSetupErr();
+  const isExistingSite = document.getElementById('f-existing-site')?.checked || false;
+  S.setup = {
+    client, url: document.getElementById('f-url').value.trim(),
+    geo: document.getElementById('f-geo').value.trim(),
+    pricing: document.getElementById('f-pricing').value.trim(),
+    strategy, voice: document.getElementById('f-voice').value.trim(),
+    competitors: document.getElementById('f-competitors').value.trim(),
+    imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
+    isExistingSite,
+  };
+  document.getElementById('client-name-nav').textContent = client;
+  document.getElementById('nav-div2').style.display = '';
+  scheduleSave();
+  goTo(isExistingSite ? 'snapshot' : 'research');
+}
+function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}
+function hideSetupErr(){document.getElementById('setup-error').style.display='none';}
+
+// ── SNAPSHOT ───────────────────────────────────────────────────────
+async function runSnapshot() {
+  const domain = (S.setup?.url || '').replace(/^https?:\/\//,'').replace(/\/.*$/,'').trim();
+  if (!domain) {
+    document.getElementById('snapshot-error-msg').textContent = 'Add a Website URL in Setup first';
+    document.getElementById('snapshot-error').style.display = 'flex';
+    return;
+  }
+  document.getElementById('snapshot-error').style.display = 'none';
+  const btn = document.getElementById('snapshot-run-btn');
+  const status = document.getElementById('snapshot-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Running Ahrefs audit…';
+  status.textContent = 'Pulling domain metrics, top pages and backlink data…';
+
+  try {
+    const geo = (S.setup?.geo || '').toUpperCase();
+    const country = geo.includes('US') ? 'US' : 'CA';
+    const res = await fetch('/api/snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, country })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Snapshot failed');
+    S.snapshot = data;
+    scheduleSave();
+    renderSnapshot();
+    status.textContent = 'Snapshot complete — ' + data.topPages.length + ' pages captured.';
+  } catch(e) {
+    document.getElementById('snapshot-error-msg').textContent = e.message;
+    document.getElementById('snapshot-error').style.display = 'flex';
+    status.textContent = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Snapshot';
+  }
+}
+
+function renderSnapshot() {
+  const snap = S.snapshot;
+  if (!snap) return;
+  const m = snap.domainMetrics || {};
+
+  // Metrics bar
+  const bar = document.getElementById('snapshot-metrics-bar');
+  if (bar) {
+    bar.style.display = 'grid';
+    document.getElementById('snap-dr').textContent = m.dr != null ? Math.round(m.dr) : '—';
+    // Derive traffic + keywords from top pages (Standard plan — metrics endpoint requires Advanced)
+    const derivedTraffic = (snap.topPages || []).reduce((s, p) => s + (p.traffic || 0), 0);
+    const derivedKeywords = (snap.topPages || []).reduce((s, p) => s + (p.keywords || 0), 0);
+    document.getElementById('snap-traffic').textContent = derivedTraffic ? derivedTraffic.toLocaleString() : '0';
+    document.getElementById('snap-keywords').textContent = derivedKeywords ? derivedKeywords.toLocaleString() : '0';
+    document.getElementById('snap-refdomains').textContent = '—';
+    document.getElementById('snap-backlinks').textContent = '—';
+    const costUsd = m.orgCost ? (m.orgCost / 100) : 0;
+    document.getElementById('snap-cost').textContent = costUsd ? '$' + Math.round(costUsd).toLocaleString() : '$0';
+  }
+
+  // Top pages table
+  const pagesWrap = document.getElementById('snapshot-pages-wrap');
+  const tbody = document.getElementById('snap-pages-tbody');
+  if (pagesWrap && tbody && snap.topPages?.length) {
+    pagesWrap.style.display = 'block';
+    document.getElementById('snap-pages-count').textContent = snap.topPages.length + ' pages';
+    tbody.innerHTML = snap.topPages.map((p, i) => {
       const slug = p.slug || '/';
       return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':'background:white'}">
         <td style="padding:7px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -1079,11 +2146,7 @@ function renderSnapshot() {
           <span title="${esc(p.url)}" style="color:var(--dark);font-family:monospace;font-size:11px">${esc(slug || '/')}</span>
         </td>
         <td style="padding:7px 10px;text-align:right;color:var(--dark);font-weight:500">${(p.traffic||0).toLocaleString()}</td>
-        <td style="padding:7px 10px;color:var(--n3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.topKeyword||'—')}</td>
-        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${p.topKeywordPosition||'—'}</td>
         <td style="padding:7px 10px;text-align:right;color:var(--n3)">${(p.keywords||0).toLocaleString()}</td>
-        <td style="padding:7px 10px;text-align:right;color:${hasRd?'var(--green)':'var(--n3)'};font-weight:${hasRd?'500':'400'}">${p.referringDomains||0}</td>
-        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${p.ur ? Math.round(p.ur) : '—'}</td>
       </tr>`;
     }).join('');
   }
