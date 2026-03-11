@@ -619,8 +619,19 @@ export default {
         // Domain-level metrics from overview
         const orgMetrics = overviewResult?.items?.[0]?.metrics?.organic || {};
 
+        // Deduplicate by slug — keep highest traffic entry per slug
+        const seenSlugs = new Map();
+        const dedupedPages = [];
+        for (const p of topPages) {
+          const key = p.slug;
+          if (!seenSlugs.has(key) || p.traffic > seenSlugs.get(key).traffic) {
+            seenSlugs.set(key, p);
+          }
+        }
+        const finalPages = [...seenSlugs.values()].sort((a, b) => b.traffic - a.traffic);
+
         // Build redirect map from top pages (anything with traffic or backlinks)
-        const redirectMap = topPages
+        const redirectMap = finalPages
           .filter(p => p.traffic > 0 || p.referringDomains > 0)
           .map(p => ({ oldUrl: p.url, oldSlug: p.slug, newSlug: '', status: 'pending' }));
 
@@ -636,7 +647,7 @@ export default {
             liveRefdomains: null,
             liveBacklinks: null,
           },
-          topPages,
+          topPages: finalPages,
           redirectMap,
         };
 
