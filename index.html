@@ -1596,6 +1596,9 @@ async function enrichAll(forceAll) {
   const statusEl = document.getElementById('research-enrich-status');
   const msgEl = document.getElementById('research-enrich-msg');
   const progEl = document.getElementById('research-enrich-progress');
+  var _s = S.setup || {};
+  if (_s.client && !S.research.client_name) S.research.client_name = _s.client;
+  if (_s.client && !S.research.brand_name) S.research.brand_name = _s.client;
   _enrichDone.clear();
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
   if (statusEl) statusEl.style.display = 'flex';
@@ -1695,17 +1698,17 @@ async function enrichRTab(tab, forceAll) {
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
       + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
 
-    brand: ctx + '\n\nExtract brand identity and positioning. Look especially in brand guides. Return a JSON object:\n{\n'
-      + b + '"brand_name": "the actual brand or company name",\n'
-      + b + '"slogan_or_tagline": "tagline if one exists else empty string",\n'
+    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object. For brand_colours/fonts: only include values explicitly in reference docs, use [] if not found. Do NOT invent values.\nFor tone, differentiators, voice: extract specifically from strategy and brand docs.\nReturn ONLY valid JSON, no preamble.\n{\n'
+      + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
+      + b + '"slogan_or_tagline": "tagline from docs, or empty string",\n'
       + b + '"brand_voice_style": "one of: direct playful premium technical warm other",\n'
-      + b + '"tone_and_voice": "2-3 sentences on how this brand communicates — tone, language, personality",\n'
-      + b + '"words_to_use": ["preferred word 1", "preferred word 2"],\n'
-      + b + '"words_to_avoid": ["word to avoid 1", "word to avoid 2"],\n'
-      + b + '"key_differentiators": ["differentiator 1", "differentiator 2", "differentiator 3"],\n'
-      + b + '"proof_points": ["award or credential 1", "stat or social proof 2"],\n'
-      + b + '"brand_colours": ["#hexcode1", "#hexcode2"],\n'
-      + b + '"fonts": ["Primary Font", "Secondary Font"]\n}',
+      + b + '"tone_and_voice": "2-3 sentences on tone and personality from the docs",\n'
+      + b + '"words_to_use": ["power words fitting this brand voice"],\n'
+      + b + '"words_to_avoid": ["words that conflict with this brand voice"],\n'
+      + b + '"key_differentiators": ["real differentiator from the docs"],\n'
+      + b + '"proof_points": ["real cert/award/stat from docs, or []"],\n'
+      + b + '"brand_colours": ["hex from brand guide only, or []"],\n'
+      + b + '"fonts": ["font from brand guide only, or []"]\n}',
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
       + b + '"schema_business_type": "LocalBusiness or Organization",\n'
@@ -1725,11 +1728,14 @@ async function enrichRTab(tab, forceAll) {
       + b + '"has_blog": "Yes or Planned or No",\n'
       + b + '"has_faq_section": "Yes or Planned or No"\n}',
 
-    competitors: ctx + '\n\nIdentify competitors. Use competitors named in the documents. If not specified, infer likely competitors from industry and geography.\nReturn a JSON object:\n{\n'
-      + b + '"competitors": [\n'
-      + b + '  {"name": "Competitor Name", "url": "competitor.com", "why_they_win": "specific reason — positioning, price, brand, etc."},\n'
-      + b + '  {"name": "Competitor 2", "url": "competitor2.com", "why_they_win": "specific reason"}\n'
-      + b + ']\n}\nInclude 3-5 real competitors.'
+    competitors: '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
+      + 'URL: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
+      + 'Location: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
+      + ctx + '\n\nIdentify 3-6 REAL competitors for this business.\n'
+      + 'Step 1: Extract any competitors explicitly named in the documents.\n'
+      + 'Step 2: Based on the industry and geography, name additional real competitors.\n'
+      + 'NEVER use placeholder names. Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"competitors": [{"name": "Real Business Name", "url": "domain.com", "why_they_win": "specific strength"}]\n}'
   };
 
   if (!prompts[tab]) return;
