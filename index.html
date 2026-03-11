@@ -2624,7 +2624,7 @@ function addNewPage() {
     is_structural: false, priority: 'P2', primary_keyword: '',
     primary_vol: 0, primary_kd: 0, score: 0,
     supporting_keywords: [], search_intent: 'commercial',
-    word_count_target: 1500, notes: ''
+    word_count_target: 1500, notes: '', meta_title: '', meta_description: ''
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -2740,6 +2740,48 @@ function showMermaidModal() {
   document.body.appendChild(modal);
 }
 
+function showHtmlSitemapModal() {
+  const pages = S.pages || [];
+  const site = (S.setup?.url || '').replace(/\/$/, '');
+  // Group pages
+  const groups = [
+    { label: 'P1 — Priority', color: '#158E1D', bg: 'rgba(21,142,29,0.07)', pages: pages.filter(p=>p.priority==='P1') },
+    { label: 'P2 — Secondary', color: '#F5A623', bg: 'rgba(245,166,35,0.07)', pages: pages.filter(p=>p.priority==='P2') },
+    { label: 'P3 — Support', color: '#888', bg: 'rgba(0,0,0,0.03)', pages: pages.filter(p=>p.priority==='P3') },
+  ].filter(g => g.pages.length > 0);
+  let rows = '';
+  groups.forEach(g => {
+    rows += `<tr><td colspan="4" style="padding:10px 12px 4px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${g.color};background:${g.bg};border-bottom:1px solid rgba(0,0,0,0.06)">${g.label} (${g.pages.length})</td></tr>`;
+    g.pages.forEach((p,i) => {
+      const url = site + '/' + p.slug;
+      const copyDone = !!(S.copy[p.slug]||{}).copy;
+      const schemaDone = !!(S.schema[p.slug]||{}).schema;
+      const imgDone = (S.images[p.slug]?.slots||[]).length > 0 && (S.images[p.slug]?.slots||[]).every(s=>s.status==='done');
+      const rowBg = i%2===0?'#fff':'#fafaf8';
+      rows += `<tr style="background:${rowBg}">`;
+      rows += `<td style="padding:7px 12px;font-size:12px;color:#333;font-weight:500">${esc(p.page_name)}</td>`;
+      rows += `<td style="padding:7px 10px;font-size:11px;color:#666;font-family:monospace"><a href="${url}" target="_blank" style="color:#158E1D;text-decoration:none">/${esc(p.slug)}</a></td>`;
+      rows += `<td style="padding:7px 10px;font-size:11px;color:#555">${esc(p.primary_keyword||'')}</td>`;
+      rows += `<td style="padding:7px 10px;text-align:center">`;
+      rows += `<span title="Copy" style="font-size:13px">${copyDone?'\xe2\x9c\x85':'\xe2\xac\x9c'}</span> `;
+      rows += `<span title="Schema" style="font-size:13px">${schemaDone?'\xe2\x9c\x85':'\xe2\xac\x9c'}</span> `;
+      rows += `<span title="Images" style="font-size:13px">${imgDone?'\xe2\x9c\x85':'\xe2\xac\x9c'}</span>`;
+      rows += `</td></tr>`;
+    });
+  });
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(S.setup?.client||'Sitemap')} — Sitemap</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#f5f4f0;padding:24px}h1{font-size:20px;font-weight:600;color:#111;margin-bottom:4px}p{font-size:13px;color:#888;margin-bottom:18px}table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08)}th{padding:9px 12px;background:#f0efea;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#666;font-weight:600;text-align:left;border-bottom:2px solid #e5e4e0}td{border-bottom:1px solid #f0f0ee}a{color:#158E1D}</style>
+</head><body><h1>${esc(S.setup?.client||'Sitemap')}</h1><p>${site} &mdash; ${pages.length} pages &mdash; Generated ${new Date().toLocaleDateString()}</p>
+<table><thead><tr><th>Page</th><th>URL</th><th>Primary Keyword</th><th style="text-align:center">Copy / Schema / Images</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  const blob = new Blob([html], {type:'text/html'});
+  const bUrl = URL.createObjectURL(blob);
+  const w = window.open('', '_blank', 'width=960,height=720,scrollbars=yes');
+  if (w) { w.document.write(html); w.document.close(); }
+  else {
+    const a = document.createElement('a'); a.href = bUrl; a.download = (S.setup?.client||'sitemap').toLowerCase().replace(/\s+/g,'-')+'-sitemap.html'; a.click();
+  }
+}
+
 function renderSitemapResults(approved) {
   try { _renderSitemapResultsInner(approved); } catch(err) {
     console.error('renderSitemapResults crash:', err);
@@ -2772,6 +2814,7 @@ function _renderSitemapResultsInner(approved) {
     html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
   }
   html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
+  html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showHtmlSitemapModal()"><i class="ti ti-layout-sidebar"></i> HTML Preview</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
 
@@ -3709,6 +3752,16 @@ function renderCopyQueue() {
             html += `<span style="font-size:10px;color:${chipColor};background:rgba(0,0,0,0.05);border-radius:10px;padding:2px 8px;border:1px solid rgba(0,0,0,0.07)">${esc(kw)} x${cnt}</span>`;
           });
           html += '</div>';
+          // Meta tags block
+          const _mt = esc(p.meta_title||''), _md = esc(p.meta_description||'');
+          const _mtLen=(p.meta_title||'').length, _mdLen=(p.meta_description||'').length;
+          const _mtC=_mtLen>60?'#E53935':_mtLen>50?'var(--warn)':_mtLen===0?'var(--n2)':'var(--green)';
+          const _mdC=_mdLen>160?'#E53935':_mdLen>140?'var(--warn)':_mdLen===0?'var(--n2)':'var(--green)';
+          html += `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
+          html += `<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px"><i class="ti ti-tags"></i> Meta Tags</div>`;
+          html += `<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">TITLE</label><span id="mt-ctr-${p.slug}" style="font-size:10px;color:${_mtC}">${_mtLen}/60</span></div><input id="mt-${p.slug}" value="${_mt}" maxlength="80" placeholder="50-60 chars recommended" style="width:100%;font-size:12px;padding:6px 9px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box" oninput="saveMetaField('${p.slug}','meta_title',this.value)" /></div>`;
+          html += `<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">DESCRIPTION</label><span id="md-ctr-${p.slug}" style="font-size:10px;color:${_mdC}">${_mdLen}/160</span></div><textarea id="md-${p.slug}" rows="2" maxlength="185" placeholder="150-160 chars recommended" style="width:100%;font-size:12px;padding:6px 9px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.4;box-sizing:border-box" oninput="saveMetaField('${p.slug}','meta_description',this.value)">${_md}</textarea></div>`;
+          html += `</div>`;
 
           const curIdx = pages.findIndex(pp => pp.slug === p.slug);
           const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
@@ -4805,6 +4858,14 @@ async function runSchemaPage(slug) {
     const schema = await callClaude(P.schema, buildSchemaPrompt(page), null);
     if (!schemaStopFlag) {
       S.schema[slug] = {schema, page};
+      // Parse meta title + description from schema HTML comment
+      const _sIdx = S.pages.findIndex(pp => pp.slug === slug);
+      if (_sIdx >= 0) {
+        const _mT = schema.match(/title[:\s]+([^\n|]+)/i);
+        const _mD = schema.match(/meta description[:\s]+([^\n|]+)/i);
+        if (_mT && _mT[1].trim() && !S.pages[_sIdx].meta_title) S.pages[_sIdx].meta_title = _mT[1].trim().replace(/^["'`]|["'`]$/g,'').slice(0,70);
+        if (_mD && _mD[1].trim() && !S.pages[_sIdx].meta_description) S.pages[_sIdx].meta_description = _mD[1].trim().replace(/^["'`]|["'`]$/g,'').slice(0,170);
+      }
       scheduleSave();
       const curIdx = S.pages.findIndex(p => p.slug === slug);
       const next = S.pages.find((p,i) => i > curIdx && !(S.schema[p.slug]||{}).schema);
@@ -5057,6 +5118,17 @@ function intentBadge(kw, geo) {
 // ───────────────────────────────────────────────────────────────────────────
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function saveMetaField(slug, field, val) {
+  const idx = S.pages.findIndex(p => p.slug === slug);
+  if (idx < 0) return;
+  S.pages[idx][field] = val;
+  scheduleSave();
+  const max = field === 'meta_title' ? 60 : 160;
+  const ctrId = (field === 'meta_title' ? 'mt-ctr-' : 'md-ctr-') + slug;
+  const ctr = document.getElementById(ctrId);
+  if (ctr) { ctr.textContent = val.length+'/'+max; ctr.style.color = val.length>max?'#E53935':val.length>max*0.9?'var(--warn)':val.length===0?'var(--n2)':'var(--green)'; }
+}
+
 function countKeywordsInCopy(html,kw){if(!html||!kw)return 0;const t=html.replace(/<[^>]+>/g,' ').toLowerCase();const r=kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return(t.match(new RegExp('\\b'+r+'\\b','g'))||[]).length;}
 function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToClip2(el.textContent);}
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
