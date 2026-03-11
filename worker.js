@@ -597,7 +597,7 @@ export default {
           }),
           dfsPost('/v3/backlinks/summary/live', {
             target: domain, include_subdomains: true, backlinks_status_type: 'live',
-          }).catch(e => ({ _error: e.message })),
+          }).catch(() => null),
         ]);
 
         // Parse top pages from DataForSEO relevant_pages response
@@ -649,7 +649,6 @@ export default {
             orgCost: null,
             liveRefdomains: backlinksResult?.referring_domains ?? null,
             liveBacklinks: backlinksResult?.backlinks ?? null,
-            _backlinksDebug: backlinksResult || null,
           },
           topPages: finalPages,
           redirectMap,
