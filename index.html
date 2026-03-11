@@ -232,8 +232,17 @@ textarea.inp{resize:vertical}
           <span style="font-size:13px;color:var(--dark)">This is an <strong>existing site</strong> — run a pre-build snapshot to protect rankings &amp; map 301 redirects</span>
         </label>
       </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Reference Documents</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Upload brand guides, call transcripts, discovery notes, or any docs for AI to use during enrichment. Supports .txt, .md, .pdf or paste directly.</p>
+        <div id="docs-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="btn btn-ghost" style="cursor:pointer"><i class="ti ti-upload"></i> Upload File<input type="file" accept=".txt,.md,.pdf" multiple style="display:none" onchange="handleDocUpload(this)"></label>
+          <button class="btn btn-ghost" onclick="addDocPaste()"><i class="ti ti-clipboard-text"></i> Paste Text</button>
+        </div>
+      </div>
       <div id="setup-error" class="error-banner" style="display:none"><i class="ti ti-alert-circle"></i><span id="setup-error-msg"></span></div>
-      <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Run Research Analysis</button>
+      <button class="btn btn-primary" onclick="setupNext()"><i class="ti ti-arrow-right"></i> Continue</button>
     </div>
   </div>
 
@@ -698,6 +707,7 @@ function prefillSetup() {
   if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
   const existingEl = document.getElementById('f-existing-site');
   if (existingEl) existingEl.checked = !!s.isExistingSite;
+  renderDocsList();
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
@@ -960,6 +970,84 @@ function renderMobileStageList() {
 }
 
 // ── SETUP ──────────────────────────────────────────────────────────
+// ── REFERENCE DOCUMENTS ───────────────────────────────────────────
+
+function renderDocsList() {
+  const el = document.getElementById('docs-list');
+  if (!el) return;
+  const docs = (S.setup && S.setup.docs) ? S.setup.docs : [];
+  if (!docs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = docs.map(function(d, i) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">'
+      +'<i class="ti ti-file-text" style="color:var(--n2);font-size:14px;flex-shrink:0"></i>'
+      +'<span style="font-size:12px;color:var(--dark);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span>'
+      +'<span style="font-size:11px;color:var(--n2)">'+Math.round(d.content.length/1000)+'k chars</span>'
+      +'<button onclick="removeDoc('+i+')" style="border:none;background:none;color:var(--n2);cursor:pointer;font-size:16px;padding:0 2px;line-height:1" title="Remove">×</button>'
+      +'</div>';
+  }).join('');
+}
+
+function removeDoc(idx) {
+  if (!S.setup || !S.setup.docs) return;
+  S.setup.docs.splice(idx, 1);
+  scheduleSave();
+  renderDocsList();
+}
+
+async function handleDocUpload(input) {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.docs) S.setup.docs = [];
+  const files = Array.from(input.files);
+  for (const file of files) {
+    const text = await readFileAsText(file);
+    S.setup.docs.push({ name: file.name, content: text });
+  }
+  input.value = '';
+  scheduleSave();
+  renderDocsList();
+}
+
+function readFileAsText(file) {
+  return new Promise(function(resolve) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      resolve(e.target.result.replace(/ /g, '').slice(0, 80000));
+    };
+    reader.onerror = function() { resolve('[Could not read: ' + file.name + ']'); };
+    reader.readAsText(file);
+  });
+}
+
+function addDocPaste() {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.docs) S.setup.docs = [];
+  const name = prompt('Document name (e.g. "Brand Guide", "Call Transcript")');
+  if (!name) return;
+  const content = prompt('Paste the document text here:');
+  if (!content) return;
+  S.setup.docs.push({ name: name.trim(), content: content.trim() });
+  scheduleSave();
+  renderDocsList();
+}
+
+function buildEnrichCtx() {
+  const s = S.setup || {};
+  const r = S.research || {};
+  let ctx = 'CLIENT: '+(s.client||r.client_name||'')+'\nURL: '+(s.url||'')+'\nGEO: '+(s.geo||'');
+  if (s.pricing)     ctx += '\nPRICING: '+s.pricing;
+  if (s.voice)       ctx += '\nBRAND VOICE: '+s.voice;
+  if (s.competitors) ctx += '\nKNOWN COMPETITORS:\n'+s.competitors;
+  if (s.strategy)    ctx += '\n\nSTRATEGY DOCUMENT:\n'+s.strategy;
+  const docs = s.docs || [];
+  if (docs.length) {
+    ctx += '\n\nREFERENCE DOCUMENTS:';
+    docs.forEach(function(d) {
+      ctx += '\n\n--- '+d.name+' ---\n'+d.content.slice(0, 15000);
+    });
+  }
+  return ctx;
+}
+
 function setupNext() {
   const client = document.getElementById('f-client').value.trim();
   const strategy = document.getElementById('f-strategy').value.trim();
@@ -975,6 +1063,7 @@ function setupNext() {
     competitors: document.getElementById('f-competitors').value.trim(),
     imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
     isExistingSite,
+    docs: (S.setup && S.setup.docs) ? S.setup.docs : [],
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-div2').style.display = '';
@@ -1538,7 +1627,7 @@ async function enrichRTab(tab) {
   const s = S.setup || {};
 
 
-  const ctx = 'CLIENT: '+(s.client||r.client_name||'')+'\nURL: '+(s.url||'')+'\nGEO: '+(s.geo||'')+'\nSTRATEGY DOCUMENT:\n'+(s.strategy||'N/A');
+  const ctx = buildEnrichCtx();
   const sys = 'You are a senior digital marketing strategist at Setsail Marketing. Analyse the client context provided and return ONLY valid JSON with the requested fields. No preamble. No markdown fences. Raw JSON only.';
 
   const prompts = {
@@ -1572,8 +1661,12 @@ async function enrichRTab(tab) {
       scheduleSave();
       renderResearchTabContent();
     }
-  } catch(e) { if(msgEl) msgEl.textContent = 'Error: '+e.message; }
-
+  } catch(e) {
+    const _emsg = document.getElementById('research-enrich-msg');
+    if (_emsg) _emsg.textContent = 'Error on ' + tab + ': ' + e.message;
+    console.error('enrichRTab ['+tab+']:', e);
+    // Intentionally not rethrowing — enrichAll continues to next tab
+  }
 }
 
 async function runResearch() {
