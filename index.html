@@ -1071,7 +1071,6 @@ function renderSnapshot() {
       const slug = p.slug || '/';
       return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':'background:white'}">
         <td style="padding:7px 12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          ${hasRd ? '<i class="ti ti-link" style="font-size:10px;color:var(--green);margin-right:4px" title="Has backlinks"></i>' : ''}
           <span title="${esc(p.url)}" style="color:var(--dark);font-family:monospace;font-size:11px">${esc(slug || '/')}</span>
         </td>
         <td style="padding:7px 10px;text-align:right;color:var(--dark);font-weight:500">${(p.traffic||0).toLocaleString()}</td>
