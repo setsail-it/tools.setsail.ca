@@ -1262,12 +1262,12 @@ function researchDefaults() {
     strategic_recommendations:[],
     // Audience
     primary_audience_description:'', buyer_roles_titles:[],
-    target_geography:'local', best_customer_examples:'',
+    target_geography:'', best_customer_examples:'',
     pain_points_top5:[], objections_top5:[],
     lead_channels_today:[], sales_cycle_length:'',
     lead_qualification_criteria:'', close_rate_estimate:'',
     top_reasons_leads_dont_close:'', booking_flow_description:'',
-    primary_goal:'leads', secondary_goals:[], target_audience:[],
+    primary_goal:'', secondary_goals:[], target_audience:[],
     geography:{ primary:'', secondary:[] },
     // Brand
     brand_name:'', slogan_or_tagline:'', brand_voice_style:'',
@@ -1279,15 +1279,15 @@ function researchDefaults() {
     existing_ad_creatives_link:'', do_not_use_assets_notes:'',
     reference_brands:[],
     // Schema
-    schema_business_type:'LocalBusiness', schema_primary_category:'',
+    schema_business_type:'', schema_primary_category:'',
     schema_price_range:'', schema_payment_methods:[],
     schema_has_physical_locations:false,
     schema_street_address:'', schema_city:'', schema_region:'',
-    schema_postal_code:'', schema_country:'CA',
+    schema_postal_code:'', schema_country:'',
     social_profiles:[], schema_services:[],
-    has_location_pages:'Planned', has_service_pages:'Yes',
-    has_blog:'Planned', has_faq_section:'Planned',
-    schema_injection_method:'Global header embed',
+    has_location_pages:'', has_service_pages:'',
+    has_blog:'', has_faq_section:'',
+    schema_injection_method:'',
     faqs:[], reviews:[],
     // Competitors
     competitors:[],
@@ -1632,6 +1632,7 @@ function mergeEnriched(target, source, forceAll) {
     if (!forceAll) {
       if (typeof existing === 'string' && existing.trim()) return;
       if (Array.isArray(existing) && existing.length > 0) return;
+      // booleans: always allow enrichment to set them (false = unfilled)
     }
     target[key] = incoming;
   });
