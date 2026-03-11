@@ -1779,15 +1779,23 @@ async function enrichRTab(tab, forceAll) {
       + 'Return ONLY valid JSON, no preamble, no markdown fences, no backticks.'
       : sys;
     var result = await callClaude(activeSys, prompts[tab], null);
-    // DEBUG: show raw result in UI so we can see what Claude returned
-    if (tab === 'competitors') {
-      var _dbgEl = document.getElementById('research-enrich-msg');
-      if (_dbgEl) _dbgEl.textContent = 'DEBUG raw[0:300]: ' + result.slice(0,300);
-      console.log('COMPETITORS RAW RESULT:', result);
-    }
+    console.error('ENRICH RAW ['+tab+']:', result.slice(0,600));
     var parsed = parseEnrichResult(result);
-    if (tab === 'competitors') console.log('COMPETITORS PARSED:', JSON.stringify(parsed));
+    console.error('ENRICH PARSED ['+tab+']:', JSON.stringify(parsed));
     if (parsed) {
+      // Competitors: direct write, skip mergeEnriched entirely
+      if (tab === 'competitors') {
+        if (parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
+          r.competitors = parsed.competitors;
+          console.error('COMPETITORS WRITTEN:', r.competitors.length, 'items', JSON.stringify(r.competitors[0]));
+        } else {
+          console.error('COMPETITORS EMPTY IN PARSED:', JSON.stringify(parsed));
+        }
+        scheduleSave();
+        _rTab = 'competitors';
+        renderResearchTabContent();
+        return;
+      }
       if (parsed.geography) {
         if (!r.geography) r.geography = {};
         if (forceAll || !r.geography.primary) r.geography.primary = parsed.geography.primary || r.geography.primary;
@@ -1796,20 +1804,11 @@ async function enrichRTab(tab, forceAll) {
         }
         delete parsed.geography;
       }
-      // For array fields: if existing array contains only blank objects, treat as empty so merge overwrites
-      Object.keys(parsed).forEach(function(key) {
-        if (Array.isArray(r[key]) && r[key].length > 0 && Array.isArray(parsed[key]) && parsed[key].length > 0) {
-          var allBlank = r[key].every(function(item) {
-            return typeof item === 'object' && Object.values(item).every(function(v) { return !v || (typeof v === 'string' && !v.trim()); });
-          });
-          if (allBlank) r[key] = [];
-        }
-      });
       mergeEnriched(r, parsed, forceAll);
       scheduleSave();
       renderResearchTabContent();
     } else {
-      console.warn('enrichRTab ['+tab+']: parse failed. Raw:', result.slice(0,500));
+      console.error('ENRICH PARSE FAILED ['+tab+']: raw:', result.slice(0,500));
       var _emsg2 = document.getElementById('research-enrich-msg');
       if (_emsg2) _emsg2.textContent = '\u26a0 ' + tab + ': could not parse AI response \u2014 check console';
     }
