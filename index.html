@@ -3596,7 +3596,7 @@ function renderLayoutQueue() {
       const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
       const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
 
-      html += `<div style="border:1px solid var(--border);${rowBorder}border-radius:8px;margin-bottom:5px;overflow:hidden">`;
+      html += `<div id="layout-card-${p.slug}" style="border:1px solid var(--border);${rowBorder}border-radius:8px;margin-bottom:5px;overflow:hidden">`;
 
       // Header row
       html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none" onclick="toggleLayoutAccordion('${p.slug}')">`;
@@ -3612,11 +3612,11 @@ function renderLayoutQueue() {
       html += `</div>`;
       html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
       html += `</div>`;
-      html += `<i class="ti ti-chevron-${isExpanded?'up':'down'}" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
+      html += `<i class="ti ti-chevron-${isExpanded?'up':'down'} layout-chevron" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
       html += `</div>`;
 
       if (isExpanded) {
-        html += '<div style="border-top:1px solid var(--border);padding:14px">';
+        html += '<div id="layout-content-'+p.slug+'" style="border-top:1px solid var(--border);padding:14px">';
         if (isRunning) {
           html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="spinner" style="width:10px;height:10px"></span> Generating wireframe…</div>'
             + '<div id="layout-stream-'+p.slug+'" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>'
@@ -3631,7 +3631,7 @@ function renderLayoutQueue() {
             + '<button class="btn btn-danger sm" onclick="redoWireframe(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
             + '</div>'
             + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">'
-            + '<iframe srcdoc="'+esc(r.html)+'" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>'
+            + makeWireframeIframe(r.html)
             + '</div>'
             + '<div id="layout-code-'+p.slug+'" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.html)+'</div>'
             + '<textarea id="layout-edit-'+p.slug+'" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box;margin-top:8px">'+esc(r.html)+'</textarea>';
@@ -3662,8 +3662,111 @@ function renderLayoutQueue() {
 }
 
 function toggleLayoutAccordion(slug) {
-  S.layoutExpandedSlug = S.layoutExpandedSlug === slug ? null : slug;
-  renderLayoutQueue();
+  const prev = S.layoutExpandedSlug;
+  const isClosing = prev === slug;
+  S.layoutExpandedSlug = isClosing ? null : slug;
+
+  // Surgical update — only touch the 1-2 affected cards, not the full list
+  if (prev && prev !== slug) collapseLayoutCard(prev);
+  if (!isClosing) expandLayoutCard(slug);
+  else collapseLayoutCard(slug);
+}
+
+function collapseLayoutCard(slug) {
+  const card = document.getElementById('layout-card-' + slug);
+  if (!card) { renderLayoutQueue(); return; }
+  const content = document.getElementById('layout-content-' + slug);
+  if (content) content.remove();
+  // Reset border
+  const r = S.layout[slug] || {};
+  const isDone = !!r.html, isErr = !!r.error;
+  card.style.borderColor = isDone ? 'rgba(21,142,29,0.3)' : isErr ? 'rgba(229,57,53,0.22)' : 'var(--border)';
+  // Flip chevron
+  const chev = card.querySelector('.layout-chevron');
+  if (chev) chev.className = 'ti ti-chevron-down layout-chevron';
+}
+
+function expandLayoutCard(slug) {
+  const card = document.getElementById('layout-card-' + slug);
+  if (!card) { renderLayoutQueue(); return; }
+
+  card.style.borderColor = 'var(--dark)';
+  const chev = card.querySelector('.layout-chevron');
+  if (chev) chev.className = 'ti ti-chevron-up layout-chevron';
+
+  const existing = document.getElementById('layout-content-' + slug);
+  if (existing) existing.remove();
+
+  const p = orderedPages().find(pp => pp.slug === slug);
+  if (!p) return;
+  const r = S.layout[slug] || {};
+  const isDone = !!r.html, isErr = !!r.error;
+  const isRunning = layoutCurrentPage === slug;
+  const sq = JSON.stringify(slug); // safe slug for onclick attrs e.g. "my-slug"
+
+  let inner = '';
+  if (isRunning) {
+    inner = `<div style="font-size:12px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="spinner" style="width:10px;height:10px"></span> Generating wireframe\u2026</div>
+      <div id="layout-stream-${slug}" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>
+      <button class="btn btn-danger sm" style="margin-top:10px" onclick="stopLayout()"><i class="ti ti-player-stop"></i> Stop</button>`;
+  } else if (isDone) {
+    const hasNewImgs = (S.images?.[slug]?.slots||[]).some(s => s.b64);
+    inner = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-ghost sm" onclick="printWireframe(${sq})"><i class="ti ti-printer"></i> Print / Export PDF</button>
+      <button class="btn btn-ghost sm" onclick="toggleLayoutCode(${sq})"><i class="ti ti-code"></i> Show HTML</button>
+      <button class="btn btn-ghost sm" id="layout-edit-btn-${slug}" onclick="toggleLayoutEdit(${sq})"><i class="ti ti-edit"></i> Edit</button>
+      ${hasNewImgs ? `<button class="btn btn-ghost sm" onclick="reinjectImages(${sq})" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>` : ''}
+      <button class="btn btn-danger sm" onclick="redoWireframe(${sq})"><i class="ti ti-refresh"></i> Redo</button>
+    </div>
+    <div id="layout-preview-${slug}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">
+      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--n2);font-size:12px"><span class="spinner" style="width:12px;height:12px"></span></div>
+    </div>
+    <div id="layout-code-${slug}" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)"></div>
+    <textarea id="layout-edit-${slug}" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box;margin-top:8px"></textarea>`;
+    const allPages = orderedPages();
+    const curIdx = allPages.findIndex(pp => pp.slug === slug);
+    const nextP = allPages.find((pp, ii) => ii > curIdx && !(S.layout[pp.slug]||{}).html);
+    if (nextP) {
+      const nq = JSON.stringify(nextP.slug);
+      inner += `<div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=${nq};renderLayoutQueue();runWireframe(${nq});"><i class="ti ti-arrow-right"></i> Next: ${esc(nextP.page_name)}</button>
+      </div>`;
+    }
+  } else if (isErr) {
+    inner = `<div style="color:var(--error);font-size:12px;margin-bottom:8px">${esc(r.error)}</div>
+      <button class="btn btn-primary sm" onclick="runWireframe(${sq})"><i class="ti ti-player-play"></i> Retry</button>`;
+  } else {
+    inner = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--n2)">${esc(p.primary_keyword||'')}${p.page_type ? ' \xb7 ' + esc(p.page_type) : ''}${p.word_count_target ? ' \xb7 ' + p.word_count_target + ' words' : ''}</div>
+      <button class="btn btn-primary sm" onclick="runWireframe(${sq})"><i class="ti ti-layout"></i> Generate Wireframe</button>
+    </div>`;
+  }
+
+  const contentDiv = document.createElement('div');
+  contentDiv.id = 'layout-content-' + slug;
+  contentDiv.style.cssText = 'border-top:1px solid var(--border);padding:14px';
+  contentDiv.innerHTML = inner;
+  card.appendChild(contentDiv);
+
+  // Populate code/textarea via textContent (no escaping needed) + inject iframe via blob
+  if (isDone && !isRunning) {
+    const codeEl = document.getElementById('layout-code-' + slug);
+    const editEl = document.getElementById('layout-edit-' + slug);
+    if (codeEl) codeEl.textContent = r.html;
+    if (editEl) editEl.value = r.html;
+    requestAnimationFrame(() => {
+      const preview = document.getElementById('layout-preview-' + slug);
+      if (preview && !preview.querySelector('iframe')) {
+        preview.innerHTML = makeWireframeIframe(r.html);
+      }
+    });
+  }
+}
+
+
+// Placeholder while iframe loads
+function makeWireframeIframe_placeholder(slug) {
+  return '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--n2);font-size:12px"><span class=\"spinner\" style=\"width:12px;height:12px\"></span></div>';
 }
 
 function toggleLayoutCode(slug) {
@@ -3680,7 +3783,7 @@ function toggleLayoutEdit(slug) {
   if (isEditing) {
     const newHtml = editEl.value;
     S.layout[slug].html = newHtml;
-    if (previewEl) previewEl.innerHTML = '<iframe srcdoc="'+esc(newHtml)+'" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>';
+    if (previewEl) previewEl.innerHTML = makeWireframeIframe(newHtml);
     document.getElementById('layout-code-'+slug) && (document.getElementById('layout-code-'+slug).textContent = newHtml);
     scheduleSave();
     editEl.style.display = 'none';
@@ -3692,6 +3795,12 @@ function toggleLayoutEdit(slug) {
     if (btn) btn.innerHTML = '<i class="ti ti-check"></i> Save';
     editEl.focus();
   }
+}
+
+function makeWireframeIframe(html) {
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  return `<iframe src="${url}" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>`;
 }
 
 function autoResizeFrame(iframe) {
