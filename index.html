@@ -2959,12 +2959,16 @@ function _renderSitemapResultsInner(approved) {
     html += '<span id="ci-paa-status"></span>';
     html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
     html += '</div></div>';
-    html += '<div id="ci-paa-panel" style="max-height:320px;overflow-y:auto">';
+    // Keyword seed input
+    const paaSeeds = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,6).join(', ');
+    html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+    html += `<input id="ci-paa-seeds" value="${paaSeeds}" placeholder="e.g. seo vancouver, digital marketing agency" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
+    html += '</div>';
+    html += '<div id="ci-paa-panel" style="max-height:280px;overflow-y:auto">';
     if (paaDone) {
-      // Pre-render from cache
-      html += '</div>'; // close panel div early, render will fill it
+      html += '</div>';
     } else {
-      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Click Run to fetch questions people search around your P1 keywords.</div></div>';
+      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Edit keywords above and click Run.</div></div>';
     }
     html += '</div>';
 
@@ -3039,8 +3043,10 @@ async function runPAA() {
   const panel  = document.getElementById('ci-paa-panel');
   if (!S.pages?.length) return;
 
-  // Use cached
-  if (S.contentIntel?.paa?.questions?.length) {
+  // Only use cache if seeds haven't changed
+  const _seedInputEl = document.getElementById('ci-paa-seeds');
+  const _currentSeeds = _seedInputEl ? _seedInputEl.value.trim() : '';
+  if (S.contentIntel?.paa?.questions?.length && S.contentIntel?.paa?.seeds === _currentSeeds) {
     renderPAAPanel();
     return;
   }
@@ -3049,18 +3055,19 @@ async function runPAA() {
   btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span>';
   status.textContent = '';
 
-  // Seed: primary keywords of P1 pages (max 6)
   const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
   const geoStr = (geo + '').toLowerCase();
   const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
 
-  const kwSeeds = (S.pages || [])
-    .filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural)
-    .map(p => p.primary_keyword)
-    .slice(0, 6);
+  // Use editable input if available, else fall back to P1 keywords
+  const seedInput = document.getElementById('ci-paa-seeds');
+  const seedVal = seedInput ? seedInput.value.trim() : '';
+  const kwSeeds = seedVal
+    ? seedVal.split(',').map(s => s.trim()).filter(Boolean).slice(0, 8)
+    : (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0, 6);
 
   if (!kwSeeds.length) {
-    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">No P1 keywords found</span>';
+    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">Enter at least one keyword above</span>';
     btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
     return;
   }
@@ -3082,7 +3089,8 @@ async function runPAA() {
     }
 
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
-    S.contentIntel.paa = { questions: data.questions, fetchedAt: Date.now() };
+    const _savedSeeds = document.getElementById('ci-paa-seeds')?.value.trim() || '';
+    S.contentIntel.paa = { questions: data.questions, seeds: _savedSeeds, fetchedAt: Date.now() };
     scheduleSave();
     renderPAAPanel();
   } catch(err) {
