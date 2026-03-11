@@ -2975,10 +2975,17 @@ function _renderSitemapResultsInner(approved) {
     const paaDone   = (ci.paa?.questions?.length || 0);
     const gapDone   = (ci.gap?.keywords?.length || 0);
 
-    // Parse competitor domains from setup for pre-fill
-    const competitorRaw = (S.setup?.competitors || '').replace(/\n/g,' ');
-    const competitorDomains = competitorRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
-    const competitorStr = competitorDomains.map(d=>d.replace(/^https?:\/\/(www\.)?/,'')).filter(Boolean).slice(0,4).join(', ');
+    // Competitor domains: prefer research tab enriched data, fall back to setup text
+    const _researchComps = (S.research?.competitors || []).map(c => {
+      const u = (c.url||'').replace(/^https?:\/\/(www\.)?/,'').replace(/\/.*$/,'').trim();
+      return u || (c.name||'').toLowerCase().replace(/\s+/g,'')+'.com';
+    }).filter(Boolean).slice(0,5);
+    const _setupRaw = (S.setup?.competitors || '').replace(/\n/g,' ');
+    const _setupDomains = _setupRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
+    const _setupComps = _setupDomains.map(d=>d.replace(/^https?:\/\/(www\.)?/,'')).filter(Boolean).slice(0,4);
+    const _existingGapEl = document.getElementById('ci-gap-domains');
+    const _savedGapDomains = _existingGapEl?.value.trim() || '';
+    const competitorStr = _savedGapDomains || (_researchComps.length ? _researchComps.join(', ') : _setupComps.join(', '));
 
     html += '<div class="card" style="margin-bottom:8px">';
 
@@ -2988,19 +2995,7 @@ function _renderSitemapResultsInner(approved) {
     html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Content Intelligence</div>';
     html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Blog topic opportunities based on search behaviour + competitor gaps</div>';
     html += '</div>';
-    if (blogTopics.length) {
-      html += `<div style="display:flex;gap:6px;align-items:center">`;
-      // Count how many aren't already pages
-      const existingSlugs = new Set((S.pages||[]).map(p=>p.slug));
-      const newCount = blogTopics.filter(t => !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))).length;
-      if (newCount > 0) {
-        html += `<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ${newCount} to Copy Queue</button>`;
-      } else {
-        html += `<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>`;
-      }
-      html += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>`;
-      html += `</div>`;
-    }
+    html += `<div id="ci-queue-actions"></div>`;
     html += '</div>';
 
     // Two-column panels
@@ -3018,12 +3013,13 @@ function _renderSitemapResultsInner(approved) {
     html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
     html += '</div></div>';
     // Keyword seed input
-    const _defaultPaaSeeds = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,6).join(', ');
-    // Preserve any user edit already in the DOM; fall back to P1 defaults
+    const _p1Keywords = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,8);
+    // Preserve any user selection already in the DOM
     const _existingSeedEl = document.getElementById('ci-paa-seeds');
-    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : _defaultPaaSeeds;
-    html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    html += `<input id="ci-paa-seeds" value="${paaSeeds}" placeholder="e.g. seo vancouver, digital marketing agency" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
+    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_p1Keywords[0] || '');
+    html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+    const _kwOptions = _p1Keywords.map(kw => `<option value="${esc(kw)}" ${kw===paaSeeds?'selected':''} style="color:var(--dark)">${esc(kw)}</option>`).join('');
+    html += `<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer;appearance:auto" title="Select keyword to fetch PAA for">${_kwOptions}</select>`;
     html += '</div>';
     html += '<div id="ci-paa-panel" style="max-height:280px;overflow-y:auto">';
     if (paaDone) {
@@ -3333,10 +3329,29 @@ function removeBlogTopic(text) {
   renderGapPanel();
 }
 
+function renderCIQueueActions() {
+  const el = document.getElementById('ci-queue-actions');
+  if (!el) return;
+  const topics = S.contentIntel?.blogTopics || [];
+  if (!topics.length) { el.innerHTML = ''; return; }
+  const existingSlugs = new Set((S.pages||[]).map(p=>p.slug));
+  const newCount = topics.filter(t => !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))).length;
+  let h = '<div style="display:flex;gap:6px;align-items:center">';
+  if (newCount > 0) {
+    h += `<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ${newCount} to Copy Queue</button>`;
+  } else {
+    h += `<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>`;
+  }
+  h += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>`;
+  h += '</div>';
+  el.innerHTML = h;
+}
+
 function renderBlogTopics() {
   const el = document.getElementById('ci-topics-panel');
   if (!el) return;
   const topics = S.contentIntel?.blogTopics || [];
+  renderCIQueueActions();
   if (!topics.length) {
     el.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:4px 0">No topics selected yet — click + Blog on any question or gap keyword above.</div>';
     return;
