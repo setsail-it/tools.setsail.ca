@@ -3701,6 +3701,14 @@ function renderCopyQueue() {
             +'</div>'
             +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
             +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">';
+          const _kwList = [p.primary_keyword, ...(p.secondary_keywords||[])].filter(Boolean);
+          _kwList.forEach(kw => {
+            const cnt = countKeywordsInCopy(r.copy || '', kw);
+            const chipColor = cnt === 0 ? '#E53935' : cnt < 2 ? 'var(--warn)' : 'var(--green)';
+            html += `<span style="font-size:10px;color:${chipColor};background:rgba(0,0,0,0.05);border-radius:10px;padding:2px 8px;border:1px solid rgba(0,0,0,0.07)">${esc(kw)} x${cnt}</span>`;
+          });
+          html += '</div>';
 
           const curIdx = pages.findIndex(pp => pp.slug === p.slug);
           const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
@@ -3772,11 +3780,10 @@ function initImageStage() {
         status: 'empty', prompt: buildImagePrompt(p, i, null), b64: null, mimeType: null
       }))};
     } else {
-      // Ensure 5 slots exist (in case of old data)
+      // Seed defaults if no slots yet (no hard cap)
       const existing = S.images[p.slug];
-      while ((existing.slots || []).length < 5) {
-        const i = existing.slots.length;
-        existing.slots.push({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null });
+      if (!existing.slots || existing.slots.length === 0) {
+        existing.slots = IMAGE_SLOTS.map((_, i) => ({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null }));
       }
     }
   });
@@ -3915,7 +3922,7 @@ function renderImageQueue() {
 
     const doneCount = gPages.filter(p => {
       const imgData = S.images[p.slug];
-      return imgData && imgData.slots.filter(s => s.status === 'done').length === 5;
+      return imgData && imgData.slots.length > 0 && imgData.slots.every(s => s.status === 'done');
     }).length;
 
     html += `<div style="margin-bottom:20px">`;
@@ -3928,7 +3935,8 @@ function renderImageQueue() {
     gPages.forEach(p => {
       const imgData = S.images[p.slug] || { slots: [], styleOverride: null };
       const doneSlots = (imgData.slots || []).filter(s => s.status === 'done').length;
-      const allDone = doneSlots === 5;
+      const totalSlots = (imgData.slots || []).length;
+      const allDone = totalSlots > 0 && doneSlots === totalSlots;
       const isExpanded = imageExpandedSlug === p.slug;
       const tIcon = typeIconMap[p.page_type] || 'ti-file';
       const pBadgeColor = p.priority === 'P1' ? 'var(--dark)' : p.priority === 'P2' ? 'var(--n2)' : '#bbb';
@@ -3971,9 +3979,10 @@ function renderImageQueue() {
         html += `</div></div></div>`;
 
         // 5 image slots
-        html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">`;
-        IMAGE_SLOTS.forEach((slotDef, i) => {
-          const sl = (imgData.slots || [])[i] || { status: 'empty', prompt: '' };
+        html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">`;
+        const allSlots = imgData.slots || [];
+        allSlots.forEach((sl, i) => {
+          const slotDef = IMAGE_SLOTS[i] || { label: 'Image ' + (i+1), ratio: 'Custom', hint: '' };
           html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel)">`;
           // Image area
           if (sl.status === 'done' && sl.b64) {
@@ -4004,15 +4013,33 @@ function renderImageQueue() {
           html += `<button class="btn btn-primary sm" style="font-size:10px;padding:3px 8px" onclick="generateImageWithCustomPrompt('${p.slug}',${i})"><i class="ti ti-player-play" style="font-size:10px"></i> Generate</button>`;
           html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="document.getElementById('prompt-editor-${p.slug}-${i}').style.display='none'">Cancel</button>`;
           html += `</div></div>`;
+          if (sl.status === 'done') {
+            const altVal = esc(sl.altText || '');
+            const altLen = (sl.altText || '').length;
+            const altColor = altLen > 100 ? '#E53935' : altLen > 80 ? 'var(--warn)' : 'var(--n2)';
+            html += `<div style="margin-top:5px"><div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">Alt Text</span><span style="font-size:9px;color:${altColor}">${altLen}/100</span></div>`;
+            html += `<input id="alt-${p.slug}-${i}" value="${altVal}" maxlength="125" placeholder="Describe image for accessibility" style="width:100%;font-size:10px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box" oninput="saveAltText('${p.slug}',${i},this.value)" /></div>`;
+          }
           html += `</div></div>`;
         });
-        html += `</div></div>`;
+        html += `</div>`;
+        html += `<div style="margin-top:8px"><button class="btn btn-ghost sm" onclick="addImageSlot('${p.slug}')"><i class="ti ti-plus"></i> Add Image Slot</button></div>`;
+        html += `</div>`;
       }
       html += `</div>`;
     });
     html += `</div>`;
   });
   el.innerHTML = html;
+}
+
+function addImageSlot(slug) {
+  if (!S.images[slug]) return;
+  const page = S.pages.find(p => p.slug === slug);
+  const i = S.images[slug].slots.length;
+  S.images[slug].slots.push({ status: 'empty', prompt: buildImagePrompt(page, i, S.images[slug].styleOverride), b64: null, mimeType: null });
+  scheduleSave();
+  renderImageQueue();
 }
 
 function toggleImageExpand(slug) {
@@ -4048,6 +4075,20 @@ function clearPageImageStyle(slug) {
   renderImageQueue();
 }
 
+function buildAltText(prompt) {
+  if (!prompt) return '';
+  const clean = prompt
+    .replace(/\b(professional|commercial|photography|style|clean|modern|well-lit|neutral|white|backgrounds|no text|no watermarks|business-appropriate|dramatic|wide composition|aspect ratio|16:9|4:3|1:1|3:2)\b/gi, '')
+    .replace(/\s{2,}/g, ' ').trim().replace(/[.,!]+$/, '');
+  return clean.length > 97 ? clean.slice(0, 97) + '...' : clean;
+}
+
+function saveAltText(slug, slotIdx, val) {
+  if (!S.images[slug]?.slots[slotIdx]) return;
+  S.images[slug].slots[slotIdx].altText = val.slice(0, 125);
+  scheduleSave();
+}
+
 async function generateImage(slug, slotIdx, customPrompt) {
   if (!S.images[slug]) return;
   const page = S.pages.find(p => p.slug === slug);
@@ -4073,6 +4114,7 @@ async function generateImage(slug, slotIdx, customPrompt) {
       slot.b64 = data.imageData;
       slot.mimeType = data.mimeType || 'image/png';
       slot.errorMsg = null;
+      if (!slot.altText) slot.altText = buildAltText(slot.prompt);
       savePageImages(slug); // persist to KV immediately
     } else {
       slot.status = 'error';
@@ -4172,7 +4214,7 @@ function updateImageProgress() {
 function checkImageAllDone() {
   const pages = S.pages || [];
   const allDone = pages.length > 0 && pages.every(p =>
-    (S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length === 5
+    ((S.images[p.slug]?.slots || []).length > 0 && (S.images[p.slug]?.slots || []).every(s => s.status === 'done'))
   );
   const el = document.getElementById('image-all-done');
   if (el) el.style.display = allDone ? 'flex' : 'none';
@@ -5015,6 +5057,7 @@ function intentBadge(kw, geo) {
 // ───────────────────────────────────────────────────────────────────────────
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function countKeywordsInCopy(html,kw){if(!html||!kw)return 0;const t=html.replace(/<[^>]+>/g,' ').toLowerCase();const r=kw.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return(t.match(new RegExp('\\b'+r+'\\b','g'))||[]).length;}
 function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToClip2(el.textContent);}
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
 
