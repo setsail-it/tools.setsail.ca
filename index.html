@@ -1151,6 +1151,8 @@ const RESEARCH_TABS = [
 ];
 
 let _rTab = 'business';
+let _enriching = false;
+const _enrichDone = new Set();
 
 function initResearch() {
   if (!S.research) S.research = researchDefaults();
@@ -1206,9 +1208,17 @@ function researchDefaults() {
 function renderResearchNav() {
   const nav = document.getElementById('research-tab-nav');
   if (!nav) return;
-  nav.innerHTML = RESEARCH_TABS.map(t =>
-    `<button onclick="switchRTab('${t.id}')" style="padding:9px 16px;border:none;border-bottom:2px solid ${_rTab===t.id?'var(--green)':'transparent'};background:none;font-family:var(--font);font-size:13px;color:${_rTab===t.id?'var(--dark)':'var(--n2)'};cursor:pointer;white-space:nowrap;font-weight:${_rTab===t.id?500:400};transition:color .15s;margin-bottom:-2px"><i class="ti ${t.icon}" style="margin-right:5px;font-size:12px"></i>${t.label}</button>`
-  ).join('');
+  nav.innerHTML = RESEARCH_TABS.map(t => {
+    const active = _rTab === t.id;
+    const done = _enrichDone.has(t.id);
+    const enrichingThis = _enriching === t.id;
+    const badge = enrichingThis
+      ? `<span class="spinner" style="width:10px;height:10px;display:inline-block;margin-left:5px;vertical-align:middle"></span>`
+      : done
+        ? `<span style="color:var(--green);font-size:10px;margin-left:4px;font-weight:600">✓</span>`
+        : '';
+    return `<button onclick="switchRTab('${t.id}')" style="padding:9px 16px;border:none;border-bottom:2px solid ${active?'var(--green)':'transparent'};background:none;font-family:var(--font);font-size:13px;color:${active?'var(--dark)':'var(--n2)'};cursor:pointer;white-space:nowrap;font-weight:${active?500:400};transition:color .15s;margin-bottom:-2px"><i class="ti ${t.icon}" style="margin-right:5px;font-size:12px"></i>${t.label}${badge}</button>`;
+  }).join('');
 }
 
 function switchRTab(id) {
@@ -1497,17 +1507,26 @@ async function enrichAll() {
   const statusEl = document.getElementById('research-enrich-status');
   const msgEl = document.getElementById('research-enrich-msg');
   const progEl = document.getElementById('research-enrich-progress');
+  _enrichDone.clear();
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
   if (statusEl) statusEl.style.display = 'flex';
   for (let i = 0; i < tabs.length; i++) {
-    const label = tabs[i].charAt(0).toUpperCase()+tabs[i].slice(1);
+    const tab = tabs[i];
+    const label = tab.charAt(0).toUpperCase()+tab.slice(1);
+    _enriching = tab;
+    _rTab = tab;
     if (msgEl) msgEl.textContent = 'Enriching ' + label + '...';
     if (progEl) progEl.textContent = (i+1)+' / '+tabs.length;
-    await enrichRTab(tabs[i]);
+    renderResearchNav();
+    renderResearchTabContent();
+    await enrichRTab(tab);
+    _enrichDone.add(tab);
   }
+  _enriching = false;
   if (msgEl) msgEl.textContent = 'All sections enriched ✓';
   if (progEl) progEl.textContent = '';
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; }
+  renderResearchNav();
   setTimeout(function(){
     if (statusEl) statusEl.style.display = 'none';
     if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI';
@@ -1534,8 +1553,7 @@ async function enrichRTab(tab) {
     competitors: ctx+'\nKNOWN COMPETITORS: '+(s.competitors||'N/A')+'\n\nReturn JSON:\n{"competitors":[{"name":"","url":"","why_they_win":""}]}'
   };
 
-  if (!prompts[tab]) { setBtnLoading(false); return; }
-  if (msgEl) msgEl.textContent = 'Enriching '+tab+' data...';
+  if (!prompts[tab]) return;
 
   try {
     const result = await callClaude(sys, prompts[tab], null);
