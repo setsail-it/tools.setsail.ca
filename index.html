@@ -717,6 +717,8 @@ function prefillSetup() {
   if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
   const existingEl = document.getElementById('f-existing-site');
   if (existingEl) existingEl.checked = !!s.isExistingSite;
+  const cmsEl = document.getElementById('f-cms');
+  if (cmsEl) cmsEl.value = s.cms || '';
   renderDocsList();
 }
 
@@ -1580,6 +1582,7 @@ async function pullGMB() {
     if (g.social_profiles && g.social_profiles.length > 0) rd.social_profiles = g.social_profiles;
     if (g.reviews && g.reviews.length > 0) rd.reviews = g.reviews;
     scheduleSave();
+    _rTab = 'schema';
     renderResearchTabContent();
     var _dbgKeys = g._debug_keys ? ' [keys: ' + g._debug_keys.join(',') + ']' : '';
     if (statusEl) statusEl.textContent = 'Pulled: address, ' + (g.social_profiles||[]).length + ' social profiles, ' + (g.reviews||[]).length + ' reviews' + _dbgKeys;
@@ -3015,7 +3018,10 @@ function _renderSitemapResultsInner(approved) {
     html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
     html += '</div></div>';
     // Keyword seed input
-    const paaSeeds = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,6).join(', ');
+    const _defaultPaaSeeds = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,6).join(', ');
+    // Preserve any user edit already in the DOM; fall back to P1 defaults
+    const _existingSeedEl = document.getElementById('ci-paa-seeds');
+    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : _defaultPaaSeeds;
     html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
     html += `<input id="ci-paa-seeds" value="${paaSeeds}" placeholder="e.g. seo vancouver, digital marketing agency" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
     html += '</div>';
@@ -3757,7 +3763,7 @@ function renderCopyQueue() {
             +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
             +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
           html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">';
-          const _kwList = [p.primary_keyword, ...(p.secondary_keywords||[])].filter(Boolean);
+          const _kwList = [p.primary_keyword, ...((p.supporting_keywords||[]).map(sk => typeof sk==='object'?sk.kw:sk))].filter(Boolean);
           _kwList.forEach(kw => {
             const cnt = countKeywordsInCopy(r.copy || '', kw);
             const chipColor = cnt === 0 ? '#E53935' : cnt < 2 ? 'var(--warn)' : 'var(--green)';
@@ -4101,7 +4107,7 @@ function renderImageQueue() {
 
 function addImageSlot(slug) {
   if (!S.images[slug]) return;
-  const page = S.pages.find(p => p.slug === slug);
+  const page = S.pages.find(p => p.slug === slug) || {};
   const i = S.images[slug].slots.length;
   S.images[slug].slots.push({ status: 'empty', prompt: buildImagePrompt(page, i, S.images[slug].styleOverride), b64: null, mimeType: null });
   scheduleSave();
@@ -4160,6 +4166,7 @@ async function compressToWebP(b64, srcMime, targetKB) {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
+      if (!img.naturalWidth || !img.naturalHeight) { reject(new Error('Image has zero dimensions')); return; }
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       canvas.getContext('2d').drawImage(img, 0, 0);
@@ -4172,6 +4179,7 @@ async function compressToWebP(b64, srcMime, targetKB) {
         dataUrl = canvas.toDataURL('image/webp', quality);
       }
       const finalB64 = dataUrl.split(',')[1];
+      if (!finalB64 || finalB64.length < 100) { reject(new Error('Canvas produced empty output')); return; }
       const finalKB = Math.round(finalB64.length * 3 / 4 / 1024);
       resolve({ b64: finalB64, sizeKB: finalKB });
     };
@@ -4931,8 +4939,8 @@ async function runSchemaPage(slug) {
       // Parse meta title + description from schema HTML comment
       const _sIdx = S.pages.findIndex(pp => pp.slug === slug);
       if (_sIdx >= 0) {
-        const _mT = schema.match(/title[:\s]+([^\n|]+)/i);
-        const _mD = schema.match(/meta description[:\s]+([^\n|]+)/i);
+        const _mT = schema.match(/<!--[\s\S]*?title[^:]*:[\s]*([^\n|<>]+)/i);
+        const _mD = schema.match(/<!--[\s\S]*?meta description[^:]*:[\s]*([^\n|<>]+)/i);
         if (_mT && _mT[1].trim() && !S.pages[_sIdx].meta_title) S.pages[_sIdx].meta_title = _mT[1].trim().replace(/^["'`]|["'`]$/g,'').slice(0,70);
         if (_mD && _mD[1].trim() && !S.pages[_sIdx].meta_description) S.pages[_sIdx].meta_description = _mD[1].trim().replace(/^["'`]|["'`]$/g,'').slice(0,170);
       }
