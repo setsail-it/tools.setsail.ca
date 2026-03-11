@@ -1728,17 +1728,21 @@ async function enrichRTab(tab, forceAll) {
       + b + '"has_blog": "Yes or Planned or No",\n'
       + b + '"has_faq_section": "Yes or Planned or No"\n}',
 
-    competitors: '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
+    competitors: 'Business: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
       + 'URL: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
       + 'Location: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
-      + ctx + '\n\nIdentify 5-8 REAL competitors for this business. Follow this priority order:\n'
-      + '1. Any competitors explicitly named in the documents provided.\n'
-      + '2. Any domains injected above from DataForSEO organic overlap data (those are verified real competitors).\n'
-      + '3. Based on industry, services, and geography, infer additional real competitors you know exist.\n'
-      + 'For each competitor, name the actual business (not just the domain), provide the full URL with https://, '
-      + 'and write a specific 1-2 sentence why_they_win based on their known market position, SEO strength, niche, or reputation.\n'
-      + 'NEVER use placeholder names. NEVER invent businesses. Return ONLY valid JSON, no preamble.\n{\n'
-      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific competitive strength or SEO advantage"}]\n}'
+      + 'Industry: ' + (S.research && S.research.industry ? S.research.industry : 'unknown') + '\n'
+      + 'Services: ' + (S.research && S.research.primary_services && S.research.primary_services.length ? S.research.primary_services.join(', ') : 'see strategy doc') + '\n'
+      + (S.setup && S.setup.competitors ? 'Competitors named by client: ' + S.setup.competitors + '\n' : '')
+      + '\nStrategy doc excerpt:\n' + ((S.setup && S.setup.strategy) ? S.setup.strategy.slice(0, 2000) : '') + '\n'
+      + '\n\nIdentify 5-8 REAL, verifiable competitors for this business. Sources in priority order:\n'
+      + '1. Any competitors named by the client above.\n'
+      + '2. Real domains from DataForSEO data (if any was prepended to this prompt).\n'
+      + '3. Your own knowledge of real businesses competing in this industry and geography.\n'
+      + 'You MUST return a full list. Never return an empty array. Use your training knowledge to fill gaps.\n'
+      + 'For each: provide the actual business name, full URL with https://, and a 1-2 sentence specific competitive strength.\n'
+      + 'Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength"}]\n}'
   };
 
   if (!prompts[tab]) return;
@@ -1768,7 +1772,13 @@ async function enrichRTab(tab, forceAll) {
   }
 
   try {
-    var result = await callClaude(sys, prompts[tab], null);
+    var activeSys = tab === 'competitors'
+      ? 'You are a competitive intelligence expert with deep knowledge of businesses across all industries. '
+      + 'Use both the provided context AND your own training knowledge to identify real competitors. '
+      + 'You MUST return a populated competitors array. Never return an empty array. '
+      + 'Return ONLY valid JSON, no preamble, no markdown fences, no backticks.'
+      : sys;
+    var result = await callClaude(activeSys, prompts[tab], null);
     var parsed = parseEnrichResult(result);
     if (parsed) {
       if (parsed.geography) {
