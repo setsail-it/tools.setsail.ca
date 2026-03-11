@@ -1789,6 +1789,15 @@ async function enrichRTab(tab, forceAll) {
         }
         delete parsed.geography;
       }
+      // For array fields: if existing array contains only blank objects, treat as empty so merge overwrites
+      Object.keys(parsed).forEach(function(key) {
+        if (Array.isArray(r[key]) && r[key].length > 0 && Array.isArray(parsed[key]) && parsed[key].length > 0) {
+          var allBlank = r[key].every(function(item) {
+            return typeof item === 'object' && Object.values(item).every(function(v) { return !v || (typeof v === 'string' && !v.trim()); });
+          });
+          if (allBlank) r[key] = [];
+        }
+      });
       mergeEnriched(r, parsed, forceAll);
       scheduleSave();
       renderResearchTabContent();
