@@ -3013,12 +3013,19 @@ function _renderSitemapResultsInner(approved) {
     html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
     html += '</div></div>';
     // Keyword seed input
-    const _p1Keywords = (S.pages || []).filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural).map(p => p.primary_keyword).slice(0,8);
+    // All pages with a primary keyword, ordered P1 -> P2 -> P3, deduplicated
+    const _allKwPages = (S.pages || []).filter(p => p.primary_keyword)
+      .sort((a,b) => { const o={'P1':0,'P2':1,'P3':2}; return (o[a.priority]||3)-(o[b.priority]||3); });
+    const _seenKws = new Set();
+    const _kwEntries = _allKwPages.reduce((acc,p) => {
+      if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority||'' }); }
+      return acc;
+    }, []);
     // Preserve any user selection already in the DOM
     const _existingSeedEl = document.getElementById('ci-paa-seeds');
-    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_p1Keywords[0] || '');
+    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_kwEntries[0]?.kw || '');
     html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    const _kwOptions = _p1Keywords.map(kw => `<option value="${esc(kw)}" ${kw===paaSeeds?'selected':''} style="color:var(--dark)">${esc(kw)}</option>`).join('');
+    const _kwOptions = _kwEntries.map(e => `<option value="${esc(e.kw)}" ${e.kw===paaSeeds?'selected':''} style="color:var(--dark)">${esc(e.kw)}${e.pri?' ('+e.pri+')':''}</option>`).join('');
     html += `<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer;appearance:auto" title="Select keyword to fetch PAA for">${_kwOptions}</select>`;
     html += '</div>';
     html += '<div id="ci-paa-panel" style="max-height:280px;overflow-y:auto">';
