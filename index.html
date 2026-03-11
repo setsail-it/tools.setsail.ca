@@ -367,7 +367,8 @@ textarea.inp{resize:vertical}
       <div id="sitemap-import-panel" style="display:none;margin-bottom:14px" class="card">
         <div style="font-size:13px;font-weight:500;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-file-import" style="color:var(--green)"></i> Import Existing Sitemap</div>
         <p style="font-size:12px;color:var(--n2);margin-bottom:10px">Paste existing page URLs (one per line). Claude will compare against the generated sitemap and surface missing page opportunities.</p>
-        <textarea id="sitemap-import-urls" rows="5" placeholder="https://example.com/services/plumbing&#10;https://example.com/about&#10;https://example.com/contact" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--dark);font-size:12px;font-family:var(--font);resize:vertical;outline:none;box-sizing:border-box"></textarea>
+        <textarea id="sitemap-import-urls" rows="5" placeholder="https://example.com/services/plumbing&#10;https://example.com/about&#10;https://example.com/contact" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--dark);font-size:12px;font-family:var(--font);resize:vertical;outline:none;box-sizing:border-box" oninput="S.existingUrlsText=this.value"></textarea>
+        <script>document.addEventListener('DOMContentLoaded',function(){var ta=document.getElementById('sitemap-import-urls');if(ta&&!ta.value&&S&&S.existingUrlsText)ta.value=S.existingUrlsText;});</script>
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" id="sitemap-gap-btn" onclick="runGapAnalysis()"><i class="ti ti-search"></i> Analyse Gaps</button>
           <span style="font-size:11px;color:var(--n2)">Compares existing pages against AI-generated recommendations</span>
@@ -778,7 +779,17 @@ function navToStage(stage) {
 function renderStageContent(stage) {
   if (stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (stage === 'research') { initResearch(); }
-  if (stage === 'sitemap' && S.pages.length) renderSitemapResults(true);
+  if (stage === 'sitemap') {
+    // Auto-populate import panel from snapshot top pages (if not already set)
+    if (S.snapshot?.topPages?.length && !S.existingUrlsText) {
+      const _baseUrl = (S.setup?.url || '').replace(/https?:\/\//,'').replace(/\/$/, '').replace(/^(www\.)?/, 'https://www.');
+      S.existingUrlsText = S.snapshot.topPages
+        .filter(p => p.slug && p.slug !== '/')
+        .map(p => { try { return new URL(p.slug, _baseUrl).href; } catch(e) { return _baseUrl + p.slug; } })
+        .join('\n');
+    }
+    if (S.pages.length) renderSitemapResults(true);
+  }
   if (stage === 'copy' && S.pages.length) initCopy();
   if (stage === 'images' && S.pages.length) initImageStage();
   if (stage === 'layout' && S.pages.length) initLayout();
@@ -1965,20 +1976,48 @@ async function fetchKeywordResearch() {
   const geoStr = allGeos.join(' ').toLowerCase();
   const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
 
-  // Build tight seed list (10–20 terms) for keyword expansion
-  // These are the "parent" terms DataForSEO will expand into 200+ related keywords
+  // Build broad seed list from services + existing page slugs
   const seeds = new Set();
-  const shortGeo = primaryGeo.replace(/,.*$/, '').trim(); // e.g. "Vancouver" not "Vancouver, BC"
-  services.slice(0, 8).forEach(svc => {
-    const s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?)$/i, '').trim();
-    seeds.add(s + ' ' + shortGeo.toLowerCase());
-    seeds.add(shortGeo.toLowerCase() + ' ' + s);
-  });
-  seeds.add('digital marketing ' + shortGeo.toLowerCase());
-  seeds.add('marketing agency ' + shortGeo.toLowerCase());
-  seeds.add(shortGeo.toLowerCase() + ' marketing agency');
+  const shortGeo = primaryGeo.replace(/,.*$/, '').trim();
+  const geoL = shortGeo.toLowerCase();
 
-  const seedList = [...seeds].filter(k => k.length > 4).slice(0, 20);
+  // 1. Services x geo (primary source)
+  services.slice(0, 12).forEach(svc => {
+    const s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform)$/i, '').trim();
+    if (s.length > 3) {
+      seeds.add(s + ' ' + geoL);
+      seeds.add(geoL + ' ' + s);
+    }
+  });
+  seeds.add('digital marketing ' + geoL);
+  seeds.add('marketing agency ' + geoL);
+  seeds.add(geoL + ' marketing agency');
+
+  // 2. Extract meaningful terms from existing snapshot pages
+  const _snapPages = (S.snapshot?.topPages || []).slice(0, 60);
+  const _skipSegments = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','team','case-studies','resources']);
+  _snapPages.forEach(p => {
+    const parts = (p.slug || '').replace(/^\//, '').split('/');
+    parts.forEach(seg => {
+      if (!seg || _skipSegments.has(seg) || seg.length < 4) return;
+      const term = seg.replace(/-/g, ' ').replace(/\bvancouver\b|\btoronto\b|\bcalgary\b|\bbc\b/gi, '').trim();
+      if (term.length > 4 && !term.match(/^\d+$/) && !/^(proven|strategies|for|real|growth|what|is|how|guide)/.test(term)) {
+        seeds.add(term + ' ' + geoL);
+        seeds.add(geoL + ' ' + term);
+      }
+    });
+  });
+
+  // 3. Secondary geos
+  secondaryGeos.slice(0, 2).forEach(geo => {
+    const sg = geo.replace(/,.*$/, '').trim().toLowerCase();
+    services.slice(0, 3).forEach(svc => {
+      const s = svc.toLowerCase().replace(/\s+(services?|management|agency)$/i, '').trim();
+      if (s.length > 3) seeds.add(s + ' ' + sg);
+    });
+  });
+
+  const seedList = [...seeds].filter(k => k.length > 4 && k.split(' ').length >= 2).slice(0, 60);
   if (!seedList.length) return;
 
   const kwEl = document.getElementById('research-kw-status');
@@ -2018,7 +2057,7 @@ async function fetchKeywordResearch() {
       if (seen.has(k.kw)) return false;
       seen.add(k.kw);
       return true;
-    }).slice(0, 100);
+    }).slice(0, 300);
 
     S.kwResearch = {
       keywords: deduped,
@@ -2144,20 +2183,23 @@ async function runSitemap(withRevisions) {
   prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n\n';
 
   if (S.kwResearch?.keywords?.length) {
-    const kws = S.kwResearch.keywords.filter(k => k.vol > 0).slice(0, 100);
+    const kws = S.kwResearch.keywords.filter(k => k.vol > 0).slice(0, 250);
     prompt += '## KEYWORD LIST (' + kws.length + ' keywords — USE THESE EXACT STRINGS, no others)\n';
     prompt += '# | keyword | vol/mo | KD | score\n';
     kws.forEach((k, i) => {
       prompt += (i+1) + ' | ' + k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n';
     });
+    const _expectedPages = Math.min(Math.max(10, Math.ceil(kws.length / 4)), 60);
     prompt += '\n## INSTRUCTIONS\n';
-    prompt += '- Build pages by clustering keywords above into groups by topic/intent\n';
-    prompt += '- primary_keyword must be the EXACT string from the # column above (highest score in the cluster)\n';
-    prompt += '- supporting_keywords must also be exact strings from the list\n';
-    prompt += '- A page with no matching keyword from the list = do not build it\n';
-    prompt += '- Separate pages for each core service ONLY if a keyword exists for it\n';
-    prompt += '- Homepage gets the highest-score brand/agency keyword\n';
-    prompt += '- Locations page ONLY if geo keyword has vol > 100\n';
+    prompt += '- You have ' + kws.length + ' keywords. Cluster into topic groups. Aim for ' + _expectedPages + ' to ' + (_expectedPages + 10) + ' pages.\n';
+    prompt += '- primary_keyword MUST be the EXACT string from the list (highest score in cluster)\n';
+    prompt += '- supporting_keywords MUST also be exact strings from the list\n';
+    prompt += '- Assign every keyword to exactly one page. Do not leave keywords unassigned.\n';
+    prompt += '- Separate page for each distinct service/topic cluster (do not merge unrelated intents)\n';
+    prompt += '- Homepage: broadest brand/agency keyword (highest score)\n';
+    prompt += '- Location page for each city/geo with 2+ keywords at vol > 50\n';
+    prompt += '- Blog page for informational-intent keywords\n';
+    prompt += '- Priority: P1 = vol > 500 or score > 20; P2 = vol 100-500 or score 8-20; P3 = everything else\n';
   } else {
     prompt += '## TASK\nNo keyword data available. Build best-guess sitemap from services list. Mark all as needing validation.\n';
   }
@@ -3535,7 +3577,13 @@ function approveSitemap() {
 
 function toggleSitemapImport() {
   const panel = document.getElementById('sitemap-import-panel');
-  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    // Populate from saved state or snapshot when opened
+    const ta = document.getElementById('sitemap-import-urls');
+    if (ta && !ta.value && S.existingUrlsText) ta.value = S.existingUrlsText;
+  }
 }
 
 async function fetchAhrefsMetrics(forceRefresh) {

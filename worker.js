@@ -291,8 +291,8 @@ export default {
         const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
 
         // ── Step 1: Get keyword ideas via keywords_for_keywords ──
-        const expandBody = seeds.slice(0, 12).map(seed => ({
-          keyword: seed, location_code: locationCode, language_code: 'en', limit: 30
+        const expandBody = seeds.slice(0, 30).map(seed => ({
+          keyword: seed, location_code: locationCode, language_code: 'en', limit: 50
         }));
         let expandData;
         const expandRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
@@ -316,7 +316,7 @@ export default {
             (r.items || []).forEach(item => { if (item.keyword) kwSet.add(item.keyword); });
           });
         });
-        const kwList = [...kwSet].slice(0, 100);
+        const kwList = [...kwSet].slice(0, 700);
 
         // ── Step 2: Get real CA volumes via search_volume/live (proven working endpoint) ──
         const volBody = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
