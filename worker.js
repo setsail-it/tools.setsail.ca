@@ -752,6 +752,16 @@ export default {
     }
 
     // Everything else → static assets
-    return env.ASSETS.fetch(request);
+    // Force no-cache on HTML so deploys take effect immediately
+    const assetRes = await env.ASSETS.fetch(request);
+    const ct = assetRes.headers.get('Content-Type') || '';
+    if (ct.includes('text/html')) {
+      const headers = new Headers(assetRes.headers);
+      headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      headers.set('Pragma', 'no-cache');
+      headers.set('Expires', '0');
+      return new Response(assetRes.body, { status: assetRes.status, headers });
+    }
+    return assetRes;
   }
 };
