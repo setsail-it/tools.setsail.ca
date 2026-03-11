@@ -564,6 +564,53 @@ export default {
       }
     }
 
+    // ── ORGANIC COMPETITORS (DataForSEO competitors_domain/live) ──
+    if (url.pathname === '/api/organic-competitors' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const { domain, location_code } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+
+        const res = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/competitors_domain/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{
+            target: cleanDomain,
+            language_code: 'en',
+            location_code: location_code || 2840,
+            limit: 10,
+            filters: ['metrics.organic.count', '>', 0],
+            order_by: ['metrics.organic.count,desc']
+          }])
+        });
+        const data = await res.json();
+        const task = data?.tasks?.[0];
+        if (!task || task.status_code >= 40000) {
+          return new Response(JSON.stringify({ error: task?.status_message || 'DataForSEO error', competitors: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const items = task?.result?.[0]?.items || [];
+        const competitors = items.slice(0, 8).map(item => ({
+          domain: item.domain || '',
+          intersections: item.metrics?.organic?.count || 0,
+          etv: Math.round(item.metrics?.organic?.etv || 0),
+          keywords: (item.metrics?.organic?.pos_1 || 0) + (item.metrics?.organic?.pos_2_3 || 0) + (item.metrics?.organic?.pos_4_10 || 0)
+        })).filter(c => c.domain && c.domain !== cleanDomain);
+
+        return new Response(JSON.stringify({ competitors, source: 'dataforseo-competitors', target: cleanDomain }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message, competitors: [] }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── SITE SNAPSHOT (Ahrefs) ────────────────────────────────────
     if (url.pathname === '/api/snapshot' && request.method === 'POST') {
       if (!env.DATAFORSEO_LOGIN) return new Response(JSON.stringify({ error: 'DATAFORSEO credentials not set' }), {

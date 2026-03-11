@@ -1731,14 +1731,41 @@ async function enrichRTab(tab, forceAll) {
     competitors: '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
       + 'URL: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
       + 'Location: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
-      + ctx + '\n\nIdentify 3-6 REAL competitors for this business.\n'
-      + 'Step 1: Extract any competitors explicitly named in the documents.\n'
-      + 'Step 2: Based on the industry and geography, name additional real competitors.\n'
-      + 'NEVER use placeholder names. Return ONLY valid JSON, no preamble.\n{\n'
-      + b + '"competitors": [{"name": "Real Business Name", "url": "domain.com", "why_they_win": "specific strength"}]\n}'
+      + ctx + '\n\nIdentify 5-8 REAL competitors for this business. Follow this priority order:\n'
+      + '1. Any competitors explicitly named in the documents provided.\n'
+      + '2. Any domains injected above from DataForSEO organic overlap data (those are verified real competitors).\n'
+      + '3. Based on industry, services, and geography, infer additional real competitors you know exist.\n'
+      + 'For each competitor, name the actual business (not just the domain), provide the full URL with https://, '
+      + 'and write a specific 1-2 sentence why_they_win based on their known market position, SEO strength, niche, or reputation.\n'
+      + 'NEVER use placeholder names. NEVER invent businesses. Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific competitive strength or SEO advantage"}]\n}'
   };
 
   if (!prompts[tab]) return;
+
+  // For competitors tab: pre-fetch organic competitors from DataForSEO, inject into prompt
+  if (tab === 'competitors' && S.setup && S.setup.url) {
+    try {
+      var _compRes = await fetch('/api/organic-competitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: S.setup.url })
+      });
+      var _compData = await _compRes.json();
+      if (_compData.competitors && _compData.competitors.length > 0) {
+        var _compLines = _compData.competitors.map(function(c) {
+          return c.domain + ' (shared keywords: ' + c.intersections + ', est. traffic: ' + c.etv + ')';
+        }).join('\n');
+        prompts['competitors'] = '\nDataForSEO Organic Competitors (real domains ranked for overlapping keywords):\n'
+          + _compLines + '\n\n' + prompts['competitors']
+          + '\n\nIMPORTANT: The DataForSEO list above contains REAL competitor domains with verified organic search overlap. '
+          + 'Use these domains as your primary source. For each, infer the business name from the domain, find their real URL, '
+          + 'and describe their specific SEO/market strength based on the industry context.';
+      }
+    } catch(e) {
+      console.warn('organic-competitors fetch failed, falling back to inference:', e.message);
+    }
+  }
 
   try {
     var result = await callClaude(sys, prompts[tab], null);
