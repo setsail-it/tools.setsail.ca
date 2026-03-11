@@ -1605,7 +1605,7 @@ async function enrichOneTab(tab) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
   if (statusEl) statusEl.textContent = '';
   try {
-    await enrichRTab(tab, false);
+    await enrichRTab(tab, true);
     _enrichDone.add(tab);
     renderResearchNav();
     if (statusEl) statusEl.textContent = 'Done';
@@ -1848,9 +1848,12 @@ async function enrichRTab(tab, forceAll) {
       }
       mergeEnriched(r, parsed, forceAll);
       scheduleSave();
+      _rTab = tab;  // ensure we re-render the tab that was just enriched
       renderResearchTabContent();
     } else {
       console.error('ENRICH PARSE FAILED ['+tab+']: raw:', result.slice(0,500));
+      var _statusFail = document.getElementById('enrich-status-'+tab);
+      if (_statusFail) _statusFail.textContent = 'Parse failed - check console';
       var _emsg2 = document.getElementById('research-enrich-msg');
       if (_emsg2) _emsg2.textContent = '\u26a0 ' + tab + ': could not parse AI response \u2014 check console';
     }
