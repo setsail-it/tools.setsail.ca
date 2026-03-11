@@ -1533,8 +1533,57 @@ function renderRBrand(r) {
   return html;
 }
 
+async function pullGMB() {
+  const r = S.research || researchDefaults();
+  const s = S.setup || {};
+  const btn = document.getElementById('gmb-pull-btn');
+  const statusEl = document.getElementById('gmb-pull-status');
+  const keyword = s.client || r.client_name || '';
+  if (!keyword) { if (statusEl) statusEl.textContent = 'Set client name in Setup first'; return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Fetching...'; }
+  if (statusEl) statusEl.textContent = '';
+  try {
+    const res = await fetch('/api/gmb', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: keyword + ' ' + (s.geo || '') })
+    });
+    const data = await res.json();
+    if (!data.result) {
+      if (statusEl) statusEl.textContent = data.error || 'No listing found';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brand-google"></i> Pull from Google Business Profile'; }
+      return;
+    }
+    const g = data.result;
+    if (!S.research) S.research = researchDefaults();
+    const rd = S.research;
+    const ap = g.address_parts || {};
+    if (ap.address) rd.schema_street_address = ap.address;
+    if (ap.city || ap.borough) rd.schema_city = ap.city || ap.borough;
+    if (ap.region) rd.schema_region = ap.region;
+    if (ap.zip) rd.schema_postal_code = ap.zip;
+    if (ap.country_code) rd.schema_country = ap.country_code;
+    if (g.category && !rd.schema_primary_category) rd.schema_primary_category = g.category;
+    if (g.price_level && !rd.schema_price_range) rd.schema_price_range = g.price_level;
+    if (g.social_profiles && g.social_profiles.length > 0) rd.social_profiles = g.social_profiles;
+    if (g.reviews && g.reviews.length > 0) rd.reviews = g.reviews;
+    scheduleSave();
+    renderResearchTabContent();
+    if (statusEl) statusEl.textContent = 'Pulled: address, ' + (g.social_profiles||[]).length + ' social profiles, ' + (g.reviews||[]).length + ' reviews';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brand-google"></i> Re-pull from Google'; }
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'Error: ' + e.message.slice(0,60);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brand-google"></i> Pull from Google Business Profile'; }
+    console.error('pullGMB:', e);
+  }
+}
+
 function renderRSchema(r) {
   let html = rTabActions('schema');
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'
+    + '<button class="btn btn-ghost" onclick="pullGMB()" id="gmb-pull-btn"><i class="ti ti-brand-google"></i> Pull from Google Business Profile</button>'
+    + '<span id="gmb-pull-status" style="font-size:12px;color:var(--n2)"></span>'
+    + '</div>';
   html += rSec('Business Info',
     rField('schema_business_type','Business Type', r.schema_business_type, 'select', {options:['LocalBusiness','Organization']}) +
     rField('schema_primary_category','Primary Category', r.schema_primary_category) +

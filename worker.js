@@ -564,6 +564,83 @@ export default {
       }
     }
 
+    // ── GOOGLE BUSINESS PROFILE (DataForSEO business_data) ──────────
+    if (url.pathname === '/api/gmb' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const { keyword, location_code } = await request.json();
+        if (!keyword) return new Response(JSON.stringify({ error: 'keyword required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+
+        const res = await fetch('https://api.dataforseo.com/v3/business_data/google/my_business_info/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{
+            keyword: keyword,
+            location_code: location_code || 2840,
+            language_code: 'en'
+          }])
+        });
+
+        const data = await res.json();
+        const task = data?.tasks?.[0];
+        if (!task || task.status_code >= 40000) {
+          return new Response(JSON.stringify({ error: task?.status_message || 'DataForSEO error', result: null }), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const item = task?.result?.[0]?.items?.[0];
+        if (!item) {
+          return new Response(JSON.stringify({ error: 'No GMB listing found', result: null }), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        // Extract the useful fields
+        const gmb = {
+          title: item.title || '',
+          category: item.category || '',
+          address: item.address || '',
+          address_parts: item.address_info || {},
+          phone: item.phone || '',
+          website: item.url || '',
+          rating: item.rating?.value || null,
+          reviews_count: item.rating?.votes_count || 0,
+          price_level: item.price_level || '',
+          work_hours: item.work_hours || {},
+          social_profiles: [],
+          reviews: []
+        };
+
+        // Extract reviews
+        if (item.reviews && Array.isArray(item.reviews)) {
+          gmb.reviews = item.reviews.slice(0, 5).map(rv => ({
+            author_name: rv.profile_name || '',
+            rating_value: rv.rating?.value || '',
+            review_body_short: (rv.review_text || '').slice(0, 200),
+            source_url: rv.review_url || ''
+          }));
+        }
+
+        // Extract social links from attributes/urls
+        if (item.urls) {
+          Object.entries(item.urls).forEach(([platform, url]) => {
+            if (url) gmb.social_profiles.push({ platform, url });
+          });
+        }
+
+        return new Response(JSON.stringify({ result: gmb, source: 'dataforseo-gmb' }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message, result: null }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── ORGANIC COMPETITORS (DataForSEO competitors_domain/live) ──
     if (url.pathname === '/api/organic-competitors' && request.method === 'POST') {
       try {
