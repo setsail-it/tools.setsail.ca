@@ -1779,7 +1779,14 @@ async function enrichRTab(tab, forceAll) {
       + 'Return ONLY valid JSON, no preamble, no markdown fences, no backticks.'
       : sys;
     var result = await callClaude(activeSys, prompts[tab], null);
+    // DEBUG: show raw result in UI so we can see what Claude returned
+    if (tab === 'competitors') {
+      var _dbgEl = document.getElementById('research-enrich-msg');
+      if (_dbgEl) _dbgEl.textContent = 'DEBUG raw[0:300]: ' + result.slice(0,300);
+      console.log('COMPETITORS RAW RESULT:', result);
+    }
     var parsed = parseEnrichResult(result);
+    if (tab === 'competitors') console.log('COMPETITORS PARSED:', JSON.stringify(parsed));
     if (parsed) {
       if (parsed.geography) {
         if (!r.geography) r.geography = {};
