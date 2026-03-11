@@ -1613,6 +1613,8 @@ async function enrichAll(forceAll) {
     renderResearchTabContent();
     await enrichRTab(tab, forceAll);
     _enrichDone.add(tab);
+    // Pause between tabs to avoid Anthropic rate limits
+    if (i < tabs.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
   }
   _enriching = false;
   if (msgEl) msgEl.textContent = 'All sections enriched ✓';
@@ -1778,7 +1780,17 @@ async function enrichRTab(tab, forceAll) {
       + 'You MUST return a populated competitors array. Never return an empty array. '
       + 'Return ONLY valid JSON, no preamble, no markdown fences, no backticks.'
       : sys;
-    var result = await callClaude(activeSys, prompts[tab], null);
+    var result;
+    try {
+      result = await callClaude(activeSys, prompts[tab], null);
+    } catch(rateErr) {
+      if (rateErr.message && rateErr.message.toLowerCase().indexOf('rate') !== -1) {
+        var _retryEl = document.getElementById('research-enrich-msg');
+        if (_retryEl) _retryEl.textContent = 'Rate limit on ' + tab + ' - retrying in 8s...';
+        await new Promise(function(res){ setTimeout(res, 8000); });
+        result = await callClaude(activeSys, prompts[tab], null);
+      } else { throw rateErr; }
+    }
     console.error('ENRICH RAW ['+tab+']:', result.slice(0,600));
     var parsed = parseEnrichResult(result);
     console.error('ENRICH PARSED ['+tab+']:', JSON.stringify(parsed));
