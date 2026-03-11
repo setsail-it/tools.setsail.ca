@@ -1026,8 +1026,8 @@ function renderSnapshot() {
     const metrics = [
       { id: 'snap-traffic',   label: 'Monthly Org. Traffic', value: m.orgTraffic    ? m.orgTraffic.toLocaleString()    : '0', color: 'var(--dark)' },
       { id: 'snap-keywords',  label: 'Ranking Keywords',     value: m.orgKeywords   ? m.orgKeywords.toLocaleString()   : '0', color: 'var(--dark)' },
-      { id: 'snap-refdomains',label: 'Referring Domains',    value: m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '—', color: 'var(--dark)' },
-      { id: 'snap-backlinks', label: 'Live Backlinks',       value: m.liveBacklinks  != null ? m.liveBacklinks.toLocaleString()  : '—', color: 'var(--dark)' },
+      { id: 'snap-pages-live',    label: 'Pages with Traffic',    value: String((snap.topPages||[]).filter(p => p.traffic > 0).length), color: 'var(--dark)' },
+      { id: 'snap-top3-keywords', label: 'Top 3 Rankings',          value: m.orgKeywords1_3 ? m.orgKeywords1_3.toLocaleString() : '0',      color: 'var(--green)' },
     ];
     bar.style.display = 'grid';
     bar.style.gridTemplateColumns = 'repeat(auto-fit,minmax(130px,1fr))';
