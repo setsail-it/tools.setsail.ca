@@ -360,7 +360,7 @@ textarea.inp{resize:vertical}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-file-import"></i> Import Existing</button>
-          <button class="btn btn-primary" id="sitemap-run-btn" onclick="runSitemap(false)"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
+          <button class="btn btn-primary" id="sitemap-run-btn" onclick="confirmRunSitemap()"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
         </div>
       </div>
       <!-- Import existing sitemap panel -->
@@ -531,6 +531,14 @@ const S = {
   imageGenRunning: false, imageGenStop: false,
 };
 let sitemapEditMode = false;
+let _sitemapCatTab = 'all'; // 'all' | 'service' | 'location' | 'blog' | 'core'
+
+function confirmRunSitemap() {
+  if (S.pages && S.pages.length > 0) {
+    if (!confirm('This will regenerate the sitemap and overwrite all current pages.\n\nCopy, images, and schema data will be preserved but keyword assignments will reset.\n\nContinue?')) return;
+  }
+  runSitemap(false);
+}
 
 // ── PERSISTENCE ────────────────────────────────────────────────────
 let saveTimer = null;
@@ -2122,6 +2130,11 @@ async function runSitemap(withRevisions) {
   const r = S.research||{};
   const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
 
+  // Existing site pages from import panel
+  const _importRaw = (document.getElementById('sitemap-import-urls')?.value || S.existingUrlsText || '').trim();
+  const _importedPages = _importRaw ? _importRaw.split('\n').map(u=>u.trim()).filter(Boolean) : [];
+  if (_importRaw) S.existingUrlsText = _importRaw; // persist across renders
+
   // Client context — brief, secondary to keyword data
   let prompt = '## CLIENT CONTEXT\n';
   prompt += 'Client: ' + S.setup.client + '\n';
@@ -2147,6 +2160,12 @@ async function runSitemap(withRevisions) {
     prompt += '- Locations page ONLY if geo keyword has vol > 100\n';
   } else {
     prompt += '## TASK\nNo keyword data available. Build best-guess sitemap from services list. Mark all as needing validation.\n';
+  }
+
+  if (_importedPages.length) {
+    prompt += '\n## EXISTING SITE PAGES (already live — include these in output, optimise their keywords)\n';
+    _importedPages.forEach(u => { prompt += u + '\n'; });
+    prompt += '\nFor existing pages: keep them in the sitemap, assign the best keyword from the list above. For gaps: add new pages only where a matching keyword exists.\n';
   }
 
   if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n' + revNote.value;
@@ -2314,13 +2333,22 @@ async function openKwFinder(pageIdx) {
   const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
   const pageName          = (page.page_name || '').toLowerCase().replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
 
+  const _genericPageNames = new Set(['home','homepage','about','contact','services','blog','news','faq','team','portfolio','gallery','privacy','terms','sitemap','404','utility']);
   const seedSet = new Set();
   [currentPrimary, ...currentSupporting].filter(Boolean).forEach(kw => {
     const base = stripGeo(kw);
     if (base.length > 3) seedSet.add(base);
   });
-  if (pageName.length > 3) seedSet.add(pageName);
-  if (geoLower && pageName.length > 3) seedSet.add(pageName + ' ' + geoLower);
+  // Only add page name as seed if it's not generic and has no primary keyword yet
+  if (pageName.length > 3 && !_genericPageNames.has(pageName.toLowerCase()) && !currentPrimary) {
+    seedSet.add(pageName);
+    if (geoLower) seedSet.add(pageName + ' ' + geoLower);
+  }
+  // If still no seeds, fall back to industry from research
+  if (seedSet.size === 0) {
+    const _ind = (S.research?.primary_services||[]).slice(0,2).join(' ');
+    if (_ind) { seedSet.add(_ind); if (geoLower) seedSet.add(_ind + ' ' + geoLower); }
+  }
   const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
 
   const geoStr  = (geo + ' ' + geoLower).toLowerCase();
@@ -2797,6 +2825,8 @@ function showHtmlSitemapModal() {
   }
 }
 
+function switchSitemapTab(tab) { _sitemapCatTab = tab; renderSitemapResults(S.sitemapApproved); }
+
 function renderSitemapResults(approved) {
   try { _renderSitemapResultsInner(approved); } catch(err) {
     console.error('renderSitemapResults crash:', err);
@@ -2805,18 +2835,56 @@ function renderSitemapResults(approved) {
   }
 }
 function _renderSitemapResultsInner(approved) {
-  const pages = S.pages;
-  const p1 = pages.filter(p=>p.priority==='P1').length;
-  const p2 = pages.filter(p=>p.priority==='P2').length;
-  const p3 = pages.filter(p=>p.priority==='P3').length;
-  const zeroVol = pages.filter(p => !p.is_structural && (!p.primary_vol || p.primary_vol === 0)).length;
+  const allPages = S.pages;
+
+  // Derive existing slugs from import textarea
+  const _importText = document.getElementById('sitemap-import-urls')?.value || S.existingUrlsText || '';
+  const _existingSlugs = new Set(
+    _importText.split('\n').map(u => u.trim().replace(/^https?:\/\/[^/]+/,'').replace(/^\/$/,'').replace(/^\//,'').replace(/\/$/,''))
+      .filter(Boolean)
+  );
+  const hasImport = _existingSlugs.size > 0;
+
+  // Category filter
+  const _catFilter = p => {
+    if (_sitemapCatTab === 'all') return true;
+    const t = (p.page_type||'').toLowerCase();
+    if (_sitemapCatTab === 'service') return ['service','industry','product'].includes(t);
+    if (_sitemapCatTab === 'location') return t === 'location';
+    if (_sitemapCatTab === 'blog') return ['blog','article','recipe','event','portfolio'].includes(t);
+    if (_sitemapCatTab === 'core') return ['home','about','contact','utility','faq','team'].includes(t) || !!p.is_structural;
+    return true;
+  };
+  const pages = allPages.filter(_catFilter);
+
+  const p1 = allPages.filter(p=>p.priority==='P1').length;
+  const p2 = allPages.filter(p=>p.priority==='P2').length;
+  const p3 = allPages.filter(p=>p.priority==='P3').length;
+  const zeroVol = allPages.filter(p => !p.is_structural && (!p.primary_vol || p.primary_vol === 0)).length;
   const hasKwData = S.kwResearch?.keywords?.length > 0;
 
-  let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
-  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
+  let html = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap">';
+  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+allPages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
-  if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-volume pages</span>';
-  html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes…</span></span>';
+  if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-vol</span>';
+  html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes</span></span>';
+  html += '</div>';
+
+  // Category tabs
+  const _tabCounts = {
+    all: allPages.length,
+    service: allPages.filter(p => ['service','industry','product'].includes((p.page_type||'').toLowerCase())).length,
+    location: allPages.filter(p => (p.page_type||'') === 'location').length,
+    blog: allPages.filter(p => ['blog','article','recipe','event','portfolio'].includes((p.page_type||'').toLowerCase())).length,
+    core: allPages.filter(p => ['home','about','contact','utility','faq','team'].includes((p.page_type||'').toLowerCase()) || !!p.is_structural).length
+  };
+  const _tabs = [{id:'all',label:'All'},{id:'service',label:'Services'},{id:'location',label:'Locations'},{id:'blog',label:'Blog'},{id:'core',label:'Core'}];
+  html += '<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--border)">';
+  _tabs.forEach(t => {
+    if (_tabCounts[t.id] === 0 && t.id !== 'all') return;
+    const isAct = _sitemapCatTab === t.id;
+    html += '<button onclick="switchSitemapTab(\''+t.id+'\')" style="background:none;border:none;border-bottom:2px solid '+(isAct?'var(--green)':'transparent')+';margin-bottom:-2px;padding:5px 14px;font-size:11.5px;font-family:var(--font);color:'+(isAct?'var(--green)':'var(--n2)')+';cursor:pointer;font-weight:'+(isAct?'500':'400')+';white-space:nowrap">'+t.label+' <span style="font-size:10px;opacity:0.6">'+_tabCounts[t.id]+'</span></button>';
+  });
   html += '</div>';
 
   // Keyword opportunities table
@@ -2829,7 +2897,6 @@ function _renderSitemapResultsInner(approved) {
     html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
   }
   html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
-  html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showHtmlSitemapModal()"><i class="ti ti-layout-sidebar"></i> HTML Preview</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
 
@@ -2841,7 +2908,13 @@ function _renderSitemapResultsInner(approved) {
     + ''
     + '</div>';
 
-  pages.forEach((p, i) => {
+  // Render pages split: Active (existing site) | Suggested (to build)
+  const _activePgs = hasImport ? pages.filter(p => _existingSlugs.has(p.slug)) : [];
+  const _suggestedPgs = hasImport ? pages.filter(p => !_existingSlugs.has(p.slug)) : pages;
+
+  const _renderPageRow = (p) => {
+    const i = allPages.indexOf(p);
+    let html = ''; // local html for this row
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
     const vol = typeof p.primary_vol === 'number' ? p.primary_vol : (parseInt(p.primary_vol) || 0);
     const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
@@ -2957,8 +3030,38 @@ function _renderSitemapResultsInner(approved) {
     }
 
     html += '</div>'; // end page block
-    if (i < pages.length-1) html += '<div style="border-bottom:1px solid var(--border)"></div>';
-  });
+    return html;
+  }; // end _renderPageRow
+
+  // Section rendering helper
+  const _renderSection = (sectionPages, label, badgeStyle) => {
+    if (!sectionPages.length) return '';
+    let sh = '';
+    if (label) {
+      sh += '<div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border)">';
+      sh += '<span style="font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;'+badgeStyle+'">'+label+'</span>';
+      sh += '<span style="font-size:10px;color:var(--n2)">'+sectionPages.length+' page'+(sectionPages.length!==1?'s':'')+'</span>';
+      sh += '</div>';
+    }
+    sectionPages.forEach((p, si) => {
+      html += sh; sh = ''; // only render header once (first iteration)
+      html += _renderPageRow(p);
+      if (si < sectionPages.length-1) html += '<div style="border-bottom:1px solid var(--border)"></div>';
+    });
+  };
+
+  if (hasImport) {
+    _renderSection(_activePgs, 'Active Pages', 'color:var(--green)');
+    if (_activePgs.length && _suggestedPgs.length) html += '<div style="border-bottom:2px solid var(--border)"></div>';
+    _renderSection(_suggestedPgs, 'Suggested Pages to Build', 'color:var(--warn)');
+  } else {
+    // No import: render all as one list
+    pages.forEach((p, si) => {
+      html += _renderPageRow(p);
+      if (si < pages.length-1) html += '<div style="border-bottom:1px solid var(--border)"></div>';
+    });
+  }
+
   // Add page button (edit mode only)
   if (sitemapEditMode) {
     html += '<div style="padding:8px 14px;border-top:1px solid var(--border);background:var(--white)">';
@@ -2974,8 +3077,10 @@ function _renderSitemapResultsInner(approved) {
     const blogTopics = ci.blogTopics || [];
     const paaDone   = (ci.paa?.questions?.length || 0);
     const gapDone   = (ci.gap?.keywords?.length || 0);
+    const paaQuestions = ci.paa?.questions || [];
+    const gapKeywords  = ci.gap?.keywords  || [];
 
-    // Competitor domains: prefer research tab enriched data, fall back to setup text
+    // Competitor domains source
     const _researchComps = (S.research?.competitors || []).map(c => {
       const u = (c.url||'').replace(/^https?:\/\/(www\.)?/,'').replace(/\/.*$/,'').trim();
       return u || (c.name||'').toLowerCase().replace(/\s+/g,'')+'.com';
@@ -2988,78 +3093,86 @@ function _renderSitemapResultsInner(approved) {
     const competitorStr = _savedGapDomains || (_researchComps.length ? _researchComps.join(', ') : _setupComps.join(', '));
 
     html += '<div class="card" style="margin-bottom:8px">';
-
-    // Header
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
     html += '<div>';
-    html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Content Intelligence</div>';
-    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Blog topic opportunities based on search behaviour + competitor gaps</div>';
+    html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Blog Content Pipeline</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">PAA + competitor gaps → blog topic pool → copy queue</div>';
     html += '</div>';
-    html += `<div id="ci-queue-actions"></div>`;
+    html += '<div id="ci-queue-actions"></div>';
     html += '</div>';
 
-    // Two-column panels
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+    // Two mini-panels: PAA + Competitor Gap
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
 
-    // ── PAA Panel ──
+    // PAA panel
     html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
-    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-help-circle" style="font-size:12px;color:var(--n2)"></i> People Also Ask`;
-    if (paaDone) html += ` <span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${paaDone}</span>`;
-    else html += `<span id="ci-paa-count"></span>`;
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+    html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-help-circle" style="font-size:11px;color:var(--n2)"></i> People Also Ask';
+    if (paaDone) html += '<span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">'+paaDone+'</span>'; else html += '<span id="ci-paa-count"></span>';
+    html += '</span>';
+    html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-paa-status"></span>';
+    html += '<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> '+(paaDone?'Refresh':'Run')+'</button></div>';
     html += '</div>';
-    html += '<div style="display:flex;align-items:center;gap:6px">';
-    html += '<span id="ci-paa-status"></span>';
-    html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
-    html += '</div></div>';
-    // Keyword seed input
-    // All pages with a primary keyword, ordered P1 -> P2 -> P3, deduplicated
-    const _allKwPages = (S.pages || []).filter(p => p.primary_keyword)
-      .sort((a,b) => { const o={'P1':0,'P2':1,'P3':2}; return (o[a.priority]||3)-(o[b.priority]||3); });
+    const _allKwPages = (S.pages || []).filter(p => p.primary_keyword).sort((a,b) => { const o={'P1':0,'P2':1,'P3':2}; return (o[a.priority]||3)-(o[b.priority]||3); });
     const _seenKws = new Set();
-    const _kwEntries = _allKwPages.reduce((acc,p) => {
-      if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority||'' }); }
-      return acc;
-    }, []);
-    // Preserve any user selection already in the DOM
+    const _kwEntries = _allKwPages.reduce((acc,p) => { if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority||'' }); } return acc; }, []);
     const _existingSeedEl = document.getElementById('ci-paa-seeds');
     const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_kwEntries[0]?.kw || '');
+    const _kwOptions = _kwEntries.map(e => '<option value="'+esc(e.kw)+'"'+(e.kw===paaSeeds?' selected':'')+'>'+esc(e.kw)+(e.pri?' ('+e.pri+')':'')+'</option>').join('');
     html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    const _kwOptions = _kwEntries.map(e => `<option value="${esc(e.kw)}" ${e.kw===paaSeeds?'selected':''} style="color:var(--dark)">${esc(e.kw)}${e.pri?' ('+e.pri+')':''}</option>`).join('');
-    html += `<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer;appearance:auto" title="Select keyword to fetch PAA for">${_kwOptions}</select>`;
+    html += '<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer">'+_kwOptions+'</select>';
     html += '</div>';
-    html += '<div id="ci-paa-panel" style="max-height:280px;overflow-y:auto">';
-    if (paaDone) {
-      html += '</div>';
-    } else {
-      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Edit keywords above and click Run.</div></div>';
-    }
-    html += '</div>';
-
-    // ── Competitor Gap Panel ──
-    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
-    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-git-compare" style="font-size:12px;color:var(--n2)"></i> Competitor Keyword Gaps`;
-    if (gapDone) html += ` <span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${gapDone}</span>`;
-    else html += `<span id="ci-gap-count"></span>`;
-    html += '</div>';
-    html += '<div style="display:flex;align-items:center;gap:6px">';
-    html += '<span id="ci-gap-status"></span>';
-    html += `<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${gapDone ? 'Refresh' : 'Run'}</button>`;
+    html += '<div id="ci-paa-panel" style="max-height:220px;overflow-y:auto">';
+    if (!paaDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Select a keyword above and click Run.</div>';
     html += '</div></div>';
-    // Domain input
-    html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    html += `<input id="ci-gap-domains" value="${competitorStr}" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
-    html += '</div>';
-    html += '<div id="ci-gap-panel" style="max-height:280px;overflow-y:auto">';
-    if (gapDone) {
-      html += '</div>';
-    } else {
-      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run to find keywords they rank for that you don\'t.</div></div>';
-    }
-    html += '</div>';
 
-    html += '</div>'; // end grid
+    // Competitor Gap panel
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+    html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-git-compare" style="font-size:11px;color:var(--n2)"></i> Competitor Gaps';
+    if (gapDone) html += '<span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">'+gapDone+'</span>'; else html += '<span id="ci-gap-count"></span>';
+    html += '</span>';
+    html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-gap-status"></span>';
+    html += '<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> '+(gapDone?'Refresh':'Run')+'</button></div>';
+    html += '</div>';
+    html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+    html += '<input id="ci-gap-domains" value="'+esc(competitorStr)+'" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />';
+    html += '</div>';
+    html += '<div id="ci-gap-panel" style="max-height:220px;overflow-y:auto">';
+    if (!gapDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run.</div>';
+    html += '</div></div>';
+    html += '</div>'; // end two-col grid
+
+    // Unified topic pool
+    const _allSources = [
+      ...paaQuestions.map(q => ({ text: q.question, source: 'paa', meta: q.seed || '' })),
+      ...gapKeywords.map(k => ({ text: (k.keyword||k.kw||String(k)), source: 'gap', meta: 'vol: '+(k.volume||k.vol||'?') }))
+    ];
+    const _selectedTexts = new Set(blogTopics.map(t => t.text));
+    if (_allSources.length > 0) {
+      html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--bg);border-bottom:1px solid var(--border)">';
+      html += '<span style="font-size:11px;font-weight:500;color:var(--dark)">All Blog Opportunities <span style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3)">'+_allSources.length+'</span></span>';
+      html += '<span style="font-size:10px;color:var(--n2)">Click + Blog to queue a post</span>';
+      html += '</div>';
+      html += '<div style="max-height:260px;overflow-y:auto">';
+      _allSources.forEach(item => {
+        const isAdded = _selectedTexts.has(item.text);
+        const srcColor = item.source === 'paa' ? 'var(--green)' : 'var(--n2)';
+        const safeText = item.text.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04)">';
+        html += '<span style="font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:'+srcColor+';min-width:28px">'+item.source.toUpperCase()+'</span>';
+        html += '<span style="flex:1;font-size:11.5px;color:var(--dark)">'+esc(item.text)+'</span>';
+        if (item.meta) html += '<span style="font-size:10px;color:var(--n2);white-space:nowrap;margin-right:4px">'+esc(item.meta)+'</span>';
+        if (isAdded) {
+          html += '<span style="font-size:10px;color:var(--green);font-weight:500">✓ added</span>';
+        } else {
+          html += '<button onclick="addBlogTopic(\''+item.source+'\',\''+safeText+'\',\''+esc(item.meta)+'\',this)" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);white-space:nowrap">+ Blog</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
 
     // ── Blog Topics bucket ──
     html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg)">';
