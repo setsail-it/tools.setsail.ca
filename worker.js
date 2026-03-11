@@ -587,7 +587,7 @@ export default {
           return j.tasks?.[0]?.result?.[0] || null;
         };
 
-        const [overviewResult, pagesResult] = await Promise.all([
+        const [overviewResult, pagesResult, backlinksResult] = await Promise.all([
           dfsPost('/v3/dataforseo_labs/google/domain_rank_overview/live', {
             target: domain, location_code: locationCode, language_code: 'en',
           }).catch(() => null),
@@ -595,6 +595,9 @@ export default {
             target: domain, location_code: locationCode, language_code: 'en',
             order_by: ['metrics.organic.etv,desc'], limit: 50,
           }),
+          dfsPost('/v3/backlinks/summary/live', {
+            target: domain, include_subdomains: true, backlinks_status_type: 'live',
+          }).catch(() => null),
         ]);
 
         // Parse top pages from DataForSEO relevant_pages response
@@ -644,8 +647,8 @@ export default {
             orgKeywords: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0)+(orgMetrics.pos_4_10||0)+(orgMetrics.pos_11_20||0)+(orgMetrics.pos_21_30||0)+(orgMetrics.pos_31_40||0)+(orgMetrics.pos_41_50||0)+(orgMetrics.pos_51_60||0)+(orgMetrics.pos_61_70||0)+(orgMetrics.pos_71_80||0)+(orgMetrics.pos_81_90||0)+(orgMetrics.pos_91_100||0),
             orgKeywords1_3: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0),
             orgCost: null,
-            liveRefdomains: null,
-            liveBacklinks: null,
+            liveRefdomains: backlinksResult?.referring_domains ?? null,
+            liveBacklinks: backlinksResult?.backlinks ?? null,
           },
           topPages: finalPages,
           redirectMap,
