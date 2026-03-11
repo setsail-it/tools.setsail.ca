@@ -1569,7 +1569,8 @@ async function pullGMB() {
     if (g.reviews && g.reviews.length > 0) rd.reviews = g.reviews;
     scheduleSave();
     renderResearchTabContent();
-    if (statusEl) statusEl.textContent = 'Pulled: address, ' + (g.social_profiles||[]).length + ' social profiles, ' + (g.reviews||[]).length + ' reviews';
+    var _dbgKeys = g._debug_keys ? ' [keys: ' + g._debug_keys.join(',') + ']' : '';
+    if (statusEl) statusEl.textContent = 'Pulled: address, ' + (g.social_profiles||[]).length + ' social profiles, ' + (g.reviews||[]).length + ' reviews' + _dbgKeys;
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brand-google"></i> Re-pull from Google'; }
   } catch(e) {
     if (statusEl) statusEl.textContent = 'Error: ' + e.message.slice(0,60);
@@ -1608,10 +1609,6 @@ function renderRSchema(r) {
   html += rRepGroup('social_profiles','Social Profiles',
     [{key:'platform',label:'Platform',type:'select',options:['Google Business Profile','Facebook','Instagram','LinkedIn','YouTube','TikTok','X','Pinterest','Other']},{key:'url',label:'URL'}],
     '+ Add Social Profile'
-  );
-  html += rRepGroup('schema_services','Services (Schema)',
-    [{key:'service_name',label:'Service Name'},{key:'service_page_url',label:'Page URL'},{key:'service_description_short',label:'Short Description'}],
-    '+ Add Service'
   );
   html += rRepGroup('faqs','FAQs',
     [{key:'question',label:'Question'},{key:'answer',label:'Answer'}],

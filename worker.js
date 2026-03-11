@@ -616,22 +616,33 @@ export default {
           reviews: []
         };
 
-        // Extract reviews
-        if (item.reviews && Array.isArray(item.reviews)) {
-          gmb.reviews = item.reviews.slice(0, 5).map(rv => ({
-            author_name: rv.profile_name || '',
-            rating_value: rv.rating?.value || '',
-            review_body_short: (rv.review_text || '').slice(0, 200),
+        // Extract reviews (field varies by DataForSEO version)
+        const reviewItems = item.reviews || item.review_list || [];
+        if (Array.isArray(reviewItems) && reviewItems.length > 0) {
+          gmb.reviews = reviewItems.slice(0, 5).map(rv => ({
+            author_name: rv.profile_name || rv.author || '',
+            rating_value: String(rv.rating?.value || rv.rating || ''),
+            review_body_short: (rv.review_text || rv.text || '').slice(0, 200),
             source_url: rv.review_url || ''
           }));
         }
 
-        // Extract social links from attributes/urls
-        if (item.urls) {
-          Object.entries(item.urls).forEach(([platform, url]) => {
-            if (url) gmb.social_profiles.push({ platform, url });
-          });
-        }
+        // Extract social links — DataForSEO uses social_links object
+        const socialSrc = item.social_links || item.urls || {};
+        const PLATFORM_MAP = {
+          facebook: 'Facebook', twitter: 'X', instagram: 'Instagram',
+          linkedin: 'LinkedIn', youtube: 'YouTube', tiktok: 'TikTok',
+          pinterest: 'Pinterest', yelp: 'Yelp'
+        };
+        Object.entries(socialSrc).forEach(([key, val]) => {
+          if (val) {
+            const label = PLATFORM_MAP[key.toLowerCase()] || key;
+            gmb.social_profiles.push({ platform: label, url: val });
+          }
+        });
+
+        // Include raw keys for debugging if social/reviews came back empty
+        gmb._debug_keys = Object.keys(item);
 
         return new Response(JSON.stringify({ result: gmb, source: 'dataforseo-gmb' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
