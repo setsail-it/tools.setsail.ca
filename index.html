@@ -227,10 +227,21 @@ textarea.inp{resize:vertical}
       </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Site Type</span><div class="section-mark-line"></div></div>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;margin-bottom:14px">
           <input type="checkbox" id="f-existing-site" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
           <span style="font-size:13px;color:var(--dark)">This is an <strong>existing site</strong> — run a pre-build snapshot to protect rankings &amp; map 301 redirects</span>
         </label>
+        <div>
+          <label style="font-size:12px;display:block;margin-bottom:5px">CMS Platform <span style="color:var(--n2)">&#8212; determines schema variable syntax for CMS pages (blog, portfolio, etc.)</span></label>
+          <select class="inp" id="f-cms" style="font-size:13px">
+            <option value="">None / Static HTML</option>
+            <option value="webflow">Webflow</option>
+            <option value="wordpress">WordPress</option>
+            <option value="shopify">Shopify</option>
+            <option value="framer">Framer</option>
+            <option value="custom">Custom / Other</option>
+          </select>
+        </div>
       </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Reference Documents</span><div class="section-mark-line"></div></div>
@@ -1062,6 +1073,7 @@ function setupNext() {
     strategy, voice: document.getElementById('f-voice').value.trim(),
     competitors: document.getElementById('f-competitors').value.trim(),
     imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
+    cms: (document.getElementById('f-cms')?.value || '').trim(),
     isExistingSite,
     docs: (S.setup && S.setup.docs) ? S.setup.docs : [],
   };
@@ -4039,7 +4051,8 @@ function renderImageQueue() {
           html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel)">`;
           // Image area
           if (sl.status === 'done' && sl.b64) {
-            html += `<div style="aspect-ratio:1;overflow:hidden;background:#f0f0f0"><img src="data:${sl.mimeType||'image/png'};base64,${sl.b64}" style="width:100%;height:100%;object-fit:cover"></div>`;
+            const _szTag = sl.sizeKB ? `<div style="position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;border-radius:3px;padding:1px 5px">${sl.sizeKB}KB WebP</div>` : '';
+            html += `<div style="aspect-ratio:1;overflow:hidden;background:#f0f0f0;position:relative"><img src="data:${sl.mimeType||'image/png'};base64,${sl.b64}" style="width:100%;height:100%;object-fit:cover">${_szTag}</div>`;
           } else if (sl.status === 'generating') {
             html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--panel)"><span class="spinner" style="width:20px;height:20px"></span></div>`;
           } else if (sl.status === 'error') {
@@ -4142,6 +4155,31 @@ function saveAltText(slug, slotIdx, val) {
   scheduleSave();
 }
 
+async function compressToWebP(b64, srcMime, targetKB) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      let quality = 0.88;
+      let dataUrl = canvas.toDataURL('image/webp', quality);
+      for (let i = 0; i < 8; i++) {
+        const kb = Math.round((dataUrl.length - 22) * 3 / 4 / 1024);
+        if (kb <= targetKB || quality <= 0.1) break;
+        quality = Math.max(0.1, quality - 0.1);
+        dataUrl = canvas.toDataURL('image/webp', quality);
+      }
+      const finalB64 = dataUrl.split(',')[1];
+      const finalKB = Math.round(finalB64.length * 3 / 4 / 1024);
+      resolve({ b64: finalB64, sizeKB: finalKB });
+    };
+    img.onerror = reject;
+    img.src = 'data:' + srcMime + ';base64,' + b64;
+  });
+}
+
 async function generateImage(slug, slotIdx, customPrompt) {
   if (!S.images[slug]) return;
   const page = S.pages.find(p => p.slug === slug);
@@ -4163,12 +4201,19 @@ async function generateImage(slug, slotIdx, customPrompt) {
     });
     const data = await res.json();
     if (data.imageData) {
+      try {
+        const compressed = await compressToWebP(data.imageData, data.mimeType || 'image/png', 100);
+        slot.b64 = compressed.b64;
+        slot.mimeType = 'image/webp';
+        slot.sizeKB = compressed.sizeKB;
+      } catch(_ce) {
+        slot.b64 = data.imageData;
+        slot.mimeType = data.mimeType || 'image/png';
+      }
       slot.status = 'done';
-      slot.b64 = data.imageData;
-      slot.mimeType = data.mimeType || 'image/png';
       slot.errorMsg = null;
       if (!slot.altText) slot.altText = buildAltText(slot.prompt);
-      savePageImages(slug); // persist to KV immediately
+      savePageImages(slug);
     } else {
       slot.status = 'error';
       slot.errorMsg = data.error || 'Unknown error';
@@ -4842,9 +4887,34 @@ function initSchema() {
   renderSchemaQueue(); updateSchemaProgress(); checkSchemaAllDone();
 }
 
+const CMS_VARS = {
+  webflow:   { title: '{{name}}', description: '{{summary}}', slug: '{{slug}}', image: '{{main-image.src}}', date: '{{published-on}}', author: '{{author-name}}' },
+  wordpress: { title: '<?php the_title(); ?>', description: '<?php the_excerpt(); ?>', slug: '<?php echo get_post_field("post_name"); ?>', image: '<?php the_post_thumbnail_url(); ?>', date: '<?php the_date("c"); ?>', author: '<?php the_author(); ?>' },
+  shopify:   { title: '{{ product.title }}', description: '{{ product.description }}', slug: '{{ product.handle }}', image: '{{ product.featured_image | img_url }}', date: '{{ product.created_at }}', author: '' },
+  framer:    { title: '{title}', description: '{description}', slug: '{slug}', image: '{image}', date: '{date}', author: '{author}' },
+  custom:    { title: '{{title}}', description: '{{description}}', slug: '{{slug}}', image: '{{image}}', date: '{{date}}', author: '{{author}}' },
+};
+
+const CMS_PAGE_TYPES = ['blog','article','portfolio','product','event','recipe'];
+
 function buildSchemaPrompt(page) {
   const base = 'https://www.'+(S.setup.url||'example.com');
-  return 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
+  const cms = S.setup?.cms || '';
+  const isCmsPage = cms && CMS_PAGE_TYPES.includes(page.page_type);
+  const vars = isCmsPage ? CMS_VARS[cms] : null;
+  let prompt = 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
+  if (vars) {
+    prompt += '\nCMS PLATFORM: '+cms.charAt(0).toUpperCase()+cms.slice(1);
+    prompt += '\nCMS VARIABLES: This is a CMS template page. Use these platform variables in schema values instead of hardcoded text:';
+    prompt += '\n  name/title: '+vars.title;
+    prompt += '\n  description: '+vars.description;
+    prompt += '\n  url slug: '+vars.slug;
+    if (vars.image) prompt += '\n  image: '+vars.image;
+    if (vars.date) prompt += '\n  date: '+vars.date;
+    if (vars.author) prompt += '\n  author: '+vars.author;
+    prompt += '\nIMPORTANT: Output ONE schema template that works for ALL items in this CMS collection. Use the variable tokens above wherever the value will change per item. The schema represents a template, not a specific page.';
+  }
+  return prompt;
 }
 
 async function runSchemaPage(slug) {
@@ -4899,6 +4969,66 @@ function toggleSchemaCode(slug) {
   else { el.style.display = 'none'; btn.textContent = 'Show code'; }
 }
 
+async function validateSchema(slug) {
+  const r = S.schema[slug];
+  const el = document.getElementById('schema-validate-'+slug);
+  if (!r?.schema || !el) return;
+  el.style.display = 'block';
+  el.innerHTML = '<span style="font-size:11px;color:var(--n2)"><span class="spinner" style="width:10px;height:10px;display:inline-block;vertical-align:middle"></span> Validating with schema.org…</span>';
+  // Extract JSON-LD blocks from schema output
+  const jsonMatches = r.schema.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  const jsonBlocks = jsonMatches.map(m => m.replace(/<script[^>]*>|<\/script>/gi,'').trim()).filter(Boolean);
+  if (!jsonBlocks.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> No JSON-LD blocks found in schema output.</span>';
+    return;
+  }
+  const errors = [], warnings = [], types = [];
+  for (const block of jsonBlocks) {
+    try {
+      const parsed = JSON.parse(block);
+      const t = parsed['@type'];
+      if (t) types.push(Array.isArray(t) ? t.join('+') : t);
+      if (!parsed['@context']) errors.push('Missing @context in '+( t||'block'));
+      if (!parsed['@type']) errors.push('Missing @type in block');
+      if (!parsed['@id'] && !parsed.url) warnings.push((t||'block')+': no @id or url anchor');
+      // Type-specific checks
+      if (t === 'LocalBusiness' || t === 'Organization') {
+        if (!parsed.name) errors.push(t+': missing name');
+        if (!parsed.address) warnings.push(t+': missing address');
+      }
+      if (t === 'Service') {
+        if (!parsed.name) errors.push('Service: missing name');
+        if (!parsed.provider) warnings.push('Service: missing provider');
+      }
+      if (t === 'FAQPage') {
+        const qa = parsed.mainEntity || [];
+        if (!qa.length) errors.push('FAQPage: no mainEntity questions');
+        else if (qa.length < 3) warnings.push('FAQPage: only '+qa.length+' questions (6+ recommended)');
+      }
+      if (t === 'BreadcrumbList') {
+        if (!(parsed.itemListElement||[]).length) errors.push('BreadcrumbList: empty itemListElement');
+      }
+    } catch(e) {
+      errors.push('Invalid JSON: '+e.message.slice(0,60));
+    }
+  }
+  // Also open Google Rich Results Test in background tab
+  const grrUrl = 'https://search.google.com/test/rich-results?url=' + encodeURIComponent('https://www.'+(S.setup?.url||''));
+  let html = '';
+  if (errors.length === 0 && warnings.length === 0) {
+    html = '<div style="font-size:11px;color:var(--green);background:rgba(21,142,29,0.06);border:1px solid rgba(21,142,29,0.2);border-radius:5px;padding:7px 10px">';
+    html += '<strong><i class="ti ti-check"></i> All checks passed</strong> — '+jsonBlocks.length+' block(s) valid. Types: '+types.join(', ')+'</div>';
+  } else {
+    html = '<div style="font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px 10px">';
+    if (errors.length) html += '<div style="color:#E53935;font-weight:600;margin-bottom:4px"><i class="ti ti-x"></i> '+errors.length+' error(s)</div>'+errors.map(e=>'<div style="color:#E53935;margin-left:10px">• '+esc(e)+'</div>').join('');
+    if (warnings.length) html += '<div style="color:var(--warn);font-weight:600;margin:4px 0 2px"><i class="ti ti-alert-triangle"></i> '+warnings.length+' warning(s)</div>'+warnings.map(w=>'<div style="color:var(--warn);margin-left:10px">• '+esc(w)+'</div>').join('');
+    html += '<div style="color:var(--n2);margin-top:4px">Types found: '+esc(types.join(', ') || 'none')+'</div>';
+    html += '</div>';
+  }
+  html += '<div style="margin-top:6px"><a href="'+grrUrl+'" target="_blank" style="font-size:10px;color:var(--green);text-decoration:none"><i class="ti ti-external-link" style="font-size:10px"></i> Open Google Rich Results Test</a></div>';
+  el.innerHTML = html;
+}
+
 function renderSchemaQueue() {
   let html = '';
   S.pages.forEach((p, i) => {
@@ -4932,8 +5062,10 @@ function renderSchemaQueue() {
         html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
           +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.schema[\''+p.slug+'\']||{}).schema)"><i class="ti ti-copy"></i> Copy Schema</button>'
           +'<button class="btn btn-ghost sm" id="schema-code-btn-'+p.slug+'" onclick="toggleSchemaCode(\''+p.slug+'\')">Show code</button>'
+          +'<button class="btn btn-ghost sm" onclick="validateSchema(\''+p.slug+'\')"><i class="ti ti-shield-check"></i> Validate</button>'
           +'<button class="btn btn-danger sm" onclick="redoSchemaPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
           +'</div>'
+          +'<div id="schema-validate-'+p.slug+'" style="display:none;margin-bottom:10px"></div>'
           +'<div id="schema-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.schema)+'</div>';
         const curIdx = S.pages.findIndex(pp => pp.slug === p.slug);
         const nextP = S.pages.find((pp,ii) => ii > curIdx && !(S.schema[pp.slug]||{}).schema);
@@ -4948,7 +5080,7 @@ function renderSchemaQueue() {
           +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
       } else {
         html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type||'page')+' · JSON-LD + meta + OG</div>'
+          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type||'page')+' · JSON-LD + meta + OG'+(S.setup?.cms && CMS_PAGE_TYPES.includes(p.page_type) ? ' · <span style="color:var(--green)">CMS vars ('+S.setup.cms+')</span>' : '')+'</div>'
           +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-code"></i> Generate Schema</button>'
           +'</div>';
       }
