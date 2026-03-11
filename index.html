@@ -325,7 +325,6 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
         <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
         <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
-          <button id="research-enrich-btn" class="btn btn-primary" onclick="enrichAll()" style="white-space:nowrap"><i class="ti ti-sparkles"></i> Enrich with AI</button>
           <button class="btn btn-ghost" onclick="goTo('sitemap')" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>
         </div>
       </div>
@@ -1438,7 +1437,13 @@ function removeRFRep(key, idx) {
 
 // ── Tab renderers ─────────────────────────────────────────────────
 
-function rTabActions(tab) { return ''; }
+function rTabActions(tab) {
+  var label = tab.charAt(0).toUpperCase() + tab.slice(1);
+  return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'
+    + '<button id="enrich-btn-'+tab+'" class="btn btn-primary" onclick="enrichOneTab(\''+tab+'\')" style="white-space:nowrap"><i class="ti ti-sparkles"></i> Enrich ' + label + '</button>'
+    + '<span id="enrich-status-'+tab+'" style="font-size:12px;color:var(--n2)"></span>'
+    + '</div>';
+}
 
 function renderRBusiness(r) {
   let html = rTabActions('business');
@@ -1589,6 +1594,28 @@ function renderRKeywords(el) {
 }
 
 // ── AI Enrichment ─────────────────────────────────────────────────
+
+async function enrichOneTab(tab) {
+  if (!S.research) S.research = researchDefaults();
+  var _s = S.setup || {};
+  if (_s.client && !S.research.client_name) S.research.client_name = _s.client;
+  if (_s.client && !S.research.brand_name) S.research.brand_name = _s.client;
+  var btn = document.getElementById('enrich-btn-'+tab);
+  var statusEl = document.getElementById('enrich-status-'+tab);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
+  if (statusEl) statusEl.textContent = '';
+  try {
+    await enrichRTab(tab, false);
+    _enrichDone.add(tab);
+    renderResearchNav();
+    if (statusEl) statusEl.textContent = 'Done';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; btn.setAttribute('onclick',"enrichOneTab('"+tab+"')"); }
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'Error: ' + e.message.slice(0,60);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Retry'; }
+    console.error('enrichOneTab ['+tab+']:', e);
+  }
+}
 
 async function enrichAll(forceAll) {
   const tabs = ['business','audience','brand','schema','competitors'];
