@@ -1695,17 +1695,3205 @@ async function enrichRTab(tab, forceAll) {
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
       + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
 
-    brand: ctx + '\n\nExtract brand identity and positioning. Look especially in brand guides. Return a JSON object:\n{\n'
-      + b + '"brand_name": "the actual brand or company name",\n'
-      + b + '"slogan_or_tagline": "tagline if one exists else empty string",\n'
+    brand: 'You are extracting brand data for: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n' + ctx + '\n\nReturn a JSON object. For colours/fonts: ONLY include values from reference docs, use [] otherwise. For voice/differentiators: extract from strategy and brand docs. Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"brand_name": "' + (S.setup && S.setup.client || 'Brand') + '",\n'
+      + b + '"slogan_or_tagline": "tagline from docs, or empty string",\n'
       + b + '"brand_voice_style": "one of: direct playful premium technical warm other",\n'
-      + b + '"tone_and_voice": "2-3 sentences on how this brand communicates — tone, language, personality",\n'
-      + b + '"words_to_use": ["preferred word 1", "preferred word 2"],\n'
-      + b + '"words_to_avoid": ["word to avoid 1", "word to avoid 2"],\n'
-      + b + '"key_differentiators": ["differentiator 1", "differentiator 2", "differentiator 3"],\n'
-      + b + '"proof_points": ["award or credential 1", "stat or social proof 2"],\n'
-      + b + '"brand_colours": ["#hexcode1", "#hexcode2"],\n'
-      + b + '"fonts": ["Primary Font", "Secondary Font"]\n}',
+      + b + '"tone_and_voice": "2-3 sentences on tone/personality from the docs",\n'
+      + b + '"words_to_use": ["power words fitting this brand voice"],\n'
+      + b + '"words_to_avoid": ["words that conflict with this brand voice"],\n'
+      + b + '"key_differentiators": ["real differentiator from docs"],\n'
+      + b + '"proof_points": ["real cert/award/stat from docs, or []"],\n'
+      + b + '"brand_colours": ["hex from brand guide only, or []"],\n'
+      + b + '"fonts": ["font from brand guide only, or []"]\n}',
+
+    schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
+      + b + '"schema_business_type": "LocalBusiness or Organization",\n'
+      + b + '"schema_primary_category": "Google Business Profile category e.g. Marketing agency",\n'
+      + b + '"schema_price_range": "e.g. $$ or $$$ or empty string",\n'
+      + b + '"schema_has_physical_locations": true or false,\n'
+      + b + '"schema_street_address": "street address or empty string",\n'
+      + b + '"schema_city": "city",\n'
+      + b + '"schema_region": "province or state",\n'
+      + b + '"schema_postal_code": "postal or zip",\n'
+      + b + '"schema_country": "2-letter code e.g. CA",\n'
+      + b + '"schema_payment_methods": ["Credit Card", "Invoice"],\n'
+      + b + '"social_profiles": [{"platform": "Facebook", "url": "https://..."}],\n'
+      + b + '"schema_services": [{"service_name": "actual service", "service_page_url": "/services/slug", "service_description_short": "one sentence"}],\n'
+      + b + '"faqs": [{"question": "real customer question 1", "answer": "direct answer"}, {"question": "real customer question 2", "answer": "direct answer"}],\n'
+      + b + '"has_service_pages": "Yes or Planned or No",\n'
+      + b + '"has_blog": "Yes or Planned or No",\n'
+      + b + '"has_faq_section": "Yes or Planned or No"\n}',
+
+    competitors: 'You are identifying REAL competitors for this business.\n'
+      + 'Business: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
+      + 'Website: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
+      + 'Geography: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
+      + ctx + '\n\n'
+      + 'Step 1: Extract any competitors explicitly named in the documents.\n'
+      + 'Step 2: Based on the industry and geography, name 3-6 real competitors in this market.\n'
+      + 'NEVER use placeholder names. Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"competitors": [{"name": "Actual Business Name", "url": "domain.com", "why_they_win": "specific strength"}]\n}'
+  };
+
+  if (!prompts[tab]) return;
+
+  try {
+    var result = await callClaude(sys, prompts[tab], null);
+    var parsed = parseEnrichResult(result);
+    if (parsed) {
+      if (parsed.geography) {
+        if (!r.geography) r.geography = {};
+        if (forceAll || !r.geography.primary) r.geography.primary = parsed.geography.primary || r.geography.primary;
+        if (forceAll || !(r.geography.secondary && r.geography.secondary.length)) {
+          r.geography.secondary = parsed.geography.secondary || r.geography.secondary;
+        }
+        delete parsed.geography;
+      }
+      mergeEnriched(r, parsed, forceAll);
+      scheduleSave();
+      renderResearchTabContent();
+    } else {
+      console.warn('enrichRTab ['+tab+']: parse failed. Raw:', result.slice(0,500));
+      var _emsg2 = document.getElementById('research-enrich-msg');
+      if (_emsg2) _emsg2.textContent = '\u26a0 ' + tab + ': could not parse AI response \u2014 check console';
+    }
+  } catch(e) {
+    var _emsg = document.getElementById('research-enrich-msg');
+    if (_emsg) _emsg.textContent = 'Error on ' + tab + ': ' + e.message;
+    console.error('enrichRTab ['+tab+']:', e);
+  }
+}
+
+
+async function runResearch() {
+  await enrichAll();
+  fetchKeywordResearch();
+}
+
+// Shim for backward compat with saved state load + old call sites
+function renderResearchResults(r) {
+  if (r) S.research = r;
+  if (!S.research) S.research = researchDefaults();
+  initResearch();
+}
+
+function saveResearchEdits() { /* deprecated — fields save on change */ }
+
+function attemptResearchParse() { /* deprecated */ }
+
+// ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────
+async function fetchKeywordResearch() {
+  const r = S.research || {};
+  const setup = S.setup || {};
+
+  const services = r.primary_services || [];
+  const primaryGeo = r.geography?.primary || setup.geo || '';
+  const secondaryGeos = (r.geography?.secondary || []).slice(0, 3);
+  const allGeos = [primaryGeo, ...secondaryGeos].filter(Boolean);
+
+  // Determine country
+  const geoStr = allGeos.join(' ').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+
+  // Build tight seed list (10–20 terms) for keyword expansion
+  // These are the "parent" terms DataForSEO will expand into 200+ related keywords
+  const seeds = new Set();
+  const shortGeo = primaryGeo.replace(/,.*$/, '').trim(); // e.g. "Vancouver" not "Vancouver, BC"
+  services.slice(0, 8).forEach(svc => {
+    const s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?)$/i, '').trim();
+    seeds.add(s + ' ' + shortGeo.toLowerCase());
+    seeds.add(shortGeo.toLowerCase() + ' ' + s);
+  });
+  seeds.add('digital marketing ' + shortGeo.toLowerCase());
+  seeds.add('marketing agency ' + shortGeo.toLowerCase());
+  seeds.add(shortGeo.toLowerCase() + ' marketing agency');
+
+  const seedList = [...seeds].filter(k => k.length > 4).slice(0, 20);
+  if (!seedList.length) return;
+
+  const kwEl = document.getElementById('research-kw-status');
+  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding keywords from ' + seedList.length + ' seeds…';
+
+  try {
+    // Step 1: Expand seeds into related keyword universe
+    const expandRes = await fetch('/api/kw-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds: seedList, country })
+    });
+    const expandData = await expandRes.json();
+
+    if (!expandData.keywords || expandData.error) {
+      if (kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(expandData.error || 'Expansion failed') + '</span>';
+      return;
+    }
+
+    if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords — scoring opportunities…';
+
+    // Step 2: Score and rank
+    // Opportunity score: logarithmic vol / KD — rewards high vol + low KD
+    // Penalise KD 0 (often means no data) and vol < 10
+    const scored = expandData.keywords
+      .filter(k => k.volume >= 10)
+      .map(k => {
+        const kd = k.difficulty > 0 ? k.difficulty : 50; // treat KD=0 as competitive unknown
+        const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
+        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    // Step 3: Deduplicate and take top 100
+    const seen = new Set();
+    const deduped = scored.filter(k => {
+      if (seen.has(k.kw)) return false;
+      seen.add(k.kw);
+      return true;
+    }).slice(0, 100);
+
+    S.kwResearch = {
+      keywords: deduped,
+      seeds: seedList,
+      fetchedAt: Date.now(),
+      source: expandData.source || 'dataforseo'
+    };
+    scheduleSave();
+    renderKwResearchCard();
+
+  } catch(e) {
+    if (kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(e.message) + '</span>';
+  }
+}
+
+function renderKwResearchCard() {
+  const el = document.getElementById('research-kw-card');
+  if (!el || !S.kwResearch?.keywords?.length) return;
+
+  const kws = S.kwResearch.keywords;
+  const top = kws.slice(0, 25);
+  const ts = S.kwResearch.fetchedAt ? new Date(S.kwResearch.fetchedAt).toLocaleTimeString('en-CA', {hour:'2-digit',minute:'2-digit'}) : '';
+  const seedCount = S.kwResearch.seeds?.length || 0;
+
+  let html = '<div class="card hl" style="margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+  html += '<div><div class="eyebrow" style="color:var(--green)">Keyword Opportunities</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'
+    + kws.length + ' opportunities found from ' + seedCount + ' seeds'
+    + (ts ? ' · ' + ts : '') + ' · sorted by opportunity score</div></div>';
+  html += '<button class="btn btn-ghost sm" onclick="fetchKeywordResearch()"><i class="ti ti-refresh"></i> Refresh</button>';
+  html += '</div>';
+
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+  html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>CPC</span><span>Score</span></div>';
+
+  top.forEach((k, i) => {
+    const kdColor = k.kd === 0 ? 'var(--n2)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    const rowBg = i % 2 === 0 ? '' : 'background:var(--bg)';
+    const kdLabel = k.kd === 0 ? '?' : k.kd;
+    html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
+      + '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>'
+      + '<span style="color:var(--n3)">'+k.vol.toLocaleString()+'</span>'
+      + '<span style="color:'+kdColor+';font-weight:500">'+kdLabel+'</span>'
+      + '<span style="color:var(--n2);font-size:11px">'+(k.cpc?'$'+k.cpc.toFixed(2):'-')+'</span>'
+      + '<span style="color:var(--n2);font-size:11px">'+k.score+'</span>'
+      + '</div>';
+  });
+
+  if (kws.length > 25) {
+    html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+'+(kws.length-25)+' more injected into sitemap stage</div>';
+  }
+  html += '</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:8px">'
+    + '<i class="ti ti-info-circle" style="font-size:10px"></i>'
+    + ' Score = log(volume) ÷ KD. KD shown as ? when DataForSEO has no difficulty data. These are automatically used when generating the sitemap.'
+    + '</div></div>';
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+  const status = document.getElementById('research-kw-status');
+  if (status) status.style.display = 'none';
+}
+
+// ── SITEMAP ────────────────────────────────────────────────────────// ── SITEMAP ────────────────────────────────────────────────────────
+function attemptSitemapParse() {
+  const streamEl = document.getElementById('sitemap-stream');
+  const wrap = document.getElementById('sitemap-stream-wrap');
+  if (!streamEl) return;
+  const text = streamEl.textContent;
+  let parsed = null;
+  try { parsed = JSON.parse(text.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+  if (!parsed) {
+    try {
+      const s = text.indexOf('['), e = text.lastIndexOf(']');
+      if (s >= 0 && e > s) parsed = JSON.parse(text.slice(s, e+1));
+    } catch(e) {}
+  }
+  if (!parsed) {
+    try {
+      const s = text.indexOf('{'), e = text.lastIndexOf('}');
+      if (s >= 0 && e > s) {
+        const obj = JSON.parse(text.slice(s, e+1));
+        parsed = Array.isArray(obj) ? obj : (obj.pages || obj.sitemap || null);
+      }
+    } catch(e) {}
+  }
+  if (parsed) {
+    S.pages = Array.isArray(parsed) ? parsed : parsed;
+    enrichSitemapWithKwData();
+    wrap.style.display = 'none';
+    renderSitemapResults(false);
+    scheduleSave();
+    enrichSitemapWithLiveData();
+  } else {
+    alert('Still could not parse — try Regenerate');
+  }
+}
+
+async function runSitemap(withRevisions) {
+  const btn = document.getElementById('sitemap-run-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...';
+  document.getElementById('sitemap-results').style.display = 'none';
+  const wrap = document.getElementById('sitemap-stream-wrap');
+  const streamEl = document.getElementById('sitemap-stream');
+  wrap.style.display = 'block'; streamEl.textContent = '';
+
+  const r = S.research||{};
+  const revNote = withRevisions ? document.getElementById('sitemap-revisions') : null;
+
+  // Client context — brief, secondary to keyword data
+  let prompt = '## CLIENT CONTEXT\n';
+  prompt += 'Client: ' + S.setup.client + '\n';
+  prompt += 'Primary geo: ' + (r.geography?.primary || S.setup.geo || 'N/A') + '\n';
+  prompt += 'Secondary geos: ' + ((r.geography?.secondary || []).join(', ') || 'none') + '\n';
+  prompt += 'Services: ' + ((r.primary_services || []).join(', ') || 'N/A') + '\n';
+  prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n\n';
+
+  if (S.kwResearch?.keywords?.length) {
+    const kws = S.kwResearch.keywords.filter(k => k.vol > 0).slice(0, 100);
+    prompt += '## KEYWORD LIST (' + kws.length + ' keywords — USE THESE EXACT STRINGS, no others)\n';
+    prompt += '# | keyword | vol/mo | KD | score\n';
+    kws.forEach((k, i) => {
+      prompt += (i+1) + ' | ' + k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n';
+    });
+    prompt += '\n## INSTRUCTIONS\n';
+    prompt += '- Build pages by clustering keywords above into groups by topic/intent\n';
+    prompt += '- primary_keyword must be the EXACT string from the # column above (highest score in the cluster)\n';
+    prompt += '- supporting_keywords must also be exact strings from the list\n';
+    prompt += '- A page with no matching keyword from the list = do not build it\n';
+    prompt += '- Separate pages for each core service ONLY if a keyword exists for it\n';
+    prompt += '- Homepage gets the highest-score brand/agency keyword\n';
+    prompt += '- Locations page ONLY if geo keyword has vol > 100\n';
+  } else {
+    prompt += '## TASK\nNo keyword data available. Build best-guess sitemap from services list. Mark all as needing validation.\n';
+  }
+
+  if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n' + revNote.value;
+
+  try {
+    const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
+    const parsed = safeParseJSON(result);
+    if (Array.isArray(parsed) && parsed.length) {
+      S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
+    } else {
+      streamEl.textContent = result;
+      // Add retry button
+      const retryDiv = document.createElement('div');
+      retryDiv.style.cssText = 'padding:10px;background:rgba(0,0,0,0.3);display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+      retryDiv.innerHTML = '<span style="color:rgba(255,255,255,0.5);font-size:11px">Parse failed — click retry to extract JSON</span>'
+        + '<button onclick="attemptSitemapParse()" style="background:var(--lime);border:none;padding:5px 10px;border-radius:4px;font-size:11px;cursor:pointer;font-family:var(--font)">⟳ Retry Parse</button>';
+      wrap.appendChild(retryDiv);
+    }
+  } catch(e) { streamEl.textContent = 'Error: '+e.message; }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+}
+
+function enrichSitemapWithKwData() {
+  // Since Claude pulls keywords verbatim from S.kwResearch, this is a guaranteed lookup
+  if (!S.pages?.length) return;
+  const cached = {};
+  (S.kwResearch?.keywords || []).forEach(k => {
+    cached[k.kw.toLowerCase().trim()] = k;
+  });
+  S.pages = S.pages.map(p => {
+    const pk = (p.primary_keyword || '').toLowerCase().trim();
+    const hit = cached[pk];
+    if (hit) { p.primary_vol = hit.vol; p.primary_kd = hit.kd; p.score = hit.score; }
+    if (p.supporting_keywords?.length) {
+      p.supporting_keywords = p.supporting_keywords.map(sk => {
+        const raw = (typeof sk === 'object' ? (sk.kw || '') : String(sk)).trim();
+        const h = cached[raw.toLowerCase()];
+        if (h) return { kw: raw, vol: h.vol, kd: h.kd };
+        return typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 };
+      });
+    }
+    return p;
+  });
+}
+
+async function enrichSitemapWithLiveData() {
+  // Async pass: directly lookup any keyword that's still missing vol data
+  if (!S.pages?.length) return;
+
+  // Collect all unique keywords across all pages that need data
+  const needed = new Set();
+  S.pages.forEach(p => {
+    if (!p.primary_vol || p.primary_vol === 0) needed.add((p.primary_keyword || '').trim());
+    (p.supporting_keywords || []).forEach(sk => {
+      const kw = typeof sk === 'object' ? sk.kw : sk;
+      if (kw && (!sk.vol || sk.vol === 0)) needed.add(kw.trim());
+    });
+  });
+  const kwList = [...needed].filter(k => k.length > 2);
+  if (!kwList.length) return;
+
+  // Show enriching indicator
+  const statusEls = document.querySelectorAll('[id^="sitemap-enrich-status"]');
+  const enrichBadge = document.getElementById('sitemap-enrich-badge');
+  if (enrichBadge) { enrichBadge.style.display = 'inline-flex'; enrichBadge.textContent = 'Fetching ' + kwList.length + ' keyword volumes…'; }
+
+  try {
+    const geo = S.research?.geography?.primary || S.setup?.geo || '';
+    const geoLower = geo.toLowerCase();
+    const country = (geoLower.includes('canada')||geoLower.includes('bc')||geoLower.includes('vancouver')||geoLower.includes('calgary')) ? 'CA' : 'US';
+
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: kwList, country })
+    });
+    const data = await res.json();
+    if (!data.keywords) throw new Error(data.error || 'No data');
+
+    // Build lookup from fresh data
+    const fresh = {};
+    data.keywords.forEach(k => { fresh[k.keyword.toLowerCase().trim()] = k; });
+
+    // Also add to kwResearch cache for future use
+    if (!S.kwResearch) S.kwResearch = { keywords: [], fetchedAt: Date.now(), source: 'dataforseo' };
+    const existingKws = new Set(S.kwResearch.keywords.map(k => k.kw.toLowerCase()));
+    data.keywords.filter(k => k.volume > 0 && !existingKws.has(k.keyword.toLowerCase())).forEach(k => {
+      const kd = k.difficulty > 0 ? k.difficulty : 50;
+      S.kwResearch.keywords.push({ kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10 });
+    });
+
+    // Apply fresh data to pages
+    S.pages = S.pages.map(p => {
+      const pk = (p.primary_keyword || '').toLowerCase().trim();
+      const hit = fresh[pk];
+      if (hit && hit.volume > 0) {
+        p.primary_vol = hit.volume;
+        p.primary_kd = hit.difficulty || 0;
+        const kd2 = hit.difficulty > 0 ? hit.difficulty : 50;
+        p.score = Math.round((Math.log(hit.volume+1)*100/kd2)*10)/10;
+      }
+      if (p.supporting_keywords?.length) {
+        p.supporting_keywords = p.supporting_keywords.map(sk => {
+          const raw = typeof sk === 'object' ? sk.kw : String(sk);
+          const h = fresh[raw.toLowerCase().trim()];
+          return h && h.volume > 0 ? { kw: raw, vol: h.volume, kd: h.difficulty || 0 } : (typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 });
+        });
+      }
+      return p;
+    });
+
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    if (enrichBadge) enrichBadge.style.display = 'none';
+
+  } catch(e) {
+    if (enrichBadge) { enrichBadge.style.display = 'none'; }
+    console.warn('Live enrich failed:', e.message);
+  }
+}
+
+
+async function openKwFinder(pageIdx) {
+  const page = S.pages[pageIdx];
+  if (!page) return;
+
+  const btn    = document.getElementById('kw-finder-btn-' + pageIdx);
+  const status = document.getElementById('kw-finder-status-' + pageIdx);
+  const panel  = document.getElementById('kw-finder-panel-' + pageIdx);
+
+  // Toggle: if panel is already open, collapse it
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    return;
+  }
+
+  // If we have cached results, just re-show — no fetch
+  if (page._kwCache) {
+    panel.style.display = 'block';
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    _renderKwFinderPanel(pageIdx, page._kwCache.keywords, page._kwCache.aiResult);
+    return;
+  }
+
+  // ── First open: fetch + run AI ──
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span> Fetching…';
+  if (status) status.textContent = '';
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--n2)">Fetching keyword ideas…</div>';
+
+  // Build seeds (geo-stripped)
+  const geo      = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoLower = geo.toLowerCase();
+  const stripGeo = kw => {
+    if (!geoLower) return kw;
+    return kw.toLowerCase()
+      .replace(new RegExp('\\s+' + geoLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*$', 'i'), '')
+      .replace(new RegExp('^' + geoLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s+', 'i'), '')
+      .trim();
+  };
+
+  const currentPrimary    = page.primary_keyword || '';
+  const currentSupporting = (page.supporting_keywords || []).map(sk => typeof sk === 'object' ? sk.kw : sk).filter(Boolean);
+  const pageName          = (page.page_name || '').toLowerCase().replace(/\s+(services?|management|agency|solutions?|page)$/i, '').trim();
+
+  const seedSet = new Set();
+  [currentPrimary, ...currentSupporting].filter(Boolean).forEach(kw => {
+    const base = stripGeo(kw);
+    if (base.length > 3) seedSet.add(base);
+  });
+  if (pageName.length > 3) seedSet.add(pageName);
+  if (geoLower && pageName.length > 3) seedSet.add(pageName + ' ' + geoLower);
+  const seeds = [...seedSet].filter(k => k.length > 3).slice(0, 12);
+
+  const geoStr  = (geo + ' ' + geoLower).toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+
+  let keywords = [];
+  try {
+    const expandRes  = await fetch('/api/kw-expand', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ seeds, country }) });
+    const expandData = await expandRes.json();
+
+    if (expandData.keywords && expandData.keywords.length) {
+      const seen = new Set();
+      keywords = expandData.keywords
+        .filter(k => k.volume >= 10)
+        .map(k => {
+          const kd    = k.difficulty > 0 ? k.difficulty : 50;
+          const score = Math.round((Math.log(k.volume + 1) * 100 / kd) * 10) / 10;
+          return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score };
+        })
+        .sort((a, b) => b.score - a.score)
+        .filter(k => { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; })
+        .slice(0, 60);
+    }
+  } catch(err) {
+    panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--error)">⚠ ' + err.message + '</div>';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    return;
+  }
+
+  if (!keywords.length) {
+    panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--warn)">⚠ No keywords found for these seeds.</div>';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+    return;
+  }
+
+  // ── Run AI in parallel (non-blocking) ──
+  panel.innerHTML = '<div style="padding:10px 16px;font-size:10.5px;color:var(--n2)"><span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:5px"></span>Asking AI for picks…</div>';
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span> Analysing…';
+
+  const kwList = keywords.slice(0, 60).map(k => `${k.kw} (vol:${k.vol}, kd:${k.kd}, score:${k.score})`).join('\n');
+  const currentKws = [currentPrimary, ...currentSupporting].filter(Boolean).join(', ');
+
+  const aiSystem = `You are an SEO keyword strategist. Given a page brief and keyword list, recommend the best primary keyword and up to 5 supporting keywords.\n\nRULES:\n- primary_keyword MUST be an exact string from the list\n- supporting_keywords MUST be exact strings from the list\n- Match intent to page type: home→brand/agency, service→service+city, location→city+service, about→brand/trust, blog→informational\n- Prioritise: correct intent first, then highest score\n- Output raw JSON only. No markdown, no backticks.\n\nFormat: {"primary_keyword":"...","primary_vol":0,"primary_kd":0,"primary_score":0,"supporting_keywords":[{"kw":"...","vol":0,"kd":0}],"rationale":"1-2 sentences"}`;
+
+  const aiUser = `PAGE:\nName: ${page.page_name}\nType: ${page.page_type || 'service'}\nSlug: /${page.slug}\nCurrent primary: ${currentPrimary || 'none'}\nCurrent supporting: ${currentKws || 'none'}\n\nKEYWORD LIST:\n${kwList}\n\nRecommend primary + up to 5 supporting keywords.`;
+
+  let aiResult = null;
+  try {
+    let raw = '';
+    await callClaude(aiSystem, aiUser, chunk => { raw += chunk; });
+    const stripped = raw.replace(/```json\s*/gi,'').replace(/```/g,'');
+    const candidates = [];
+    for (let si = 0; si < stripped.length; si++) {
+      if (stripped[si] !== '{') continue;
+      let depth = 0;
+      for (let ei = si; ei < stripped.length; ei++) {
+        if (stripped[ei] === '{') depth++;
+        else if (stripped[ei] === '}') { depth--; if (depth === 0) { candidates.push(stripped.slice(si, ei+1)); break; } }
+      }
+    }
+    candidates.sort((a,b) => b.length - a.length);
+    for (const c of candidates) {
+      try { aiResult = JSON.parse(c); if (aiResult.primary_keyword) break; } catch(e) {}
+    }
+  } catch(aiErr) {
+    console.warn('[openKwFinder] AI failed:', aiErr.message);
+  }
+
+  // Cache so re-open is instant
+  page._kwCache = { keywords, aiResult };
+  scheduleSave();
+
+  _renderKwFinderPanel(pageIdx, keywords, aiResult);
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords';
+}
+
+function _renderKwFinderPanel(pageIdx, keywords, aiResult) {
+  const page  = S.pages[pageIdx];
+  const panel = document.getElementById('kw-finder-panel-' + pageIdx);
+  if (!page || !panel) return;
+
+  const geo    = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const kdCol  = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+  const vCol   = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+  const scoreFn = (v,d) => v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+  const currentPrimary = (page.primary_keyword || '').toLowerCase();
+  const currentSupporting = new Set((page.supporting_keywords || []).map(sk => (typeof sk==='object'?sk.kw:sk).toLowerCase()));
+
+  let html = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;margin:0 14px 8px;overflow:hidden">';
+
+  // ── Header ──
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)">';
+  html += `<div style="font-size:10.5px;font-weight:500;color:var(--dark)">Keywords for ${esc(page.page_name)}</div>`;
+  html += `<div style="display:flex;align-items:center;gap:8px">`;
+  html += `<button onclick="delete S.pages[${pageIdx}]._kwCache;openKwFinder(${pageIdx})" title="Refresh" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 2px"><i class="ti ti-refresh" style="font-size:11px"></i></button>`;
+  html += `<button onclick="document.getElementById('kw-finder-panel-${pageIdx}').style.display='none'" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:14px;line-height:1;padding:0 2px">✕</button>`;
+  html += '</div></div>';
+
+  // ── AI Picks section (if available) ──
+  if (aiResult && aiResult.primary_keyword) {
+    const pScore = aiResult.primary_score || scoreFn(aiResult.primary_vol||0, aiResult.primary_kd||0);
+    html += '<div style="padding:9px 12px;border-bottom:1px solid var(--border);background:rgba(21,142,29,0.03)">';
+    html += '<div style="font-size:9.5px;color:var(--green);font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;display:flex;align-items:center;gap:4px"><i class="ti ti-sparkles" style="font-size:9px"></i> AI Picks</div>';
+
+    // Primary row
+    html += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;flex-wrap:wrap">';
+    html += `<span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em;min-width:56px">Primary</span>`;
+    html += `<span style="font-size:12px;color:var(--dark);font-weight:500">${esc(aiResult.primary_keyword)}</span>${intentBadge(aiResult.primary_keyword, geo)}`;
+    html += `<span style="font-size:10px;color:${vCol(aiResult.primary_vol||0)}">${(aiResult.primary_vol||0).toLocaleString()}/mo</span>`;
+    html += `<span style="font-size:10px;color:${kdCol(aiResult.primary_kd||0)}">KD ${aiResult.primary_kd||'?'}</span>`;
+    const alreadyPrimary = currentPrimary === (aiResult.primary_keyword||'').toLowerCase();
+    if (alreadyPrimary) {
+      html += `<span style="font-size:10px;color:var(--green)">✓ current</span>`;
+    } else {
+      html += `<button onclick="acceptPrimaryKw(${pageIdx},'${(aiResult.primary_keyword||'').replace(/'/g,'')}',${aiResult.primary_vol||0},${aiResult.primary_kd||0},${pScore})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font)">Use this</button>`;
+    }
+    html += '</div>';
+
+    // Supporting rows
+    if (aiResult.supporting_keywords?.length) {
+      html += '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">';
+      html += `<span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em;min-width:56px">Supporting</span>`;
+      html += '</div>';
+      aiResult.supporting_keywords.forEach(sk => {
+        const added = currentSupporting.has((sk.kw||'').toLowerCase()) || currentPrimary === (sk.kw||'').toLowerCase();
+        html += `<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap;padding-left:64px">`;
+        html += `<span style="font-size:11px;color:${added?'var(--n2)':'var(--n3)'}">${esc(sk.kw)}</span>${intentBadge(sk.kw, geo)}`;
+        html += `<span style="font-size:10px;color:${vCol(sk.vol||0)}">${(sk.vol||0).toLocaleString()}/mo</span>`;
+        html += `<span style="font-size:10px;color:${kdCol(sk.kd||0)}">KD ${sk.kd||'?'}</span>`;
+        if (added) {
+          html += `<span style="font-size:10px;color:var(--green)">✓</span>`;
+        } else {
+          html += `<button data-add-kw="${(sk.kw||'').replace(/"/g,'')}" data-page="${pageIdx}" onclick="addSuggestedKw(${pageIdx},'${(sk.kw||'').replace(/'/g,'')}',${sk.vol||0},${sk.kd||0},this)" style="background:transparent;border:1px solid var(--green);color:var(--green);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Add</button>`;
+        }
+        html += '</div>';
+      });
+    }
+
+    if (aiResult.rationale) {
+      html += `<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:4px;padding-top:5px;border-top:1px solid rgba(0,0,0,0.05)">${esc(aiResult.rationale)}</div>`;
+    }
+
+    // Accept All
+    html += `<div style="margin-top:7px"><button onclick="acceptAllSuggestions(${pageIdx})" style="background:var(--green);color:white;border:none;border-radius:4px;padding:3px 10px;font-size:10.5px;cursor:pointer;font-family:var(--font)">Accept All AI Picks</button></div>`;
+    html += '</div>';
+
+    // Store for acceptAllSuggestions
+    S.pages[pageIdx]._suggestion = aiResult;
+  }
+
+  // ── Full keyword list ──
+  html += '<div style="max-height:280px;overflow-y:auto;padding:4px 0">';
+  html += '<div style="padding:5px 12px 3px;font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;font-weight:500">All Keywords ('+keywords.length+')</div>';
+  keywords.forEach(k => {
+    const added = currentSupporting.has(k.kw.toLowerCase().trim()) || currentPrimary === k.kw.toLowerCase().trim();
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
+    html += `<div style="flex:1;display:flex;align-items:center;gap:5px"><span style="font-size:11px;color:${added?'var(--n2)':'var(--dark)'}">${esc(k.kw)}</span>${intentBadge(k.kw, geo)}</div>`;
+    html += `<span style="font-size:10px;color:${vCol(k.vol)};min-width:52px;text-align:right">${k.vol.toLocaleString()}/mo</span>`;
+    html += `<span style="font-size:10px;color:${kdCol(k.kd)};min-width:34px;text-align:right">KD ${k.kd||'?'}</span>`;
+    html += `<span style="font-size:10px;color:var(--n2);min-width:36px;text-align:right">${k.score}</span>`;
+    if (added) {
+      html += `<span style="min-width:38px;text-align:center;font-size:10px;color:var(--green)" id="kw-add-${pageIdx}-${k.kw.replace(/[^a-z0-9]/g,'-')}">✓</span>`;
+    } else {
+      html += `<button data-add-kw="${k.kw.replace(/"/g,'')}" data-page="${pageIdx}" id="kw-add-${pageIdx}-${k.kw.replace(/[^a-z0-9]/g,'-')}" onclick="addSuggestedKw(${pageIdx},'${k.kw.replace(/'/g,'')}',${k.vol},${k.kd},this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);min-width:38px">+ Add</button>`;
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '</div>'; // end panel
+
+  panel.innerHTML = html;
+  panel.style.display = 'block';
+}
+
+
+function acceptPrimaryKw(pageIdx, kw, vol, kd, score) {
+  if (!S.pages[pageIdx]) return;
+  S.pages[pageIdx].primary_keyword = kw;
+  S.pages[pageIdx].primary_vol = vol;
+  S.pages[pageIdx].primary_kd = kd;
+  S.pages[pageIdx].score = score;
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function addSuggestedKw(pageIdx, kw, vol, kd, btn) {
+  const page = S.pages[pageIdx];
+  if (!page) return;
+  const existing = (page.supporting_keywords||[]).map(sk=>(typeof sk==='object'?sk.kw:sk).toLowerCase());
+  if (existing.includes(kw.toLowerCase()) || (page.primary_keyword||'').toLowerCase()===kw.toLowerCase()) return;
+  if (!page.supporting_keywords) page.supporting_keywords = [];
+  page.supporting_keywords.push({ kw, vol, kd });
+  scheduleSave();
+  // Mark button in-place — no full re-render so Find More / AI panels stay open
+  if (btn) {
+    btn.textContent = '✓';
+    btn.disabled = true;
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+  }
+  // Also update any other button for same kw across both panels
+  document.querySelectorAll('[data-add-kw="'+kw.replace(/"/g,'')+'"][data-page="'+pageIdx+'"]').forEach(el => {
+    el.textContent = '✓'; el.disabled = true;
+    el.style.color = 'var(--green)'; el.style.borderColor = 'var(--green)';
+  });
+}
+
+function acceptAllSuggestions(pageIdx) {
+  const page = S.pages[pageIdx];
+  const sug = page?._suggestion;
+  if (!sug) return;
+  if (sug.primary_keyword) {
+    page.primary_keyword = sug.primary_keyword;
+    page.primary_vol = sug.primary_vol || 0;
+    page.primary_kd = sug.primary_kd || 0;
+    const sc = sug.primary_score || (page.primary_vol>0&&page.primary_kd>0 ? Math.round((Math.log(page.primary_vol+1)*100/page.primary_kd)*10)/10 : 0);
+    page.score = sc;
+  }
+  const existing = new Set((page.supporting_keywords||[]).map(sk=>(typeof sk==='object'?sk.kw:sk).toLowerCase()));
+  (sug.supporting_keywords||[]).forEach(sk => {
+    if (!existing.has((sk.kw||'').toLowerCase())) {
+      if (!page.supporting_keywords) page.supporting_keywords = [];
+      page.supporting_keywords.push({ kw: sk.kw, vol: sk.vol||0, kd: sk.kd||0 });
+    }
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved); // full re-render only on Accept All
+}
+
+async function addManualKeyword(pageIdx, rawKw) {
+  const kw = rawKw.trim().toLowerCase();
+  if (!kw) return;
+  const page = S.pages[pageIdx];
+  if (!page) return;
+
+  // Check if it's already there
+  const existing = (page.supporting_keywords || []).map(sk => (typeof sk === 'object' ? sk.kw : sk).toLowerCase());
+  if (existing.includes(kw) || (page.primary_keyword||'').toLowerCase() === kw) return;
+
+  // Look up from kwResearch cache first
+  const cached = (S.kwResearch?.keywords || []).find(k => k.kw.toLowerCase() === kw);
+  if (cached) {
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    page.supporting_keywords.push({ kw: cached.kw, vol: cached.vol, kd: cached.kd });
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    return;
+  }
+
+  // Live lookup for unknown keyword
+  const geo = S.research?.geography?.primary || S.setup?.geo || '';
+  const country = geo.toLowerCase().includes('canada')||geo.toLowerCase().includes('bc')||geo.toLowerCase().includes('vancouver') ? 'CA' : 'US';
+  try {
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: [kw], country })
+    });
+    const data = await res.json();
+    const hit = data.keywords?.find(k => k.keyword.toLowerCase() === kw);
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    if (hit) {
+      page.supporting_keywords.push({ kw: hit.keyword, vol: hit.volume || 0, kd: hit.difficulty || 0 });
+    } else {
+      page.supporting_keywords.push({ kw, vol: 0, kd: 0 });
+    }
+  } catch(e) {
+    if (!page.supporting_keywords) page.supporting_keywords = [];
+    page.supporting_keywords.push({ kw, vol: 0, kd: 0 });
+  }
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function removeKeyword(pageIdx, kw) {
+  const page = S.pages[pageIdx];
+  if (!page?.supporting_keywords) return;
+  page.supporting_keywords = page.supporting_keywords.filter(sk => {
+    const k = typeof sk === 'object' ? sk.kw : sk;
+    return k.toLowerCase() !== kw.toLowerCase();
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+
+function toggleSitemapEdit() {
+  sitemapEditMode = !sitemapEditMode;
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function movePage(idx, dir) {
+  const pages = S.pages;
+  const n = idx + dir;
+  if (n < 0 || n >= pages.length) return;
+  [pages[idx], pages[n]] = [pages[n], pages[idx]];
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function deletePage(idx) {
+  const name = S.pages[idx]?.page_name || 'this page';
+  if (!confirm('Delete "' + name + '"?')) return;
+  S.pages.splice(idx, 1);
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+}
+
+function addNewPage() {
+  S.pages.push({
+    page_name: 'New Page', slug: 'new-page', page_type: 'service',
+    is_structural: false, priority: 'P2', primary_keyword: '',
+    primary_vol: 0, primary_kd: 0, score: 0,
+    supporting_keywords: [], search_intent: 'commercial',
+    word_count_target: 1500, notes: ''
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  setTimeout(() => { const inp = document.querySelector('.page-name-edit:last-of-type'); if(inp) inp.focus(); }, 60);
+}
+
+function updatePageField(idx, field, val) {
+  if (!S.pages[idx]) return;
+  S.pages[idx][field] = val;
+  // Recompute is_structural when page_type changes
+  // Only truly utility/boilerplate pages are structural — home/about/contact/blog all need copy & images
+  if (field === 'page_type') {
+    S.pages[idx].is_structural = val === 'utility';
+  }
+  scheduleSave();
+}
+
+async function updatePrimaryKw(idx, rawKw) {
+  const kw = rawKw.trim();
+  if (!kw) return;
+  if (kw === (S.pages[idx]?.primary_keyword || '')) return;
+  S.pages[idx].primary_keyword = kw;
+  S.pages[idx].primary_vol = 0; S.pages[idx].primary_kd = 0; S.pages[idx].score = 0;
+  // Cache lookup first
+  const cached = (S.kwResearch?.keywords || []).find(k => k.kw.toLowerCase() === kw.toLowerCase());
+  if (cached) {
+    S.pages[idx].primary_keyword = cached.kw;
+    S.pages[idx].primary_vol = cached.vol;
+    S.pages[idx].primary_kd = cached.kd;
+    S.pages[idx].score = cached.score || (cached.vol>0&&cached.kd>0 ? Math.round((Math.log(cached.vol+1)*100/cached.kd)*10)/10 : 0);
+    scheduleSave(); renderSitemapResults(S.sitemapApproved); return;
+  }
+  // Live DataForSEO lookup
+  const geo = S.research?.geography?.primary || S.setup?.geo || '';
+  const country = /canada|bc|vancouver/i.test(geo) ? 'CA' : 'US';
+  try {
+    const res = await fetch('/api/ahrefs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keywords:[kw],country})});
+    const data = await res.json();
+    const hit = data.keywords?.find(k => k.keyword.toLowerCase() === kw.toLowerCase());
+    if (hit) {
+      S.pages[idx].primary_keyword = hit.keyword;
+      S.pages[idx].primary_vol = hit.volume || 0;
+      S.pages[idx].primary_kd = hit.difficulty || 0;
+      const v=hit.volume||0,d=hit.difficulty||0;
+      S.pages[idx].score = v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+    }
+  } catch(e) {}
+  scheduleSave(); renderSitemapResults(S.sitemapApproved);
+}
+
+function showMermaidModal() {
+  const pages = S.pages || [];
+  const safeId = s => ('N_'+s).replace(/[^a-zA-Z0-9_]/g,'_');
+  const pStroke = p => p.priority==='P1'?'#158E1D':p.priority==='P2'?'#e69900':'#aaa';
+  let lines = ['graph TD'];
+  // Collect parent groups
+  const parents = [...new Set(pages.filter(p=>(p.slug||'').includes('/')).map(p=>p.slug.split('/')[0]))];
+  // Home
+  const home = pages.find(p => !p.slug || p.slug==='' || p.slug==='/');
+  const homeId = 'Home';
+  if (home) {
+    const kl = home.primary_keyword ? `\n${home.primary_keyword} · ${(home.primary_vol||0).toLocaleString()}/mo` : '';
+    lines.push(`  ${homeId}["🏠 Home${kl}"]`);
+    lines.push(`  style ${homeId} fill:#D8FF29,stroke:#158E1D,color:#111111`);
+  }
+  // Parent group nodes
+  parents.forEach(g => {
+    const id = safeId(g);
+    const label = g.charAt(0).toUpperCase()+g.slice(1);
+    lines.push(`  ${id}["📁 /${g}"]`);
+    lines.push(`  style ${id} fill:#f0f0f0,stroke:#ccc,color:#333`);
+    if (home) lines.push(`  ${homeId} --> ${id}`);
+  });
+  // Pages
+  pages.forEach(p => {
+    if (!p.slug && home) return;
+    const slug = p.slug || '';
+    const parts = slug.split('/').filter(Boolean);
+    const id = safeId(slug || 'home');
+    if (id === homeId) return;
+    const kl = p.primary_keyword ? `\n${p.primary_keyword}\n${(p.primary_vol||0).toLocaleString()}/mo` : '';
+    lines.push(`  ${id}["${p.page_name}${kl}"]`);
+    lines.push(`  style ${id} fill:#ffffff,stroke:${pStroke(p)},color:#111111`);
+    if (parts.length > 1) {
+      const parentId = safeId(parts[0]);
+      lines.push(`  ${parentId} --> ${id}`);
+    } else if (parts.length === 1) {
+      if (home) lines.push(`  ${homeId} --> ${id}`);
+    }
+  });
+  const mermaid = lines.join('\n');
+  // Build modal
+  let modal = document.getElementById('mermaid-modal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'mermaid-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  modal.innerHTML = `<div style="background:var(--white);border-radius:12px;padding:24px;max-width:720px;width:100%;max-height:82vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font-size:14px;font-weight:500;color:var(--dark)">🌿 Mermaid Sitemap Export</div>
+        <div style="font-size:11.5px;color:var(--n2);margin-top:3px">In FigJam: <strong>Insert → Mermaid diagram</strong> → paste → Done</div>
+      </div>
+      <button onclick="document.getElementById('mermaid-modal').remove()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--n2);white-space:nowrap">✕ Close</button>
+    </div>
+    <pre id="mermaid-output" style="background:var(--panel);border-radius:8px;padding:14px 16px;font-size:10.5px;font-family:monospace;overflow:auto;white-space:pre;color:var(--dark);border:1px solid var(--border);line-height:1.65;flex:1;max-height:52vh">${mermaid}</pre>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="mermaid-copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('mermaid-output').textContent).then(()=>{this.innerHTML='<i class=\'ti ti-check\'></i> Copied!';setTimeout(()=>this.innerHTML='<i class=\'ti ti-copy\'></i> Copy to Clipboard',2200)})"><i class='ti ti-copy'></i> Copy to Clipboard</button>
+      <a href="https://www.figma.com/figjam/" target="_blank" class="btn btn-ghost" style="text-decoration:none"><i class="ti ti-external-link"></i> Open FigJam</a>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+function renderSitemapResults(approved) {
+  try { _renderSitemapResultsInner(approved); } catch(err) {
+    console.error('renderSitemapResults crash:', err);
+    const el = document.getElementById('sitemap-results');
+    if (el) { el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;font-size:12px;background:#fff1f0;border:1px solid #ffccc7;border-radius:8px;margin:8px 0"><strong>⚠ Render error</strong><br>' + err.message + '<br><br><small>' + (err.stack||'').split('\n').slice(0,4).join('<br>') + '</small></div>'; el.style.display='block'; }
+  }
+}
+function _renderSitemapResultsInner(approved) {
+  const pages = S.pages;
+  const p1 = pages.filter(p=>p.priority==='P1').length;
+  const p2 = pages.filter(p=>p.priority==='P2').length;
+  const p3 = pages.filter(p=>p.priority==='P3').length;
+  const zeroVol = pages.filter(p => !p.is_structural && (!p.primary_vol || p.primary_vol === 0)).length;
+  const hasKwData = S.kwResearch?.keywords?.length > 0;
+
+  let html = '<div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">';
+  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+pages.length+' pages</span>';
+  html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
+  if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-volume pages</span>';
+  html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes…</span></span>';
+  html += '</div>';
+
+  // Keyword opportunities table
+  html += '<div style="margin-bottom:18px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
+  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Page Performance Map</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  if (hasKwData) {
+    html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
+    html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
+  }
+  html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
+  html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
+  html += '</div></div>';
+
+  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]
+  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span>'
+    + ''
+    + '</div>';
+
+  pages.forEach((p, i) => {
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    const vol = typeof p.primary_vol === 'number' ? p.primary_vol : (parseInt(p.primary_vol) || 0);
+    const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
+    const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0);
+    const isStructural = !!p.is_structural;
+    const kdColor = kd === 0 ? 'var(--n2)' : kd <= 20 ? 'var(--green)' : kd <= 40 ? 'var(--warn)' : 'var(--error)';
+    const isSubPage = (p.slug||'').includes('/');
+    const rowBg = i%2===0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
+
+    // Vol display — colour signal only, no row dimming
+    let volHtml;
+    if (isStructural && vol === 0) {
+      volHtml = '<span style="color:var(--n2);font-size:10px">–</span>';
+    } else if (vol === 0) {
+      volHtml = '<span style="color:var(--error);font-size:11px;font-weight:500">⚠ 0</span>';
+    } else if (vol < 30) {
+      volHtml = '<span style="color:var(--warn);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    } else {
+      volHtml = '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
+    }
+
+    html += '<div>'; // page block
+
+    // ── MAIN ROW ──
+    html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:8px 14px;align-items:start;background:'+rowBg+'">';
+    html += '<span style="color:var(--n2);font-size:11px;padding-top:2px">'+(i+1)+'</span>';
+
+    if (sitemapEditMode) {
+      // ── Edit mode: Page name cell — inputs + compact icon controls ──
+      const btnS = 'background:transparent;border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);line-height:1.5';
+      html += '<div style="display:flex;flex-direction:column;gap:3px">';
+      html += '<input value="'+esc(p.page_name)+'" onblur="updatePageField('+i+',\'page_name\',this.value)" style="font-size:12px;color:var(--dark);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%"/>';
+      html += '<input value="'+esc(p.slug||'')+'" onblur="updatePageField('+i+',\'slug\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-family:var(--font);outline:none;width:100%"/>';
+      html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+      ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
+      html += '</select>';
+      // Icon-only reorder/delete
+      html += '<div style="display:flex;gap:3px;margin-top:1px">';
+      html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
+      html += `<button onclick="movePage(${i},1)" ${i===pages.length-1?'disabled':''} title="Move down" style="${btnS};opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↓</button>`;
+      html += `<button onclick="deletePage(${i})" title="Delete" style="background:transparent;border:1px solid rgba(220,50,47,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--error);line-height:1.5;opacity:0.55" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.55'">✕</button>`;
+      html += '</div></div>';
+
+      // ── Edit mode: Keyword cell — input + AI + Find More inline ──
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      html += '<input value="'+esc(p.primary_keyword||'')+'" placeholder="primary keyword…" onblur="updatePrimaryKw('+i+',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" style="font-size:11px;color:var(--n3);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%;margin-top:2px"/>';
+      html += '<div style="display:flex;gap:4px;align-items:center">';
+      html += `<button id="kw-finder-btn-${i}" onclick="openKwFinder(${i})" style="background:transparent;border:1px solid rgba(21,142,29,0.4);border-radius:3px;padding:2px 8px;font-size:10px;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap"><i class="ti ti-sparkles" style="font-size:9px"></i> Find Keywords</button>`;
+      html += `<span id="kw-finder-status-${i}" style="font-size:10px;color:var(--n2)"></span>`;
+      html += '</div></div>';
+
+    } else {
+      // ── View mode: read-only ──
+      html += '<div>';
+      if (isSubPage) html += '<span style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></span>';
+      html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>';
+      if (isStructural) html += '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle">STRUCTURAL</span>';
+      html += '<div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div>';
+      if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
+      html += '</div>';
+      const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+      html += '<div style="display:flex;align-items:center;gap:5px;padding-top:1px"><span style="color:var(--n3);font-size:12px">'+esc(p.primary_keyword||'–')+'</span>'+(p.primary_keyword?intentBadge(p.primary_keyword,_geo1):'')+'</div>';
+    }
+
+    html += volHtml;
+    html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500">'+(kd||'?')+'</span>';
+    html += '<span style="color:var(--n3);font-size:11px">'+score+'</span>';
+    if (sitemapEditMode) {
+      html += `<select onchange="updatePageField(${i},'priority',this.value);renderSitemapResults(S.sitemapApproved)" style="font-size:11px;color:${pColor};font-weight:500;background:var(--n1);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-family:var(--font);outline:none">`;
+      ['P1','P2','P3'].forEach(pv => { html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`; });
+      html += '</select>';
+    } else {
+      html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
+    }
+    html += '</div>'; // end main row
+
+    // ── Inline result panels ──
+    html += `<div id="kw-finder-panel-${i}" style="display:none"></div>`;
+
+    // ── Supporting keywords ──
+    const suppKws = (p.supporting_keywords || []).filter(sk => { const kw = typeof sk==='object'?sk.kw:sk; return kw && kw.length>0; });
+    if (suppKws.length) {
+      suppKws.forEach((sk, si) => {
+        const kw = typeof sk==='object'?sk.kw:sk;
+        const v = typeof sk==='object'?(sk.vol||0):0;
+        const d = typeof sk==='object'?(sk.kd||0):0;
+        const sc = v>0&&d>0?Math.round((Math.log(v+1)*100/d)*10)/10:0;
+        const dColor = d===0?'var(--n2)':d<20?'var(--green)':d<40?'var(--warn)':'var(--error)';
+        const vColor = v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+        html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:3px 14px;background:'+rowBg+';border-top:1px dashed rgba(0,0,0,0.06);align-items:center">';
+        html += '<span style="color:var(--n1);font-size:11px;padding-left:4px">↳</span>';
+        const _geoS = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+        html += '<div style="display:flex;align-items:center;gap:5px"><span style="color:var(--n2);font-size:11px">'+esc(kw)+'</span>'+intentBadge(kw,_geoS)+'</div>';
+        html += '<span></span>';
+        html += '<span style="color:'+vColor+';font-size:11px">'+(v>0?v.toLocaleString():'–')+'</span>';
+        html += '<span style="color:'+dColor+';font-size:11px">'+(d>0?d:'–')+'</span>';
+        html += '<span style="color:var(--n2);font-size:10px">'+(sc>0?sc:'–')+'</span>';
+        if (sitemapEditMode) {
+          html += `<span style="text-align:right"><button onclick="removeKeyword(${i},'${kw.replace(/'/g,'')}',event)" style="background:transparent;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0 4px;line-height:1;opacity:0.35" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.35'">✕</button></span>`;
+        } else {
+          html += '<span></span>';
+        }
+        html += '</div>';
+      });
+    }
+
+    // ── Add keyword row (edit mode only) ──
+    if (sitemapEditMode) {
+      html += `<div style="display:flex;align-items:center;gap:6px;padding:5px 14px;background:${rowBg};border-top:1px dashed rgba(0,0,0,0.06)">`;
+      html += `<input id="kw-add-${i}" type="text" placeholder="+ Add keyword…" style="flex:1;background:transparent;border:none;outline:none;font-size:11px;color:var(--n2);font-family:var(--font)" onkeydown="if(event.key===\'Enter\'){addManualKeyword(${i},this.value);this.value=\'\'}"/>`;
+      html += `<button onclick="var inp=document.getElementById(\'kw-add-${i}\');addManualKeyword(${i},inp.value);inp.value=\'\'" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--n2);cursor:pointer;font-family:var(--font)">Add</button>`;
+      html += '</div>';
+    }
+
+    html += '</div>'; // end page block
+    if (i < pages.length-1) html += '<div style="border-bottom:1px solid var(--border)"></div>';
+  });
+  // Add page button (edit mode only)
+  if (sitemapEditMode) {
+    html += '<div style="padding:8px 14px;border-top:1px solid var(--border);background:var(--white)">';
+    html += '<button onclick="addNewPage()" style="background:transparent;border:1px dashed rgba(21,142,29,0.4);border-radius:6px;padding:5px 14px;font-size:11.5px;color:var(--green);cursor:pointer;font-family:var(--font);width:100%"><i class="ti ti-plus" style="font-size:11px"></i> Add Page</button>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+
+  // ── Content Intelligence section ──
+  {
+    const ci = S.contentIntel || {};
+    const blogTopics = ci.blogTopics || [];
+    const paaDone   = (ci.paa?.questions?.length || 0);
+    const gapDone   = (ci.gap?.keywords?.length || 0);
+
+    // Parse competitor domains from setup for pre-fill
+    const competitorRaw = (S.setup?.competitors || '').replace(/\n/g,' ');
+    const competitorDomains = competitorRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
+    const competitorStr = competitorDomains.map(d=>d.replace(/^https?:\/\/(www\.)?/,'')).filter(Boolean).slice(0,4).join(', ');
+
+    html += '<div class="card" style="margin-bottom:8px">';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+    html += '<div>';
+    html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Content Intelligence</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Blog topic opportunities based on search behaviour + competitor gaps</div>';
+    html += '</div>';
+    if (blogTopics.length) {
+      html += `<div style="display:flex;gap:6px;align-items:center">`;
+      // Count how many aren't already pages
+      const existingSlugs = new Set((S.pages||[]).map(p=>p.slug));
+      const newCount = blogTopics.filter(t => !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))).length;
+      if (newCount > 0) {
+        html += `<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ${newCount} to Copy Queue</button>`;
+      } else {
+        html += `<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>`;
+      }
+      html += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>`;
+      html += `</div>`;
+    }
+    html += '</div>';
+
+    // Two-column panels
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+
+    // ── PAA Panel ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
+    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-help-circle" style="font-size:12px;color:var(--n2)"></i> People Also Ask`;
+    if (paaDone) html += ` <span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${paaDone}</span>`;
+    else html += `<span id="ci-paa-count"></span>`;
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span id="ci-paa-status"></span>';
+    html += `<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${paaDone ? 'Refresh' : 'Run'}</button>`;
+    html += '</div></div>';
+    html += '<div id="ci-paa-panel" style="max-height:320px;overflow-y:auto">';
+    if (paaDone) {
+      // Pre-render from cache
+      html += '</div>'; // close panel div early, render will fill it
+    } else {
+      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Click Run to fetch questions people search around your P1 keywords.</div></div>';
+    }
+    html += '</div>';
+
+    // ── Competitor Gap Panel ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg)">';
+    html += `<div style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-git-compare" style="font-size:12px;color:var(--n2)"></i> Competitor Keyword Gaps`;
+    if (gapDone) html += ` <span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--n3)">${gapDone}</span>`;
+    else html += `<span id="ci-gap-count"></span>`;
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span id="ci-gap-status"></span>';
+    html += `<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 9px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ${gapDone ? 'Refresh' : 'Run'}</button>`;
+    html += '</div></div>';
+    // Domain input
+    html += '<div style="padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+    html += `<input id="ci-gap-domains" value="${competitorStr}" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />`;
+    html += '</div>';
+    html += '<div id="ci-gap-panel" style="max-height:280px;overflow-y:auto">';
+    if (gapDone) {
+      html += '</div>';
+    } else {
+      html += '<div style="padding:14px 12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run to find keywords they rank for that you don\'t.</div></div>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // end grid
+
+    // ── Blog Topics bucket ──
+    html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg)">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px"><i class="ti ti-notes" style="font-size:12px;color:var(--n2)"></i><span style="font-size:11px;font-weight:500;color:var(--dark)">Blog Topics</span><span style="font-size:10px;color:var(--n2)">(select + Blog on any item above)</span></div>';
+    html += '<div id="ci-topics-panel"></div>';
+    html += '</div>';
+
+    html += '</div>'; // end card
+  }
+
+
+  if (!approved) {
+    html += '<div class="card dg" style="margin-bottom:8px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><span style="color:var(--lime);font-size:14px">⛳</span><span style="color:var(--lime);font-weight:500;font-size:13px">Gate 1 — PM Sitemap Approval</span></div>';
+    html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.45);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
+    html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
+    html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
+    html += '</div></div>';
+  } else {
+    html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">';
+    html += '<div class="success-banner"><i class="ti ti-check"></i>Sitemap approved — '+pages.length+' pages locked</div>';
+    html += '<button class="btn btn-primary" onclick="initCopy();goTo(\'copy\')"><i class="ti ti-arrow-right"></i> Generate Copy</button>';
+    html += '<button class="btn btn-ghost" onclick="renderSitemapResults(false)"><i class="ti ti-pencil"></i> Revise</button>';
+    html += '</div>';
+  }
+
+  const el = document.getElementById('sitemap-results');
+  el.innerHTML = html;
+  el.style.display = 'block';
+
+  // Restore cached Content Intelligence panels if data exists
+  if (S.contentIntel?.paa?.questions?.length) renderPAAPanel();
+  if (S.contentIntel?.gap?.keywords?.length)  renderGapPanel();
+  renderBlogTopics();
+}
+
+
+// ── CONTENT INTELLIGENCE ───────────────────────────────────────────
+
+async function runPAA() {
+  const btn    = document.getElementById('ci-paa-btn');
+  const status = document.getElementById('ci-paa-status');
+  const panel  = document.getElementById('ci-paa-panel');
+  if (!S.pages?.length) return;
+
+  // Use cached
+  if (S.contentIntel?.paa?.questions?.length) {
+    renderPAAPanel();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span>';
+  status.textContent = '';
+
+  // Seed: primary keywords of P1 pages (max 6)
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoStr = (geo + '').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+
+  const kwSeeds = (S.pages || [])
+    .filter(p => p.priority === 'P1' && p.primary_keyword && !p.is_structural)
+    .map(p => p.primary_keyword)
+    .slice(0, 6);
+
+  if (!kwSeeds.length) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">No P1 keywords found</span>';
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+    return;
+  }
+
+  console.log('[PAA] seeds →', kwSeeds);
+  status.innerHTML = `<span style="font-size:10px;color:var(--n2)">Fetching for: ${kwSeeds.join(', ')}</span>`;
+  try {
+    const res = await fetch('/api/paa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: kwSeeds, country })
+    });
+    const data = await res.json();
+    console.log('[PAA] response →', data);
+    if (!data.questions?.length) {
+      const debugInfo = data.debug ? JSON.stringify(data.debug) : '';
+      console.warn('[PAA debug]', debugInfo);
+      const seeds = data.cleanedSeeds ? ` (tried: ${data.cleanedSeeds.join(', ')})` : '';
+      throw new Error((data.error || 'No questions returned') + seeds);
+    }
+
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    S.contentIntel.paa = { questions: data.questions, fetchedAt: Date.now() };
+    scheduleSave();
+    renderPAAPanel();
+  } catch(err) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+}
+
+function renderPAAPanel() {
+  const panel  = document.getElementById('ci-paa-panel');
+  const badge  = document.getElementById('ci-paa-count');
+  if (!panel) return;
+  const questions = S.contentIntel?.paa?.questions || [];
+  if (!questions.length) { panel.innerHTML = ''; return; }
+
+  // Group by question word
+  const groups = {};
+  const qWord = q => {
+    const w = q.trim().toLowerCase();
+    if (w.startsWith('what')) return 'What';
+    if (w.startsWith('how')) return 'How';
+    if (w.startsWith('why')) return 'Why';
+    if (w.startsWith('when')) return 'When';
+    if (w.startsWith('who')) return 'Who';
+    if (w.startsWith('where')) return 'Where';
+    if (w.startsWith('which')) return 'Which';
+    if (w.startsWith('can') || w.startsWith('do ') || w.startsWith('does') || w.startsWith('is ') || w.startsWith('are ')) return 'Yes/No';
+    return 'Other';
+  };
+  questions.forEach(q => {
+    const g = qWord(q.question);
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(q);
+  });
+
+  const topics = new Set((S.contentIntel?.blogTopics || []).map(t => t.text));
+  if (badge) badge.textContent = questions.length;
+
+  let h = '';
+  const groupOrder = ['What','How','Why','When','Who','Where','Which','Yes/No','Other'];
+  groupOrder.forEach(g => {
+    if (!groups[g]?.length) return;
+    h += `<div style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;font-weight:500;padding:6px 12px 2px">${g}</div>`;
+    groups[g].forEach(q => {
+      const added = topics.has(q.question);
+      h += `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)" id="paa-row-${btoa(q.question.slice(0,20)).replace(/[^a-z0-9]/gi,'').slice(0,12)}">`;
+      h += `<span style="flex:1;font-size:11.5px;color:var(--dark)">${esc(q.question)}</span>`;
+      h += `<span style="font-size:9.5px;color:var(--n2);white-space:nowrap">${esc(q.source)}</span>`;
+      if (added) {
+        h += `<span style="font-size:10px;color:var(--green);min-width:42px;text-align:center">✓ added</span>`;
+      } else {
+        h += `<button onclick="addBlogTopic('paa','${q.question.replace(/'/g,'')}','${(q.source||'').replace(/'/g,'')}',this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);white-space:nowrap;min-width:42px">+ Blog</button>`;
+      }
+      h += '</div>';
+    });
+  });
+
+  panel.innerHTML = h;
+  panel.style.display = 'block';
+  renderBlogTopics();
+}
+
+async function runCompetitorGap() {
+  const btn    = document.getElementById('ci-gap-btn');
+  const status = document.getElementById('ci-gap-status');
+  const panel  = document.getElementById('ci-gap-panel');
+
+  // Get domains from input
+  const domainInput = document.getElementById('ci-gap-domains');
+  const rawDomains = (domainInput?.value || '').trim();
+  const domains = rawDomains.split(/[\s,\n]+/).map(d => d.trim().replace(/^https?:\/\//,'')).filter(d => d.includes('.'));
+
+  if (!domains.length) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--warn)">Enter at least one competitor domain</span>';
+    return;
+  }
+
+  // Check cache (same domains)
+  const cacheKey = domains.sort().join(',');
+  if (S.contentIntel?.gap?.cacheKey === cacheKey && S.contentIntel.gap.keywords?.length) {
+    renderGapPanel();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle"></span>';
+  status.textContent = '';
+
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const geoStr = (geo + '').toLowerCase();
+  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+
+  // Collect all our own keywords for cross-reference
+  const ownKeywords = [];
+  (S.pages || []).forEach(p => {
+    if (p.primary_keyword) ownKeywords.push(p.primary_keyword);
+    (p.supporting_keywords || []).forEach(sk => ownKeywords.push(typeof sk === 'object' ? sk.kw : sk));
+  });
+
+  try {
+    const res = await fetch('/api/competitor-gap', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains, ownKeywords, country })
+    });
+    const data = await res.json();
+    if (!data.keywords?.length) {
+      console.warn('[Gap debug]', JSON.stringify(data.debug));
+      throw new Error(data.error || 'No gap keywords found — check console for debug');
+    }
+
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    S.contentIntel.gap = { keywords: data.keywords, domains, cacheKey, fetchedAt: Date.now() };
+    scheduleSave();
+    renderGapPanel();
+  } catch(err) {
+    status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
+}
+
+function renderGapPanel() {
+  const panel = document.getElementById('ci-gap-panel');
+  const badge = document.getElementById('ci-gap-count');
+  if (!panel) return;
+  const keywords = S.contentIntel?.gap?.keywords || [];
+  if (!keywords.length) { panel.innerHTML = ''; return; }
+
+  const topics = new Set((S.contentIntel?.blogTopics || []).map(t => t.text));
+  const kdCol = d => d===0?'var(--n2)':d<=20?'var(--green)':d<=40?'var(--warn)':'var(--error)';
+  const vCol  = v => v===0?'var(--n2)':v<50?'var(--warn)':'var(--n3)';
+  const geo   = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
+  if (badge) badge.textContent = keywords.length;
+
+  // Header row
+  let h = `<div style="display:grid;grid-template-columns:1fr 58px 40px 46px 42px;gap:4px;padding:4px 12px;border-bottom:1px solid var(--border)">`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">Keyword</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">Vol</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">KD</span>`;
+  h += `<span style="font-size:9.5px;color:var(--n2);text-align:right">Score</span>`;
+  h += `<span></span></div>`;
+
+  keywords.slice(0, 80).forEach(k => {
+    const added = topics.has(k.kw);
+    h += `<div style="display:grid;grid-template-columns:1fr 58px 40px 46px 42px;gap:4px;align-items:center;padding:4px 12px;border-bottom:1px dashed rgba(0,0,0,0.05)">`;
+    h += `<div style="display:flex;align-items:center;gap:4px;min-width:0"><span style="font-size:11.5px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(k.kw)}</span>${intentBadge(k.kw,geo)}</div>`;
+    h += `<span style="font-size:10px;color:${vCol(k.vol)};text-align:right">${k.vol.toLocaleString()}</span>`;
+    h += `<span style="font-size:10px;color:${kdCol(k.kd)};text-align:right">${k.kd||'?'}</span>`;
+    h += `<span style="font-size:10px;color:var(--n2);text-align:right">${k.score}</span>`;
+    if (added) {
+      h += `<span style="font-size:10px;color:var(--green);text-align:center">✓</span>`;
+    } else {
+      h += `<button onclick="addBlogTopic('gap','${k.kw.replace(/'/g,'')}','${(k.domain||'').replace(/'/g,'')}',this)" style="background:transparent;border:1px solid var(--border);color:var(--n2);border-radius:3px;padding:1px 5px;font-size:10px;cursor:pointer;font-family:var(--font)">+ Blog</button>`;
+    }
+    h += '</div>';
+  });
+
+  panel.innerHTML = h;
+  panel.style.display = 'block';
+  renderBlogTopics();
+}
+
+function addBlogTopic(source, text, meta, btn) {
+  if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+  if (!S.contentIntel.blogTopics) S.contentIntel.blogTopics = [];
+  const exists = S.contentIntel.blogTopics.some(t => t.text === text);
+  if (exists) return;
+  S.contentIntel.blogTopics.push({ text, source, meta });
+  scheduleSave();
+  // Update button in-place
+  if (btn) { btn.textContent = '✓ added'; btn.disabled = true; btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)'; }
+  renderBlogTopics();
+}
+
+function removeBlogTopic(text) {
+  if (!S.contentIntel?.blogTopics) return;
+  S.contentIntel.blogTopics = S.contentIntel.blogTopics.filter(t => t.text !== text);
+  scheduleSave();
+  renderPAAPanel();
+  renderGapPanel();
+}
+
+function renderBlogTopics() {
+  const el = document.getElementById('ci-topics-panel');
+  if (!el) return;
+  const topics = S.contentIntel?.blogTopics || [];
+  if (!topics.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:4px 0">No topics selected yet — click + Blog on any question or gap keyword above.</div>';
+    return;
+  }
+  let h = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">';
+  topics.forEach(t => {
+    const srcColor = t.source === 'paa' ? 'var(--green)' : 'var(--n2)';
+    h += `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--n1);border:1px solid var(--border);border-radius:14px;padding:3px 8px 3px 10px;font-size:11px;color:var(--dark);max-width:320px">`;
+    h += `<span style="font-size:9px;color:${srcColor};font-weight:500;text-transform:uppercase;letter-spacing:.04em">${t.source==='paa'?'PAA':'GAP'}</span>`;
+    h += `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.text)}">${esc(t.text)}</span>`;
+    h += `<button onclick="removeBlogTopic('${t.text.replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0;line-height:1;margin-left:2px" title="Remove">✕</button>`;
+    h += '</div>';
+  });
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function copyBlogTopics() {
+  const topics = S.contentIntel?.blogTopics || [];
+  if (!topics.length) return;
+  const text = topics.map((t,i) => `${i+1}. [${t.source.toUpperCase()}] ${t.text}`).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('ci-copy-btn');
+    if (btn) { btn.innerHTML = '<i class="ti ti-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="ti ti-copy"></i> Copy', 2000); }
+  });
+}
+
+function addBlogPagesToSitemap() {
+  if (!S.contentIntel?.blogTopics?.length) return;
+  const existingSlugs = new Set((S.pages||[]).map(p => p.slug));
+  let added = 0;
+  S.contentIntel.blogTopics.forEach(t => {
+    const slug = 'blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 60);
+    if (existingSlugs.has(slug)) return;
+    existingSlugs.add(slug);
+    S.pages.push({
+      page_name: t.text,
+      slug,
+      page_type: 'blog',
+      is_structural: false,
+      priority: 'P3',
+      primary_keyword: t.text,
+      primary_vol: 0, primary_kd: 0, score: 0,
+      supporting_keywords: [],
+      search_intent: 'informational',
+      word_count_target: 1200,
+      notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`
+    });
+    added++;
+  });
+  if (added > 0) {
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+  }
+}
+
+function approveSitemap() {
+  S.stage = 'sitemap'; S.sitemapApproved = true; scheduleSave();
+  renderSitemapResults(true);
+}
+
+function toggleSitemapImport() {
+  const panel = document.getElementById('sitemap-import-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function fetchAhrefsMetrics(forceRefresh) {
+  if (!S.pages.length) return;
+  const btn = document.getElementById('sitemap-ahrefs-btn');
+  const statusEl = document.getElementById('sitemap-ahrefs-status');
+
+  // Use cached unless forced
+  if (!forceRefresh && S.kwMetrics && Object.keys(S.kwMetrics).length > 0) {
+    renderSitemapResults(S.sitemapApproved);
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching...'; }
+  if (statusEl) statusEl.textContent = 'Fetching from Ahrefs...';
+
+  const keywords = [...new Set(S.pages.map(p => p.primary_keyword).filter(Boolean))];
+  const country = (S.setup?.geo || 'ca').toLowerCase().slice(0,2);
+
+  try {
+    const res = await fetch('/api/ahrefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords, country })
+    });
+    const data = await res.json();
+
+    if (data.keywords) {
+      S.kwMetrics = {};
+      data.keywords.forEach(k => {
+        S.kwMetrics[k.keyword] = { volume: k.volume, kd: k.difficulty };
+      });
+      scheduleSave();
+      renderSitemapResults(S.sitemapApproved);
+      return;
+    }
+    const errMsg = data.error || ('HTTP ' + res.status);
+    const isNoKey = data.code === 'NO_KEY';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">'
+      + (isNoKey ? '⚠ No keyword API configured — add DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD secrets in Cloudflare Workers (<a href="https://dataforseo.com" target="_blank" style="color:inherit">dataforseo.com</a> — ~$0.0005/kw)' : '⚠ ' + esc(errMsg))
+      + '</span>';
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">⚠ ' + esc(e.message) + '</span>';
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Retry'; }
+}
+
+async function runGapAnalysis() {
+  const urls = document.getElementById('sitemap-import-urls')?.value?.trim();
+  if (!urls) return;
+  const btn = document.getElementById('sitemap-gap-btn');
+  const wrap = document.getElementById('sitemap-gap-stream-wrap');
+  const streamEl = document.getElementById('sitemap-gap-stream');
+  const resultsEl = document.getElementById('sitemap-gap-results');
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Analysing...';
+  wrap.style.display = 'block'; streamEl.textContent = '';
+  resultsEl.style.display = 'none';
+
+  const existingPages = urls.split('\n').map(u => u.trim()).filter(Boolean);
+  const generatedPages = S.pages.map(p => ({ page: p.page_name, slug: '/'+p.slug, kw: p.primary_keyword, priority: p.priority }));
+
+  const prompt = 'EXISTING SITE PAGES (currently live):\n' + existingPages.join('\n')
+    + '\n\nGENERATED SITEMAP RECOMMENDATIONS:\n' + JSON.stringify(generatedPages, null, 2)
+    + '\n\nCLIENT: ' + (S.setup?.client||'') + '\nINDUSTRY: ' + (S.research?.primary_services?.join(', ')||'')
+    + '\n\nAnalyse the gap between existing pages and recommended pages. Identify:\n1. Pages in the generated sitemap that are MISSING from the existing site (high-value opportunities)\n2. Existing pages NOT in the generated sitemap that should be kept or improved\n3. Quick wins — low-KD keywords on existing pages that could rank with minor optimisation\n\nFormat as a clear gap analysis report with specific recommendations. Be concise and actionable.';
+
+  const system = 'You are a senior SEO strategist. Analyse the gap between an existing website and an SEO-optimised sitemap. Output a concise, actionable gap analysis. Use markdown-style formatting with ### headers, bullet points, and clear priority labels (🟢 Quick Win, 🟡 Medium-term, 🔴 New Page Needed).';
+
+  try {
+    const result = await callClaude(system, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
+    wrap.style.display = 'none';
+    resultsEl.innerHTML = '<div style="font-size:12.5px;color:var(--n3);line-height:1.75;white-space:pre-wrap;background:var(--bg);border-radius:6px;padding:14px;border:1px solid var(--border)">'+esc(result)+'</div>';
+    resultsEl.style.display = 'block';
+  } catch(e) {
+    streamEl.textContent = 'Error: '+e.message;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> Analyse Gaps';
+}
+
+
+// ── COPY ───────────────────────────────────────────────────────────
+function orderedPages() {
+  return [...S.pages].sort((a,b) => ({P1:0,P2:1,P3:2}[a.priority]||3)-({P1:0,P2:1,P3:2}[b.priority]||3));
+}
+
+// Current slug being worked on
+S.copyCurrentSlug = null;
+
+function focusCopyPage(slug) {
+  S.copyCurrentSlug = slug;
+  renderCopyQueue();
+}
+
+
+
+let copyStopFlag = false;
+S.copyCurrentSlug = null;
+S.copyExpandedSlug = null; // which row is expanded
+
+function stopCopy() { copyStopFlag = true; }
+
+function initCopy() {
+  document.getElementById('copy-progress').style.display = 'block';
+  const next = orderedPages().find(p => !(S.copy[p.slug]||{}).copy);
+  if (next && !S.copyExpandedSlug) S.copyExpandedSlug = next.slug;
+  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+}
+
+function buildCopyPrompt(page) {
+  const r = S.research||{}, s = S.setup;
+  const kws = (page.supporting_keywords||[]).map(k => k.kw||k).filter(Boolean).join(', ');
+  if (page.page_type === 'blog') {
+    return `CLIENT: ${s.client}
+BLOG POST TITLE: ${page.page_name}
+PRIMARY KEYWORD: ${page.primary_keyword}
+SUPPORTING KEYWORDS: ${kws}
+TARGET WORD COUNT: ${page.word_count_target || 1200}
+BUSINESS OVERVIEW: ${r.business_overview||''}
+GEOGRAPHY: ${r.geography?.primary||s.geo||''}
+VOICE: ${r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.'}
+NOTES: ${page.notes||''}
+
+Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client's services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.`;
+  }
+  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+kws+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
+}
+
+async function runCopyPage(slug) {
+  const page = orderedPages().find(p => p.slug === slug);
+  if (!page || S.copyRunning) return;
+  S.copyRunning = true; copyStopFlag = false;
+  S.copyCurrentSlug = slug;
+  S.copyExpandedSlug = slug;
+  renderCopyQueue();
+  // Update the stream box inside this row
+  const streamEl = document.getElementById('copy-stream-'+slug);
+  if (streamEl) streamEl.textContent = '';
+  try {
+    const copy = await callClaude(P.copy, buildCopyPrompt(page), t => {
+      if (copyStopFlag) return;
+      const el = document.getElementById('copy-stream-'+slug);
+      if (el) el.textContent = t.slice(-600);
+    });
+    if (!copyStopFlag) {
+      S.copy[slug] = {copy, page};
+      scheduleSave();
+      // Auto-advance expanded to next incomplete
+      const pages = orderedPages();
+      const curIdx = pages.findIndex(p => p.slug === slug);
+      const next = pages.find((p,i) => i > curIdx && !(S.copy[p.slug]||{}).copy);
+      S.copyExpandedSlug = next ? next.slug : slug; // stay on done page if all done
+    }
+  } catch(e) {
+    S.copy[slug] = {error: e.message, page};
+  }
+  S.copyCurrentSlug = null;
+  S.copyRunning = false;
+  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+}
+
+function toggleCopyExpand(slug) {
+  if (S.copyRunning) return;
+  S.copyExpandedSlug = S.copyExpandedSlug === slug ? null : slug;
+  renderCopyQueue();
+}
+
+function redoCopyPage(slug) {
+  delete S.copy[slug];
+  S.copyExpandedSlug = slug;
+  scheduleSave(); updateCopyProgress(); renderCopyQueue(); checkCopyAllDone();
+}
+
+function toggleCopyCode(slug) {
+  const el      = document.getElementById('copy-code-'+slug);
+  const preview = document.getElementById('copy-preview-'+slug);
+  const btn     = document.getElementById('copy-code-btn-'+slug);
+  if (!el) return;
+  // Exit edit mode first if active
+  if (preview && preview.contentEditable === 'true') {
+    if (!S.copy[slug]) S.copy[slug] = {};
+    S.copy[slug].copy = preview.innerHTML;
+    preview.contentEditable = 'false';
+    preview.style.border = '1px solid var(--border)';
+    preview.style.boxShadow = 'none';
+    preview.style.cursor = 'default';
+    const editBtn = document.getElementById('copy-edit-btn-'+slug);
+    if (editBtn) editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+    scheduleSave();
+    // Update code view with latest content
+    el.textContent = preview.innerHTML;
+  }
+  const showingCode = el.style.display !== 'none';
+  if (showingCode) {
+    el.style.display = 'none';
+    if (preview) preview.style.display = 'block';
+    btn.textContent = 'Show code';
+  } else {
+    el.style.display = 'block';
+    if (preview) preview.style.display = 'none';
+    btn.textContent = 'Hide code';
+  }
+}
+
+function toggleCopyEdit(slug) {
+  const previewEl = document.getElementById('copy-preview-'+slug);
+  const codeEl    = document.getElementById('copy-code-'+slug);
+  const editBtn   = document.getElementById('copy-edit-btn-'+slug);
+  if (!previewEl) return;
+
+  const isEditing = previewEl.contentEditable === 'true';
+
+  if (isEditing) {
+    // ── Save ── serialise innerHTML back to state
+    previewEl.contentEditable = 'false';
+    previewEl.style.outline  = 'none';
+    previewEl.style.boxShadow = 'none';
+    previewEl.style.border   = '1px solid var(--border)';
+    previewEl.style.cursor   = 'default';
+    if (!S.copy[slug]) S.copy[slug] = {};
+    S.copy[slug].copy = previewEl.innerHTML;
+    // Also keep code view in sync
+    if (codeEl) codeEl.textContent = previewEl.innerHTML;
+    scheduleSave();
+    editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+  } else {
+    // ── Edit ── make preview directly editable
+    if (codeEl) { codeEl.style.display = 'none'; document.getElementById('copy-code-btn-'+slug) && (document.getElementById('copy-code-btn-'+slug).textContent = 'Show code'); }
+    previewEl.style.display = 'block';
+    previewEl.contentEditable = 'true';
+    previewEl.style.outline  = 'none';
+    previewEl.style.border   = '1.5px solid var(--green)';
+    previewEl.style.boxShadow = '0 0 0 3px rgba(21,142,29,0.08)';
+    previewEl.style.cursor   = 'text';
+    previewEl.focus();
+    // Place cursor at end
+    const range = document.createRange();
+    range.selectNodeContents(previewEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    editBtn.innerHTML = '<i class="ti ti-check"></i> Save';
+  }
+}
+
+function populateCopyPreviews() {
+  // After renderCopyQueue builds the DOM, inject actual HTML content into preview divs
+  (S.pages || []).forEach(p => {
+    const preview = document.getElementById('copy-preview-' + p.slug);
+    if (preview && (S.copy[p.slug]||{}).copy) {
+      preview.innerHTML = (S.copy[p.slug]||{}).copy;
+      // Add scoped copy-preview styles if not already present
+      if (!document.getElementById('copy-preview-styles')) {
+        const style = document.createElement('style');
+        style.id = 'copy-preview-styles';
+        style.textContent = `
+          [id^="copy-preview-"] h1 { font-size:22px; font-weight:600; color:var(--dark); margin:0 0 10px; line-height:1.3 }
+          [id^="copy-preview-"] h2 { font-size:17px; font-weight:600; color:var(--dark); margin:18px 0 8px; line-height:1.3 }
+          [id^="copy-preview-"] h3 { font-size:14px; font-weight:600; color:var(--dark); margin:14px 0 6px }
+          [id^="copy-preview-"] p  { margin:0 0 10px; color:var(--dark); font-size:13.5px; line-height:1.75 }
+          [id^="copy-preview-"] ul, [id^="copy-preview-"] ol { margin:0 0 10px; padding-left:20px }
+          [id^="copy-preview-"] li { margin-bottom:4px; font-size:13px; color:var(--dark); line-height:1.6 }
+          [id^="copy-preview-"] a  { color:var(--green); text-decoration:none }
+          [id^="copy-preview-"] strong { font-weight:600 }
+          [id^="copy-preview-"] section { margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--border) }
+          [id^="copy-preview-"] section:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0 }
+          [id^="copy-preview-"] .hero, [id^="copy-preview-"] .cta-primary, [id^="copy-preview-"] .trust-signal { display:block }
+          [id^="copy-preview-"] div { margin-bottom:4px }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  });
+}
+
+function renderCopyQueue() {
+  const pages = orderedPages();
+
+  const groups = [
+    { key:'core',     label:'Core Pages',         icon:'ti-layout-2',         types:['home','about','utility','contact'] },
+    { key:'service',  label:'Services',            icon:'ti-briefcase',        types:['service'] },
+    { key:'industry', label:'Industry & Location', icon:'ti-map-pin',          types:['industry','location'] },
+    { key:'blog',     label:'Blog Posts',          icon:'ti-article',          types:['blog'] },
+    { key:'other',    label:'Other',               icon:'ti-file',             types:[] }
+  ];
+
+  const grouped = {};
+  groups.forEach(g => grouped[g.key] = []);
+  pages.forEach(p => {
+    const g = groups.find(g => g.types.includes(p.page_type));
+    if (g) grouped[g.key].push(p);
+    else grouped['other'].push(p);
+  });
+
+  const typeIcon = t => ({
+    home:'ti-home', about:'ti-info-circle', utility:'ti-settings', contact:'ti-mail',
+    service:'ti-briefcase', industry:'ti-building-factory', location:'ti-map-pin', blog:'ti-article'
+  }[t] || 'ti-file');
+
+  let html = '';
+  let globalIdx = 0;
+  let firstGroup = true;
+
+  groups.forEach(group => {
+    const gPages = grouped[group.key];
+    if (!gPages.length) return;
+    const doneCount = gPages.filter(p => !!(S.copy[p.slug]||{}).copy).length;
+
+    // Section header
+    html += `<div style="display:flex;align-items:center;gap:7px;margin-top:${firstGroup?'0':'18px'};margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid var(--border)">`;
+    html += `<i class="ti ${group.icon}" style="font-size:11px;color:var(--n2)"></i>`;
+    html += `<span style="font-size:10.5px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">${group.label}</span>`;
+    html += `<span style="font-size:10px;color:${doneCount===gPages.length?'var(--green)':'var(--n2)'};background:rgba(0,0,0,0.04);border-radius:10px;padding:0px 6px">${doneCount}/${gPages.length}</span>`;
+    html += `</div>`;
+    firstGroup = false;
+
+    gPages.forEach(p => {
+      globalIdx++;
+      const r = S.copy[p.slug]||{};
+      const isDone = !!r.copy, isErr = !!r.error;
+      const isRunning = S.copyCurrentSlug === p.slug;
+      const isExpanded = S.copyExpandedSlug === p.slug;
+      const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+      const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
+      const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+      const rowBg = isExpanded&&!isDone&&!isRunning?'background:rgba(0,0,0,0.015);':'';
+
+      html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:5px;${rowBorder}${rowBg}">`;
+
+      // Row header
+      html += `<div onclick="toggleCopyExpand('${p.slug}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none">`;
+      html += `<div class="status-circle" style="${cirStyle};font-size:9px;font-weight:500;flex-shrink:0">${cirContent}</div>`;
+      html += `<i class="ti ${typeIcon(p.page_type)}" style="font-size:12px;color:${isDone?'var(--green)':'var(--n2)'};flex-shrink:0"></i>`;
+      html += `<div style="flex:1;min-width:0">`;
+      html += `<div style="display:flex;align-items:baseline;gap:6px">`;
+      html += `<span style="font-size:13px;color:${isDone||isExpanded?'var(--dark)':'var(--n3)'};font-weight:${isDone?'500':'400'}">${esc(p.page_name)}</span>`;
+      html += `<span style="font-size:10px;color:${pColor};padding:0px 5px;background:rgba(0,0,0,0.04);border-radius:3px;flex-shrink:0">${p.priority}</span>`;
+      if (isErr&&!isExpanded) html += `<span style="font-size:11px;color:var(--error)">Error</span>`;
+      html += `</div>`;
+      html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
+      html += `</div>`;
+      html += `<i class="ti ${isExpanded?'ti-chevron-up':'ti-chevron-down'}" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
+      html += `</div>`;
+
+      // Expanded body
+      if (isExpanded) {
+        html += '<div style="border-top:1px solid var(--border);padding:14px 14px 14px">';
+        if (isRunning) {
+          html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
+            +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
+        } else if (isDone) {
+          html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+            +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
+            +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>'
+            +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
+            +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+            +'</div>'
+            +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
+            +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
+
+          const curIdx = pages.findIndex(pp => pp.slug === p.slug);
+          const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
+          if (nextP) {
+            html += '<div style="margin-top:10px;display:flex;gap:8px">'
+              +'<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+nextP.slug+'\';renderCopyQueue();runCopyPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+              +'<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>'
+              +'</div>';
+          }
+        } else if (isErr) {
+          html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+            +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+        } else {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+            +'<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
+            +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
+            +'</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+  });
+
+  document.getElementById('copy-queue').innerHTML = html;
+  setTimeout(populateCopyPreviews, 0);
+}
+
+function updateCopyProgress() {
+  const pages = orderedPages();
+  const done = pages.filter(p => (S.copy[p.slug]||{}).copy).length;
+  const pct = pages.length > 0 ? Math.round(done/pages.length*100) : 0;
+  document.getElementById('copy-count-label').textContent = done+'/'+pages.length+' pages written';
+  document.getElementById('copy-pct-label').textContent = pct+'%';
+  document.getElementById('copy-progress-fill').style.width = pct+'%';
+}
+
+function checkCopyAllDone() {
+  const pages = orderedPages();
+  const done = pages.filter(p => (S.copy[p.slug]||{}).copy).length;
+  if (done === pages.length && done > 0) {
+    document.getElementById('copy-done-label').textContent = 'All '+done+' pages written';
+    document.getElementById('copy-all-done').style.display = 'flex';
+  } else { document.getElementById('copy-all-done').style.display = 'none'; }
+}
+
+// ── IMAGE GENERATION (Stage 5) ───────────────────────────────────
+
+const IMAGE_SLOTS = [
+  { label: 'Hero Banner',       ratio: '16:9 wide',   hint: 'main hero banner, dramatic wide composition, professional' },
+  { label: 'Section Feature',   ratio: '4:3',         hint: 'supporting section image, feature highlight, clean background' },
+  { label: 'Detail / Close-up', ratio: '1:1 square',  hint: 'detailed close-up or icon-style visual, square format' },
+  { label: 'Content / Blog',    ratio: '3:2',         hint: 'content illustration or editorial visual, natural lighting' },
+  { label: 'CTA / Closing',     ratio: '16:9 wide',   hint: 'call-to-action or closing visual, warm inviting tone' },
+];
+
+const DEFAULT_IMAGE_STYLE = 'Professional commercial photography style. Clean, modern, well-lit. Neutral or white backgrounds. No text overlays. No watermarks. Business-appropriate.';
+
+function getGlobalImageStyle() {
+  return (S.setup?.imageStyle || '').trim() || DEFAULT_IMAGE_STYLE;
+}
+
+function initImageStage() {
+  // Initialise slot state for all content pages (exclude only explicit utility/structural with no keyword)
+  (S.pages || []).forEach(p => {
+    if (!S.images[p.slug]) {
+      S.images[p.slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((sl, i) => ({
+        status: 'empty', prompt: buildImagePrompt(p, i, null), b64: null, mimeType: null
+      }))};
+    } else {
+      // Ensure 5 slots exist (in case of old data)
+      const existing = S.images[p.slug];
+      while ((existing.slots || []).length < 5) {
+        const i = existing.slots.length;
+        existing.slots.push({ status: 'empty', prompt: buildImagePrompt(p, i, existing.styleOverride), b64: null, mimeType: null });
+      }
+    }
+  });
+  // Prefill global style edit box
+  const gEl = document.getElementById('image-style-global-edit');
+  if (gEl) gEl.value = getGlobalImageStyle();
+  renderImageQueue();
+  updateImageProgress();
+  // Load persisted images from KV in background
+  loadAllPageImages();
+}
+
+function imgKey(slug) { return encodeURIComponent(slug || '_root'); }
+
+async function savePageImages(slug) {
+  if (!S.projectId || !S.images?.[slug]) return;
+  try {
+    const payload = JSON.stringify(S.images[slug]);
+    await fetch('/api/images/' + S.projectId + '/' + imgKey(slug), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  } catch(e) { console.warn('[IMG] savePageImages failed:', e); }
+}
+
+async function loadAllPageImages() {
+  if (!S.projectId) return;
+  try {
+    const listRes = await fetch('/api/images/' + S.projectId);
+    if (!listRes.ok) return;
+    const { slugs } = await listRes.json();
+    if (!slugs?.length) return;
+    let anyLoaded = false;
+    await Promise.all(slugs.map(async kvSlug => {
+      const slug = kvSlug === '_root' ? '' : decodeURIComponent(kvSlug);
+      try {
+        const res = await fetch('/api/images/' + S.projectId + '/' + imgKey(slug));
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.slots) return;
+        if (!S.images[slug]) S.images[slug] = data;
+        else {
+          // Restore b64 into existing slots
+          data.slots.forEach((sl, i) => {
+            if (sl?.b64 && S.images[slug].slots[i]) {
+              S.images[slug].slots[i].b64 = sl.b64;
+              S.images[slug].slots[i].mimeType = sl.mimeType || 'image/png';
+              S.images[slug].slots[i].status = 'done';
+            }
+          });
+        }
+        anyLoaded = true;
+      } catch(e) { console.warn('[IMG] load failed for', slug, e); }
+    }));
+    if (anyLoaded) {
+      renderImageQueue();
+      updateImageProgress();
+      if (S.stage === 'layout') renderLayoutQueue(); // refresh Reinject button visibility
+    }
+  } catch(e) { console.warn('[IMG] loadAllPageImages failed:', e); }
+}
+
+
+function buildImagePrompt(page, slotIdx, styleOverride) {
+  const style = (styleOverride || '').trim() || getGlobalImageStyle();
+  const slot = IMAGE_SLOTS[slotIdx] || IMAGE_SLOTS[0];
+  const client = S.setup?.client || '';
+  const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
+  const industry = (S.research?.primary_services || []).slice(0,2).join(', ') || page.keyword_cluster || '';
+  const pageDesc = page.page_type === 'blog'
+    ? `blog post titled "${page.page_name}" about ${page.primary_keyword || page.page_name}`
+    : `${page.page_type} page for "${page.page_name}" (${page.primary_keyword || page.page_name})`;
+
+  let prompt = `${style}\n\n`;
+  prompt += `Create a ${slot.label.toLowerCase()} image (${slot.ratio}) for a ${pageDesc}.`;
+  if (client) prompt += ` Business: ${client}.`;
+  if (geo) prompt += ` Location: ${geo}.`;
+  if (industry) prompt += ` Industry: ${industry}.`;
+  prompt += ` Style note: ${slot.hint}.`;
+  return prompt;
+}
+
+function toggleImageStylePanel() {
+  const panel = document.getElementById('image-style-panel');
+  const gEl = document.getElementById('image-style-global-edit');
+  if (panel.style.display === 'none') {
+    gEl.value = getGlobalImageStyle();
+    panel.style.display = 'block';
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function saveGlobalImageStyle() {
+  const val = (document.getElementById('image-style-global-edit')?.value || '').trim();
+  if (!S.setup) return;
+  S.setup.imageStyle = val;
+  document.getElementById('image-style-panel').style.display = 'none';
+  scheduleSave();
+  // Regenerate prompts for any empty slots
+  (S.pages || []).forEach(p => {
+    if (S.images[p.slug]) {
+      const imgData = S.images[p.slug];
+      imgData.slots.forEach((sl, i) => {
+        if (sl.status === 'empty') sl.prompt = buildImagePrompt(p, i, imgData.styleOverride);
+      });
+    }
+  });
+  renderImageQueue();
+}
+
+let imageExpandedSlug = null;
+
+function renderImageQueue() {
+  const el = document.getElementById('image-queue');
+  if (!el) return;
+  const pages = S.pages || [];
+  if (!pages.length) { el.innerHTML = '<p style="color:var(--n2);font-size:13px">No pages yet — complete Stage 3 first.</p>'; return; }
+
+  const groups = [
+    { label: 'Core Pages',           icon: 'ti-home',         types: ['home','about','contact','case-studies','utility'] },
+    { label: 'Services',             icon: 'ti-tool',         types: ['service'] },
+    { label: 'Industry & Location',  icon: 'ti-map-pin',      types: ['industry','location'] },
+    { label: 'Blog Posts',           icon: 'ti-article',      types: ['blog'] },
+    { label: 'Other',                icon: 'ti-file',         types: [] },
+  ];
+  const typeIconMap = { home:'ti-home', about:'ti-info-circle', service:'ti-tool', industry:'ti-building-factory', location:'ti-map-pin', blog:'ti-article', utility:'ti-settings-2' };
+
+  let html = '';
+  groups.forEach(group => {
+    const gPages = group.types.length
+      ? pages.filter(p => group.types.includes(p.page_type))
+      : pages.filter(p => !['home','about','utility','service','industry','location','blog'].includes(p.page_type));
+    if (!gPages.length) return;
+
+    const doneCount = gPages.filter(p => {
+      const imgData = S.images[p.slug];
+      return imgData && imgData.slots.filter(s => s.status === 'done').length === 5;
+    }).length;
+
+    html += `<div style="margin-bottom:20px">`;
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:2px solid var(--n1);margin-bottom:8px">`;
+    html += `<i class="ti ${group.icon}" style="color:var(--n2);font-size:14px"></i>`;
+    html += `<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--n2)">${group.label}</span>`;
+    html += `<span style="font-size:11px;color:var(--n2);margin-left:auto">${doneCount}/${gPages.length}</span>`;
+    html += `</div>`;
+
+    gPages.forEach(p => {
+      const imgData = S.images[p.slug] || { slots: [], styleOverride: null };
+      const doneSlots = (imgData.slots || []).filter(s => s.status === 'done').length;
+      const allDone = doneSlots === 5;
+      const isExpanded = imageExpandedSlug === p.slug;
+      const tIcon = typeIconMap[p.page_type] || 'ti-file';
+      const pBadgeColor = p.priority === 'P1' ? 'var(--dark)' : p.priority === 'P2' ? 'var(--n2)' : '#bbb';
+
+      html += `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden${allDone ? ';border-color:var(--green)' : ''}">`;
+      // Row header
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:var(--white)" onclick="toggleImageExpand('${p.slug}')">`;
+      html += `<i class="ti ${tIcon}" style="color:var(--n2);font-size:13px;flex-shrink:0"></i>`;
+      html += `<div style="flex:1;min-width:0">`;
+      html += `<div style="font-size:13px;font-weight:500;color:var(--dark)">${esc(p.page_name)}</div>`;
+      html += `<div style="font-size:11px;color:var(--n2);margin-top:1px">/${esc(p.slug)}</div>`;
+      html += `</div>`;
+      // Slot mini-previews
+      html += `<div style="display:flex;gap:3px;align-items:center">`;
+      for (let i = 0; i < 5; i++) {
+        const sl = (imgData.slots || [])[i] || { status: 'empty' };
+        const dot = sl.status === 'done' ? 'var(--green)' : sl.status === 'generating' ? 'var(--lime)' : sl.status === 'error' ? '#E53935' : 'var(--n1)';
+        html += `<div style="width:8px;height:8px;border-radius:2px;background:${dot}"></div>`;
+      }
+      html += `</div>`;
+      html += `<span style="font-size:10px;font-weight:600;color:${pBadgeColor};background:${p.priority==='P1'?'var(--dark)':p.priority==='P2'?'var(--n1)':'var(--n1)'};color:${p.priority==='P1'?'white':'var(--n2)'};padding:2px 6px;border-radius:10px;flex-shrink:0">${p.priority}</span>`;
+      html += `<button class="btn btn-ghost sm" style="flex-shrink:0" onclick="event.stopPropagation();generateAllImages('${p.slug}')"><i class="ti ti-player-play"></i> Generate All</button>`;
+      html += `<i class="ti ${isExpanded ? 'ti-chevron-up' : 'ti-chevron-down'}" style="color:var(--n2);font-size:13px;flex-shrink:0"></i>`;
+      html += `</div>`;
+
+      // Expanded panel
+      if (isExpanded) {
+        html += `<div style="padding:12px 14px 14px;border-top:1px solid var(--border);background:var(--white)">`;
+        // Per-page style override
+        html += `<div style="margin-bottom:12px">`;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">`;
+        html += `<span style="font-size:11px;font-weight:500;color:var(--dark)">Page Style Override</span>`;
+        if (imgData.styleOverride) html += `<span style="font-size:10px;background:var(--lime);color:var(--dark);padding:1px 6px;border-radius:10px">active</span>`;
+        html += `</div>`;
+        html += `<div style="display:flex;gap:6px;align-items:flex-start">`;
+        html += `<textarea id="img-style-override-${p.slug}" rows="2" style="flex:1;font-size:12px;padding:6px 9px;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.5" placeholder="Leave blank to use global style. Describe specific photography/art direction for this page only...">${esc(imgData.styleOverride || '')}</textarea>`;
+        html += `<div style="display:flex;flex-direction:column;gap:4px">`;
+        html += `<button class="btn btn-ghost sm" onclick="savePageImageStyle('${p.slug}')"><i class="ti ti-check"></i> Save</button>`;
+        if (imgData.styleOverride) html += `<button class="btn btn-ghost sm" onclick="clearPageImageStyle('${p.slug}')"><i class="ti ti-x"></i> Clear</button>`;
+        html += `</div></div></div>`;
+
+        // 5 image slots
+        html += `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">`;
+        IMAGE_SLOTS.forEach((slotDef, i) => {
+          const sl = (imgData.slots || [])[i] || { status: 'empty', prompt: '' };
+          html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--panel)">`;
+          // Image area
+          if (sl.status === 'done' && sl.b64) {
+            html += `<div style="aspect-ratio:1;overflow:hidden;background:#f0f0f0"><img src="data:${sl.mimeType||'image/png'};base64,${sl.b64}" style="width:100%;height:100%;object-fit:cover"></div>`;
+          } else if (sl.status === 'generating') {
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--panel)"><span class="spinner" style="width:20px;height:20px"></span></div>`;
+          } else if (sl.status === 'error') {
+            const errMsg = sl.errorMsg ? esc(sl.errorMsg.slice(0, 80)) : 'Unknown error';
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:#fff0f0;flex-direction:column;gap:4px;padding:6px"><i class="ti ti-alert-circle" style="color:#E53935;font-size:18px"></i><span style="font-size:9px;color:#E53935;text-align:center;line-height:1.3">${errMsg}</span></div>`;
+          } else {
+            html += `<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--panel);flex-direction:column;gap:4px"><i class="ti ti-photo" style="color:var(--n2);font-size:24px"></i><span style="font-size:10px;color:var(--n2)">${slotDef.ratio}</span></div>`;
+          }
+          // Slot footer
+          html += `<div style="padding:7px 8px">`;
+          html += `<div style="font-size:10px;font-weight:600;color:var(--dark);margin-bottom:4px">${esc(slotDef.label)}</div>`;
+          html += `<div style="display:flex;gap:4px;flex-wrap:wrap">`;
+          if (sl.status !== 'generating') {
+            html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="generateImage('${p.slug}',${i})"><i class="ti ti-refresh" style="font-size:10px"></i> ${sl.status === 'done' ? 'Redo' : 'Generate'}</button>`;
+          }
+          if (sl.status !== 'generating') {
+            html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="openPromptEditor('${p.slug}',${i})"><i class="ti ti-edit" style="font-size:10px"></i> Prompt</button>`;
+          }
+          html += `</div>`;
+          // Prompt editor (inline)
+          html += `<div id="prompt-editor-${p.slug}-${i}" style="display:none;margin-top:6px">`;
+          html += `<textarea id="prompt-text-${p.slug}-${i}" rows="4" style="width:100%;font-size:10px;padding:5px 7px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.4">${esc(sl.prompt || '')}</textarea>`;
+          html += `<div style="display:flex;gap:4px;margin-top:4px">`;
+          html += `<button class="btn btn-primary sm" style="font-size:10px;padding:3px 8px" onclick="generateImageWithCustomPrompt('${p.slug}',${i})"><i class="ti ti-player-play" style="font-size:10px"></i> Generate</button>`;
+          html += `<button class="btn btn-ghost sm" style="font-size:10px;padding:3px 7px" onclick="document.getElementById('prompt-editor-${p.slug}-${i}').style.display='none'">Cancel</button>`;
+          html += `</div></div>`;
+          html += `</div></div>`;
+        });
+        html += `</div></div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  });
+  el.innerHTML = html;
+}
+
+function toggleImageExpand(slug) {
+  imageExpandedSlug = imageExpandedSlug === slug ? null : slug;
+  renderImageQueue();
+}
+
+function openPromptEditor(slug, slotIdx) {
+  const editorEl = document.getElementById(`prompt-editor-${slug}-${slotIdx}`);
+  if (!editorEl) return;
+  editorEl.style.display = editorEl.style.display === 'none' ? 'block' : 'none';
+}
+
+function savePageImageStyle(slug) {
+  const val = (document.getElementById(`img-style-override-${slug}`)?.value || '').trim();
+  if (!S.images[slug]) return;
+  S.images[slug].styleOverride = val || null;
+  // Rebuild empty slot prompts with new override
+  const page = S.pages.find(p => p.slug === slug);
+  if (page) {
+    S.images[slug].slots.forEach((sl, i) => {
+      if (sl.status === 'empty') sl.prompt = buildImagePrompt(page, i, val || null);
+    });
+  }
+  scheduleSave();
+  renderImageQueue();
+}
+
+function clearPageImageStyle(slug) {
+  if (!S.images[slug]) return;
+  S.images[slug].styleOverride = null;
+  scheduleSave();
+  renderImageQueue();
+}
+
+async function generateImage(slug, slotIdx, customPrompt) {
+  if (!S.images[slug]) return;
+  const page = S.pages.find(p => p.slug === slug);
+  if (!page) return;
+  const slot = S.images[slug].slots[slotIdx];
+  if (!slot) return;
+
+  const prompt = customPrompt || slot.prompt || buildImagePrompt(page, slotIdx, S.images[slug].styleOverride);
+  slot.prompt = prompt;
+  slot.status = 'generating';
+  slot.b64 = null;
+  renderImageQueue();
+
+  try {
+    const res = await fetch('/api/generate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    const data = await res.json();
+    if (data.imageData) {
+      slot.status = 'done';
+      slot.b64 = data.imageData;
+      slot.mimeType = data.mimeType || 'image/png';
+      slot.errorMsg = null;
+      savePageImages(slug); // persist to KV immediately
+    } else {
+      slot.status = 'error';
+      slot.errorMsg = data.error || 'Unknown error';
+      if (data.detail) slot.errorMsg += ' — ' + data.detail;
+      console.error('[IMG] generation error:', data.error, data.detail);
+    }
+  } catch (err) {
+    slot.status = 'error';
+    slot.errorMsg = err.message || 'Fetch failed';
+    console.error('[IMG] fetch error:', err);
+  }
+
+  scheduleSave();
+  renderImageQueue();
+  updateImageProgress();
+  checkImageAllDone();
+}
+
+async function generateImageWithCustomPrompt(slug, slotIdx) {
+  const textarea = document.getElementById(`prompt-text-${slug}-${slotIdx}`);
+  const customPrompt = textarea?.value?.trim();
+  if (!customPrompt) return;
+  if (S.images[slug]?.slots[slotIdx]) {
+    S.images[slug].slots[slotIdx].prompt = customPrompt;
+  }
+  await generateImage(slug, slotIdx, customPrompt);
+}
+
+async function generateAllImages(slug) {
+  if (S.imageGenRunning) return;
+  S.imageGenRunning = true;
+  S.imageGenStop = false;
+  document.getElementById('image-stop-btn').style.display = '';
+  document.getElementById('image-progress').style.display = 'block';
+  imageExpandedSlug = slug;
+  renderImageQueue();
+
+  for (let i = 0; i < 5; i++) {
+    if (S.imageGenStop) break;
+    await generateImage(slug, i);
+    await new Promise(r => setTimeout(r, 500)); // small delay between requests
+  }
+
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+  renderImageQueue();
+  checkImageAllDone();
+}
+
+async function generateAllPagesImages() {
+  if (S.imageGenRunning) return;
+  S.imageGenRunning = true;
+  S.imageGenStop = false;
+  document.getElementById('image-stop-btn').style.display = '';
+  document.getElementById('image-progress').style.display = 'block';
+
+  const pages = S.pages || [];
+  for (const page of pages) {
+    if (S.imageGenStop) break;
+    imageExpandedSlug = page.slug;
+    for (let i = 0; i < 5; i++) {
+      if (S.imageGenStop) break;
+      await generateImage(page.slug, i);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+  checkImageAllDone();
+}
+
+function stopImageGen() {
+  S.imageGenStop = true;
+  S.imageGenRunning = false;
+  document.getElementById('image-stop-btn').style.display = 'none';
+}
+
+function updateImageProgress() {
+  const pages = S.pages || [];
+  const total = pages.length * 5;
+  const done = pages.reduce((acc, p) => {
+    return acc + ((S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length);
+  }, 0);
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const countEl = document.getElementById('image-count-label');
+  const pctEl = document.getElementById('image-pct-label');
+  const fill = document.getElementById('image-progress-fill');
+  if (countEl) countEl.textContent = `${done} of ${total} images`;
+  if (pctEl) pctEl.textContent = ` ${pct}%`;
+  if (fill) fill.style.width = pct + '%';
+  const prog = document.getElementById('image-progress');
+  if (prog) prog.style.display = total > 0 && done > 0 ? 'block' : 'none';
+}
+
+function checkImageAllDone() {
+  const pages = S.pages || [];
+  const allDone = pages.length > 0 && pages.every(p =>
+    (S.images[p.slug]?.slots || []).filter(s => s.status === 'done').length === 5
+  );
+  const el = document.getElementById('image-all-done');
+  if (el) el.style.display = allDone ? 'flex' : 'none';
+}
+
+// ── LAYOUT WIREFRAME GENERATOR ──────────────────────────────────
+let layoutCurrentPage = null;
+
+function showLayoutSettings() {
+  const panel = document.getElementById('layout-settings-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  const inp = document.getElementById('layout-figma-url');
+  if (inp && S.layout?._figmaUrl) inp.value = S.layout._figmaUrl;
+}
+
+function saveFigmaUrl() {
+  const url = document.getElementById('layout-figma-url').value.trim();
+  if (!S.layout) S.layout = {};
+  S.layout._figmaUrl = url;
+  scheduleSave();
+  const status = document.getElementById('layout-figma-status');
+  if (status) status.textContent = url ? '✓ Template URL saved — AI will reference this when generating wireframes.' : 'Cleared.';
+  setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+}
+
+function initLayout() {
+  if (!S.layout) S.layout = {};
+  renderLayoutQueue();
+}
+
+function renderLayoutQueue() {
+  const pages = orderedPages();
+  if (!pages.length) {
+    document.getElementById('layout-queue').innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px 0">Complete the Sitemap stage first.</div>';
+    return;
+  }
+
+  const groups = [
+    { key:'core',     label:'Core Pages',         icon:'ti-layout-2',   types:['home','about','utility','contact'] },
+    { key:'service',  label:'Services',            icon:'ti-briefcase',  types:['service'] },
+    { key:'industry', label:'Industry & Location', icon:'ti-map-pin',    types:['industry','location'] },
+    { key:'blog',     label:'Blog Posts',          icon:'ti-article',    types:['blog'] },
+    { key:'other',    label:'Other',               icon:'ti-file',       types:[] }
+  ];
+
+  const grouped = {};
+  groups.forEach(g => grouped[g.key] = []);
+  pages.forEach(p => {
+    const g = groups.find(g => g.types.includes(p.page_type));
+    if (g) grouped[g.key].push(p);
+    else grouped['other'].push(p);
+  });
+
+  const typeIcon = t => ({
+    home:'ti-home', about:'ti-info-circle', utility:'ti-settings', contact:'ti-mail',
+    service:'ti-briefcase', industry:'ti-building-factory', location:'ti-map-pin', blog:'ti-article'
+  }[t] || 'ti-file');
+
+  const allDone = pages.every(p => (S.layout[p.slug]||{}).html);
+  let html = '';
+
+  if (allDone) {
+    html += '<div style="display:flex;gap:8px;margin-bottom:16px">'
+      + '<button class="btn btn-primary" onclick="exportWireframes()"><i class="ti ti-download"></i> Export All Wireframes</button>'
+      + '<button class="btn btn-ghost" onclick="initSchema();goTo(\'schema\')"><i class="ti ti-arrow-right"></i> Proceed to Schema</button>'
+      + '</div>';
+  }
+
+  let firstGroup = true;
+  let globalIdx = 0;
+
+  groups.forEach(group => {
+    const gPages = grouped[group.key];
+    if (!gPages.length) return;
+    const doneCount = gPages.filter(p => !!(S.layout[p.slug]||{}).html).length;
+
+    html += `<div style="display:flex;align-items:center;gap:7px;margin-top:${firstGroup?'0':'18px'};margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid var(--border)">`;
+    html += `<i class="ti ${group.icon}" style="font-size:11px;color:var(--n2)"></i>`;
+    html += `<span style="font-size:10.5px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">${group.label}</span>`;
+    html += `<span style="font-size:10px;color:${doneCount===gPages.length?'var(--green)':'var(--n2)'};background:rgba(0,0,0,0.04);border-radius:10px;padding:0 6px">${doneCount}/${gPages.length}</span>`;
+    html += `</div>`;
+    firstGroup = false;
+
+    gPages.forEach((p, i) => {
+      globalIdx++;
+      const r = S.layout[p.slug] || {};
+      const isDone = !!r.html, isErr = !!r.error;
+      const isRunning = layoutCurrentPage === p.slug;
+      const isExpanded = S.layoutExpandedSlug === p.slug;
+      const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+      const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
+      const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+
+      html += `<div id="layout-card-${p.slug}" style="border:1px solid var(--border);${rowBorder}border-radius:8px;margin-bottom:5px;overflow:hidden">`;
+
+      // Header row
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none" onclick="toggleLayoutAccordion('${p.slug}')">`;
+      html += `<div style="width:20px;height:20px;border-radius:50%;${cirStyle};display:flex;align-items:center;justify-content:center;font-size:9px;color:white;font-weight:600;flex-shrink:0">${cirContent}</div>`;
+      html += `<i class="ti ${typeIcon(p.page_type)}" style="font-size:12px;color:${isDone?'var(--green)':'var(--n2)'};flex-shrink:0"></i>`;
+      html += `<div style="flex:1;min-width:0">`;
+      html += `<div style="display:flex;align-items:baseline;gap:6px">`;
+      html += `<span style="font-size:13px;color:${isDone||isExpanded?'var(--dark)':'var(--n3)'};font-weight:${isDone?'500':'400'}">${esc(p.page_name)}</span>`;
+      html += `<span style="font-size:10px;color:${pColor};padding:0 5px;background:rgba(0,0,0,0.04);border-radius:3px;flex-shrink:0">${p.priority}</span>`;
+      const imgsDone = (S.images?.[p.slug]?.slots||[]).filter(s=>s.b64).length;
+      if (imgsDone > 0) html += `<span style="font-size:10px;color:#158E1D;background:rgba(21,142,29,0.1);border-radius:3px;padding:0 5px;flex-shrink:0"><i class="ti ti-photo-check" style="font-size:10px"></i> ${imgsDone} img${imgsDone>1?'s':''}</span>`;
+      if (isErr&&!isExpanded) html += `<span style="font-size:11px;color:var(--error)">Error</span>`;
+      html += `</div>`;
+      html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
+      html += `</div>`;
+      html += `<i class="ti ti-chevron-${isExpanded?'up':'down'} layout-chevron" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
+      html += `</div>`;
+
+      if (isExpanded) {
+        html += '<div id="layout-content-'+p.slug+'" style="border-top:1px solid var(--border);padding:14px">';
+        if (isRunning) {
+          html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="spinner" style="width:10px;height:10px"></span> Generating wireframe…</div>'
+            + '<div id="layout-stream-'+p.slug+'" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>'
+            + '<button class="btn btn-danger sm" style="margin-top:10px" onclick="stopLayout()"><i class="ti ti-player-stop"></i> Stop</button>';
+        } else if (isDone) {
+          const hasNewImgs = (S.images?.[p.slug]?.slots||[]).some(s=>s.b64);
+          html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'
+            + '<button class="btn btn-ghost sm" onclick="printWireframe(\''+p.slug+'\')"><i class="ti ti-printer"></i> Print / Export PDF</button>'
+            + '<button class="btn btn-ghost sm" onclick="toggleLayoutCode(\''+p.slug+'\')"><i class="ti ti-code"></i> Show HTML</button>'
+            + '<button class="btn btn-ghost sm" id="layout-edit-btn-'+p.slug+'" onclick="toggleLayoutEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
+            + (hasNewImgs ? '<button class="btn btn-ghost sm" onclick="reinjectImages(\''+p.slug+'\')" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>' : '')
+            + '<button class="btn btn-danger sm" onclick="redoWireframe(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+            + '</div>'
+            + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">'
+            + makeWireframeIframe(r.html)
+            + '</div>'
+            + '<div id="layout-code-'+p.slug+'" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.html)+'</div>'
+            + '<textarea id="layout-edit-'+p.slug+'" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box;margin-top:8px">'+esc(r.html)+'</textarea>';
+          const allPages = orderedPages();
+          const curIdx = allPages.findIndex(pp => pp.slug === p.slug);
+          const nextP = allPages.find((pp,ii) => ii > curIdx && !(S.layout[pp.slug]||{}).html);
+          if (nextP) {
+            html += '<div style="margin-top:10px;display:flex;gap:8px">'
+              + '<button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=\''+nextP.slug+'\';renderLayoutQueue();runWireframe(\''+nextP.slug+'\');"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+              + '</div>';
+          }
+        } else if (isErr) {
+          html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+            + '<button class="btn btn-primary sm" onclick="runWireframe(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+        } else {
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+            + '<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword||'')+(p.page_type?' · '+esc(p.page_type):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
+            + '<button class="btn btn-primary sm" onclick="runWireframe(\''+p.slug+'\')"><i class="ti ti-layout"></i> Generate Wireframe</button>'
+            + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  });
+
+  document.getElementById('layout-queue').innerHTML = html;
+}
+
+function toggleLayoutAccordion(slug) {
+  const prev = S.layoutExpandedSlug;
+  const isClosing = prev === slug;
+  S.layoutExpandedSlug = isClosing ? null : slug;
+
+  // Surgical update — only touch the 1-2 affected cards, not the full list
+  if (prev && prev !== slug) collapseLayoutCard(prev);
+  if (!isClosing) expandLayoutCard(slug);
+  else collapseLayoutCard(slug);
+}
+
+function collapseLayoutCard(slug) {
+  const card = document.getElementById('layout-card-' + slug);
+  if (!card) { renderLayoutQueue(); return; }
+  const content = document.getElementById('layout-content-' + slug);
+  if (content) content.remove();
+  // Reset border
+  const r = S.layout[slug] || {};
+  const isDone = !!r.html, isErr = !!r.error;
+  card.style.borderColor = isDone ? 'rgba(21,142,29,0.3)' : isErr ? 'rgba(229,57,53,0.22)' : 'var(--border)';
+  // Flip chevron
+  const chev = card.querySelector('.layout-chevron');
+  if (chev) chev.className = 'ti ti-chevron-down layout-chevron';
+}
+
+function expandLayoutCard(slug) {
+  const card = document.getElementById('layout-card-' + slug);
+  if (!card) { renderLayoutQueue(); return; }
+
+  card.style.borderColor = 'var(--dark)';
+  const chev = card.querySelector('.layout-chevron');
+  if (chev) chev.className = 'ti ti-chevron-up layout-chevron';
+
+  const existing = document.getElementById('layout-content-' + slug);
+  if (existing) existing.remove();
+
+  const p = orderedPages().find(pp => pp.slug === slug);
+  if (!p) return;
+  const r = S.layout[slug] || {};
+  const isDone = !!r.html, isErr = !!r.error;
+  const isRunning = layoutCurrentPage === slug;
+  const sq = JSON.stringify(slug); // safe slug for onclick attrs e.g. "my-slug"
+
+  let inner = '';
+  if (isRunning) {
+    inner = `<div style="font-size:12px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span class="spinner" style="width:10px;height:10px"></span> Generating wireframe\u2026</div>
+      <div id="layout-stream-${slug}" style="font-size:11px;color:var(--n2);max-height:80px;overflow:auto;line-height:1.5"></div>
+      <button class="btn btn-danger sm" style="margin-top:10px" onclick="stopLayout()"><i class="ti ti-player-stop"></i> Stop</button>`;
+  } else if (isDone) {
+    const hasNewImgs = (S.images?.[slug]?.slots||[]).some(s => s.b64);
+    inner = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-ghost sm" onclick="printWireframe(${sq})"><i class="ti ti-printer"></i> Print / Export PDF</button>
+      <button class="btn btn-ghost sm" onclick="toggleLayoutCode(${sq})"><i class="ti ti-code"></i> Show HTML</button>
+      <button class="btn btn-ghost sm" id="layout-edit-btn-${slug}" onclick="toggleLayoutEdit(${sq})"><i class="ti ti-edit"></i> Edit</button>
+      ${hasNewImgs ? `<button class="btn btn-ghost sm" onclick="reinjectImages(${sq})" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>` : ''}
+      <button class="btn btn-danger sm" onclick="redoWireframe(${sq})"><i class="ti ti-refresh"></i> Redo</button>
+    </div>
+    <div id="layout-preview-${slug}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">
+      <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--n2);font-size:12px"><span class="spinner" style="width:12px;height:12px"></span></div>
+    </div>
+    <div id="layout-code-${slug}" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)"></div>
+    <textarea id="layout-edit-${slug}" style="display:none;width:100%;min-height:340px;background:var(--white);border:1.5px solid var(--green);border-radius:6px;padding:12px;font-family:monospace;font-size:12px;color:var(--dark);line-height:1.7;resize:vertical;outline:none;box-sizing:border-box;margin-top:8px"></textarea>`;
+    const allPages = orderedPages();
+    const curIdx = allPages.findIndex(pp => pp.slug === slug);
+    const nextP = allPages.find((pp, ii) => ii > curIdx && !(S.layout[pp.slug]||{}).html);
+    if (nextP) {
+      const nq = JSON.stringify(nextP.slug);
+      inner += `<div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-primary sm" onclick="S.layoutExpandedSlug=${nq};renderLayoutQueue();runWireframe(${nq});"><i class="ti ti-arrow-right"></i> Next: ${esc(nextP.page_name)}</button>
+      </div>`;
+    }
+  } else if (isErr) {
+    inner = `<div style="color:var(--error);font-size:12px;margin-bottom:8px">${esc(r.error)}</div>
+      <button class="btn btn-primary sm" onclick="runWireframe(${sq})"><i class="ti ti-player-play"></i> Retry</button>`;
+  } else {
+    inner = `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:12px;color:var(--n2)">${esc(p.primary_keyword||'')}${p.page_type ? ' \xb7 ' + esc(p.page_type) : ''}${p.word_count_target ? ' \xb7 ' + p.word_count_target + ' words' : ''}</div>
+      <button class="btn btn-primary sm" onclick="runWireframe(${sq})"><i class="ti ti-layout"></i> Generate Wireframe</button>
+    </div>`;
+  }
+
+  const contentDiv = document.createElement('div');
+  contentDiv.id = 'layout-content-' + slug;
+  contentDiv.style.cssText = 'border-top:1px solid var(--border);padding:14px';
+  contentDiv.innerHTML = inner;
+  card.appendChild(contentDiv);
+
+  // Populate code/textarea via textContent (no escaping needed) + inject iframe via blob
+  if (isDone && !isRunning) {
+    const codeEl = document.getElementById('layout-code-' + slug);
+    const editEl = document.getElementById('layout-edit-' + slug);
+    if (codeEl) codeEl.textContent = r.html;
+    if (editEl) editEl.value = r.html;
+    requestAnimationFrame(() => {
+      const preview = document.getElementById('layout-preview-' + slug);
+      if (preview && !preview.querySelector('iframe')) {
+        preview.innerHTML = makeWireframeIframe(r.html);
+      }
+    });
+  }
+}
+
+
+// Placeholder while iframe loads
+function makeWireframeIframe_placeholder(slug) {
+  return '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--n2);font-size:12px"><span class=\"spinner\" style=\"width:12px;height:12px\"></span></div>';
+}
+
+function toggleLayoutCode(slug) {
+  const el = document.getElementById('layout-code-'+slug);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleLayoutEdit(slug) {
+  const editEl = document.getElementById('layout-edit-'+slug);
+  const previewEl = document.getElementById('layout-preview-'+slug);
+  const btn = document.getElementById('layout-edit-btn-'+slug);
+  if (!editEl) return;
+  const isEditing = editEl.style.display !== 'none';
+  if (isEditing) {
+    const newHtml = editEl.value;
+    S.layout[slug].html = newHtml;
+    if (previewEl) previewEl.innerHTML = makeWireframeIframe(newHtml);
+    document.getElementById('layout-code-'+slug) && (document.getElementById('layout-code-'+slug).textContent = newHtml);
+    scheduleSave();
+    editEl.style.display = 'none';
+    if (previewEl) previewEl.style.display = 'block';
+    if (btn) btn.innerHTML = '<i class="ti ti-edit"></i> Edit';
+  } else {
+    editEl.style.display = 'block';
+    if (previewEl) previewEl.style.display = 'none';
+    if (btn) btn.innerHTML = '<i class="ti ti-check"></i> Save';
+    editEl.focus();
+  }
+}
+
+function makeWireframeIframe(html) {
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  return `<iframe src="${url}" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>`;
+}
+
+function autoResizeFrame(iframe) {
+  try {
+    const h = iframe.contentDocument.body.scrollHeight;
+    if (h > 100) iframe.style.minHeight = (h + 20) + 'px';
+  } catch(e) {}
+}
+
+// ── Image picker for wireframe slots ─────────────────────────────
+let _imgPickTarget = null; // { slug, slotKey }
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'img-pick') {
+    openImagePicker(e.data.slug, e.data.slotKey);
+  }
+});
+
+function openImagePicker(slug, slotKey) {
+  _imgPickTarget = { slug, slotKey };
+  const modal = document.getElementById('img-pick-modal');
+  const grid = document.getElementById('img-pick-grid');
+  const title = document.getElementById('img-pick-title');
+  if (!modal) return;
+  title.textContent = 'Select image for: ' + slotKey + ' on /' + (slug || '');
+
+  // Build grid of all available images across all pages
+  const slotLabels = ['Hero Banner','Section Feature','Detail / Close-up','Content / Blog','CTA / Closing'];
+  let html = '';
+  let count = 0;
+  (S.pages || []).forEach(p => {
+    const imgData = S.images?.[p.slug];
+    if (!imgData?.slots) return;
+    imgData.slots.forEach((sl, i) => {
+      if (!sl?.b64) return;
+      count++;
+      html += `<div onclick="pickImage('${p.slug}',${i})" style="cursor:pointer;border:2px solid transparent;border-radius:6px;overflow:hidden;background:var(--n1);transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor='transparent'">
+        <img src="data:${sl.mimeType};base64,${sl.b64}" style="width:100%;height:110px;object-fit:cover;display:block">
+        <div style="padding:5px 7px;font-size:10px;color:var(--n3);line-height:1.3">
+          <div style="font-weight:500;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.page_name)}</div>
+          <div style="color:var(--n2)">${slotLabels[i]||''}</div>
+        </div>
+      </div>`;
+    });
+  });
+
+  if (!count) {
+    grid.innerHTML = '<div style="color:var(--n2);font-size:13px;padding:20px;text-align:center">No images generated yet. Go to Stage 5 and generate images first.</div>';
+  } else {
+    grid.innerHTML = html;
+  }
+  modal.style.display = 'flex';
+}
+
+function pickImage(srcSlug, srcSlotIdx) {
+  if (!_imgPickTarget) return;
+  const { slug, slotKey } = _imgPickTarget;
+  const srcSlot = S.images?.[srcSlug]?.slots?.[srcSlotIdx];
+  if (!srcSlot?.b64) return;
+
+  // Ensure target page image data exists
+  if (!S.images[slug]) S.images[slug] = { styleOverride: null, slots: IMAGE_SLOTS.map((_,i) => ({ status:'empty', prompt:'', b64:null, mimeType:null })) };
+
+  // Find slot index for this slotKey
+  const slotKeyMap = { 'hero-banner':0, 'section-feature':1, 'detail-close-up':2, 'content-blog':3, 'cta-closing':4 };
+  const targetIdx = slotKeyMap[slotKey];
+  if (targetIdx !== undefined) {
+    S.images[slug].slots[targetIdx] = { ...S.images[slug].slots[targetIdx], b64: srcSlot.b64, mimeType: srcSlot.mimeType, status: 'done' };
+    savePageImages(slug);
+  }
+
+  // Re-inject into wireframe
+  const layout = S.layout?.[slug];
+  if (layout) {
+    const source = layout.rawHtml || layout.html;
+    S.layout[slug].html = injectImagesIntoWireframe(slug, source);
+    scheduleSave();
+  }
+
+  closeImagePicker();
+  renderLayoutQueue();
+}
+
+function closeImagePicker() {
+  const modal = document.getElementById('img-pick-modal');
+  if (modal) modal.style.display = 'none';
+  _imgPickTarget = null;
+}
+
+
+function redoWireframe(slug) {
+  delete S.layout[slug];
+  S.layoutExpandedSlug = slug;
+  scheduleSave(); renderLayoutQueue();
+}
+
+let layoutStopFlag = false;
+function stopLayout() { layoutStopFlag = true; }
+
+async function runAllWireframes() {
+  const pages = orderedPages().filter(p => !(S.layout[p.slug]||{}).html);
+  for (const p of pages) {
+    if (layoutStopFlag) break;
+    S.layoutExpandedSlug = p.slug;
+    renderLayoutQueue();
+    await runWireframe(p.slug);
+    await sleep(400);
+  }
+}
+
+async function runWireframe(slug) {
+  const page = orderedPages().find(p => p.slug === slug);
+  if (!page) return;
+  layoutCurrentPage = slug;
+  layoutStopFlag = false;
+  S.layoutExpandedSlug = slug;
+  renderLayoutQueue();
+
+  const copyHtml = (S.copy[slug]||{}).copy || '';
+  const figmaUrl = S.layout?._figmaUrl || '';
+  const research = S.research || {};
+
+  const templateNote = figmaUrl
+    ? `\n\nTEMPLATE REFERENCE: The client uses a Figma template at ${figmaUrl}. Where relevant, note which template section to use (e.g. "[Use: Hero Split variant from template]") as a comment below each wireframe block.`
+    : '';
+
+  const systemPrompt = `You are a senior UX/UI designer at Setsail Marketing creating a full-page annotated wireframe document. Output self-contained HTML that renders as a clean printable wireframe with real images, section labels, and annotated content outlines.
+
+WIREFRAME STYLE:
+- White background, system font (system-ui, -apple-system, sans-serif)
+- Each section = a distinct block with a light grey background (#f5f5f5) or white, separated by subtle borders
+- Every section has: a section type label (caps, small, grey), a heading, content outline bullets, and a CRO/layout note at the bottom in a yellow annotation box (#fffde7 background)
+- Font sizes: section-label 10px caps tracking, heading 18-24px, body 13px, annotation 11px italic
+- Max width 900px, centered, padding 0 40px
+- Print-friendly: avoid shadows, keep contrast high
+
+IMAGE PLACEHOLDERS: For every image/photo/visual in the layout, use EXACTLY this HTML (single non-nested div, no children other than text):
+<div class="img-slot" data-slot="SLOT_NAME" style="background:#e0e0e0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:11px;color:#888;font-style:italic;text-align:center;padding:8px;min-height:200px;">SLOT_NAME placeholder</div>
+
+Use these SLOT_NAME values (choose the best fit, one use per slot):
+- hero-banner → main hero image (wide, top of page)
+- section-feature → mid-page feature or about image
+- detail-close-up → close-up detail, icon-style, or testimonial visual
+- content-blog → editorial, blog, or supporting content image
+- cta-closing → closing CTA or footer visual
+
+Each slot name can only be used ONCE per page. For logo strips, team grids, or decorative elements use standard grey divs without data-slot.${templateNote}
+
+OUTPUT: Complete self-contained HTML file starting with <!DOCTYPE html>. No markdown, no fences.`;
+
+  const userPrompt = `Create a full annotated wireframe for this page:
+
+PAGE: ${page.page_name}
+SLUG: /${page.slug}
+TYPE: ${page.page_type}
+PRIMARY KEYWORD: ${page.primary_keyword}
+SUPPORTING KEYWORDS: ${(page.supporting_keywords||[]).map(k=>typeof k==='object'?k.kw:k).join(', ')}
+SEARCH INTENT: ${page.search_intent}
+WORD COUNT TARGET: ${page.word_count_target}
+
+BUSINESS: ${research.client_name||S.setup?.client||''}
+VALUE PROP: ${research.value_proposition||''}
+KEY DIFFERENTIATORS: ${(research.key_differentiators||[]).slice(0,3).join(' | ')}
+
+COPY CONTENT (use this to populate wireframe headings and outlines):
+${copyHtml ? copyHtml.replace(/<[^>]*>/g,'').slice(0,3000) : 'No copy generated yet — infer from keyword and page type.'}
+
+Generate a complete section-by-section wireframe. Include every section a high-converting ${page.page_type} page needs. Annotate each section with: layout choice rationale, content guidance, and CRO notes.`;
+
+  let full = '';
+  try {
+    full = await callClaude(
+      systemPrompt,
+      userPrompt,
+      (partial) => {
+        const el = document.getElementById('layout-stream-'+slug);
+        if (el) el.textContent = partial.slice(-200);
+      }
+    );
+  } catch(e) {
+    S.layout[slug] = { error: e.message };
+    layoutCurrentPage = null;
+    renderLayoutQueue();
+    return;
+  }
+
+  if (layoutStopFlag) { layoutCurrentPage = null; renderLayoutQueue(); return; }
+
+  // Strip fences if any
+  let html = full.replace(/^```html\s*/i,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+  // Ensure it's a full doc
+  if (!html.startsWith('<!DOCTYPE') && !html.startsWith('<html')) {
+    html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:system-ui,sans-serif;margin:0;padding:40px;max-width:900px;margin:0 auto;color:#111}</style></head><body>' + html + '</body></html>';
+  }
+
+  const rawHtml = html;
+  html = injectImagesIntoWireframe(slug, html);
+
+  S.layout[slug] = { html, rawHtml, generatedAt: Date.now() };
+  layoutCurrentPage = null;
+  scheduleSave();
+  renderLayoutQueue();
+}
+
+function injectImagesIntoWireframe(slug, html) {
+  const slotMap = { 'hero-banner': 0, 'section-feature': 1, 'detail-close-up': 2, 'content-blog': 3, 'cta-closing': 4 };
+  const imgData = S.images?.[slug];
+  let result = html;
+
+  // Replace data-slot divs with clickable imgs (if b64 available) or clickable placeholders
+  for (const [slotKey, idx] of Object.entries(slotMap)) {
+    const re = new RegExp('<div[^>]*data-slot=["\']' + slotKey + '["\'][^>]*>[^<]*<\\/div>', 'gi');
+    const slot = (imgData?.slots || [])[idx];
+    const clickAttr = `onclick="window.parent.postMessage({type:'img-pick',slug:'${slug}',slotKey:'${slotKey}'},\'*\')" style="cursor:pointer" title="Click to swap image"`;
+    if (slot?.b64) {
+      const imgStyle = slotKey === 'hero-banner' || slotKey === 'cta-closing'
+        ? 'width:100%;max-height:420px;object-fit:cover;display:block;border-radius:4px;cursor:pointer'
+        : 'width:100%;max-height:320px;object-fit:cover;display:block;border-radius:4px;cursor:pointer';
+      result = result.replace(re, `<img src="data:${slot.mimeType};base64,${slot.b64}" data-slot="${slotKey}" style="${imgStyle}" alt="${slotKey}" onclick="window.parent.postMessage({type:'img-pick',slug:'${slug}',slotKey:'${slotKey}'},'*')" title="Click to swap image">`);
+    } else {
+      // Make placeholder clickable too
+      result = result.replace(re, `<div class="img-slot" data-slot="${slotKey}" ${clickAttr} style="background:#e0e0e0;border:2px dashed #bbb;display:flex;align-items:center;justify-content:center;font-size:11px;color:#888;font-style:italic;text-align:center;padding:8px;min-height:200px;">📷 Click to assign image<br><small>${slotKey}</small></div>`);
+    }
+  }
+
+  return result;
+}
+
+function reinjectImages(slug) {
+  const layout = S.layout?.[slug];
+  if (!layout?.html) return;
+  // Always inject from rawHtml (pre-injection template) so data-slot divs are always present
+  const source = layout.rawHtml || layout.html;
+  S.layout[slug].html = injectImagesIntoWireframe(slug, source);
+  scheduleSave();
+  renderLayoutQueue();
+}
+
+function printWireframe(slug) {
+  const html = (S.layout[slug]||{}).html;
+  if (!html) return;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 600);
+}
+
+function exportWireframes() {
+  const pages = orderedPages().filter(p => (S.layout[p.slug]||{}).html);
+  const combined = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(S.setup?.client||'Wireframes')}</title><style>
+  body{font-family:system-ui,sans-serif;margin:0;padding:0;background:#fff}
+  .page-break{page-break-after:always;border-bottom:3px solid #000;padding-bottom:40px;margin-bottom:40px}
+  @media print{.page-break{page-break-after:always}}
+  </style></head><body>
+  ${pages.map(p => '<div class="page-break">'+((S.layout[p.slug]||{}).html.replace(/<!DOCTYPE[^>]*>/i,'').replace(/<\/?html[^>]*>/gi,'').replace(/<\/?head>[\s\S]*?<\/head>/gi,'').replace(/<\/?body[^>]*>/gi,'').trim())+'</div>').join('\n')}
+  </body></html>`;
+  const blob = new Blob([combined], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=(S.setup?.client||'wireframes').toLowerCase().replace(/\s+/g,'-')+'-wireframes.html'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+let schemaStopFlag = false;
+S.schemaCurrentSlug = null;
+S.schemaExpandedSlug = null;
+
+function stopSchema() { schemaStopFlag = true; }
+
+function initSchema() {
+  document.getElementById('schema-progress').style.display = 'block';
+  const next = S.pages.find(p => !(S.schema[p.slug]||{}).schema);
+  if (next && !S.schemaExpandedSlug) S.schemaExpandedSlug = next.slug;
+  renderSchemaQueue(); updateSchemaProgress(); checkSchemaAllDone();
+}
+
+function buildSchemaPrompt(page) {
+  const base = 'https://www.'+(S.setup.url||'example.com');
+  return 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
+}
+
+async function runSchemaPage(slug) {
+  const page = S.pages.find(p => p.slug === slug);
+  if (!page || S.schemaRunning) return;
+  S.schemaRunning = true; schemaStopFlag = false;
+  S.schemaCurrentSlug = slug;
+  S.schemaExpandedSlug = slug;
+  renderSchemaQueue();
+  try {
+    const schema = await callClaude(P.schema, buildSchemaPrompt(page), null);
+    if (!schemaStopFlag) {
+      S.schema[slug] = {schema, page};
+      scheduleSave();
+      const curIdx = S.pages.findIndex(p => p.slug === slug);
+      const next = S.pages.find((p,i) => i > curIdx && !(S.schema[p.slug]||{}).schema);
+      S.schemaExpandedSlug = next ? next.slug : slug;
+    }
+  } catch(e) {
+    S.schema[slug] = {error: e.message, page};
+  }
+  S.schemaCurrentSlug = null;
+  S.schemaRunning = false;
+  renderSchemaQueue(); updateSchemaProgress(); checkSchemaAllDone();
+}
+
+function toggleSchemaExpand(slug) {
+  if (S.schemaRunning) return;
+  S.schemaExpandedSlug = S.schemaExpandedSlug === slug ? null : slug;
+  renderSchemaQueue();
+}
+
+function redoSchemaPage(slug) {
+  delete S.schema[slug];
+  S.schemaExpandedSlug = slug;
+  scheduleSave(); updateSchemaProgress(); renderSchemaQueue(); checkSchemaAllDone();
+}
+
+function toggleSchemaCode(slug) {
+  const el = document.getElementById('schema-code-'+slug);
+  const btn = document.getElementById('schema-code-btn-'+slug);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = 'block'; btn.textContent = 'Hide code'; }
+  else { el.style.display = 'none'; btn.textContent = 'Show code'; }
+}
+
+function renderSchemaQueue() {
+  let html = '';
+  S.pages.forEach((p, i) => {
+    const r = S.schema[p.slug]||{};
+    const isDone = !!r.schema, isErr = !!r.error;
+    const isRunning = S.schemaCurrentSlug === p.slug;
+    const isExpanded = S.schemaExpandedSlug === p.slug;
+    const cirStyle = isDone?'background:var(--dark)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-color:rgba(255,255,255,0.3);border-top-color:white"></span>':(i+1);
+    const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(0,0,0,0.18);':isErr?'border-color:rgba(229,57,53,0.22);':'';
+
+    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:6px;'+rowBorder+'">';
+
+    // Header row
+    html += '<div onclick="toggleSchemaExpand(\''+p.slug+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none">'
+      +'<div class="status-circle" style="'+cirStyle+';font-size:9px;font-weight:500;flex-shrink:0">'+cirContent+'</div>'
+      +'<div style="flex:1;min-width:0"><span style="font-size:13px;color:'+(isDone||isExpanded?'var(--dark)':'var(--n2)')+'">'+esc(p.page_name)+'</span>'
+      +(isErr&&!isExpanded?'<span style="font-size:11px;color:var(--error);margin-left:8px">Error</span>':'')
+      +'</div>'
+      +'<i class="ti '+(isExpanded?'ti-chevron-up':'ti-chevron-down')+'" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>'
+      +'</div>';
+
+    // Expanded body
+    if (isExpanded) {
+      html += '<div style="border-top:1px solid var(--border);padding:14px">';
+      if (isRunning) {
+        html += '<div style="display:flex;align-items:center;gap:8px;color:var(--n2);font-size:13px">'
+          +'<span class="spinner" style="width:12px;height:12px"></span> Generating schema markup...</div>'
+          +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopSchema()"><i class="ti ti-player-stop"></i> Stop</button></div>';
+      } else if (isDone) {
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+          +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.schema[\''+p.slug+'\']||{}).schema)"><i class="ti ti-copy"></i> Copy Schema</button>'
+          +'<button class="btn btn-ghost sm" id="schema-code-btn-'+p.slug+'" onclick="toggleSchemaCode(\''+p.slug+'\')">Show code</button>'
+          +'<button class="btn btn-danger sm" onclick="redoSchemaPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+          +'</div>'
+          +'<div id="schema-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.schema)+'</div>';
+        const curIdx = S.pages.findIndex(pp => pp.slug === p.slug);
+        const nextP = S.pages.find((pp,ii) => ii > curIdx && !(S.schema[pp.slug]||{}).schema);
+        if (nextP) {
+          html += '<div style="margin-top:10px;display:flex;gap:8px">'
+            +'<button class="btn btn-dark sm" onclick="S.schemaExpandedSlug=\''+nextP.slug+'\';renderSchemaQueue();runSchemaPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
+            +'<button class="btn btn-ghost sm" onclick="goTo(\'export\')">Skip to Export</button>'
+            +'</div>';
+        }
+      } else if (isErr) {
+        html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
+          +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
+      } else {
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
+          +'<div style="font-size:12px;color:var(--n2)">'+esc(p.page_type||'page')+' · JSON-LD + meta + OG</div>'
+          +'<button class="btn btn-dark sm" onclick="runSchemaPage(\''+p.slug+'\')"><i class="ti ti-code"></i> Generate Schema</button>'
+          +'</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  document.getElementById('schema-queue').innerHTML = html;
+}
+
+function updateSchemaProgress() {
+  const done = S.pages.filter(p => (S.schema[p.slug]||{}).schema).length;
+  const pct = S.pages.length > 0 ? Math.round(done/S.pages.length*100) : 0;
+  document.getElementById('schema-count-label').textContent = done+'/'+S.pages.length+' pages complete';
+  document.getElementById('schema-pct-label').textContent = pct+'%';
+  document.getElementById('schema-progress-fill').style.width = pct+'%';
+}
+
+function checkSchemaAllDone() {
+  const done = S.pages.filter(p => (S.schema[p.slug]||{}).schema).length;
+  if (done === S.pages.length && done > 0) {
+    document.getElementById('schema-done-label').textContent = 'All '+done+' pages complete';
+    document.getElementById('schema-all-done').style.display = 'flex';
+  } else { document.getElementById('schema-all-done').style.display = 'none'; }
+}
+
+// ── EXPORT ─────────────────────────────────────────────────────────
+let exportCopySlug = null, exportSchemaSlug = null;
+
+function renderExport() {
+  const pages = S.pages;
+  const copyCount = pages.filter(p => S.copy[p.slug]?.copy).length;
+  const schemaCount = pages.filter(p => S.schema[p.slug]?.schema).length;
+  document.getElementById('export-subtitle').textContent = S.setup?.client+' — '+pages.length+' pages ready to hand off.';
+  document.getElementById('export-stats').innerHTML = [
+    {val:pages.length, label:'Pages in Sitemap', icon:'📄'},
+    {val:copyCount, label:'Pages with Copy', icon:'✍️', green:true},
+    {val:schemaCount, label:'Pages with Schema', icon:'🏷️'},
+  ].map(s => '<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">'
+    +'<div style="width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:14px">'+s.icon+'</div>'
+    +'<div><div style="font-size:24px;font-weight:500;letter-spacing:-0.03em;color:'+(s.green?'var(--green)':'var(--dark)')+'">'+s.val+'</div>'
+    +'<div style="font-size:11px;color:var(--n2);margin-top:2px">'+s.label+'</div></div></div>'
+  ).join('');
+  document.querySelectorAll('#export-tab-bar .tab-btn')[0].textContent = 'Sitemap ('+pages.length+')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[1].textContent = 'Copy ('+copyCount+')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[2].textContent = 'Schema ('+schemaCount+')';
+  renderSitemapTab(); renderCopyTab(); renderSchemaTab();
+}
+
+function renderSitemapTab() {
+  const pages = S.pages;
+  let html = '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  pages.forEach((p,i) => {
+    const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+    html += '<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:'+(i<pages.length-1?'1px solid var(--border)':'none')+';background:'+(i%2===0?'var(--white)':'rgba(240,239,233,0.5)')+';align-items:center">';
+    html += '<span style="color:var(--n2);font-size:11px;width:18px;flex-shrink:0">'+(i+1)+'</span>';
+    html += '<div style="flex:1"><span style="color:var(--dark);font-size:13px">'+esc(p.page_name)+'</span><span style="color:var(--n2);font-size:11px;margin-left:8px">/'+esc(p.slug)+'</span><div style="font-size:11px;color:var(--n2);margin-top:2px">'+esc(p.primary_keyword)+'</div></div>';
+    html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority)+'</span></div>';
+  });
+  html += '</div>';
+  document.getElementById('export-sitemap-tab').innerHTML = html;
+}
+
+function renderCopyTab() {
+  const pages = S.pages.filter(p => S.copy[p.slug]?.copy);
+  if (!pages.length) { document.getElementById('export-copy-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No copy generated yet.</p>'; return; }
+  exportCopySlug = exportCopySlug || pages[0].slug;
+  let html = '<div style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(p => { html += '<button class="tab-btn '+(exportCopySlug===p.slug?'active':'')+'" style="flex-shrink:0" onclick="switchExportCopy(\''+esc(p.slug)+'\',this)">'+esc(p.page_name)+'</button>'; });
+  html += '</div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyToClip2(S.copy[exportCopySlug].copy)"><i class="ti ti-copy"></i> Copy HTML</button></div><div class="code-view" id="export-copy-view">'+esc(S.copy[exportCopySlug]?.copy||'')+'</div></div>';
+  document.getElementById('export-copy-tab').innerHTML = html;
+}
+
+function switchExportCopy(slug, btn) {
+  exportCopySlug = slug;
+  document.querySelectorAll('#export-copy-tab .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('export-copy-view').textContent = S.copy[slug]?.copy||'';
+}
+
+function renderSchemaTab() {
+  const pages = S.pages.filter(p => S.schema[p.slug]?.schema);
+  if (!pages.length) { document.getElementById('export-schema-tab').innerHTML = '<p style="color:var(--n2);font-size:13px">No schema generated yet.</p>'; return; }
+  exportSchemaSlug = exportSchemaSlug || pages[0].slug;
+  let html = '<div style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px">';
+  pages.forEach(p => { html += '<button class="tab-btn '+(exportSchemaSlug===p.slug?'active':'')+'" style="flex-shrink:0" onclick="switchExportSchema(\''+esc(p.slug)+'\',this)">'+esc(p.page_name)+'</button>'; });
+  html += '</div>';
+  html += '<div class="card"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn btn-ghost sm" onclick="copyToClip2(S.schema[exportSchemaSlug].schema)"><i class="ti ti-copy"></i> Copy Schema</button></div><div class="code-view" id="export-schema-view">'+esc(S.schema[exportSchemaSlug]?.schema||'')+'</div></div>';
+  document.getElementById('export-schema-tab').innerHTML = html;
+}
+
+function switchExportSchema(slug, btn) {
+  exportSchemaSlug = slug;
+  document.querySelectorAll('#export-schema-tab .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('export-schema-view').textContent = S.schema[slug]?.schema||'';
+}
+
+function switchTab(tab, btn) {
+  ['sitemap','copy','schema'].forEach(t => { document.getElementById('export-'+t+'-tab').style.display = t===tab?'block':'none'; });
+  document.querySelectorAll('.tab-bar .tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function downloadPackage() {
+  const pages = S.pages;
+  let out = S.setup.client+' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n'+'='.repeat(60)+'\n\nSITEMAP ('+pages.length+' pages)\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach((p,i) => { out += (i+1)+'. '+p.page_name+' (/'+p.slug+') ['+p.priority+']\n   Primary: '+p.primary_keyword+' | KD: '+(p.primary_kd||'?')+'\n\n'; });
+  out += '\n'+'='.repeat(60)+'\nCOPY BY PAGE\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach(p => { if(S.copy[p.slug]?.copy) out += '\n'+p.page_name.toUpperCase()+' · /'+p.slug+'\n'+'-'.repeat(30)+'\n'+S.copy[p.slug].copy+'\n\n'; });
+  out += '\n'+'='.repeat(60)+'\nSCHEMA BY PAGE\n'+'-'.repeat(40)+'\n\n';
+  pages.forEach(p => { if(S.schema[p.slug]?.schema) out += '\n'+p.page_name.toUpperCase()+' · /'+p.slug+'\n'+'-'.repeat(30)+'\n'+S.schema[p.slug].schema+'\n\n'; });
+  const blob = new Blob([out],{type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=S.setup.client.toLowerCase().replace(/\s+/g,'-')+'-website-build.txt'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── UTILS ──────────────────────────────────────────────────────────
+
+// ── Keyword Intent Classification ──────────────────────────────────────────
+// Rule-based, client-side, no API cost. Priority: local > transactional > commercial > informational > navigational
+function classifyIntent(kw, geo) {
+  if (!kw) return 'unknown';
+  const k = kw.toLowerCase().trim();
+  const g = (geo || '').toLowerCase().replace(/,.*$/, '').trim();
+
+  // Local — contains geo token or "near me"
+  if (g && k.includes(g)) return 'local';
+  if (/\bnear me\b/.test(k)) return 'local';
+  const geoTokens = ['vancouver','calgary','toronto','edmonton','winnipeg','victoria','burnaby','surrey','kelowna','bc','alberta','ontario'];
+  if (geoTokens.some(t => k.includes(t))) return 'local';
+
+  // Transactional — strong purchase/hire signals
+  if (/\b(hire|get a quote|get quote|pricing|cost|price|rates?|packages?|affordable|cheap|buy|order|book|schedule|for sale|near me)\b/.test(k)) return 'transactional';
+  if (/\b(agency|company|firm|consultant|freelancer|provider|contractor)s?\b/.test(k) && !/\bhow\b/.test(k)) return 'transactional';
+
+  // Informational — question/research signals
+  if (/^(how|what|why|when|where|who|which|can|does|is |are |do )/.test(k)) return 'informational';
+  if (/\b(guide|tutorial|tips?|ideas?|examples?|learn|training|course|explained?|definition|meaning|template|checklist|strategy|strategies)\b/.test(k)) return 'informational';
+
+  // Commercial — comparison/evaluation signals
+  if (/\b(best|top|vs\.?|compare|comparison|review|rating|alternative|alternative to|tools?|software|platform|solution)\b/.test(k)) return 'commercial';
+  if (/\b(services?|management|marketing|optimization|advertising|seo|ppc|sem|smm|social media|digital|web)\b/.test(k)) return 'commercial';
+
+  // Navigational — likely brand lookups (short, no modifiers)
+  if (k.split(' ').length <= 2) return 'navigational';
+
+  return 'commercial'; // safe default for B2B marketing terms
+}
+
+const INTENT_STYLE = {
+  local:         { label: 'local',    bg: 'rgba(14,165,233,0.1)',  color: '#0ea5e9',  border: 'rgba(14,165,233,0.3)'  },
+  transactional: { label: 'trans',    bg: 'rgba(21,142,29,0.1)',   color: '#158E1D',  border: 'rgba(21,142,29,0.3)'   },
+  commercial:    { label: 'comm',     bg: 'rgba(230,153,0,0.1)',   color: '#b87800',  border: 'rgba(230,153,0,0.3)'   },
+  informational: { label: 'info',     bg: 'rgba(139,92,246,0.1)',  color: '#7c3aed',  border: 'rgba(139,92,246,0.3)'  },
+  navigational:  { label: 'nav',      bg: 'rgba(0,0,0,0.05)',      color: '#666',     border: 'rgba(0,0,0,0.12)'      },
+  unknown:       { label: '?',        bg: 'rgba(0,0,0,0.04)',      color: '#999',     border: 'rgba(0,0,0,0.1)'       },
+};
+
+function intentBadge(kw, geo) {
+  const intent = classifyIntent(kw, geo);
+  const s = INTENT_STYLE[intent] || INTENT_STYLE.unknown;
+  return `<span style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid ${s.border};background:${s.bg};color:${s.color};white-space:nowrap;line-height:1.6;font-weight:500;letter-spacing:.02em">${s.label}</span>`;
+}
+// ───────────────────────────────────────────────────────────────────────────
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToClip2(el.textContent);}
+function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
+
+// ── INIT ───────────────────────────────────────────────────────────
+showProjects();
+</script>
+
+<!-- Image Picker Modal -->
+<div id="img-pick-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg);border-radius:10px;width:100%;max-width:780px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.25)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--dark)" id="img-pick-title">Select Image</div>
+        <div style="font-size:11px;color:var(--n2);margin-top:2px">Click any image to place it in this slot</div>
+      </div>
+      <button onclick="closeImagePicker()" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:18px;padding:4px;line-height:1"><i class="ti ti-x"></i></button>
+    </div>
+    <div id="img-pick-grid" style="overflow-y:auto;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;flex:1"></div>
+  </div>
+</div>
+
+</body>
+</html>brand: '\nYou are extracting brand data for: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n' + ctx + '\n\nReturn a JSON object. For colours and fonts, ONLY fill them if specific values appear in the reference documents \u2014 do NOT invent hex codes or font names, use empty array [] instead.\nReturn ONLY valid JSON, no preamble.\n{\n'
+      + b + '"brand_name": "' + (S.setup && S.setup.client || 'the brand name') + '",\n'
+      + b + '"slogan_or_tagline": "tagline from docs, or empty string",\n'
+      + b + '"brand_voice_style": "one of: direct playful premium technical warm other \u2014 best match",\n'
+      + b + '"tone_and_voice": "2-3 sentences on tone and personality from the strategy/brand docs",\n'
+      + b + '"words_to_use": ["words that fit this brand voice"],\n'
+      + b + '"words_to_avoid": ["words that conflict with this brand voice"],\n'
+      + b + '"key_differentiators": ["real differentiator from docs"],\n'
+      + b + '"proof_points": ["real proof point from docs \u2014 cert, award, stat. Empty array [] if none."],\n'
+      + b + '"brand_colours": ["hex codes from brand guide only. Empty array [] if not in docs."],\n'
+      + b + '"fonts": ["font names from brand guide only. Empty array [] if not in docs."]\n}'
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
       + b + '"schema_business_type": "LocalBusiness or Organization",\n'
@@ -4879,4 +8067,13 @@ showProjects();
 </div>
 
 </body>
-</html>
+</html>competitors: '\nYou are identifying REAL competitors for this business.\n'
+      + 'Business: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
+      + 'Website: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
+      + 'Geography: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
+      + ctx + '\n\n'
+      + 'Step 1: Extract any competitors explicitly named in the documents.\n'
+      + 'Step 2: Based on the industry, URL, and geography, identify additional real competitors in the same market.\n'
+      + 'Return 3-6 actual businesses. NEVER use placeholder names.\n'
+      + 'Return ONLY valid JSON, no preamble.\n{\n'
+      + b + '"competitors": [{"name": "Real Business Name", "url": "actualdomain.com", "why_they_win": "specific positioning/strength"}]\n}'
