@@ -798,13 +798,13 @@ function renderStageContent(stage) {
 }
 
 // ── API ────────────────────────────────────────────────────────────
-async function callClaude(system, user, onChunk) {
+async function callClaude(system, user, onChunk, maxTokens) {
   const res = await fetch('/api/claude', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens:2000,
+      max_tokens: maxTokens || 2000,
       stream:true,
       system,
       messages:[{role:'user',content:user}]
@@ -920,16 +920,14 @@ JSON array, each object:
   "is_structural": false,
   "priority": "P1|P2|P3",
   "primary_keyword": "EXACT string from list",
-  "primary_vol": 1600,
-  "primary_kd": 1,
-  "score": 737.8,
-  "keyword_cluster": "service_seo|brand_agency|service_ppc|location|industry|informational",
-  "supporting_keywords": [{"kw": "exact string", "vol": 2900, "kd": 4}],
-  "search_intent": "commercial|transactional|informational|navigational",
-  "word_count_target": 2500,
-  "rationale": "only if vol < 50 or is_structural",
-  "notes": "brief build note"
+  "primary_vol": 0,
+  "primary_kd": 0,
+  "score": 0,
+  "supporting_keywords": ["exact string"],
+  "search_intent": "commercial|transactional|informational|navigational"
 }
+
+Keep output minimal: omit rationale, notes, keyword_cluster, word_count_target. Every extra field = fewer pages fit in context.
 
 No markdown. No backticks. No preamble. Raw JSON array only.`,
 
@@ -2128,22 +2126,32 @@ function attemptSitemapParse() {
   const streamEl = document.getElementById('sitemap-stream');
   const wrap = document.getElementById('sitemap-stream-wrap');
   if (!streamEl) return;
-  const text = streamEl.textContent;
+  let text = streamEl.textContent.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
   let parsed = null;
-  try { parsed = JSON.parse(text.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+
+  // 1. Direct parse
+  try { parsed = JSON.parse(text); } catch(e) {}
+
+  // 2. Extract array
+  if (!parsed) { try { const s=text.indexOf('['),e=text.lastIndexOf(']'); if(s>=0&&e>s) parsed=JSON.parse(text.slice(s,e+1)); } catch(e) {} }
+
+  // 3. Truncated array: find last closing brace and append ]
   if (!parsed) {
     try {
-      const s = text.indexOf('['), e = text.lastIndexOf(']');
-      if (s >= 0 && e > s) parsed = JSON.parse(text.slice(s, e+1));
+      const s = text.indexOf('[');
+      if (s >= 0) {
+        let end = text.length - 1;
+        while (end > s && text[end] !== '}') end--;
+        if (end > s) parsed = JSON.parse(text.slice(s, end + 1) + ']');
+      }
     } catch(e) {}
   }
+
+  // 4. Wrapped object
   if (!parsed) {
     try {
-      const s = text.indexOf('{'), e = text.lastIndexOf('}');
-      if (s >= 0 && e > s) {
-        const obj = JSON.parse(text.slice(s, e+1));
-        parsed = Array.isArray(obj) ? obj : (obj.pages || obj.sitemap || null);
-      }
+      const s=text.indexOf('{'),e=text.lastIndexOf('}');
+      if(s>=0&&e>s){const obj=JSON.parse(text.slice(s,e+1));parsed=Array.isArray(obj)?obj:(obj.pages||obj.sitemap||null);}
     } catch(e) {}
   }
   if (parsed) {
@@ -2213,7 +2221,7 @@ async function runSitemap(withRevisions) {
   if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n' + revNote.value;
 
   try {
-    const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
+    const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; }, 8000);
     const parsed = safeParseJSON(result);
     if (Array.isArray(parsed) && parsed.length) {
       S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
