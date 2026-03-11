@@ -1590,7 +1590,7 @@ function renderRKeywords(el) {
 
 // ── AI Enrichment ─────────────────────────────────────────────────
 
-async function enrichAll() {
+async function enrichAll(forceAll) {
   const tabs = ['business','audience','brand','schema','competitors'];
   const btn = document.getElementById('research-enrich-btn');
   const statusEl = document.getElementById('research-enrich-status');
@@ -1608,66 +1608,148 @@ async function enrichAll() {
     if (progEl) progEl.textContent = (i+1)+' / '+tabs.length;
     renderResearchNav();
     renderResearchTabContent();
-    await enrichRTab(tab);
+    await enrichRTab(tab, forceAll);
     _enrichDone.add(tab);
   }
   _enriching = false;
   if (msgEl) msgEl.textContent = 'All sections enriched ✓';
   if (progEl) progEl.textContent = '';
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; btn.setAttribute('onclick','enrichAll(true)'); }
   renderResearchNav();
   setTimeout(function(){
     if (statusEl) statusEl.style.display = 'none';
-    if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI';
+    if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Enrich with AI'; btn.setAttribute('onclick','enrichAll()');
   }, 2500);
 }
 
-async function enrichRTab(tab) {
-  const r = S.research || researchDefaults();
-  const s = S.setup || {};
+// Smart merge: only fill empty/null/empty-array fields unless forceAll=true
+function mergeEnriched(target, source, forceAll) {
+  Object.keys(source).forEach(function(key) {
+    if (key === 'geography') return;
+    var existing = target[key];
+    var incoming = source[key];
+    if (incoming === null || incoming === undefined) return;
+    if (!forceAll) {
+      if (typeof existing === 'string' && existing.trim()) return;
+      if (Array.isArray(existing) && existing.length > 0) return;
+    }
+    target[key] = incoming;
+  });
+}
 
+function parseEnrichResult(result) {
+  var parsed = null;
+  try { parsed = JSON.parse(result.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
+  if (!parsed) {
+    try {
+      var si = result.indexOf('{'), ei = result.lastIndexOf('}');
+      if (si >= 0 && ei > si) parsed = JSON.parse(result.slice(si, ei+1));
+    } catch(e) {}
+  }
+  return parsed;
+}
 
-  const ctx = buildEnrichCtx();
-  const sys = 'You are a senior digital marketing strategist at Setsail Marketing. Analyse the client context provided and return ONLY valid JSON with the requested fields. No preamble. No markdown fences. Raw JSON only.';
+async function enrichRTab(tab, forceAll) {
+  if (!S.research) S.research = researchDefaults();
+  var r = S.research;
+  var s = S.setup || {};
+  var ctx = buildEnrichCtx();
 
-  const prompts = {
-    business: ctx+'\n\nReturn JSON with these fields:\n{"business_overview":"2-3 sentence overview","value_proposition":"core customer promise","industry":"","sub_industry":"","business_model":"b2b|b2c|b2b2c|marketplace|saas|nonprofit","years_in_business":"","team_size":"","primary_services":["service1"],"pricing_notes":"","pricing_model":"quote_based|fixed_menu|subscription","top_offers":[{"offer_name":"","priority":"1","notes":""}],"strategic_recommendations":["rec1","rec2"]}',
+  var sys = 'You are a senior digital marketing strategist at Setsail Marketing. Extract REAL information from the provided documents. Do NOT use placeholder text. Return ONLY valid JSON — no preamble, no markdown fences, no backticks.';
 
-    audience: ctx+'\n\nReturn JSON with these fields:\n{"primary_audience_description":"detailed ICP profile","buyer_roles_titles":["title1"],"target_geography":"local|regional|national|international","best_customer_examples":"archetype description","pain_points_top5":["pain1","pain2","pain3","pain4","pain5"],"objections_top5":["obj1","obj2","obj3","obj4","obj5"],"lead_channels_today":["channel1"],"sales_cycle_length":"same_day|1_7_days|14_30_days|30_plus_days","primary_goal":"leads|sales|bookings|traffic|awareness","geography":{"primary":"City, Province","secondary":["City2"]},"target_audience":[{"persona":"","pain_points":[],"motivators":[]}]}',
+  var b = '\n  ';
+  var prompts = {
+    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the documents, not placeholder text:\n{\n'
+      + b + '"business_overview": "2-3 sentence factual description of what this business does",\n'
+      + b + '"value_proposition": "the core promise to customers in one sentence",\n'
+      + b + '"industry": "e.g. Healthcare, Construction, Legal Services",\n'
+      + b + '"sub_industry": "specific niche within that industry",\n'
+      + b + '"business_model": "one of: b2b b2c b2b2c marketplace saas nonprofit",\n'
+      + b + '"years_in_business": "number as string or empty string if unknown",\n'
+      + b + '"team_size": "approximate headcount as string or empty string if unknown",\n'
+      + b + '"primary_services": ["actual service 1", "actual service 2", "actual service 3"],\n'
+      + b + '"pricing_notes": "how pricing works",\n'
+      + b + '"pricing_model": "one of: quote_based fixed_menu subscription",\n'
+      + b + '"top_offers": [{"offer_name": "specific offer name", "priority": "1", "notes": "why this is a top offer"}],\n'
+      + b + '"strategic_recommendations": ["specific rec 1", "specific rec 2", "specific rec 3"]\n}',
 
-    brand: ctx+'\n\nReturn JSON with these fields:\n{"brand_name":"","slogan_or_tagline":"","brand_voice_style":"direct|playful|premium|technical|warm|other","tone_and_voice":"brand voice description","words_to_use":["word1"],"words_to_avoid":["word1"],"key_differentiators":["diff1","diff2","diff3"],"proof_points":["proof1","proof2"]}',
+    audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values:\n{\n'
+      + b + '"primary_audience_description": "2-3 sentence profile of who buys from this business",\n'
+      + b + '"buyer_roles_titles": ["decision maker title 1", "decision maker title 2"],\n'
+      + b + '"target_geography": "one of: local regional national international",\n'
+      + b + '"best_customer_examples": "description of the ideal customer archetype",\n'
+      + b + '"pain_points_top5": ["specific pain 1", "specific pain 2", "specific pain 3", "specific pain 4", "specific pain 5"],\n'
+      + b + '"objections_top5": ["real objection 1", "real objection 2", "real objection 3", "real objection 4", "real objection 5"],\n'
+      + b + '"lead_channels_today": ["current lead source 1", "current lead source 2"],\n'
+      + b + '"sales_cycle_length": "one of: same_day 1_7_days 14_30_days 30_plus_days",\n'
+      + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
+      + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
+      + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
 
-    schema: ctx+'\n\nReturn JSON with these fields:\n{"schema_business_type":"LocalBusiness|Organization","schema_primary_category":"google business category","schema_price_range":"$$","schema_has_physical_locations":false,"schema_city":"","schema_region":"","schema_country":"CA","social_profiles":[{"platform":"","url":""}],"schema_services":[{"service_name":"","service_page_url":"","service_description_short":""}],"faqs":[{"question":"","answer":""}],"has_service_pages":"Yes|Planned|No","has_blog":"Yes|Planned|No","has_faq_section":"Yes|Planned|No"}',
+    brand: ctx + '\n\nExtract brand identity and positioning. Look especially in brand guides. Return a JSON object:\n{\n'
+      + b + '"brand_name": "the actual brand or company name",\n'
+      + b + '"slogan_or_tagline": "tagline if one exists else empty string",\n'
+      + b + '"brand_voice_style": "one of: direct playful premium technical warm other",\n'
+      + b + '"tone_and_voice": "2-3 sentences on how this brand communicates — tone, language, personality",\n'
+      + b + '"words_to_use": ["preferred word 1", "preferred word 2"],\n'
+      + b + '"words_to_avoid": ["word to avoid 1", "word to avoid 2"],\n'
+      + b + '"key_differentiators": ["differentiator 1", "differentiator 2", "differentiator 3"],\n'
+      + b + '"proof_points": ["award or credential 1", "stat or social proof 2"],\n'
+      + b + '"brand_colours": ["#hexcode1", "#hexcode2"],\n'
+      + b + '"fonts": ["Primary Font", "Secondary Font"]\n}',
 
-    competitors: ctx+'\nKNOWN COMPETITORS: '+(s.competitors||'N/A')+'\n\nReturn JSON:\n{"competitors":[{"name":"","url":"","why_they_win":""}]}'
+    schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
+      + b + '"schema_business_type": "LocalBusiness or Organization",\n'
+      + b + '"schema_primary_category": "Google Business Profile category e.g. Marketing agency",\n'
+      + b + '"schema_price_range": "e.g. $$ or $$$ or empty string",\n'
+      + b + '"schema_has_physical_locations": true or false,\n'
+      + b + '"schema_street_address": "street address or empty string",\n'
+      + b + '"schema_city": "city",\n'
+      + b + '"schema_region": "province or state",\n'
+      + b + '"schema_postal_code": "postal or zip",\n'
+      + b + '"schema_country": "2-letter code e.g. CA",\n'
+      + b + '"schema_payment_methods": ["Credit Card", "Invoice"],\n'
+      + b + '"social_profiles": [{"platform": "Facebook", "url": "https://..."}],\n'
+      + b + '"schema_services": [{"service_name": "actual service", "service_page_url": "/services/slug", "service_description_short": "one sentence"}],\n'
+      + b + '"faqs": [{"question": "real customer question 1", "answer": "direct answer"}, {"question": "real customer question 2", "answer": "direct answer"}],\n'
+      + b + '"has_service_pages": "Yes or Planned or No",\n'
+      + b + '"has_blog": "Yes or Planned or No",\n'
+      + b + '"has_faq_section": "Yes or Planned or No"\n}',
+
+    competitors: ctx + '\n\nIdentify competitors. Use competitors named in the documents. If not specified, infer likely competitors from industry and geography.\nReturn a JSON object:\n{\n'
+      + b + '"competitors": [\n'
+      + b + '  {"name": "Competitor Name", "url": "competitor.com", "why_they_win": "specific reason — positioning, price, brand, etc."},\n'
+      + b + '  {"name": "Competitor 2", "url": "competitor2.com", "why_they_win": "specific reason"}\n'
+      + b + ']\n}\nInclude 3-5 real competitors.'
   };
 
   if (!prompts[tab]) return;
 
   try {
-    const result = await callClaude(sys, prompts[tab], null);
-    let parsed = null;
-    try { parsed = JSON.parse(result.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
-    if (!parsed) {
-      try { const s2=result.indexOf('{'),e2=result.lastIndexOf('}'); if(s2>=0&&e2>s2) parsed=JSON.parse(result.slice(s2,e2+1)); } catch(e) {}
-    }
+    var result = await callClaude(sys, prompts[tab], null);
+    var parsed = parseEnrichResult(result);
     if (parsed) {
-      // Deep merge geography
-      if (parsed.geography && S.research.geography) {
-        Object.assign(S.research.geography, parsed.geography);
+      if (parsed.geography) {
+        if (!r.geography) r.geography = {};
+        if (forceAll || !r.geography.primary) r.geography.primary = parsed.geography.primary || r.geography.primary;
+        if (forceAll || !(r.geography.secondary && r.geography.secondary.length)) {
+          r.geography.secondary = parsed.geography.secondary || r.geography.secondary;
+        }
         delete parsed.geography;
       }
-      Object.assign(S.research, parsed);
+      mergeEnriched(r, parsed, forceAll);
       scheduleSave();
       renderResearchTabContent();
+    } else {
+      console.warn('enrichRTab ['+tab+']: parse failed. Raw:', result.slice(0,300));
     }
   } catch(e) {
-    const _emsg = document.getElementById('research-enrich-msg');
+    var _emsg = document.getElementById('research-enrich-msg');
     if (_emsg) _emsg.textContent = 'Error on ' + tab + ': ' + e.message;
     console.error('enrichRTab ['+tab+']:', e);
-    // Intentionally not rethrowing — enrichAll continues to next tab
   }
 }
+
 
 async function runResearch() {
   await enrichAll();
