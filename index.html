@@ -244,33 +244,8 @@ textarea.inp{resize:vertical}
       <h2 class="ph">Site Snapshot</h2>
       <p class="psub">Ahrefs audit of the existing site — captures what's ranking, what has backlinks, and builds the 301 redirect map before we touch anything.</p>
 
-      <!-- Domain metrics bar -->
-      <div id="snapshot-metrics-bar" style="display:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-dr">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Domain Rating</div>
-        </div>
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-traffic">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Monthly Org. Traffic</div>
-        </div>
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-keywords">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Ranking Keywords</div>
-        </div>
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-refdomains">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Referring Domains</div>
-        </div>
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--dark)" id="snap-backlinks">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Live Backlinks</div>
-        </div>
-        <div class="card" style="padding:12px 14px;text-align:center">
-          <div style="font-size:22px;font-weight:600;color:var(--green)" id="snap-cost">—</div>
-          <div style="font-size:11px;color:var(--n2);margin-top:2px">Traffic Value/mo</div>
-        </div>
-      </div>
+      <!-- Domain metrics bar — JS rendered -->
+      <div id="snapshot-metrics-bar" style="display:none;margin-bottom:20px"></div>
 
       <!-- Run button / status -->
       <div id="snapshot-run-area" style="margin-bottom:20px">
@@ -1045,14 +1020,24 @@ function renderSnapshot() {
   if (!snap) return;
   const m = snap.domainMetrics || {};
 
-  // Metrics bar
+  // Metrics bar — fully JS rendered so HTML cache never matters
   const bar = document.getElementById('snapshot-metrics-bar');
   if (bar) {
+    const metrics = [
+      { id: 'snap-traffic',   label: 'Monthly Org. Traffic', value: m.orgTraffic    ? m.orgTraffic.toLocaleString()    : '0', color: 'var(--dark)' },
+      { id: 'snap-keywords',  label: 'Ranking Keywords',     value: m.orgKeywords   ? m.orgKeywords.toLocaleString()   : '0', color: 'var(--dark)' },
+      { id: 'snap-refdomains',label: 'Referring Domains',    value: m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '—', color: 'var(--dark)' },
+      { id: 'snap-backlinks', label: 'Live Backlinks',       value: m.liveBacklinks  != null ? m.liveBacklinks.toLocaleString()  : '—', color: 'var(--dark)' },
+    ];
     bar.style.display = 'grid';
-    document.getElementById('snap-traffic').textContent = m.orgTraffic ? m.orgTraffic.toLocaleString() : '0';
-    document.getElementById('snap-keywords').textContent = m.orgKeywords ? m.orgKeywords.toLocaleString() : '0';
-    document.getElementById('snap-refdomains').textContent = m.liveRefdomains != null ? m.liveRefdomains.toLocaleString() : '—';
-    document.getElementById('snap-backlinks').textContent = m.liveBacklinks != null ? m.liveBacklinks.toLocaleString() : '—';
+    bar.style.gridTemplateColumns = 'repeat(auto-fit,minmax(130px,1fr))';
+    bar.style.gap = '10px';
+    bar.innerHTML = metrics.map(c =>
+      `<div class="card" style="padding:12px 14px;text-align:center">
+        <div id="${c.id}" style="font-size:22px;font-weight:600;color:${c.color}">${c.value}</div>
+        <div style="font-size:11px;color:var(--n2);margin-top:2px">${c.label}</div>
+      </div>`
+    ).join('');
   }
 
   // Top pages table
