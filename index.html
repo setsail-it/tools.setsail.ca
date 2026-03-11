@@ -747,7 +747,7 @@ function renderStageBar(current) {
   let html = '';
   STAGES.forEach((s, i) => {
     const done = i < idx, active = i === idx;
-    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
+    const canClick = i < idx || (i > idx && S.pages.length > 0);
     const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
     const icon = done ? 'ti-check' : s.icon;
     html += '<div class="' + cls + '" onclick="' + (canClick ? 'navToStage(\'' + s.id + '\')' : '') + '" style="' + (canClick && !active ? '' : 'cursor:default') + '">'
@@ -964,7 +964,7 @@ function renderMobileStageList() {
   let html = '';
   STAGES.forEach((s, i) => {
     const done = i < idx, active = i === idx;
-    const canClick = i < idx || (i > idx && S.pages.length > 0 && i <= 5) || (i === 6 && S.pages.length > 0);
+    const canClick = i < idx || (i > idx && S.pages.length > 0);
     const cls = 'mobile-stage-item' + (active?' active':done?' done':'');
     const icon = done ? 'ti-check' : s.icon;
     html += '<div class="'+cls+'" '+(canClick?'onclick="navToStage(\''+s.id+'\');closeMobileNav()"':'')+' style="'+(canClick?'':'opacity:0.4;cursor:default')+'">'
