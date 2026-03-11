@@ -1769,7 +1769,10 @@ async function enrichRTab(tab, forceAll) {
       + '2. Real domains from DataForSEO data (if any was prepended to this prompt).\n'
       + '3. Your own knowledge of real businesses competing in this industry and geography.\n'
       + 'You MUST return a full list. Never return an empty array. Use your training knowledge to fill gaps.\n'
-      + 'For each: provide the actual business name, full URL with https://, and a 1-2 sentence specific competitive strength.\n'
+      + 'ONLY include actual competing businesses (agencies, consultancies, service providers).\n'
+      + 'EXCLUDE: review directories (Clutch, DesignRush, UpCity), SEO tools (Semrush, Ahrefs, Moz), '
+      + 'job boards, news sites, social platforms, or any site that is not a direct service competitor.\n'
+      + 'For each: actual business name, full URL with https://, 1-2 sentence specific competitive strength.\n'
       + 'Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength"}]\n}'
   };

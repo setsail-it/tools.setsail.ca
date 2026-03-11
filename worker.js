@@ -596,12 +596,25 @@ export default {
           });
         }
         const items = task?.result?.[0]?.items || [];
-        const competitors = items.slice(0, 8).map(item => ({
+        // Exclude directories, review platforms, tools, and job sites — not real competitors
+        const EXCLUDED_DOMAINS = [
+          'clutch.co','designrush.com','semrush.com','ahrefs.com','moz.com','hubspot.com',
+          'digitalagencynetwork.com','upcity.com','expertise.com','goodfirms.co','g2.com',
+          'capterra.com','trustpilot.com','yelp.com','bbb.org','yellowpages.com','bark.com',
+          'sortlist.com','agencyspotter.com','wadline.com','featured.com','forbes.com',
+          'indeed.com','glassdoor.com','linkedin.com','reddit.com','quora.com','youtube.com',
+          'wikipedia.org','wordstream.com','searchengineland.com','searchenginejournal.com',
+          'neilpatel.com','backlinko.com','moz.com','sproutsocial.com','hootsuite.com'
+        ];
+        const competitors = items.map(item => ({
           domain: item.domain || '',
           intersections: item.metrics?.organic?.count || 0,
           etv: Math.round(item.metrics?.organic?.etv || 0),
           keywords: (item.metrics?.organic?.pos_1 || 0) + (item.metrics?.organic?.pos_2_3 || 0) + (item.metrics?.organic?.pos_4_10 || 0)
-        })).filter(c => c.domain && c.domain !== cleanDomain);
+        })).filter(c => {
+          if (!c.domain || c.domain === cleanDomain) return false;
+          return !EXCLUDED_DOMAINS.some(ex => c.domain === ex || c.domain.endsWith('.' + ex));
+        }).slice(0, 8);
 
         return new Response(JSON.stringify({ competitors, source: 'dataforseo-competitors', target: cleanDomain }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
