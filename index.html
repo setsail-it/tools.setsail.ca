@@ -2854,6 +2854,54 @@ function _overrideQuestionAssignment(qi, slug) {
   }
 }
 
+function _addQuestionToSitemap(qi) {
+  if (!S.contentIntel || !S.contentIntel.paa || !S.contentIntel.paa.questions) return;
+  var qObj = S.contentIntel.paa.questions[qi];
+  if (!qObj || !qObj.assignedSlug) return;
+  // Push to S.kwResearch pending sitemap suggestions
+  if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [], paaQuestions: [] };
+  if (!S.kwResearch.sitemapSuggestions) S.kwResearch.sitemapSuggestions = [];
+  var slug = qObj.assignedSlug.replace(/^\//,'');
+  var exists = S.kwResearch.sitemapSuggestions.some(function(s) { return s.slug === slug; });
+  if (exists) return;
+  S.kwResearch.sitemapSuggestions.push({
+    slug: slug,
+    question: qObj.question,
+    source: 'aeo_question',
+    contentType: qObj.contentType || 'new_blog',
+    addedAt: Date.now()
+  });
+  qObj.addedToSitemap = true;
+  scheduleSave();
+  renderKwTabContent();
+}
+
+function _getCoverageSlugs() {
+  // Build full set of slugs that are covered by clusters or existing pages
+  var covered = new Set();
+  if (S.kwResearch && S.kwResearch.clusters) {
+    S.kwResearch.clusters.forEach(function(c) {
+      if (c.qualifies === false) return;
+      if (c.existingSlug) covered.add(c.existingSlug.replace(/^\//,''));
+      if (c.suggestedSlug) covered.add(c.suggestedSlug.replace(/^\//,''));
+      if (c.slug) covered.add(c.slug.replace(/^\//,''));
+    });
+  }
+  if (S.snapshot && S.snapshot.topPages) {
+    S.snapshot.topPages.forEach(function(p) {
+      if (p.slug) covered.add(p.slug.replace(/^\//,''));
+    });
+  }
+  if (S.pages && S.pages.length) {
+    S.pages.forEach(function(p) {
+      if (p.slug) covered.add(p.slug.replace(/^\//,''));
+    });
+  }
+  // Always consider core structural pages covered
+  ['', 'about', 'about-us', 'contact', 'services', 'faq', 'pricing'].forEach(function(s) { covered.add(s); });
+  return covered;
+}
+
 function _renderKwQuestionsTab() {
   // Get questions as full objects (with vol/assignment if validated)
   var rawQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) ? S.contentIntel.paa.questions : [];
@@ -2890,14 +2938,20 @@ function _renderKwQuestionsTab() {
       sorted.sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
     }
 
+    // Coverage data
+    var hasClusters = !!(S.kwResearch && S.kwResearch.clusters && S.kwResearch.clusters.length);
+    var coveredSlugs = hasClusters ? _getCoverageSlugs() : null;
+
     // Table header
+    var cols = '1fr ' + (isValidated ? '80px 160px ' : '') + (hasClusters ? '100px ' : '') + '100px';
     html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-    html += '<div style="display:grid;grid-template-columns:1fr ' + (isValidated ? '80px 160px ' : '') + '100px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3);gap:8px">';
+    html += '<div style="display:grid;grid-template-columns:' + cols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3);gap:8px">';
     html += '<span>Question</span>';
     if (isValidated) {
       html += '<span>Vol</span>';
       html += '<span>Assigned Page</span>';
     }
+    if (hasClusters) html += '<span>Coverage</span>';
     html += '<span>Intent</span>';
     html += '</div>';
 
@@ -2919,7 +2973,23 @@ function _renderKwQuestionsTab() {
       var intentLabel = intent === 'informational' ? 'Blog / FAQ' : 'Service / Landing';
 
       var rowBg = i % 2 ? 'background:var(--bg)' : '';
-      html += '<div style="display:grid;grid-template-columns:1fr ' + (isValidated ? '80px 160px ' : '') + '100px;padding:8px 12px;border-bottom:1px solid var(--border);' + rowBg + ';gap:8px;align-items:center">';
+
+      // Coverage check
+      var assignedSlugClean = assignedSlug ? assignedSlug.replace(/^\//, '') : null;
+      var isCovered = false;
+      var isGap = false;
+      if (hasClusters && assignedSlugClean) {
+        // Check exact + fuzzy: structural pages always covered, others check set
+        isCovered = coveredSlugs.has(assignedSlugClean);
+        // Fuzzy: check if any covered slug starts with the same first segment
+        if (!isCovered) {
+          var firstSeg = assignedSlugClean.split('/')[0];
+          coveredSlugs.forEach(function(s) { if (s.split('/')[0] === firstSeg && firstSeg.length > 2) isCovered = true; });
+        }
+        isGap = !isCovered;
+      }
+
+      html += '<div style="display:grid;grid-template-columns:' + cols + ';padding:8px 12px;border-bottom:1px solid var(--border);' + rowBg + ';gap:8px;align-items:center">';
 
       // Question text
       html += '<div style="font-size:12px;color:var(--dark)">' + esc(q) + '</div>';
@@ -2938,7 +3008,28 @@ function _renderKwQuestionsTab() {
         }
       }
 
-      // Intent badge + add to seeds
+      // Coverage cell
+      if (hasClusters) {
+        if (!assignedSlug) {
+          html += '<div style="font-size:11px;color:var(--n2)">—</div>';
+        } else if (isCovered) {
+          html += '<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--green)"><i class="ti ti-circle-check-filled"></i> Covered</div>';
+        } else {
+          var alreadyAdded = qObj.addedToSitemap;
+          if (alreadyAdded) {
+            html += '<div style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--n3)"><i class="ti ti-check"></i> In sitemap</div>';
+          } else {
+            html += '<div style="display:flex;flex-direction:column;gap:3px">';
+            html += '<span style="font-size:10px;color:var(--warn);display:flex;align-items:center;gap:3px"><i class="ti ti-alert-triangle"></i> Gap</span>';
+            if (qObj.contentType === 'new_blog' || qObj.contentType === 'sitewide_faq') {
+              html += '<button onclick="_addQuestionToSitemap(' + origIdx + ')" style="font-size:10px;padding:2px 7px;border:1px solid var(--warn);background:rgba(255,160,0,0.08);color:var(--warn);border-radius:4px;cursor:pointer;white-space:nowrap">+ Sitemap</button>';
+            }
+            html += '</div>';
+          }
+        }
+      }
+
+      // Intent badge
       html += '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">';
       html += '<span style="font-size:10px;color:' + intentClr + '">' + intentLabel + '</span>';
       html += '</div>';
@@ -2952,8 +3043,26 @@ function _renderKwQuestionsTab() {
       html += '<strong style="color:var(--dark)"><i class="ti ti-bolt"></i> Run Validate & Assign</strong> to check search volumes and map each question to a page. Questions with vol > 0 become content priorities; all questions feed FAQ schema in Stage 8.';
       html += '</div>';
     } else {
-      html += '<div style="margin-top:12px;padding:10px 14px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--n2);border:1px solid var(--border)">';
-      html += '<strong style="color:var(--dark)">AEO pipeline:</strong> Questions tagged "New page" will appear as suggested blog/FAQ pages in Stage 5 (Sitemap). All questions feed FAQ schema per page in Stage 8 (Schema).';
+      var gapCount = hasClusters ? normalised.filter(function(q) {
+        if (!q.assignedSlug) return false;
+        var s = q.assignedSlug.replace(/^\//, '');
+        if (coveredSlugs.has(s)) return false;
+        var first = s.split('/')[0];
+        var fuzzy = false;
+        coveredSlugs.forEach(function(cs) { if (cs.split('/')[0] === first && first.length > 2) fuzzy = true; });
+        return !fuzzy;
+      }).length : 0;
+      var suggCount = (S.kwResearch && S.kwResearch.sitemapSuggestions) ? S.kwResearch.sitemapSuggestions.length : 0;
+      html += '<div style="margin-top:12px;padding:10px 14px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--n2);border:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap">';
+      if (hasClusters && gapCount > 0) {
+        html += '<span style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> <strong>' + gapCount + ' content gaps</strong> — questions with no page to answer them</span>';
+      } else if (hasClusters) {
+        html += '<span style="color:var(--green)"><i class="ti ti-circle-check-filled"></i> All questions are covered by existing or planned pages</span>';
+      }
+      if (suggCount > 0) {
+        html += '<span style="color:var(--primary)"><i class="ti ti-file-plus"></i> <strong>' + suggCount + ' page' + (suggCount > 1 ? 's' : '') + '</strong> queued for Stage 5 Sitemap</span>';
+      }
+      html += '<span style="color:var(--n2)"><i class="ti ti-schema"></i> All questions feed FAQ schema in Stage 8</span>';
       html += '</div>';
     }
   }
