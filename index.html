@@ -887,16 +887,22 @@ async function callClaude(system, user, onChunk, maxTokens) {
 }
 
 function safeParseJSON(text) {
-  // Try direct parse after stripping fences
-  try { return JSON.parse(text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim()); } catch(e) {}
-  // Extract array
-  try { const m = text.match(/(\[[\s\S]*\])/); if(m) return JSON.parse(m[1]); } catch(e) {}
-  // Extract object
-  try { const m = text.match(/(\{[\s\S]*\})/); if(m) return JSON.parse(m[1]); } catch(e) {}
-  // Find first [ or { to last ] or }
+  // Strip fences
+  text = text.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
+  // Helper: strip trailing commas before ] or }
+  function fixTrailing(s) { return s.replace(/,\s*([\]\}])/g, '$1'); }
+  // 1. Direct parse
+  try { return JSON.parse(text); } catch(e) {}
+  // 2. Direct parse with trailing comma fix
+  try { return JSON.parse(fixTrailing(text)); } catch(e) {}
+  // 3. Extract array slice then fix
+  try { const s=text.indexOf('['),e=text.lastIndexOf(']'); if(s>=0&&e>s){ const sl=text.slice(s,e+1); return JSON.parse(fixTrailing(sl)); } } catch(e) {}
+  // 4. Extract object
+  try { const s=text.indexOf('{'),e=text.lastIndexOf('}'); if(s>=0&&e>s){ const sl=text.slice(s,e+1); return JSON.parse(fixTrailing(sl)); } } catch(e) {}
+  // 5. Truncated array — find last } and close the array
   try {
-    const s = text.search(/[\[{]/);
-    if(s>=0){const e=Math.max(text.lastIndexOf(']'),text.lastIndexOf('}'));if(e>s)return JSON.parse(text.slice(s,e+1));}
+    const s = text.indexOf('[');
+    if(s>=0){ let e=text.length-1; while(e>s&&text[e]!=='}')e--; if(e>s) return JSON.parse(fixTrailing(text.slice(s,e+1))+']'); }
   } catch(e) {}
   return null;
 }
@@ -3397,6 +3403,32 @@ async function generateBlogSeedsFromQuestions() {
   }
 }
 
+function attemptSitemapParseFromText(text) {
+  // Shared parse logic — returns true if successful
+  function fixTrailing(s) { return s.replace(/,\s*([\]\}])/g, '$1'); }
+  let parsed = null;
+  try { parsed = JSON.parse(fixTrailing(text.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim())); } catch(e) {}
+  if (!parsed) {
+    try { const s=text.indexOf('['),e=text.lastIndexOf(']'); if(s>=0&&e>s) parsed=JSON.parse(fixTrailing(text.slice(s,e+1))); } catch(e) {}
+  }
+  if (!parsed) {
+    try { const s=text.indexOf('['); if(s>=0){ let e=text.length-1; while(e>s&&text[e]!=='}')e--; if(e>s) parsed=JSON.parse(fixTrailing(text.slice(s,e+1))+']'); } } catch(e) {}
+  }
+  if (!parsed) {
+    try { const s=text.indexOf('{'),e=text.lastIndexOf('}'); if(s>=0&&e>s){const obj=JSON.parse(fixTrailing(text.slice(s,e+1)));parsed=Array.isArray(obj)?obj:(obj.pages||obj.sitemap||null);} } catch(e) {}
+  }
+  if (parsed && Array.isArray(parsed) && parsed.length) {
+    S.pages = parsed;
+    enrichSitemapWithKwData();
+    document.getElementById('sitemap-stream-wrap').style.display = 'none';
+    renderSitemapResults(false);
+    scheduleSave();
+    enrichSitemapWithLiveData();
+    return true;
+  }
+  return false;
+}
+
 function attemptSitemapParse() {
   const streamEl = document.getElementById('sitemap-stream');
   const wrap = document.getElementById('sitemap-stream-wrap');
@@ -3496,6 +3528,9 @@ async function runSitemap(withRevisions) {
       S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
     } else {
       streamEl.textContent = result;
+      // Auto-attempt parse before showing error
+      const autoRetry = attemptSitemapParseFromText(result);
+      if (autoRetry) { wrap.style.display = 'none'; return; }
       // Add retry button
       const retryDiv = document.createElement('div');
       retryDiv.style.cssText = 'padding:10px;background:rgba(0,0,0,0.3);display:flex;gap:8px;align-items:center;flex-wrap:wrap';
