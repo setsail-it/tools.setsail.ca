@@ -313,6 +313,7 @@ export default {
         const kwList = [...new Set(seeds)].slice(0, 600);
         console.log('[kw-expand] kwList:', kwList.length);
         const kwMap = {};
+        let lastTaskDebug = {};
         const batchSize = 200;
         for (let bi = 0; bi < kwList.length; bi += batchSize) {
           const batch = kwList.slice(bi, bi + batchSize);
@@ -323,6 +324,12 @@ export default {
               body: JSON.stringify([{ keywords: batch, location_code: locationCode, language_code: 'en' }])
             });
             const volData = await volRes.json();
+            // Capture raw task status for debug
+            const t0 = (volData.tasks || [])[0] || {};
+            const taskStatus = t0.status_code || volData.status_code || '?';
+            const taskMsg = t0.status_message || volData.status_message || '';
+            const rawSample = (t0.result || []).slice(0, 2);
+            lastTaskDebug = { httpStatus: volRes.status, apiCode: volData.status_code, apiMsg: volData.status_message, taskCode: t0.status_code, taskMsg: t0.status_message, resultLen: (t0.result || []).length, rawSample };
             const hits = [];
             (volData.tasks || []).forEach(task => {
               (task.result || []).forEach(r => {
@@ -352,7 +359,7 @@ export default {
           }));
 
         const volHits = keywords.length;
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-volume', debug: { seedCount: seeds.length, kwListCount: kwList.length, volHits, seedSample: seeds.slice(0,5) } }), {
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-volume', debug: { seedCount: seeds.length, kwListCount: kwList.length, volHits, seedSample: seeds.slice(0,5), taskDebug: lastTaskDebug } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
