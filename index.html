@@ -6780,29 +6780,55 @@ async function runCopyPass2(slug) {
   if (streamEl) { streamEl.style.display='block'; streamEl.textContent=''; }
 
   var failedChecks = (c.audit.checks||[]).filter(function(ch){ return !ch.pass; });
-  var failList = failedChecks.map(function(ch){ return '- '+ch.label+': '+ch.note; }).join('\n');
+  var passingChecks = (c.audit.checks||[]).filter(function(ch){ return ch.pass; });
+  var failList = failedChecks.map(function(ch){ return '- '+ch.label+(ch.note ? ' [AI note: '+ch.note+']' : ''); }).join('\n');
+  var passList = passingChecks.map(function(ch){ return '- '+ch.label; }).join('\n');
 
-  var prompt = buildCopyPrompt(p)
-    + '\n\n## PASS 2 INSTRUCTIONS\nThis is a surgical improvement pass. The following audit checks FAILED on the first draft:\n'
-    + failList
-    + '\n\nHere is the existing draft to improve upon:\n'
-    + c.copy
-    + '\n\nFix ONLY the failed checks. Preserve all passing sections verbatim. Output the complete improved HTML.';
+  // Compact page context — NOT the full buildCopyPrompt, just the essentials
+  var r = S.research || {}, s = S.setup;
+  var kws = (p.supporting_keywords||[]).map(function(k){ return k.kw||k; }).filter(Boolean).join(', ');
+  var pageCtx = 'PAGE: ' + (p.page_name||slug) + ' | Type: ' + (p.page_type||'') + ' | /' + (p.slug||slug)
+    + '\nPrimary keyword: ' + (p.primary_keyword||'')
+    + '\nSupporting keywords: ' + kws
+    + '\nWord count target: ' + (p.word_count_target||1500)
+    + '\nClient: ' + (s&&s.client||'')
+    + '\nGeo: ' + ((r.geography&&r.geography.primary)||(s&&s.geo)||'')
+    + '\nVoice: ' + ((r.tone_and_voice)||(s&&s.voice)||'Confident, direct. Canadian spelling.');
+
+  // Trim HTML for input — strip inline styles and class attrs to save tokens
+  var trimmedHtml = (c.copy||'').replace(/ style="[^"]*"/g,'').replace(/ class="[^"]*"/g,'').slice(0,5000);
+
+  var pass2System = 'You are a senior CRO copywriter doing a surgical improvement pass on existing page copy.'
+    + ' Your job is to fix ONLY the specific failed checks listed below.'
+    + ' You MUST output the COMPLETE improved HTML page — every section, start to finish.'
+    + ' Sections that are already passing must be reproduced with only the HTML markup — do not reword, restructure, or rewrite them.'
+    + ' Only sections relevant to the failed checks should be meaningfully changed.'
+    + ' Canadian spelling. Output clean semantic HTML only, no explanation.';
+
+  var prompt = '## PAGE CONTEXT\n' + pageCtx
+    + '\n\n## CHECKS ALREADY PASSING (preserve these sections — do not rewrite):\n' + passList
+    + '\n\n## FAILED CHECKS TO FIX (improve specifically for these):\n' + failList
+    + '\n\n## EXISTING DRAFT (your base — output the full improved version of this):\n' + trimmedHtml
+    + '\n\n## INSTRUCTION\nOutput the COMPLETE improved HTML. Fix the failed checks above.'
+    + ' Do not truncate. Do not stop early. Write every section through to the final CTA.'
+    + ' If word count is failing, expand thin sections with specific, outcome-led content.'
+    + ' If FAQ is missing, add a full FAQ section (8+ questions) before the final CTA.';
 
   try {
-    var result = await callClaude(P.copy, prompt, function(t){
+    var result = await callClaude(pass2System, prompt, function(t){
       if (copyStopFlag) return;
       var el = document.getElementById('copy-stream-'+slug);
       if (el) el.textContent = t.slice(-600);
     }, 6000);
     if (!copyStopFlag) {
+      var passNum = ((c.drafts||[]).filter(function(d){ return d.pass===2; }).length) + 2;
       var drafts = c.drafts || [{v:1, html:c.copy, pass:1, generatedAt:c.writtenAt||Date.now()}];
-      drafts = drafts.filter(function(d){ return d.pass===1; }); // keep only v1
-      drafts.push({v:2, html:result, pass:2, generatedAt:Date.now()});
+      // Keep all previous drafts, append new one
+      drafts.push({v:passNum, html:result, pass:2, generatedAt:Date.now()});
       S.copy[slug].drafts = drafts;
       S.copy[slug].activeDraft = drafts.length - 1;
       S.copy[slug].copy = result;
-      S.copy[slug].audit = null; // reset audit — needs re-run on v2
+      S.copy[slug].audit = null;
       scheduleSave();
     }
   } catch(e) {
@@ -7083,7 +7109,8 @@ function renderCopyQueue() {
             });
             html += '</div>';
             if (_aPct < 100) {
-              html += '<div style="margin-top:8px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 14px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">\u2726 Run Pass 2 \u2014 Fix '+(_audit.total-_audit.passed)+' failed checks</button></div>';
+              var _nextPassNum = (_drafts.filter(function(d){return d.pass===2;}).length) + 2;
+              html += '<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 14px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">✦ Run Pass '+_nextPassNum+' — Fix '+(_audit.total-_audit.passed)+' failed checks</button><span style="font-size:9px;color:var(--n2)">Surgical patch only — passing sections preserved</span></div>';
             }
           } else {
             html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:5px 14px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font);color:var(--n3)"><i class="ti ti-robot" style="font-size:11px"></i> Run AI Audit (10 checks)</button>';
