@@ -2810,6 +2810,21 @@ async function clusterSelectedKws() {
     }
     return entry;
   }).filter(Boolean);
+  // Always inject structural pages — these exist on every site but never have SEO traffic so they won't appear in topPages
+  var structuralSlugs = ['/about', '/about-us', '/contact', '/contact-us', '/'];
+  structuralSlugs.forEach(function(slug) {
+    var alreadyIn = existingPages.some(function(p) { return p.startsWith(slug + ' ') || p === slug; });
+    if (!alreadyIn) existingPages.unshift(slug + ' [structural — already exists, do NOT recommend build_new]');
+  });
+  // Also inject any pages from S.pages if available
+  if (S.pages && S.pages.length) {
+    S.pages.forEach(function(p) {
+      var slug = p.slug || p.path || '';
+      if (!slug) return;
+      var alreadyIn = existingPages.some(function(ep) { return ep.startsWith(slug + ' ') || ep === slug; });
+      if (!alreadyIn) existingPages.push(slug + ' [existing page]');
+    });
+  }
   var r = S.research || {};
   var setup = S.setup || {};
   var geo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
@@ -2820,7 +2835,7 @@ async function clusterSelectedKws() {
   if (existingPages.length) userPrompt += '\n\nEXISTING PAGES:\n' + existingPages.slice(0, 20).join('\n');
   var clusterQs = _getQuestionsArray ? _getQuestionsArray().slice(0, 20) : [];
   if (clusterQs.length) userPrompt += '\n\nPEOPLE ALSO ASK (use for blog clusters and FAQ assignments):\n' + clusterQs.map(function(q) { return '- ' + q; }).join('\n');
-  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.\n\nRules:\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.\n- Service(/services/slug): specific service+city. vol>0 required.\n- Location(/locations/slug): city+marketing. vol>100 required.\n- Industry(/industries/slug): marketing for [industry]. vol>100 required.\n- Blog(/blog/slug): informational intent. vol>50 required.\n- Always include /about and /contact as structural (vol:0 ok).\n- If cluster maps to existing page: recommendation=improve_existing, existingSlug=slug. Else build_new.\n- Slug matching: /about and /about-us are the same page. /contact and /contact-us are the same. Match by intent not exact string. Use the EXISTING slug verbatim if matched.\n- CRITICAL: If primaryVol < 50 AND recommendation would be build_new — set qualifies:false, disqualifyReason=\'Low volume — fold into a related existing page or blog pillar instead of building a standalone page\'. NEVER recommend build_new for a page with primaryVol < 50.\n- Set qualifies:false + disqualifyReason if vol thresholds not met.\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/seo-vancouver","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":["kw1","kw2"]}]';
+  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.\n\nRules:\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.\n- Service(/services/slug): specific service+city. vol>0 required.\n- Location(/locations/slug): city+marketing. vol>100 required.\n- Industry(/industries/slug): marketing for [industry]. vol>100 required.\n- Blog(/blog/slug): informational intent. vol>50 required.\n- Always include /about and /contact as structural (vol:0 ok). These ALWAYS get recommendation=improve_existing — NEVER build_new.\n- /about, /about-us = same page. /contact, /contact-us = same page. / = homepage. These pages ALWAYS EXIST — treat as improve_existing.\n- If cluster maps to any existing page: recommendation=improve_existing, existingSlug=exact slug from EXISTING PAGES list. Else build_new.\n- Slug matching: match by intent not exact string. Use the EXISTING slug verbatim if matched.\n- CRITICAL: If primaryVol < 50 AND recommendation would be build_new — set qualifies:false, disqualifyReason=\'Low volume — fold into a related existing page or blog pillar instead of building a standalone page\'. NEVER recommend build_new for a page with primaryVol < 50.\n- Set qualifies:false + disqualifyReason if vol thresholds not met.\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/seo-vancouver","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":["kw1","kw2"]}]';
   try {
     // Use sync endpoint for clustering — streaming cuts off large JSON responses
     var clusterRes = await fetch('/api/claude-sync', {
