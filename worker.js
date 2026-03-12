@@ -1132,9 +1132,12 @@ export default {
         const kw = keyword.toLowerCase();
         const kwTokens = kw.split(/\s+/).filter(w => w.length > 2);
 
-        const competitors = await Promise.all(organicItems.map(async (item, idx) => {
+        // Fetch sequentially to avoid Cloudflare subrequest wall-time limits
+        const competitors = [];
+        for (let idx = 0; idx < organicItems.length; idx++) {
+          const item = organicItems[idx];
           const comp = {
-            position: item.position || idx + 1,
+            position: item.rank_group || item.rank_absolute || idx + 1,
             url: item.url,
             title: item.title || '',
             meta_description: item.description || '',
@@ -1149,15 +1152,17 @@ export default {
 
           try {
             const jinaUrl = 'https://r.jina.ai/' + item.url;
+            const jinaHeaders = {
+              'Accept': 'text/plain',
+              'X-Return-Format': 'markdown',
+              'X-Timeout': '12'
+            };
+            if (env.JINA_API_KEY) jinaHeaders['Authorization'] = 'Bearer ' + env.JINA_API_KEY;
             const jinaRes = await fetch(jinaUrl, {
-              headers: {
-                'Accept': 'text/plain',
-                'X-Return-Format': 'markdown',
-                'X-Timeout': '15'
-              },
-              signal: AbortSignal.timeout(18000)
+              headers: jinaHeaders,
+              signal: AbortSignal.timeout(14000)
             });
-            if (!jinaRes.ok) return comp;
+            if (!jinaRes.ok) { comp.fetch_error = 'Jina HTTP ' + jinaRes.status; competitors.push(comp); continue; }
             const md = await jinaRes.text();
 
             // Extract H1 (first # heading)
@@ -1191,8 +1196,8 @@ export default {
           } catch(e) {
             comp.fetch_error = e.message;
           }
-          return comp;
-        }));
+          competitors.push(comp);
+        }
 
         // Step 3: Derive gap directives
         const fetched = competitors.filter(c => c.fetch_ok);
