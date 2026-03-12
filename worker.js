@@ -840,6 +840,49 @@ export default {
         }
         const finalPages = [...seenSlugs.values()].sort((a, b) => b.traffic - a.traffic);
 
+        // Fetch ranking keywords for top pages (top 20 by traffic)
+        const pagesToEnrich = finalPages.filter(p => p.traffic > 0).slice(0, 20);
+        if (pagesToEnrich.length > 0) {
+          // Batch in groups of 5 to avoid overwhelming the API
+          const batchSize = 5;
+          for (let bi = 0; bi < pagesToEnrich.length; bi += batchSize) {
+            const batch = pagesToEnrich.slice(bi, bi + batchSize);
+            await Promise.all(batch.map(async (page) => {
+              try {
+                const r = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live', {
+                  method: 'POST',
+                  headers: { Authorization: 'Basic ' + creds, 'Content-Type': 'application/json' },
+                  body: JSON.stringify([{
+                    target: page.url,
+                    location_code: locationCode,
+                    language_code: 'en',
+                    limit: 15,
+                    filters: ['keyword_data.keyword_info.search_volume', '>', 0],
+                    order_by: ['keyword_data.keyword_info.search_volume,desc']
+                  }])
+                });
+                const j = await r.json();
+                const items = j?.tasks?.[0]?.result?.[0]?.items || [];
+                page.rankingKws = items.map(item => ({
+                  kw: item.keyword_data?.keyword || '',
+                  pos: item.ranked_serp_element?.serp_item?.rank_absolute || item.ranked_serp_element?.serp_item?.rank_group || 0,
+                  vol: item.keyword_data?.keyword_info?.search_volume || 0,
+                  kd: item.keyword_data?.keyword_properties?.keyword_difficulty || 0
+                })).filter(k => k.kw);
+                // Set topKeyword from actual ranking data
+                if (page.rankingKws.length > 0) {
+                  const topKw = page.rankingKws[0];
+                  page.topKeyword = topKw.kw;
+                  page.topKeywordPosition = topKw.pos;
+                }
+              } catch(e) {
+                page.rankingKws = [];
+                console.error('[snapshot] ranked_keywords error for', page.slug, e.message);
+              }
+            }));
+          }
+        }
+
         // Build redirect map from top pages (anything with traffic or backlinks)
         const redirectMap = finalPages
           .filter(p => p.traffic > 0 || p.referringDomains > 0)
