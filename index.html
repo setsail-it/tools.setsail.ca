@@ -6349,7 +6349,20 @@ async function runCopyPage(slug) {
       if (el) el.textContent = t.slice(-600);
     });
     if (!copyStopFlag) {
-      S.copy[slug] = {copy, page, writtenAt: Date.now()};
+      var _existing = S.copy[slug] || {};
+      var _drafts = _existing.drafts || [];
+      var _newDraft = {v: _drafts.length+1, html: copy, pass: 1, generatedAt: Date.now()};
+      _drafts = [_newDraft]; // Pass 1 always replaces all drafts (fresh run)
+      S.copy[slug] = Object.assign(_existing, {
+        copy: copy,
+        drafts: _drafts,
+        activeDraft: 0,
+        audit: null,
+        humanQC: _existing.humanQC || {},
+        approved: false,
+        page: page,
+        writtenAt: Date.now()
+      });
       scheduleSave();
       // Auto-advance expanded to next incomplete
       const pages = orderedPages();
@@ -6375,6 +6388,152 @@ function redoCopyPage(slug) {
   delete S.copy[slug];
   S.copyExpandedSlug = slug;
   scheduleSave(); updateCopyProgress(); renderCopyQueue(); checkCopyAllDone();
+}
+
+function copyActivateDraft(slug, idx) {
+  var c = S.copy[slug];
+  if (!c || !c.drafts || !c.drafts[idx]) return;
+  c.activeDraft = idx;
+  c.copy = c.drafts[idx].html;
+  scheduleSave();
+  renderCopyQueue();
+}
+
+function copyToggleQC(slug, key) {
+  if (!S.copy[slug]) return;
+  if (!S.copy[slug].humanQC) S.copy[slug].humanQC = {};
+  S.copy[slug].humanQC[key] = !S.copy[slug].humanQC[key];
+  scheduleSave();
+  // Just update the checkbox visually without full re-render
+  var cb = document.getElementById('copy-qc-'+slug+'-'+key);
+  if (cb) {
+    var checked = S.copy[slug].humanQC[key];
+    cb.style.background = checked ? 'var(--green)' : 'var(--white)';
+    cb.style.borderColor = checked ? 'var(--green)' : 'var(--border)';
+    cb.innerHTML = checked ? '&#10003;' : '';
+    cb.style.color = 'white';
+  }
+  // Update approve button state
+  var approveBtn = document.getElementById('copy-approve-btn-'+slug);
+  if (approveBtn) {
+    var qc = S.copy[slug].humanQC || {};
+    var allDone = QC_ITEMS.every(function(item){ return !!qc[item.key]; });
+    approveBtn.style.background = allDone ? 'var(--green)' : 'var(--white)';
+    approveBtn.style.color = allDone ? 'white' : 'var(--n2)';
+    approveBtn.style.borderColor = allDone ? 'var(--green)' : 'var(--border)';
+  }
+}
+
+function copyApprove(slug) {
+  if (!S.copy[slug]) return;
+  S.copy[slug].approved = !S.copy[slug].approved;
+  if (S.copy[slug].approved) S.copy[slug].approvedAt = Date.now();
+  else delete S.copy[slug].approvedAt;
+  scheduleSave();
+  renderCopyQueue();
+}
+
+var QC_ITEMS = [
+  {key:'no_placeholders', label:'No [placeholder] text remaining'},
+  {key:'examples_verified', label:'Real examples or clearly marked'},
+  {key:'stats_verified', label:'Stats / numbers reviewed'},
+  {key:'voice_confirmed', label:'Brand voice confirmed'},
+  {key:'links_checked', label:'Internal links confirmed'},
+];
+
+async function runCopyAudit(slug) {
+  var c = S.copy[slug];
+  if (!c || !c.copy) return;
+  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  var auditEl = document.getElementById('copy-audit-'+slug);
+  if (auditEl) auditEl.innerHTML = '<span style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:5px"><span class="spinner" style="width:10px;height:10px"></span>Auditing…</span>';
+
+  var checks = [
+    {id:'h1_kw',    label:'H1 contains primary keyword'},
+    {id:'intent',   label:'Search intent matched throughout'},
+    {id:'unique',   label:'Unique angle — not generic agency copy'},
+    {id:'proof',    label:'Proof / social proof present'},
+    {id:'cta',      label:'Clear CTA above fold + section end'},
+    {id:'objection',label:'Objections addressed'},
+    {id:'faq',      label:'FAQ section present (8+ Q&As)'},
+    {id:'wordcount',label:'Word count meets target'},
+    {id:'no_fluff', label:'No filler / vanity copy'},
+    {id:'canadian', label:'Canadian spelling throughout'},
+  ];
+
+  var prompt = 'You are a senior CRO copywriter auditing this page copy.\n\n'
+    + '## PAGE\nName: ' + (p.page_name||slug) + ' | Type: ' + (p.page_type||'') + '\n'
+    + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
+    + 'Intent: ' + (p.search_intent||'') + '\n'
+    + 'Word count target: ' + (p.word_count_target||1500) + '\n\n'
+    + '## COPY\n' + (c.copy||'').replace(/<[^>]+>/g,' ').slice(0,3000) + '\n\n'
+    + '## CHECKS\nFor each check return pass:true or pass:false plus a max-8-word note.\n'
+    + checks.map(function(ch){ return '- ' + ch.id + ': ' + ch.label; }).join('\n')
+    + '\n\nReturn raw JSON only — no markdown:\n{"checks":[{"id":"h1_kw","pass":true,"note":"Primary keyword in H1"},...]}\n\nBe strict.';
+
+  try {
+    var result = await callClaude('You are a strict copy auditor. Return raw JSON only, no markdown.', prompt, null, 800);
+    var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
+    var parsed = JSON.parse(clean);
+    var checkMap = {};
+    (parsed.checks||[]).forEach(function(ch){ checkMap[ch.id] = ch; });
+    var finalChecks = checks.map(function(ch){
+      var r = checkMap[ch.id] || {};
+      return {label:ch.label, pass:!!r.pass, note:r.note||''};
+    });
+    var passed = finalChecks.filter(function(ch){ return ch.pass; }).length;
+    S.copy[slug].audit = {checks:finalChecks, passed:passed, total:finalChecks.length, auditedAt:Date.now()};
+    scheduleSave();
+    renderCopyQueue();
+  } catch(e) {
+    if (auditEl) auditEl.innerHTML = '<span style="font-size:10px;color:#e5534b">Audit failed: '+esc(e.message)+'</span>';
+  }
+}
+
+async function runCopyPass2(slug) {
+  var c = S.copy[slug];
+  if (!c || !c.copy || !c.audit) return;
+  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  if (S.copyRunning) return;
+  S.copyRunning = true; copyStopFlag = false;
+  S.copyCurrentSlug = slug;
+  renderCopyQueue();
+  var streamEl = document.getElementById('copy-stream-'+slug);
+  if (streamEl) { streamEl.style.display='block'; streamEl.textContent=''; }
+
+  var failedChecks = (c.audit.checks||[]).filter(function(ch){ return !ch.pass; });
+  var failList = failedChecks.map(function(ch){ return '- '+ch.label+': '+ch.note; }).join('\n');
+
+  var prompt = buildCopyPrompt(p)
+    + '\n\n## PASS 2 INSTRUCTIONS\nThis is a surgical improvement pass. The following audit checks FAILED on the first draft:\n'
+    + failList
+    + '\n\nHere is the existing draft to improve upon:\n'
+    + c.copy
+    + '\n\nFix ONLY the failed checks. Preserve all passing sections verbatim. Output the complete improved HTML.';
+
+  try {
+    var result = await callClaude(P.copy, prompt, function(t){
+      if (copyStopFlag) return;
+      var el = document.getElementById('copy-stream-'+slug);
+      if (el) el.textContent = t.slice(-600);
+    }, 4000);
+    if (!copyStopFlag) {
+      var drafts = c.drafts || [{v:1, html:c.copy, pass:1, generatedAt:c.writtenAt||Date.now()}];
+      drafts = drafts.filter(function(d){ return d.pass===1; }); // keep only v1
+      drafts.push({v:2, html:result, pass:2, generatedAt:Date.now()});
+      S.copy[slug].drafts = drafts;
+      S.copy[slug].activeDraft = drafts.length - 1;
+      S.copy[slug].copy = result;
+      S.copy[slug].audit = null; // reset audit — needs re-run on v2
+      scheduleSave();
+    }
+  } catch(e) {
+    console.error('Pass 2 error', e);
+  }
+  if (streamEl) streamEl.style.display = 'none';
+  S.copyCurrentSlug = null;
+  S.copyRunning = false;
+  renderCopyQueue(); updateCopyProgress();
 }
 
 function toggleCopyCode(slug) {
@@ -6557,50 +6716,127 @@ function renderCopyQueue() {
           html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
             +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
         } else if (isDone) {
+          var _isApproved = !!(r.approved);
           var _briefApproved = !!(p.brief && p.brief.approved && p.brief.summary && p.brief.summary.trim().length > 50);
-          var _copyWrittenAt = (S.copy[p.slug]||{}).writtenAt || 0;
+          var _copyWrittenAt = r.writtenAt || 0;
           var _briefApprovedAt = (p.brief||{}).approvedAt || 0;
           var _stale = _briefApproved && _briefApprovedAt > _copyWrittenAt;
+          var _drafts = r.drafts || [{v:1, html:r.copy, pass:1, generatedAt:r.writtenAt||0}];
+          var _activeDraft = (typeof r.activeDraft === 'number') ? r.activeDraft : 0;
+          var _audit = r.audit || null;
+          var _humanQC = r.humanQC || {};
+
+          // INFO BAR
+          var _bb2 = _briefApproved
+            ? '<span style="font-size:9px;background:rgba(21,142,29,0.1);color:var(--green);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 6px;font-weight:600">\u2713 Brief</span>'
+            : (p.brief && p.brief.summary ? '<span style="font-size:9px;background:rgba(255,165,0,0.08);color:var(--warn);border:1px solid rgba(255,165,0,0.3);border-radius:3px;padding:1px 6px">No brief</span>' : '');
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(0,0,0,0.02);border-bottom:1px solid var(--border);font-size:10.5px;color:var(--n2);flex-wrap:wrap">'
+            + '<span style="color:var(--dark);font-weight:600">' + esc(p.primary_keyword||'\u2014') + '</span>'
+            + (p.search_intent ? ' <span>\u00b7</span> ' + esc(p.search_intent) : '')
+            + (p.word_count_target ? ' <span>\u00b7</span> ' + p.word_count_target + ' words' : '')
+            + (_bb2 ? ' <span>\u00b7</span> ' + _bb2 : '')
+            + '</div>';
+
+          // STALE BRIEF BANNER
           if (_stale) {
-            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:7px 12px;background:rgba(21,142,29,0.07);border:1px solid rgba(21,142,29,0.25);border-radius:5px"><i class="ti ti-sparkles" style="color:var(--green);font-size:13px"></i><span style="font-size:11.5px;color:var(--dark);font-weight:500">Brief approved after copy was written.</span> <span style="font-size:11px;color:var(--n2)">Redo to regenerate copy using the brief.</span></div>';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:rgba(21,142,29,0.07);border-bottom:1px solid rgba(21,142,29,0.2)"><i class="ti ti-sparkles" style="color:var(--green);font-size:12px"></i> <span style="font-size:11px;color:var(--dark);font-weight:500">Brief approved after copy was written.</span> <span style="font-size:11px;color:var(--n2)">Redo to regenerate using the brief.</span></div>';
           }
-          html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
-            +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
-            +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">' + 'Show code</button>'
-            +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
-            +(_stale
-              ? '<button class="btn btn-primary sm" style="background:var(--lime);border:none;color:var(--dark)" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo with Brief ✦</button>'
-              : '<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
-            )
-            +'</div>'
-            +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
-            +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
-          html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">';
-          const _kwList = [p.primary_keyword, ...((p.supporting_keywords||[]).map(sk => typeof sk==='object'?sk.kw:sk))].filter(Boolean);
-          _kwList.forEach(kw => {
-            const cnt = countKeywordsInCopy(r.copy || '', kw);
-            const chipColor = cnt === 0 ? '#E53935' : cnt < 2 ? 'var(--warn)' : 'var(--green)';
-            html += `<span style="font-size:10px;color:${chipColor};background:rgba(0,0,0,0.05);border-radius:10px;padding:2px 8px;border:1px solid rgba(0,0,0,0.07)">${esc(kw)} x${cnt}</span>`;
+
+          // DRAFT TABS + TOOLBAR
+          html += '<div style="display:flex;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border);gap:0">';
+          html += '<div style="display:flex;gap:3px;flex:1">';
+          _drafts.forEach(function(d, di) {
+            var isActive = di === _activeDraft;
+            var pLabel = d.pass === 2 ? 'Pass 2' : 'Pass 1';
+            var ts = d.generatedAt ? new Date(d.generatedAt).toLocaleDateString('en-CA',{month:'short',day:'numeric'}) : '';
+            html += '<button onclick="copyActivateDraft(\''+p.slug+'\','+di+')" style="font-size:10px;padding:2px 9px;border-radius:4px;cursor:pointer;font-family:var(--font);font-weight:'+(isActive?'600':'400')+';background:'+(isActive?'var(--dark)':'rgba(0,0,0,0.04)')+';color:'+(isActive?'white':'var(--n2)')+';border:1px solid '+(isActive?'var(--dark)':'transparent')+'">'
+              + 'v'+d.v+' \u00b7 '+pLabel+(ts?' \u00b7 '+ts:'')
+              + '</button>';
           });
           html += '</div>';
-          // Meta tags block
-          const _mt = esc(p.meta_title||''), _md = esc(p.meta_description||'');
-          const _mtLen=(p.meta_title||'').length, _mdLen=(p.meta_description||'').length;
-          const _mtC=_mtLen>60?'#E53935':_mtLen>50?'var(--warn)':_mtLen===0?'var(--n2)':'var(--green)';
-          const _mdC=_mdLen>160?'#E53935':_mdLen>140?'var(--warn)':_mdLen===0?'var(--n2)':'var(--green)';
-          html += `<div style="margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">`;
-          html += `<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px"><i class="ti ti-tags"></i> Meta Tags</div>`;
-          html += `<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">TITLE</label><span id="mt-ctr-${p.slug}" style="font-size:10px;color:${_mtC}">${_mtLen}/60</span></div><input id="mt-${p.slug}" value="${_mt}" maxlength="80" placeholder="50-60 chars recommended" style="width:100%;font-size:12px;padding:6px 9px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box" oninput="saveMetaField('${p.slug}','meta_title',this.value)" /></div>`;
-          html += `<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">DESCRIPTION</label><span id="md-ctr-${p.slug}" style="font-size:10px;color:${_mdC}">${_mdLen}/160</span></div><textarea id="md-${p.slug}" rows="2" maxlength="185" placeholder="150-160 chars recommended" style="width:100%;font-size:12px;padding:6px 9px;border-radius:5px;border:1px solid var(--border);background:var(--white);color:var(--dark);font-family:var(--font);outline:none;resize:vertical;line-height:1.4;box-sizing:border-box" oninput="saveMetaField('${p.slug}','meta_description',this.value)">${_md}</textarea></div>`;
-          html += `</div>`;
+          html += '<div style="display:flex;gap:5px">';
+          html += '<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>';
+          html += '<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>';
+          html += '<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')" ><i class="ti ti-edit"></i> Edit</button>';
+          html += '</div>';
+          html += '</div>';
 
-          const curIdx = pages.findIndex(pp => pp.slug === p.slug);
-          const nextP = pages.find((pp,ii) => ii > curIdx && !(S.copy[pp.slug]||{}).copy);
-          if (nextP) {
-            html += '<div style="margin-top:10px;display:flex;gap:8px">'
-              +'<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+nextP.slug+'\';renderCopyQueue();runCopyPage(\''+nextP.slug+'\')"><i class="ti ti-arrow-right"></i> Next: '+esc(nextP.page_name)+'</button>'
-              +'<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>'
-              +'</div>';
+          // STREAM + PREVIEW + CODE
+          html += '<div style="background:var(--dg);border-radius:0;padding:12px;min-height:60px;max-height:160px;overflow:auto;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;display:none" id="copy-stream-'+p.slug+'"></div>';
+          html += '<div id="copy-preview-'+p.slug+'" style="padding:18px 22px;font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto;border-bottom:1px solid var(--border)"></div>';
+          html += '<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);padding:12px 14px;border-bottom:1px solid var(--border)">'+esc(r.copy||'')+'</div>';
+
+          // KEYWORD DENSITY
+          var _kws2 = [p.primary_keyword].concat((p.supporting_keywords||[]).map(function(sk){ return typeof sk==='object'?sk.kw:sk; })).filter(Boolean);
+          if (_kws2.length) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:7px 14px;border-bottom:1px solid var(--border)">';
+            _kws2.forEach(function(kw) {
+              var cnt = countKeywordsInCopy(r.copy||'', kw);
+              var cc = cnt===0?'#E53935':cnt<2?'var(--warn)':'var(--green)';
+              html += '<span style="font-size:10px;color:'+cc+';background:rgba(0,0,0,0.05);border-radius:10px;padding:2px 8px;border:1px solid rgba(0,0,0,0.07)">'+esc(kw)+' x'+cnt+'</span>';
+            });
+            html += '</div>';
+          }
+
+          // AI AUDIT
+          html += '<div id="copy-audit-'+p.slug+'" style="padding:8px 14px;border-bottom:1px solid var(--border)">';
+          if (_audit) {
+            var _aPct = Math.round((_audit.passed/_audit.total)*100);
+            var _aClr = _aPct>=80?'var(--green)':_aPct>=55?'var(--warn)':'#e5534b';
+            html += '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">';
+            html += '<div style="width:70px;height:5px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+_aPct+'%;height:100%;background:'+_aClr+'"></div></div>';
+            html += '<span style="font-size:10px;font-weight:700;color:'+_aClr+'">'+_aPct+'%</span>';
+            html += '<span style="font-size:9.5px;color:var(--n2)">AI audit</span>';
+            (_audit.checks||[]).forEach(function(ch) {
+              var clr = ch.pass?'var(--green)':'#e5534b';
+              var bg = ch.pass?'rgba(21,142,29,0.07)':'rgba(229,83,75,0.07)';
+              html += '<span title="'+esc(ch.note||'')+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;background:'+bg+';border-radius:3px;cursor:default">'+(ch.pass?'\u2713':'\u2717')+' '+esc(ch.label)+'</span>';
+            });
+            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:var(--font);color:var(--n2)">Re-audit</button>';
+            html += '</div>';
+            if (_aPct < 100) {
+              html += '<div style="margin-top:6px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 12px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">\u2726 Run Pass 2 \u2014 Patch failed checks</button></div>';
+            }
+          } else {
+            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:4px 12px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font);color:var(--n3)"><i class="ti ti-robot" style="font-size:10px"></i> Run AI Audit</button>';
+          }
+          html += '</div>';
+
+          // HUMAN QC
+          html += '<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
+          html += '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Human QC</div>';
+          html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+          QC_ITEMS.forEach(function(item) {
+            var chk = !!_humanQC[item.key];
+            html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 8px;border-radius:4px;border:1px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'rgba(21,142,29,0.06)':'var(--white)')+'"><div id="copy-qc-'+p.slug+'-'+item.key+'" style="width:13px;height:13px;border-radius:3px;border:1px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'var(--green)':'var(--white)')+';display:flex;align-items:center;justify-content:center;font-size:9px;color:white;flex-shrink:0">'+(chk?'&#10003;':'')+'</div><span style="font-size:10px;color:'+(chk?'var(--dark)':'var(--n2)')+'">'+esc(item.label)+'</span></div>';
+          });
+          html += '</div></div>';
+
+          // META TAGS
+          var _mt2 = esc(p.meta_title||''), _md2 = esc(p.meta_description||'');
+          var _mtL=(p.meta_title||'').length, _mdL=(p.meta_description||'').length;
+          var _mtC2=_mtL>60?'#E53935':_mtL>50?'var(--warn)':_mtL===0?'var(--n2)':'var(--green)';
+          var _mdC2=_mdL>160?'#E53935':_mdL>140?'var(--warn)':_mdL===0?'var(--n2)':'var(--green)';
+          html += '<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
+          html += '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"><i class="ti ti-tag" style="font-size:9px"></i> Meta Tags</div>';
+          html += '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">TITLE</label><span style="font-size:9.5px;color:'+_mtC2+'">'+_mtL+'/60</span></div><input class="inp" style="font-size:11.5px;padding:5px 8px" placeholder="50-60 chars" value="'+_mt2+'" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_title=this.value;scheduleSave()" /></div>';
+          html += '<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">DESCRIPTION</label><span style="font-size:9.5px;color:'+_mdC2+'">'+_mdL+'/160</span></div><textarea class="inp" style="font-size:11.5px;padding:5px 8px;height:52px;resize:none" placeholder="150-160 chars" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_description=this.value;scheduleSave()">'+_md2+'</textarea></div>';
+          html += '</div>';
+
+          // BOTTOM BAR
+          html += '<div style="display:flex;align-items:center;gap:6px;padding:10px 14px;flex-wrap:wrap">';
+          html += '<button onclick="redoCopyPage(\''+p.slug+'\')" class="btn '+(_stale?'btn-primary':'btn-ghost')+' sm" '+(_stale?'style="background:var(--lime);border:none;color:var(--dark)"':'')+'>'+(_stale?'\u21ba Redo with Brief \u2726':'\u21ba Redo')+'</button>';
+          html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 16px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);border:1px solid '+(_isApproved?'var(--green)':'var(--border)')+';background:'+(_isApproved?'var(--green)':'var(--white)')+';color:'+(_isApproved?'white':'var(--n2)')+'">'+(_isApproved?'\u2713 Approved for Schema':'Approve for Schema')+'</button>';
+          html += '</div>';
+
+          // NEXT PAGE
+          var _ci2 = pages.findIndex(function(pp){ return pp.slug===p.slug; });
+          var _np2 = pages.find(function(pp,ii){ return ii>_ci2 && !(S.copy[pp.slug]||{}).copy; });
+          if (_np2) {
+            html += '<div style="padding:0 14px 10px;display:flex;gap:8px">';
+            html += '<button class="btn btn-primary sm" onclick="S.copyExpandedSlug=\''+_np2.slug+'\';renderCopyQueue();runCopyPage(\''+_np2.slug+'\')"><i class="ti ti-player-play"></i> Write: '+esc(_np2.page_name)+'</button>';
+            html += '<button class="btn btn-ghost sm" onclick="goTo(\'schema\')">Skip to Schema</button>';
+            html += '</div>';
           }
         } else if (isErr) {
           html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
