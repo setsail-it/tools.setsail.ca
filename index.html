@@ -6282,6 +6282,80 @@ function initCopy() {
   renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
 }
 
+
+// ── SERP INTEL ─────────────────────────────────────────────────────────────
+async function runSerpIntel(slug) {
+  const page = orderedPages().find(p => p.slug === slug);
+  if (!page || !page.primary_keyword) return;
+
+  const btn = document.getElementById('serp-intel-btn-' + slug);
+  const status = document.getElementById('serp-intel-status-' + slug);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle;border:1.5px solid var(--n2);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite"></span>'; }
+  if (status) status.textContent = 'Fetching top 3 competitors…';
+
+  const geo = (S.research && S.research.geography && S.research.geography.primary) || S.setup.geo || '';
+  const country = /canada|bc|vancouver/i.test(geo) ? 'CA' : 'US';
+
+  try {
+    const res = await fetch('/api/serp-intel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: page.primary_keyword, country })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Store on the page object
+    const pi = orderedPages().findIndex(p => p.slug === slug);
+    if (pi >= 0) { S.pages[pi].serpIntel = data; }
+    scheduleSave();
+    renderCopyQueue();
+  } catch(err) {
+    if (status) status.textContent = '⚠ ' + err.message;
+    if (btn) { btn.disabled = false; btn.innerHTML = '⟳ SERP Intel'; }
+  }
+}
+
+function buildSerpIntelBlock(page) {
+  var si = page && page.serpIntel;
+  if (!si || !si.competitors || !si.competitors.length) return '';
+
+  var kw = page.primary_keyword || '';
+  var lines = ['\n\n## SERP INTEL — "' + kw + '" (top organic competitors)\n'];
+
+  si.competitors.forEach(function(c, i) {
+    lines.push('### Competitor ' + (i+1) + ' — ' + c.url);
+    lines.push('- Title: "' + c.title + '"');
+    if (c.meta_description) lines.push('- Meta: "' + c.meta_description.slice(0, 160) + '"');
+    if (c.h1) lines.push('- H1: "' + c.h1 + '"');
+    if (c.h2s && c.h2s.length) lines.push('- H2s: ' + c.h2s.slice(0, 12).join(' | '));
+    if (c.fetch_ok) {
+      lines.push('- Words: ~' + c.word_count + ' | Keyword "' + kw + '" appears ' + c.kw_count + 'x (' + c.kw_density + '%)');
+    }
+  });
+
+  var d = si.directives || {};
+  lines.push('\n### GAP DIRECTIVES — follow these exactly:');
+  lines.push('WORD COUNT: Write minimum ' + (d.word_count_target || 1500) + ' words (competitor max × 1.05). Competitor avg: ' + (d.avg_word_count || 'unknown') + '.');
+
+  if (d.avg_kw_density > 0) {
+    if (d.avg_kw_density > 1.5) {
+      lines.push('KEYWORD DENSITY: Competitors avg ' + d.avg_kw_density + '% — this is already high. Target ~' + d.avg_kw_density + '%, do NOT exceed ' + d.density_ceiling + '%. Replace excess instances with natural synonyms/related phrases to avoid over-optimisation.');
+    } else {
+      lines.push('KEYWORD DENSITY: Competitors avg ' + d.avg_kw_density + '% — target a similar density. Do NOT stuff — use natural synonyms and related phrases where the keyword would feel forced.');
+    }
+  }
+
+  if (d.all_competitor_h2s && d.all_competitor_h2s.length) {
+    lines.push('H2 COVERAGE: These topics appear in competitor headings — cover or exceed: ' + d.all_competitor_h2s.slice(0, 15).join(' | '));
+  }
+
+  lines.push('TITLE & TRUST SIGNALS: Study competitor titles above. Identify the strongest trust signal (credentials, years, outcome, guarantee). Match or beat it in our title and H1.');
+  lines.push('META DESCRIPTION: Study competitor metas above. Write one that out-sells theirs — stronger outcome, sharper hook, clear CTA.');
+
+  return lines.join('\n');
+}
+
 function buildCopyPrompt(page) {
   var r = S.research||{}, s = S.setup;
   var kws = (page.supporting_keywords||[]).map(function(k){ return k.kw||k; }).filter(Boolean).join(', ');
@@ -6299,6 +6373,8 @@ function buildCopyPrompt(page) {
     ? 'Follow the approved brief above. Write the complete blog post in HTML matching the structure, unique angle, word count, and FAQ questions specified. No <html>/<head>/<body> tags. Canadian spelling.'
     : 'Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client\'s services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.';
 
+  var serpBlock = buildSerpIntelBlock(page);
+
   if (page.page_type === 'blog') {
     return 'CLIENT: ' + s.client
       + '\nBLOG POST TITLE: ' + page.page_name
@@ -6309,7 +6385,7 @@ function buildCopyPrompt(page) {
       + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
       + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
       + '\nNOTES: ' + (page.notes||'')
-      + questionsBlock + briefBlock
+      + questionsBlock + briefBlock + serpBlock
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -6326,7 +6402,7 @@ function buildCopyPrompt(page) {
     + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
     + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
     + '\nNOTES: ' + (page.notes||'')
-    + questionsBlock + briefBlock
+    + questionsBlock + briefBlock + serpBlock
     + '\n\n' + briefInstruction;
 }
 
@@ -7027,9 +7103,13 @@ function renderCopyQueue() {
           html += '</div>';
 
           // BOTTOM BAR
+          var _siW = p.serpIntel;
+          var _siWDone = !!(_siW && _siW.competitors && _siW.competitors.length);
           html += '<div style="display:flex;align-items:center;gap:6px;padding:10px 14px;flex-wrap:wrap">';
-          html += '<button onclick="redoCopyPage(\''+p.slug+'\')" class="btn '+(_stale?'btn-primary':'btn-ghost')+' sm" '+(_stale?'style="background:var(--lime);border:none;color:var(--dark)"':'')+'>'+(_stale?'\u21ba Redo with Brief \u2726':'\u21ba Redo')+'</button>';
-          html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 16px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);border:1px solid '+(_isApproved?'var(--green)':'var(--border)')+';background:'+(_isApproved?'var(--green)':'var(--white)')+';color:'+(_isApproved?'white':'var(--n2)')+'">'+(_isApproved?'\u2713 Approved for Schema':'Approve for Schema')+'</button>';
+          html += '<button onclick="redoCopyPage(\''+p.slug+'\')" class="btn '+(_stale?'btn-primary':'btn-ghost')+' sm"><i class="ti ti-refresh" style="font-size:10px"></i> Redo</button>';
+          html += '<button id="serp-intel-btn-'+p.slug+'" onclick="runSerpIntel(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+(_siWDone?'rgba(21,142,29,0.08)':'rgba(0,0,0,0.04)')+';color:'+(_siWDone?'var(--green)':'var(--n2)')+';cursor:pointer;font-family:var(--font)">'+(_siWDone?'✓ SERP Intel':'⟳ SERP Intel')+'</button>';
+          html += '<span id="serp-intel-status-'+p.slug+'" style="font-size:9px;color:var(--n2)"></span>';
+          html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 14px;font-size:11px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:'+(_approved?'var(--green)':'var(--dark)')+';color:white">'+(_approved?'✓ Approved':'Approve for Schema')+'</button>';
           html += '</div>';
 
           // NEXT PAGE
@@ -7052,10 +7132,18 @@ function renderCopyQueue() {
             : (_briefExists
               ? '<span title="Brief written but not approved — copy will use basic context only. Go back to Briefs to approve." style="font-size:9px;background:rgba(255,165,0,0.08);color:var(--warn);border:1px solid rgba(255,165,0,0.3);border-radius:3px;padding:1px 6px">⚠ Not approved</span> '
               : '<span title="No brief — copy will use basic context only" style="font-size:9px;background:rgba(0,0,0,0.04);color:var(--n2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">No brief</span> ');
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-            +'<div style="font-size:12px;color:var(--n2);display:flex;align-items:center;gap:6px">'+_briefBadge+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
-            +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
-            +'</div>';
+          var _si = p.serpIntel;
+          var _siDone = !!(_si && _si.competitors && _si.competitors.length);
+          var _siBtnLabel = _siDone ? '✓ SERP Intel (' + _si.competitors.length + ')' : '⟳ SERP Intel';
+          var _siBtnClr = _siDone ? 'var(--green)' : 'var(--n2)';
+          var _siBtnBg  = _siDone ? 'rgba(21,142,29,0.08)' : 'rgba(0,0,0,0.04)';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">';
+          html += '<div style="font-size:12px;color:var(--n2);display:flex;align-items:center;gap:6px">'+_briefBadge+esc(p.primary_keyword||'')+' </div>';
+          html += '<div style="display:flex;align-items:center;gap:6px">';
+          html += '<button id="serp-intel-btn-'+p.slug+'" onclick="runSerpIntel(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+_siBtnBg+';color:'+_siBtnClr+';cursor:pointer;font-family:var(--font)">'+_siBtnLabel+'</button>';
+          html += '<span id="serp-intel-status-'+p.slug+'" style="font-size:9px;color:var(--n2)"></span>';
+          html += '<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')" title="'+ (_siDone ? 'SERP Intel loaded — copy will be competitor-aware' : 'Run SERP Intel first for best results') +'"><i class="ti ti-player-play"></i> Write Copy</button>';
+          html += '</div></div>';
         }
         html += '</div>';
       }

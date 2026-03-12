@@ -1076,6 +1076,159 @@ export default {
       }
     }
 
+    // ── SERP INTEL — top-3 competitor on-page analysis ────────────
+    if (url.pathname === '/api/serp-intel' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const { keyword, country } = await request.json();
+        if (!keyword) return new Response(JSON.stringify({ error: 'keyword required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = (country || 'CA').toUpperCase() === 'US' ? 2840 : 2124;
+
+        // Step 1: Get top 10 organic SERP results
+        const serpRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'en', depth: 10 }])
+        });
+        const serpData = await serpRes.json();
+        const serpItems = serpData?.tasks?.[0]?.result?.[0]?.items || [];
+
+        // Exclude directories, aggregators, social platforms
+        const EXCLUDED = [
+          'clutch.co','designrush.com','semrush.com','ahrefs.com','moz.com','hubspot.com',
+          'digitalagencynetwork.com','upcity.com','expertise.com','goodfirms.co','g2.com',
+          'capterra.com','trustpilot.com','yelp.com','bbb.org','bark.com','featured.com',
+          'sortlist.com','forbes.com','indeed.com','linkedin.com','reddit.com','quora.com',
+          'wikipedia.org','wordstream.com','searchengineland.com','searchenginejournal.com',
+          'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com','agencies.semrush.com',
+          'hellodarwin.com','604list.ca','infinitydigital.ca'
+        ];
+
+        const organicItems = serpItems
+          .filter(item => item.type === 'organic' && item.url)
+          .filter(item => {
+            try {
+              const host = new URL(item.url).hostname.replace(/^www\./, '');
+              return !EXCLUDED.some(ex => host === ex || host.endsWith('.' + ex));
+            } catch(e) { return false; }
+          })
+          .slice(0, 3);
+
+        if (!organicItems.length) {
+          return new Response(JSON.stringify({ error: 'No organic results found', competitors: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        // Step 2: Fetch each competitor page via Jina Reader
+        const kw = keyword.toLowerCase();
+        const kwTokens = kw.split(/\s+/).filter(w => w.length > 2);
+
+        const competitors = await Promise.all(organicItems.map(async (item, idx) => {
+          const comp = {
+            position: item.position || idx + 1,
+            url: item.url,
+            title: item.title || '',
+            meta_description: item.description || '',
+            domain_rating: item.domain_rating || null,
+            h1: '',
+            h2s: [],
+            word_count: 0,
+            kw_count: 0,
+            kw_density: 0,
+            fetch_ok: false
+          };
+
+          try {
+            const jinaUrl = 'https://r.jina.ai/' + item.url;
+            const jinaRes = await fetch(jinaUrl, {
+              headers: {
+                'Accept': 'text/plain',
+                'X-Return-Format': 'markdown',
+                'X-Timeout': '15'
+              },
+              signal: AbortSignal.timeout(18000)
+            });
+            if (!jinaRes.ok) return comp;
+            const md = await jinaRes.text();
+
+            // Extract H1 (first # heading)
+            const h1Match = md.match(/^#\s+(.+)$/m);
+            comp.h1 = h1Match ? h1Match[1].trim() : '';
+
+            // Extract H2s (## headings)
+            comp.h2s = [...md.matchAll(/^##\s+(.+)$/gm)].map(m => m[1].trim()).slice(0, 20);
+
+            // Word count (strip markdown noise)
+            const cleanText = md
+              .replace(/^#{1,6}\s+/gm, '')
+              .replace(/[*_`\[\]()#>|-]/g, ' ')
+              .replace(/https?:\/\/\S+/g, '')
+              .replace(/\s+/g, ' ').trim();
+            const words = cleanText.split(' ').filter(w => w.length > 0);
+            comp.word_count = words.length;
+
+            // Keyword occurrences — count each token, use the keyword phrase count for density
+            const textLower = cleanText.toLowerCase();
+            // Count full phrase occurrences first
+            let phraseCount = 0;
+            let pos = 0;
+            while ((pos = textLower.indexOf(kw, pos)) !== -1) { phraseCount++; pos += kw.length; }
+            comp.kw_count = phraseCount;
+            comp.kw_density = comp.word_count > 0
+              ? Math.round((phraseCount / comp.word_count) * 1000) / 10
+              : 0;
+
+            comp.fetch_ok = true;
+          } catch(e) {
+            comp.fetch_error = e.message;
+          }
+          return comp;
+        }));
+
+        // Step 3: Derive gap directives
+        const fetched = competitors.filter(c => c.fetch_ok);
+        const avgWordCount = fetched.length
+          ? Math.round(fetched.reduce((s, c) => s + c.word_count, 0) / fetched.length)
+          : 0;
+        const maxWordCount = fetched.length ? Math.max(...fetched.map(c => c.word_count)) : 0;
+        const avgDensity = fetched.length
+          ? Math.round(fetched.reduce((s, c) => s + c.kw_density, 0) / fetched.length * 10) / 10
+          : 0;
+        const maxDensity = fetched.length ? Math.max(...fetched.map(c => c.kw_density)) : 0;
+
+        // Collect all H2s from competitors for topic gap analysis
+        const allH2s = [...new Set(fetched.flatMap(c => c.h2s))];
+
+        return new Response(JSON.stringify({
+          keyword,
+          competitors,
+          directives: {
+            word_count_target: Math.round(maxWordCount * 1.05),
+            avg_word_count: avgWordCount,
+            avg_kw_density: avgDensity,
+            max_kw_density: maxDensity,
+            density_ceiling: Math.round((maxDensity + 0.3) * 10) / 10,
+            all_competitor_h2s: allH2s
+          },
+          fetchedAt: Date.now()
+        }), { headers: { 'Content-Type': 'application/json', ...cors } });
+
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     // Everything else → static assets
     // Force no-cache on HTML so deploys take effect immediately
     const assetRes = await env.ASSETS.fetch(request);
