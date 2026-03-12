@@ -2742,10 +2742,7 @@ function _renderKwClustersTab() {
 }
 
 function _renderKwQuestionsTab() {
-  var qs = [];
-  if (S.research && S.research.paa_questions) qs = S.research.paa_questions;
-  else if (S.research && S.research.brand && S.research.brand.faqs) qs = S.research.brand.faqs.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
-  var normalised = qs.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
+  var normalised = _getQuestionsArray();
   var addedToSeeds = new Set(S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : []);
 
   var html = '<div>';
