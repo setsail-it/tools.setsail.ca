@@ -2025,24 +2025,41 @@ async function fetchKeywordResearch() {
   const geoStr = allGeos.join(' ').toLowerCase();
   const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
 
-  // Build broad seed list from services + existing page slugs
+  // keywords_for_keywords is unavailable on this DataForSEO plan
+  // Generate a rich programmatic seed list and run it straight through search_volume/live
   const seeds = new Set();
   const shortGeo = primaryGeo.replace(/,.*$/, '').trim();
   const geoL = shortGeo.toLowerCase();
 
-  // 1. Services x geo (primary source)
-  services.slice(0, 12).forEach(svc => {
+  // Modifiers that produce distinct keyword types
+  const suffixMods = ['agency', 'company', 'services', 'consultant', 'specialist', 'expert', 'firm'];
+  const prefixMods = ['best', 'top', 'affordable', 'professional', 'local', 'hire'];
+  const intentMods = ['cost', 'price', 'near me', 'for small business', 'for startups'];
+
+  // 1. Services x geo matrix
+  services.slice(0, 14).forEach(svc => {
     const s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform)$/i, '').trim();
-    if (s.length > 3) {
-      seeds.add(s + ' ' + geoL);
-      seeds.add(geoL + ' ' + s);
-    }
+    if (s.length < 3) return;
+    seeds.add(s + ' ' + geoL);
+    seeds.add(geoL + ' ' + s);
+    seeds.add(s + ' agency ' + geoL);
+    seeds.add(s + ' company ' + geoL);
+    seeds.add(s + ' services ' + geoL);
+    seeds.add('best ' + s + ' ' + geoL);
+    seeds.add(s + ' consultant ' + geoL);
   });
+
+  // 2. Category / brand terms
   seeds.add('digital marketing ' + geoL);
+  seeds.add('digital marketing agency ' + geoL);
   seeds.add('marketing agency ' + geoL);
   seeds.add(geoL + ' marketing agency');
+  seeds.add('online marketing ' + geoL);
+  seeds.add('full service marketing agency ' + geoL);
+  seeds.add('marketing company ' + geoL);
+  seeds.add('advertising agency ' + geoL);
 
-  // 2. Extract meaningful terms from existing snapshot pages
+  // 3. Snapshot page slugs
   const _snapPages = (S.snapshot?.topPages || []).slice(0, 60);
   const _skipSegments = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','team','case-studies','resources']);
   _snapPages.forEach(p => {
@@ -2052,25 +2069,28 @@ async function fetchKeywordResearch() {
       const term = seg.replace(/-/g, ' ').replace(/\bvancouver\b|\btoronto\b|\bcalgary\b|\bbc\b/gi, '').trim();
       if (term.length > 4 && !term.match(/^\d+$/) && !/^(proven|strategies|for|real|growth|what|is|how|guide)/.test(term)) {
         seeds.add(term + ' ' + geoL);
-        seeds.add(geoL + ' ' + term);
+        seeds.add(term + ' agency ' + geoL);
       }
     });
   });
 
-  // 3. Secondary geos
-  secondaryGeos.slice(0, 2).forEach(geo => {
+  // 4. Secondary geos
+  secondaryGeos.slice(0, 3).forEach(geo => {
     const sg = geo.replace(/,.*$/, '').trim().toLowerCase();
-    services.slice(0, 3).forEach(svc => {
+    services.slice(0, 4).forEach(svc => {
       const s = svc.toLowerCase().replace(/\s+(services?|management|agency)$/i, '').trim();
-      if (s.length > 3) seeds.add(s + ' ' + sg);
+      if (s.length > 3) {
+        seeds.add(s + ' ' + sg);
+        seeds.add(s + ' agency ' + sg);
+      }
     });
   });
 
-  const seedList = [...seeds].filter(k => k.length > 4 && k.split(' ').length >= 2).slice(0, 60);
+  const seedList = [...seeds].filter(k => k.length > 4 && k.split(' ').length >= 2).slice(0, 500);
   if (!seedList.length) return;
 
   const kwEl = document.getElementById('research-kw-status');
-  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding keywords from ' + seedList.length + ' seeds…';
+  if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Looking up volumes for ' + seedList.length + ' keyword variations…';
 
   try {
     // Step 1: Expand seeds into related keyword universe
@@ -2087,7 +2107,7 @@ async function fetchKeywordResearch() {
     }
 
     const _dbg = expandData.debug || {};
-    const _dbgStr = _dbg.seedCount ? ' (' + _dbg.seedCount + ' seeds, ' + (_dbg.volHits||0) + ' with vol data)' : '';
+    const _dbgStr = ' (' + (_dbg.volHits||expandData.keywords.length) + ' with volume data)';
     if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords' + _dbgStr + ' — scoring…';
 
     // Step 2: Score and rank
@@ -2098,7 +2118,7 @@ async function fetchKeywordResearch() {
       .map(k => {
         const kd = k.difficulty > 0 ? k.difficulty : 30; // KD=0 = no data, assume medium
         const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
-        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score };
+        return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score, monthly: k.monthly || [] };
       })
       .sort((a, b) => b.score - a.score);
 
@@ -2137,25 +2157,26 @@ function renderKwResearchCard() {
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
   html += '<div><div class="eyebrow" style="color:var(--green)">Keyword Opportunities</div>';
   html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'
-    + kws.length + ' opportunities found from ' + seedCount + ' seeds'
+    + kws.length + ' keywords with volume data'
     + (ts ? ' · ' + ts : '') + ' · sorted by opportunity score</div></div>';
   html += '<button class="btn btn-ghost sm" onclick="fetchKeywordResearch()"><i class="ti ti-refresh"></i> Refresh</button>';
   html += '</div>';
 
   html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
-    + '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>CPC</span><span>Score</span></div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 80px 46px 64px 60px 60px;background:var(--bg);padding:6px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>Keyword</span><span>Vol/mo</span><span>KD</span><span>CPC</span><span>Trend</span><span>Score</span></div>';
 
   top.forEach((k, i) => {
-    const kdColor = k.kd === 0 ? 'var(--n2)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    const kdColor = k.kd === 0 ? 'var(--n1)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
     const rowBg = i % 2 === 0 ? '' : 'background:var(--bg)';
     const kdLabel = k.kd === 0 ? '?' : k.kd;
-    html += '<div style="display:grid;grid-template-columns:1fr 72px 52px 52px 64px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
+    html += '<div style="display:grid;grid-template-columns:1fr 80px 46px 64px 60px 60px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
       + '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>'
-      + '<span style="color:var(--n3)">'+k.vol.toLocaleString()+'</span>'
+      + '<span style="color:'+(k.vol>=500?'var(--green)':(k.vol>=100?'var(--n3)':'var(--n1)'))+';font-weight:500">'+k.vol.toLocaleString()+'</span>'
       + '<span style="color:'+kdColor+';font-weight:500">'+kdLabel+'</span>'
-      + '<span style="color:var(--n2);font-size:11px">'+(k.cpc?'$'+k.cpc.toFixed(2):'-')+'</span>'
-      + '<span style="color:var(--n2);font-size:11px">'+k.score+'</span>'
+      + '<span style="font-size:11px;color:var(--green)">'+(k.cpc?'$'+k.cpc.toFixed(2):'<span style="color:var(--n1)">-</span>')+'</span>'
+      + '<span style="font-size:11px">'+((!k.monthly||k.monthly.length<2)?'<span style="color:var(--n1)">-</span>':(function(){var p=[].concat(k.monthly).reverse().slice(-6);var mx=Math.max.apply(null,p.concat([1]));var b=p.map(function(v){return '<span style="display:inline-block;width:4px;height:'+Math.max(2,Math.round(v/mx*14))+'px;background:'+(v>=mx*0.5?'#158e1d':'#ccc')+';border-radius:1px;vertical-align:bottom"></span>';}).join('');var tr=p[p.length-1]-p[0];return '<span style="display:inline-flex;align-items:flex-end;gap:1px">'+b+'</span>'+(tr>0?'<span style="font-size:9px;color:var(--green)">↑</span>':(tr<0?'<span style="font-size:9px;color:var(--error)">↓</span>':''));})())+'</span>'
+      + '<span style="font-size:11px;color:var(--n2)">'+k.score+'</span>'
       + '</div>';
   });
 

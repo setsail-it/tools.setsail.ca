@@ -290,35 +290,10 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
 
-        // ── Step 1: Expand seeds via keywords_for_keywords (12 seeds max for reliability) ──
-        const expandSeeds = seeds.slice(0, 12);
-        const expandBody = expandSeeds.map(seed => ({
-          keyword: seed, location_code: locationCode, language_code: 'en', limit: 30
-        }));
-        let expandData;
-        try {
-          const expandRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
-            method: 'POST',
-            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-            body: JSON.stringify(expandBody)
-          });
-          const expandRaw = await expandRes.text();
-          expandData = JSON.parse(expandRaw);
-        } catch(e) {
-          expandData = { tasks: [] }; // graceful fallback
-          console.error('kw-expand: expand step failed:', e.message);
-        }
+        // ── keywords_for_keywords is disabled on this plan — seeds arrive pre-expanded from client ──
+        // Just run search_volume/live on the full seed list in batches of 200
 
-        // Collect expanded keywords; always include all seeds as fallback
-        const kwSet = new Set(seeds);
-        ((expandData && expandData.tasks) || []).forEach(task => {
-          (task.result || []).forEach(r => {
-            if (r.keyword) kwSet.add(r.keyword);
-          });
-        });
-        const kwList = [...kwSet].slice(0, 400);
-
-        // ── Step 2: Get volumes via search_volume/live — batched at 200 per call ──
+        const kwList = [...new Set(seeds)].slice(0, 600);
         const kwMap = {};
         const batchSize = 200;
         for (let bi = 0; bi < kwList.length; bi += batchSize) {
@@ -332,23 +307,29 @@ export default {
             const volData = await volRes.json();
             (volData.tasks || []).forEach(task => {
               (task.result || []).forEach(r => {
-                if (r.keyword) kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+                if (r.keyword) kwMap[r.keyword] = {
+                  volume: r.search_volume || 0,
+                  kd: r.competition_index || 0,
+                  cpc: r.cpc || 0,
+                  monthly: (r.monthly_searches || []).slice(0, 3).map(m => m.search_volume)
+                };
               });
             });
-          } catch(e) { console.error('Vol batch error:', e.message); /* batch failed, continue */ }
+          } catch(e) { console.error('Vol batch error:', e.message); }
         }
 
-        // Return ALL expanded keywords; seeds always included with vol:0 if volume lookup missed them
         const keywords = kwList
+          .filter(kw => kwMap[kw] !== undefined)
           .map(kw => ({
             keyword: kw,
-            volume: kwMap[kw]?.volume ?? 0,
-            difficulty: kwMap[kw]?.kd ?? 0,
-            cpc: kwMap[kw]?.cpc ?? 0
-          })); // NO filter — client handles vol:0 keywords
+            volume: kwMap[kw].volume,
+            difficulty: kwMap[kw].kd,
+            cpc: kwMap[kw].cpc,
+            monthly: kwMap[kw].monthly
+          }));
 
-        const volHits = Object.keys(kwMap).length;
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', debug: { seedCount: seeds.length, expandedCount: kwList.length, volHits } }), {
+        const volHits = keywords.length;
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-volume', debug: { seedCount: seeds.length, kwListCount: kwList.length, volHits } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {
