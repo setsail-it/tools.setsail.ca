@@ -6389,8 +6389,8 @@ async function runSerpIntel(slug) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    // Store on the page object
-    const pi = orderedPages().findIndex(p => p.slug === slug);
+    // Store on the page object — must find in S.pages directly, not orderedPages() (different order)
+    const pi = S.pages.findIndex(p => p.slug === slug);
     if (pi >= 0) { S.pages[pi].serpIntel = data; }
     scheduleSave();
     renderCopyQueue();
