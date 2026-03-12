@@ -3932,7 +3932,8 @@ function initBriefs() {
 
 function renderBriefs() {
   var el = document.getElementById('briefs-results');
-  if (!el) return;
+  if (!el) { console.error('[renderBriefs] briefs-results not found'); return; }
+  console.log('[renderBriefs] S.pages:', S.pages ? S.pages.length : 'null/undefined');
   if (!S.pages || !S.pages.length) {
     el.innerHTML = '<div style="padding:60px 40px;text-align:center">'
       + '<div style="font-size:32px;margin-bottom:12px">📋</div>'
@@ -3942,10 +3943,22 @@ function renderBriefs() {
       + '</div>';
     return;
   }
-  var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
-  var briefed = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
-  var hasQs = seoPages.filter(function(p){ return (p.assignedQuestions||[]).length > 0; }).length;
-  var hasKws = seoPages.filter(function(p){ return (p.supporting_keywords||[]).length > 0; }).length;
+  var seoPages, briefed, hasQs, hasKws;
+  try {
+    seoPages = S.pages.filter(function(p){ return p && p.page_type !== 'utility'; });
+    briefed  = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
+    hasQs    = seoPages.filter(function(p){ return (p.assignedQuestions||[]).length > 0; }).length;
+    hasKws   = seoPages.filter(function(p){ return (p.supporting_keywords||[]).length > 0; }).length;
+    console.log('[renderBriefs] seoPages:', seoPages.length, 'briefed:', briefed);
+  } catch(initErr) {
+    el.innerHTML = '<div style="padding:20px;color:#e5534b;font-family:monospace;font-size:12px">Briefs init error: '+initErr.message+'</div>';
+    console.error('[renderBriefs] init error', initErr);
+    return;
+  }
+  if (!seoPages || !seoPages.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--n2);font-size:13px">No SEO pages found — check your sitemap includes service, blog, or location pages.</div>';
+    return;
+  }
 
   var html = '';
 
@@ -4059,7 +4072,7 @@ function renderBriefs() {
         + '</div>';
     }
 
-    var taHtml = '<textarea class="brief-ta" data-pidx="'+pidx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(p.brief.summary||'')+'</textarea>';
+    var taHtml = isBriefed ? '<textarea class="brief-ta" data-pidx="'+pidx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc((p.brief&&p.brief.summary)||'')+'</textarea>' : '';
     var rightContent = isBriefed
       ? scoreHtml + taHtml
       : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
@@ -4076,13 +4089,17 @@ function renderBriefs() {
   var buildNew = seoPages.filter(function(p){ return (p.action||'build_new') !== 'improve_existing'; });
   var improve  = seoPages.filter(function(p){ return (p.action||'') === 'improve_existing'; });
 
-  if (buildNew.length) {
-    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:4px">Build New ('+buildNew.length+')</div>';
-    buildNew.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
-  }
-  if (improve.length) {
-    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:16px">Improve Existing ('+improve.length+')</div>';
-    improve.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
+  try {
+    if (buildNew.length) {
+      html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:4px">Build New ('+buildNew.length+')</div>';
+      buildNew.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
+    }
+    if (improve.length) {
+      html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:16px">Improve Existing ('+improve.length+')</div>';
+      improve.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
+    }
+  } catch(renderErr) {
+    html += '<div style="padding:20px;color:#e5534b;font-size:12px;font-family:monospace">Render error: '+renderErr.message+'</div>';
   }
   el.innerHTML = html;
   // Auto-size any existing brief textareas
