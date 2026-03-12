@@ -3788,6 +3788,14 @@ function briefRemoveQ(pageIdx, qIdx) {
 
 
 // ── BRIEF QUALITY SCORECARD ───────────────────────────────────────
+function briefToggleApprove(pidx) {
+  var p = S.pages[pidx];
+  if (!p || !p.brief || !p.brief.generated) return;
+  p.brief.approved = !p.brief.approved;
+  scheduleSave();
+  renderBriefs();
+}
+
 async function scoreBrief(pageIdx) {
   var p = S.pages[pageIdx];
   if (!p || !p.brief || !p.brief.summary) return;
@@ -3973,16 +3981,20 @@ function renderBriefs() {
     + '<span style="background:var(--green);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap">Step '+_step+' of 3</span>'
     + _bannerTxt + '</div>';
 
+  var approved = seoPages.filter(function(p){ return p.brief && p.brief.approved; }).length;
   html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
   html += '<span class="chip">'+hasKws+' with keywords</span>';
   html += '<span class="chip">'+hasQs+' with questions</span>';
   html += '<span class="chip '+(briefed===seoPages.length&&briefed>0?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
-  html += '<button onclick="goTo(\'copy\')" style="margin-left:auto;background:var(--lime);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Approve &amp; Go to Copy →</button>';
+  html += '<span id="briefs-approved-chip" class="chip '+(approved>0?'green':'')+'">'+approved+'/'+seoPages.length+' approved</span>';
+  var _canGo = approved > 0;
+  html += '<button onclick="if('+approved+'>0)goTo(\'copy\')" style="margin-left:auto;background:'+(_canGo?'var(--lime)':'var(--n1)')+';border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:'+(_canGo?'pointer':'not-allowed')+';font-family:var(--font);color:var(--dark);opacity:'+(_canGo?'1':'0.5')+'" title="'+(_canGo?'Go to Copy stage':'Approve at least one brief first')+'">Approve &amp; Go to Copy →</button>';
   html += '</div>';
 
   function pageCard(p, pidx) {
     var isBriefed = p.brief && p.brief.generated;
+    var isApproved = !!(p.brief && p.brief.approved);
     var trafficStr = p.existing_traffic > 0
       ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo'
       : '';
@@ -4039,11 +4051,17 @@ function renderBriefs() {
       + (trafficStr ? '<div style="border-top:1px solid var(--border);padding-top:6px">'
         + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Existing Traffic</div>'
         + '<div style="font-size:11px;color:var(--green);font-weight:500">'+trafficStr+'</div></div>' : '')
-      // Generate button
-      + '<div style="margin-top:auto;padding-top:10px">'
-      + '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="width:100%;background:var(--lime);border:none;padding:7px 0;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">'
+      // Generate + Approve buttons
+      + '<div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;gap:5px">'
+      + '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="width:100%;background:var(--lime);border:none;padding:6px 0;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">'
       + (isBriefed ? '↺ Regenerate Brief' : '✦ Generate Brief')
       + '</button>'
+      + (isBriefed
+          ? (isApproved
+              ? '<button onclick="briefToggleApprove('+pidx+')" style="width:100%;background:rgba(21,142,29,0.08);border:1px solid var(--green);border-radius:4px;padding:5px 0;font-size:11px;font-weight:600;color:var(--green);cursor:pointer;font-family:var(--font)">✓ Approved — Click to Unapprove</button>'
+              : '<button onclick="briefToggleApprove('+pidx+')" style="width:100%;background:var(--white);border:1px solid var(--border);border-radius:4px;padding:5px 0;font-size:11px;font-weight:500;color:var(--n3);cursor:pointer;font-family:var(--font)">Approve Brief</button>'
+            )
+          : '')
       + '</div>'
       + '</div>';
 
@@ -4082,7 +4100,9 @@ function renderBriefs() {
       + '<div id="brief-content-'+pidx+'" style="flex:1">'+rightContent+'</div>'
       + '</div>';
 
-    return '<div class="tbl-row" style="display:grid;grid-template-columns:200px 1fr;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:var(--white);position:relative;align-items:stretch">'
+    var cardBorder = isApproved ? '2px solid var(--green)' : '1px solid var(--border)';
+    var cardBg = isApproved ? 'rgba(21,142,29,0.02)' : 'var(--white)';
+    return '<div class="tbl-row" style="display:grid;grid-template-columns:200px 1fr;border:'+cardBorder+';border-radius:6px;margin-bottom:8px;background:'+cardBg+';position:relative;align-items:stretch">'
       + leftCol + rightCol + '</div>';
   }
 
@@ -6265,7 +6285,7 @@ function initCopy() {
 function buildCopyPrompt(page) {
   var r = S.research||{}, s = S.setup;
   var kws = (page.supporting_keywords||[]).map(function(k){ return k.kw||k; }).filter(Boolean).join(', ');
-  var hasBrief = !!(page.brief && page.brief.summary && page.brief.summary.trim().length > 50);
+  var hasBrief = !!(page.brief && page.brief.approved && page.brief.summary && page.brief.summary.trim().length > 50);
   var briefBlock = hasBrief
     ? '\n\n## APPROVED CONTENT BRIEF\nThis brief has been reviewed and approved. Follow its H2 structure, CTA architecture, word count target, FAQ questions, and E-E-A-T inputs precisely. Do not invent a different structure.\n\n' + page.brief.summary + '\n\n## END OF BRIEF'
     : '';
@@ -6574,10 +6594,13 @@ function renderCopyQueue() {
           html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
             +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
         } else {
-          var _hasBrief = !!(p.brief && p.brief.summary && p.brief.summary.trim().length > 50);
+          var _hasBrief = !!(p.brief && p.brief.approved && p.brief.summary && p.brief.summary.trim().length > 50);
+          var _briefExists = !!(p.brief && p.brief.summary && p.brief.summary.trim().length > 50);
           var _briefBadge = _hasBrief
             ? '<span title="Brief approved — copy will follow the content brief" style="font-size:9px;background:rgba(21,142,29,0.1);color:var(--green);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 6px;font-weight:600">✓ Brief</span> '
-            : '<span title="No brief — copy will use basic context only" style="font-size:9px;background:rgba(0,0,0,0.04);color:var(--n2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">No brief</span> ';
+            : (_briefExists
+              ? '<span title="Brief written but not approved — copy will use basic context only. Go back to Briefs to approve." style="font-size:9px;background:rgba(255,165,0,0.08);color:var(--warn);border:1px solid rgba(255,165,0,0.3);border-radius:3px;padding:1px 6px">⚠ Not approved</span> '
+              : '<span title="No brief — copy will use basic context only" style="font-size:9px;background:rgba(0,0,0,0.04);color:var(--n2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">No brief</span> ');
           html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
             +'<div style="font-size:12px;color:var(--n2);display:flex;align-items:center;gap:6px">'+_briefBadge+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
             +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
