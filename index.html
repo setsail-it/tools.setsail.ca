@@ -2750,11 +2750,11 @@ function _renderKwQuestionsTab() {
     html += '<div style="text-align:center;padding:40px 20px;color:var(--n2)">';
     html += '<i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i>';
     html += '<div style="font-size:13px;margin-bottom:8px">No questions fetched yet.</div>';
-    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">Pulls People Also Ask from Google for your top keywords.</div>';
+    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">AI-generates bottom-of-funnel questions real buyers ask when evaluating your services.</div>';
     html += '<button class="btn btn-primary" onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
-    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">People Also Ask questions pulled during Research. Review these first — they reveal intent gaps, blog opportunities, and FAQ content your pages need.</div>';
+    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Review these first — they reveal intent gaps, blog opportunities, and FAQ content your pages need.</div>';
     html += '<div id="kw-questions-fetch-status" style="font-size:11px;color:var(--n2);margin-bottom:8px"></div>';
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
     html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch Questions</button>';
@@ -2832,65 +2832,52 @@ function addAllQuestionsAsSeeds() {
 async function fetchPAAFromKeywords() {
   var r = S.research || {};
   var setup = S.setup || {};
-  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim().toLowerCase();
-  var services = (r.primary_services || []).slice(0, 4).map(function(s) { return s.toLowerCase(); });
-
-  // Build BOFU buyer-intent seeds — "how to choose X", "best X agency", "X agency cost"
-  // These trigger questions real buyers ask, not generic marketing education
-  var seeds = [];
-  services.forEach(function(svc) {
-    if (geo) seeds.push(svc + ' agency ' + geo);
-    seeds.push('how to choose ' + svc + ' agency');
-    seeds.push('best ' + svc + ' agency');
-  });
-  // Add agency-level buyer intent seeds
-  if (geo) {
-    seeds.push('marketing agency ' + geo);
-    seeds.push('how to choose a marketing agency');
-    seeds.push('digital marketing agency cost');
-  }
-  // Dedupe and cap at 6 (PAA API limit)
-  seeds = seeds.filter(function(s, i, a) { return a.indexOf(s) === i; }).slice(0, 6);
-
-  if (!seeds.length) { alert('Add services and geo in Setup first.'); return; }
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+  var services = (r.primary_services || []).slice(0, 6).join(', ');
+  var audience = (r.target_audience && r.target_audience.primary ? r.target_audience.primary : '') ||
+                 (r.buyer_personas && r.buyer_personas[0] ? r.buyer_personas[0].role || '' : '');
+  var painPoints = (r.pain_points || []).slice(0, 4).join('; ');
+  var industry = setup.industry || '';
 
   var statusEl = document.getElementById('kw-questions-fetch-status');
-  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Fetching buyer-intent questions...';
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating questions with AI...';
 
-  var country = (setup.geo && setup.geo.toUpperCase().includes('US')) ? 'US' : 'CA';
+  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real business owners and marketing managers type into Google when evaluating or hiring a marketing agency. These should be bottom-of-funnel — evaluation, comparison, cost, and trust questions. Never generic educational questions about marketing theory. Return ONLY a JSON array of 20 question strings, no markdown, no explanation.';
+
+  var userPrompt = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
+    'Location: ' + (geo || 'Vancouver, BC') + '\n' +
+    'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
+    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n' +
+    (painPoints ? 'Pain points they solve: ' + painPoints + '\n' : '') +
+    (industry ? 'Industry focus: ' + industry + '\n' : '') +
+    '\nGenerate 20 questions a business owner would Google when deciding whether to hire this agency or evaluating their options. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/ROI questions, red flag questions. Make them specific to the services and location where relevant.';
+
   try {
-    var res = await fetch('/api/paa', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: seeds, country: country })
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
     });
     var data = await res.json();
-    if (!data.questions || !data.questions.length) throw new Error(data.error || 'No questions returned for seeds: ' + seeds.join(', '));
-
-    // Filter out generic education questions — keep only buyer/evaluation intent
-    var rawQs = data.questions.map(function(q) { return typeof q === 'object' ? q.question : q; }).filter(Boolean);
-    var buyerQs = rawQs.filter(function(q) {
-      var ql = q.toLowerCase();
-      // Keep: choosing, hiring, cost, worth it, how does X work, what to expect, vs/compare
-      if (ql.match(/\b(choose|choosing|hire|hiring|cost|price|pricing|worth|vs\b|compare|best|how does|what does|what to expect|how long|do i need|should i|difference between|when (to|should)|what happens|how much|what is included|questions to ask)\b/)) return true;
-      // Keep if it contains a service name or agency/company
-      var hasService = services.some(function(s) { return ql.includes(s.split(' ')[0]); });
-      if (hasService && ql.match(/\b(agency|company|firm|consultant|expert|specialist|provider)\b/)) return true;
-      return false;
-    });
-
-    // If filter is too aggressive, fall back to all questions
-    var finalQs = buyerQs.length >= 5 ? buyerQs : rawQs;
+    var raw = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text.trim() : '';
+    raw = raw.replace(/```json|```/g, '').trim();
+    var questions = JSON.parse(raw);
+    if (!Array.isArray(questions) || !questions.length) throw new Error('Invalid response from AI');
 
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
-    S.contentIntel.paa = { questions: finalQs.map(function(q) { return { question: q }; }), seeds: seeds.join(', '), fetchedAt: Date.now() };
+    S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q }; }), fetchedAt: Date.now(), source: 'ai' };
     scheduleSave();
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + finalQs.length + ' buyer-intent questions fetched</span>';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + questions.length + ' buyer-intent questions generated</span>';
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
   }
 }
-
 async function generateBlogSeedsFromQuestions() {
   var qs = _getQuestionsArray();
   if (!qs.length) { alert('No questions found. Run Research enrichment first.'); return; }
