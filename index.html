@@ -1034,7 +1034,7 @@ copy:`You are a senior CRO copywriter and SEO specialist at Setsail Marketing. W
 
 SEO RULES: H1 = primary keyword verbatim. First paragraph includes primary keyword. H2s use supporting keywords naturally. Internal link placeholders where relevant.
 CRO RULES: Every section must earn the scroll. No filler copy. Lead with outcomes not activities. Canadian spelling. Direct, confident tone.
-OUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">.`,
+OUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">. CRITICAL: Write the COMPLETE page — all 10 sections — without truncating or stopping early. FAQ must include all 8+ questions. Output the entire page in one response.`,
 
 layout:`You are a senior CRO-focused web strategist and Webflow designer at Setsail Marketing. Based on the provided page copy and keyword intent, generate a detailed section-by-section page layout brief that a Webflow designer can follow exactly.
 
@@ -6347,7 +6347,7 @@ async function runCopyPage(slug) {
       if (copyStopFlag) return;
       const el = document.getElementById('copy-stream-'+slug);
       if (el) el.textContent = t.slice(-600);
-    });
+    }, 6000);
     if (!copyStopFlag) {
       var _existing = S.copy[slug] || {};
       var _drafts = _existing.drafts || [];
@@ -6541,7 +6541,7 @@ async function runCopyPass2(slug) {
       if (copyStopFlag) return;
       var el = document.getElementById('copy-stream-'+slug);
       if (el) el.textContent = t.slice(-600);
-    }, 4000);
+    }, 6000);
     if (!copyStopFlag) {
       var drafts = c.drafts || [{v:1, html:c.copy, pass:1, generatedAt:c.writtenAt||Date.now()}];
       drafts = drafts.filter(function(d){ return d.pass===1; }); // keep only v1
