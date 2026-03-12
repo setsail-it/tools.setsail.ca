@@ -123,6 +123,9 @@ textarea.inp{resize:vertical}
 .mobile-stage-item .msi-icon{width:26px;height:26px;border-radius:50%;background:var(--n1);display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
 .mobile-stage-item.done .msi-icon{background:var(--dark);color:white}
 .mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
+.tbl-row{transition:background 0.1s ease}
+.tbl-row:hover{background:rgba(21,142,29,0.07) !important}
+.tbl-row.selected:hover{background:rgba(21,142,29,0.12) !important}
 </style>
 </head>
 <body>
@@ -2267,7 +2270,7 @@ function renderKwResearchCard() {
     const kdColor = k.kd === 0 ? 'var(--n1)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
     const rowBg = i % 2 === 0 ? '' : 'background:var(--bg)';
     const kdLabel = k.kd === 0 ? '?' : k.kd;
-    html += '<div style="display:grid;grid-template-columns:1fr 80px 46px 64px 60px 60px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
+    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr 80px 46px 64px 60px 60px;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;'+rowBg+'">'
       + '<span style="color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(k.kw)+'</span>'
       + '<span style="color:'+(k.vol>=500?'var(--green)':(k.vol>=100?'var(--n3)':'var(--n1)'))+';font-weight:500">'+k.vol.toLocaleString()+'</span>'
       + '<span style="color:'+kdColor+';font-weight:500">'+kdLabel+'</span>'
@@ -2464,7 +2467,7 @@ function _renderKwSeedsTab() {
   html += '<span>Seed Keyword</span><span>Remove</span></div>';
   html += '<div style="max-height:360px;overflow-y:auto">';
   seeds.forEach(function(seed, i) {
-    html += '<div style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
+    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
       + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + '</span>'
       + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove">&times;</button>'
       + '</div>';
@@ -4854,7 +4857,7 @@ function renderExistingSitePanel() {
     const traffic = p.traffic || 0;
     const kws = p.keywords || 0;
     const trafficColor = traffic > 100 ? 'var(--green)' : traffic > 20 ? 'var(--warn)' : 'var(--n2)';
-    html += '<div style="display:grid;grid-template-columns:1fr 70px 60px 1.2fr;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04);align-items:center">';
+    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr 70px 60px 1.2fr;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04);align-items:center">';
     html += '<span style="font-size:11.5px;color:var(--dark);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.slug || '/')+'</span>';
     html += '<span style="font-size:11px;font-weight:500;color:'+trafficColor+'">'+(traffic > 0 ? traffic.toLocaleString() : '<span style="color:var(--n1)">0</span>')+'</span>';
     html += '<span style="font-size:11px;color:var(--n2)">'+kws+'</span>';
