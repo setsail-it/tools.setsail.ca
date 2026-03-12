@@ -2853,7 +2853,7 @@ async function fetchPAAFromKeywords() {
     '\nGenerate 20 questions a business owner would Google when deciding whether to hire this agency or evaluating their options. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/ROI questions, red flag questions. Make them specific to the services and location where relevant.';
 
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
+    var res = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
