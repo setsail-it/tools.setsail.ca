@@ -2741,9 +2741,124 @@ function _renderKwClustersTab() {
   return html;
 }
 
+async function validateAndAssignQuestions() {
+  var qs = _getQuestionsArray();
+  if (!qs.length) { alert('No questions to validate. Fetch questions first.'); return; }
+
+  var statusEl = document.getElementById('kw-questions-fetch-status');
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
+  var country = (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0) ? 'ca' : 'us';
+
+  // ── Step 1: Volume lookup ────────────────────────────────────────────────
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Step 1/2: Checking search volumes...';
+
+  var volMap = {};
+  try {
+    var volRes = await fetch('/api/kw-expand', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds: qs.slice(0, 30), country: country })
+    });
+    var volData = await volRes.json();
+    if (volData.keywords && volData.keywords.length) {
+      volData.keywords.forEach(function(k) {
+        var qMatch = qs.find(function(q) { return q.toLowerCase() === k.keyword.toLowerCase(); });
+        if (qMatch) volMap[qMatch] = k.volume || 0;
+      });
+    }
+  } catch(e) { /* vol lookup failed silently — continue to assignment */ }
+
+  // ── Step 2: AI page assignment ────────────────────────────────────────────
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Step 2/2: Assigning questions to pages...';
+
+  // Build page list from snapshot + clusters
+  var existingPages = [];
+  if (S.snapshot && S.snapshot.topPages) {
+    S.snapshot.topPages.forEach(function(p) { existingPages.push(p.slug); });
+  }
+  if (S.kwResearch && S.kwResearch.clusters) {
+    S.kwResearch.clusters.forEach(function(c) {
+      if (c.existingSlug && existingPages.indexOf(c.existingSlug) < 0) existingPages.push(c.existingSlug);
+      if (c.recommendation === 'build_new' && c.qualifies !== false && existingPages.indexOf(c.slug) < 0) existingPages.push(c.slug);
+    });
+  }
+  // Always include core pages
+  ['/', '/about', '/about-us', '/contact', '/services', '/faq'].forEach(function(p) {
+    if (existingPages.indexOf(p) < 0) existingPages.push(p);
+  });
+
+  var qList = qs.map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n');
+  var pageList = existingPages.slice(0, 40).join(', ');
+  var businessName = (setup.businessName || 'the business');
+  var services = (r.primary_services || []).slice(0, 6).join(', ');
+
+  var sysPrompt = 'You are an SEO architect. Assign each question to the best page on the website. Return ONLY a valid JSON array, no markdown, no explanation.';
+  var userPrompt = 'Business: ' + businessName + '\nServices: ' + (services || 'marketing services') + '\nExisting pages: ' + pageList + '\n\nQuestions to assign:\n' + qList + '\n\nFor each question return a JSON object with:\n- i: question number (1-based)\n- slug: best page slug from existing pages, OR a new slug like /blog/how-to-choose-agency if no existing page fits\n- type: "faq_on_page" (belongs as FAQ on a service/about page), "new_blog" (deserves its own blog post), or "sitewide_faq" (generic trust question for /faq or homepage)\n\nRules:\n- Prefer existing pages over new ones\n- "how much does X cost", "how long does X take", "what to expect" -> faq_on_page on the relevant service page\n- "how to choose", "vs", "difference between", "best agency" -> new_blog if vol > 50, else faq_on_page on homepage or /faq\n- Generic trust questions ("are you legit", "do you have reviews") -> sitewide_faq\n- Use existing slugs verbatim when matched';
+
+  try {
+    var aiRes = await fetch('/api/claude', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: sysPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+    var aiData = await aiRes.json();
+    var raw = (aiData.content && aiData.content[0] && aiData.content[0].text) ? aiData.content[0].text.trim() : '';
+    raw = raw.replace(/```json|```/g, '').trim();
+    var assignments = JSON.parse(raw);
+
+    // Merge vol + assignment back into question objects
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    if (!S.contentIntel.paa) S.contentIntel.paa = { questions: qs.map(function(q) { return { question: q }; }) };
+
+    // Normalise questions to objects
+    S.contentIntel.paa.questions = S.contentIntel.paa.questions.map(function(q) {
+      return typeof q === 'object' ? q : { question: q };
+    });
+
+    // Apply vol
+    S.contentIntel.paa.questions.forEach(function(qObj) {
+      if (volMap.hasOwnProperty(qObj.question)) qObj.vol = volMap[qObj.question];
+    });
+
+    // Apply assignments
+    assignments.forEach(function(a) {
+      var idx = (a.i || 1) - 1;
+      if (S.contentIntel.paa.questions[idx]) {
+        S.contentIntel.paa.questions[idx].assignedSlug = a.slug || null;
+        S.contentIntel.paa.questions[idx].contentType = a.type || 'faq_on_page';
+      }
+    });
+
+    S.contentIntel.paa.validatedAt = Date.now();
+    scheduleSave();
+
+    var withVol = S.contentIntel.paa.questions.filter(function(q) { return q.vol > 0; }).length;
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> Validated — ' + withVol + ' questions have search volume, all assigned to pages</span>';
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Assignment error: ' + esc(e.message) + '</span>';
+  }
+}
+
+function _overrideQuestionAssignment(qi, slug) {
+  if (!S.contentIntel || !S.contentIntel.paa || !S.contentIntel.paa.questions) return;
+  if (S.contentIntel.paa.questions[qi]) {
+    S.contentIntel.paa.questions[qi].assignedSlug = slug;
+    scheduleSave();
+    renderKwTabContent();
+  }
+}
+
 function _renderKwQuestionsTab() {
-  var normalised = _getQuestionsArray();
-  var addedToSeeds = new Set(S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : []);
+  // Get questions as full objects (with vol/assignment if validated)
+  var rawQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) ? S.contentIntel.paa.questions : [];
+  var normalised = rawQs.map(function(q) { return typeof q === 'object' ? q : { question: q }; });
+  var isValidated = !!(S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.validatedAt);
 
   var html = '<div>';
   if (!normalised.length) {
@@ -2754,32 +2869,93 @@ function _renderKwQuestionsTab() {
     html += '<button class="btn btn-primary" onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
-    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Review these first — they reveal intent gaps, blog opportunities, and FAQ content your pages need.</div>';
+    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Validate to get search volumes and page assignments — these flow into copy briefs and FAQ schema.</div>';
     html += '<div id="kw-questions-fetch-status" style="font-size:11px;color:var(--n2);margin-bottom:8px"></div>';
+
+    // Action bar
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-    html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch Questions</button>';
-    html += '<button class="btn btn-ghost" onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Generate Blog Seeds from Questions</button>';
-    html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All as Seeds</button>';
+    html += '<button class="btn btn-primary" onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
+    html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
+    html += '<button class="btn btn-ghost" onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
+    html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
+    if (isValidated) {
+      var withVol = normalised.filter(function(q) { return q.vol > 0; }).length;
+      html += '<span style="font-size:11px;color:var(--green);display:inline-flex;align-items:center;gap:4px"><i class="ti ti-check"></i> ' + withVol + '/' + normalised.length + ' have search volume</span>';
+    }
     html += '</div>';
-    html += '<div style="display:flex;flex-direction:column;gap:6px">';
-    normalised.forEach(function(q, i) {
-      var inSeeds = addedToSeeds.has(q);
+
+    // Sort by vol desc if validated, else keep order
+    var sorted = normalised.slice();
+    if (isValidated) {
+      sorted.sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    }
+
+    // Table header
+    html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+    html += '<div style="display:grid;grid-template-columns:1fr ' + (isValidated ? '80px 160px ' : '') + '100px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3);gap:8px">';
+    html += '<span>Question</span>';
+    if (isValidated) {
+      html += '<span>Vol</span>';
+      html += '<span>Assigned Page</span>';
+    }
+    html += '<span>Intent</span>';
+    html += '</div>';
+
+    sorted.forEach(function(qObj, i) {
+      var q = qObj.question || '';
+      var origIdx = normalised.indexOf(qObj);
+      var vol = qObj.vol;
+      var hasVol = typeof vol === 'number';
+      var volDisplay = hasVol ? (vol > 0 ? vol.toLocaleString() : '0') : '-';
+      var volClr = !hasVol ? 'var(--n2)' : vol >= 100 ? 'var(--green)' : vol > 0 ? 'var(--warn)' : 'var(--n2)';
+
+      var assignedSlug = qObj.assignedSlug || null;
+      var contentType = qObj.contentType || null;
+      var typeClr = contentType === 'new_blog' ? 'var(--primary)' : contentType === 'sitewide_faq' ? 'var(--warn)' : 'var(--n3)';
+      var typeIcon = contentType === 'new_blog' ? 'ti-file-plus' : contentType === 'sitewide_faq' ? 'ti-world' : 'ti-file-text';
+
       var intent = q.match(/^(how|what|why|when|where|who|which|can|is|are|does|do|should)/i) ? 'informational' : 'commercial';
       var intentClr = intent === 'informational' ? 'var(--green)' : 'var(--warn)';
       var intentLabel = intent === 'informational' ? 'Blog / FAQ' : 'Service / Landing';
-      html += '<div style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:9px 12px;background:var(--panel);border-radius:6px;align-items:center">';
-      html += '<div>';
+
+      var rowBg = i % 2 ? 'background:var(--bg)' : '';
+      html += '<div style="display:grid;grid-template-columns:1fr ' + (isValidated ? '80px 160px ' : '') + '100px;padding:8px 12px;border-bottom:1px solid var(--border);' + rowBg + ';gap:8px;align-items:center">';
+
+      // Question text
       html += '<div style="font-size:12px;color:var(--dark)">' + esc(q) + '</div>';
-      html += '<div style="font-size:10px;color:' + intentClr + ';margin-top:2px">' + intentLabel + '</div>';
+
+      if (isValidated) {
+        // Vol badge
+        html += '<div style="font-size:12px;font-weight:600;color:' + volClr + '">' + volDisplay + '</div>';
+        // Assigned page
+        if (assignedSlug) {
+          html += '<div style="display:flex;flex-direction:column;gap:2px">';
+          html += '<div style="font-size:10px;color:' + typeClr + ';display:flex;align-items:center;gap:3px"><i class="ti ' + typeIcon + '"></i> ' + (contentType === 'new_blog' ? 'New page' : contentType === 'sitewide_faq' ? 'Sitewide FAQ' : 'FAQ on page') + '</div>';
+          html += '<div style="font-size:11px;color:var(--n3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(assignedSlug) + '">' + esc(assignedSlug) + '</div>';
+          html += '</div>';
+        } else {
+          html += '<div style="font-size:11px;color:var(--n2)">—</div>';
+        }
+      }
+
+      // Intent badge + add to seeds
+      html += '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">';
+      html += '<span style="font-size:10px;color:' + intentClr + '">' + intentLabel + '</span>';
       html += '</div>';
-      html += '<button onclick="_addQuestionAsSeed(' + i + ')" style="border:1px solid var(--border);background:' + (inSeeds ? 'rgba(21,142,29,0.08)' : 'white') + ';color:' + (inSeeds ? 'var(--green)' : 'var(--n3)') + ';border-radius:6px;padding:4px 10px;font-size:11px;cursor:' + (inSeeds ? 'default' : 'pointer') + ';white-space:nowrap">'
-        + (inSeeds ? '<i class="ti ti-check"></i> Added' : '<i class="ti ti-plus"></i> Add to Seeds') + '</button>';
+
       html += '</div>';
     });
     html += '</div>';
-    html += '<div style="margin-top:14px;padding:10px 14px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--n2);border:1px solid var(--border)">';
-    html += '<strong style="color:var(--dark)">Next:</strong> Review questions above, then go to Seeds → AI Generate Seeds. Questions are automatically passed as context so Claude generates seeds that capture this intent.';
-    html += '</div>';
+
+    if (!isValidated) {
+      html += '<div style="margin-top:12px;padding:10px 14px;background:rgba(21,142,29,0.06);border-radius:6px;font-size:11px;color:var(--n3);border:1px solid rgba(21,142,29,0.2)">';
+      html += '<strong style="color:var(--dark)"><i class="ti ti-bolt"></i> Run Validate & Assign</strong> to check search volumes and map each question to a page. Questions with vol > 0 become content priorities; all questions feed FAQ schema in Stage 8.';
+      html += '</div>';
+    } else {
+      html += '<div style="margin-top:12px;padding:10px 14px;background:var(--bg);border-radius:6px;font-size:11px;color:var(--n2);border:1px solid var(--border)">';
+      html += '<strong style="color:var(--dark)">AEO pipeline:</strong> Questions tagged "New page" will appear as suggested blog/FAQ pages in Stage 5 (Sitemap). All questions feed FAQ schema per page in Stage 8 (Schema).';
+      html += '</div>';
+    }
   }
   html += '</div>';
   return html;
