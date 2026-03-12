@@ -2214,7 +2214,7 @@ async function fetchKeywordResearch() {
       .filter(k => k.volume >= 0)
       .map(k => {
         const kd = k.difficulty > 0 ? k.difficulty : 30; // KD=0 = no data, assume medium
-        const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
+        const score = k.volume > 0 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
         return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score, monthly: k.monthly || [] };
       })
       .sort((a, b) => b.score - a.score);
@@ -3408,7 +3408,7 @@ async function enrichSitemapWithLiveData() {
         p.primary_vol = hit.volume;
         p.primary_kd = hit.difficulty || 0;
         const kd2 = hit.difficulty > 0 ? hit.difficulty : 50;
-        p.score = Math.round((Math.log(hit.volume+1)*100/kd2)*10)/10;
+        p.score = hit.volume > 0 ? Math.round((Math.log(hit.volume+1)*100/Math.max(kd2,5))*10)/10 : 0;
       }
       if (p.supporting_keywords?.length) {
         p.supporting_keywords = p.supporting_keywords.map(sk => {
@@ -3508,7 +3508,7 @@ async function openKwFinder(pageIdx) {
         .filter(k => k.volume >= 10)
         .map(k => {
           const kd    = k.difficulty > 0 ? k.difficulty : 50;
-          const score = Math.round((Math.log(k.volume + 1) * 100 / kd) * 10) / 10;
+          const score = k.volume > 0 ? Math.round((Math.log(k.volume + 1) * 100 / Math.max(kd, 5)) * 10) / 10 : 0;
           return { kw: k.keyword, vol: k.volume, kd: k.difficulty, score };
         })
         .sort((a, b) => b.score - a.score)
@@ -3840,7 +3840,7 @@ async function updatePrimaryKw(idx, rawKw) {
     S.pages[idx].primary_keyword = cached.kw;
     S.pages[idx].primary_vol = cached.vol;
     S.pages[idx].primary_kd = cached.kd;
-    S.pages[idx].score = cached.score || (cached.vol>0&&cached.kd>0 ? Math.round((Math.log(cached.vol+1)*100/cached.kd)*10)/10 : 0);
+    S.pages[idx].score = cached.score || (cached.vol>0&&cached.kd>0 ? Math.round((Math.log(cached.vol+1)*100/Math.max(cached.kd,5))*10)/10 : 0);
     scheduleSave(); renderSitemapResults(S.sitemapApproved); return;
   }
   // Live DataForSEO lookup
@@ -3855,7 +3855,7 @@ async function updatePrimaryKw(idx, rawKw) {
       S.pages[idx].primary_vol = hit.volume || 0;
       S.pages[idx].primary_kd = hit.difficulty || 0;
       const v=hit.volume||0,d=hit.difficulty||0;
-      S.pages[idx].score = v>0&&d>0 ? Math.round((Math.log(v+1)*100/d)*10)/10 : 0;
+      S.pages[idx].score = v>0&&d>0 ? Math.round((Math.log(v+1)*100/Math.max(d,5))*10)/10 : 0;
     }
   } catch(e) {}
   scheduleSave(); renderSitemapResults(S.sitemapApproved);
@@ -4061,7 +4061,7 @@ function _renderSitemapResultsInner(approved) {
     const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
     const vol = typeof p.primary_vol === 'number' ? p.primary_vol : (parseInt(p.primary_vol) || 0);
     const kd = typeof p.primary_kd === 'number' ? p.primary_kd : (parseInt(p.primary_kd) || 0);
-    const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/kd)*10)/10 : 0);
+    const score = p.score || (vol > 0 && kd > 0 ? Math.round((Math.log(vol+1)*100/Math.max(kd,5))*10)/10 : 0);
     const isStructural = !!p.is_structural;
     const kdColor = kd === 0 ? 'var(--n2)' : kd <= 20 ? 'var(--green)' : kd <= 40 ? 'var(--warn)' : 'var(--error)';
     const isSubPage = (p.slug||'').includes('/');
