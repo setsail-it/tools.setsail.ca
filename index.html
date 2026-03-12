@@ -6756,7 +6756,7 @@ async function runCopyAudit(slug) {
   try {
     var result = await callClaude('You are a strict copy auditor. OUTPUT ONLY VALID JSON. No prose, no markdown, no backticks. The pass field for every check MUST be boolean true or false, never a string. Start your response with { and end with }.', prompt, null, 1200);
     var jsonStart = result.indexOf('{'), jsonEnd = result.lastIndexOf('}');
-    var jsonStart = result.indexOf('{'), jsonEnd = result.lastIndexOf('}');
+
     var clean = (jsonStart >= 0 && jsonEnd > jsonStart) ? result.slice(jsonStart, jsonEnd+1) : result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
     // Sanitise: remove literal newlines/tabs inside JSON string values, fix bare non-boolean pass values
     clean = clean.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, function(m) {
@@ -6764,7 +6764,9 @@ async function runCopyAudit(slug) {
     });
     clean = clean.replace(/"pass":\s*(?!true|false|null)[^,}\]]+/g, '"pass": false');
 
+
     var parsed = JSON.parse(clean);
+    var checkMap = {};
     (parsed.checks||[]).forEach(function(ch){ checkMap[ch.id] = ch; });
     var finalChecks = checks.map(function(ch){
       var r = checkMap[ch.id] || {};
