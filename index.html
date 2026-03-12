@@ -6263,22 +6263,51 @@ function initCopy() {
 }
 
 function buildCopyPrompt(page) {
-  const r = S.research||{}, s = S.setup;
-  const kws = (page.supporting_keywords||[]).map(k => k.kw||k).filter(Boolean).join(', ');
-  if (page.page_type === 'blog') {
-    return `CLIENT: ${s.client}
-BLOG POST TITLE: ${page.page_name}
-PRIMARY KEYWORD: ${page.primary_keyword}
-SUPPORTING KEYWORDS: ${kws}
-TARGET WORD COUNT: ${page.word_count_target || 1200}
-BUSINESS OVERVIEW: ${r.business_overview||''}
-GEOGRAPHY: ${r.geography?.primary||s.geo||''}
-VOICE: ${r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.'}
-NOTES: ${page.notes||''}
+  var r = S.research||{}, s = S.setup;
+  var kws = (page.supporting_keywords||[]).map(function(k){ return k.kw||k; }).filter(Boolean).join(', ');
+  var hasBrief = !!(page.brief && page.brief.summary && page.brief.summary.trim().length > 50);
+  var briefBlock = hasBrief
+    ? '\n\n## APPROVED CONTENT BRIEF\nThis brief has been reviewed and approved. Follow its H2 structure, CTA architecture, word count target, FAQ questions, and E-E-A-T inputs precisely. Do not invent a different structure.\n\n' + page.brief.summary + '\n\n## END OF BRIEF'
+    : '';
+  var questionsBlock = (page.assignedQuestions||[]).length
+    ? '\nFAQ TARGETS (must appear as H3 questions in FAQ section):\n- ' + (page.assignedQuestions||[]).join('\n- ')
+    : '';
+  var briefInstruction = hasBrief
+    ? 'Follow the approved brief above. Write complete page HTML matching the brief H1, H2 structure, CTA positions, word count, objections, trust signals, FAQ questions, and E-E-A-T inputs exactly. Use the business context fields above for the actual copy content. No <html>/<head>/<body> tags.'
+    : 'Write the complete page.';
+  var blogBriefInstruction = hasBrief
+    ? 'Follow the approved brief above. Write the complete blog post in HTML matching the structure, unique angle, word count, and FAQ questions specified. No <html>/<head>/<body> tags. Canadian spelling.'
+    : 'Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client\'s services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.';
 
-Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client's services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.`;
+  if (page.page_type === 'blog') {
+    return 'CLIENT: ' + s.client
+      + '\nBLOG POST TITLE: ' + page.page_name
+      + '\nPRIMARY KEYWORD: ' + page.primary_keyword
+      + '\nSUPPORTING KEYWORDS: ' + kws
+      + '\nTARGET WORD COUNT: ' + (page.word_count_target || 1200)
+      + '\nBUSINESS OVERVIEW: ' + (r.business_overview||'')
+      + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
+      + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
+      + '\nNOTES: ' + (page.notes||'')
+      + questionsBlock + briefBlock
+      + '\n\n' + blogBriefInstruction;
   }
-  return 'CLIENT: '+s.client+'\nPAGE: '+page.page_name+' | /'+page.slug+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+kws+'\nINTENT: '+page.search_intent+'\nWORD COUNT MIN: '+(page.word_count_target||1500)+'\nOVERVIEW: '+(r.business_overview||'')+'\nVALUE PROP: '+(r.value_proposition||'')+'\nDIFFERENTIATORS: '+(r.key_differentiators||[]).join('. ')+'\nGEOGRAPHY: '+(r.geography?.primary||s.geo||'')+'\nPRICING: '+(s.pricing||r.pricing_notes||'')+'\nVOICE: '+(r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')+'\nNOTES: '+(page.notes||'')+'\n\nWrite the complete page.';
+
+  return 'CLIENT: ' + s.client
+    + '\nPAGE: ' + page.page_name + ' | /' + page.slug
+    + '\nPRIMARY KW: ' + page.primary_keyword
+    + '\nSUPPORTING: ' + kws
+    + '\nINTENT: ' + (page.search_intent||'')
+    + '\nWORD COUNT MIN: ' + (page.word_count_target||1500)
+    + '\nOVERVIEW: ' + (r.business_overview||'')
+    + '\nVALUE PROP: ' + (r.value_proposition||'')
+    + '\nDIFFERENTIATORS: ' + (r.key_differentiators||[]).join('. ')
+    + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
+    + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
+    + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
+    + '\nNOTES: ' + (page.notes||'')
+    + questionsBlock + briefBlock
+    + '\n\n' + briefInstruction;
 }
 
 async function runCopyPage(slug) {
@@ -6545,8 +6574,12 @@ function renderCopyQueue() {
           html += '<div style="color:var(--error);font-size:12px;margin-bottom:8px">'+esc(r.error)+'</div>'
             +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Retry</button>';
         } else {
+          var _hasBrief = !!(p.brief && p.brief.summary && p.brief.summary.trim().length > 50);
+          var _briefBadge = _hasBrief
+            ? '<span title="Brief approved — copy will follow the content brief" style="font-size:9px;background:rgba(21,142,29,0.1);color:var(--green);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 6px;font-weight:600">✓ Brief</span> '
+            : '<span title="No brief — copy will use basic context only" style="font-size:9px;background:rgba(0,0,0,0.04);color:var(--n2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">No brief</span> ';
           html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">'
-            +'<div style="font-size:12px;color:var(--n2)">'+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
+            +'<div style="font-size:12px;color:var(--n2);display:flex;align-items:center;gap:6px">'+_briefBadge+esc(p.primary_keyword||'')+(p.search_intent?' · '+esc(p.search_intent):'')+(p.word_count_target?' · '+p.word_count_target+' words':'')+'</div>'
             +'<button class="btn btn-primary sm" onclick="runCopyPage(\''+p.slug+'\')"><i class="ti ti-player-play"></i> Write Copy</button>'
             +'</div>';
         }
