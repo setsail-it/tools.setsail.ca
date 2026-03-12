@@ -2580,12 +2580,19 @@ async function generateAISeeds() {
   var userPrompt = 'Generate seed keywords for this client:\n\n' + ctx;
 
   try {
-    var result = await callClaude(systemPrompt, userPrompt, null, 4000);
-    // Repair: if response starts with quoted string (missing opening bracket), wrap it
+    var result = await callClaude(systemPrompt, userPrompt, null, 6000);
+    // Robust JSON repair for truncated or bracket-missing arrays
     var repaired = result.trim();
-    if (repaired.startsWith('"') || /^[a-z]/.test(repaired)) {
+    // Strip any markdown fences
+    repaired = repaired.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'').trim();
+    // Add missing opening bracket
+    if (!repaired.startsWith('[') && !repaired.startsWith('{')) {
       repaired = '[' + repaired;
-      if (!repaired.endsWith(']')) repaired = repaired + ']';
+    }
+    // If truncated mid-string (ends with partial word or comma), close it cleanly
+    if (!repaired.endsWith(']')) {
+      // Remove trailing incomplete token (partial quoted string or trailing comma)
+      repaired = repaired.replace(/,?\s*"[^"]*$/, '').replace(/,\s*$/, '') + ']';
     }
     var parsed = safeParseJSON(repaired) || safeParseJSON(result);
     if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid response: ' + result.slice(0, 100));
