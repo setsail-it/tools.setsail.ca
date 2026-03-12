@@ -829,13 +829,62 @@ export default {
         // Domain-level metrics from overview
         const orgMetrics = overviewResult?.items?.[0]?.metrics?.organic || {};
 
-        // Deduplicate by slug — keep highest traffic entry per slug
+        // Fetch sitemap.xml to discover zero-traffic pages (about, contact, services, etc.)
+        let sitemapSlugs = [];
+        try {
+          const sitemapUrls = [
+            'https://' + domain + '/sitemap.xml',
+            'https://' + domain + '/sitemap_index.xml',
+            'https://www.' + domain + '/sitemap.xml',
+          ];
+          for (const sitemapUrl of sitemapUrls) {
+            try {
+              const smRes = await fetch(sitemapUrl, { headers: { 'User-Agent': 'SetSailOS/1.0' } });
+              if (!smRes.ok) continue;
+              const smText = await smRes.text();
+              // Extract all <loc> URLs from sitemap
+              const locMatches = smText.match(/<loc>([^<]+)<\/loc>/g) || [];
+              for (const loc of locMatches) {
+                const url = loc.replace(/<\/?loc>/g, '').trim();
+                // Skip image/feed/sitemap-index entries
+                if (url.match(/\.(jpg|jpeg|png|gif|pdf|xml)$/i)) continue;
+                if (url.includes('sitemap')) continue;
+                try {
+                  const u = new URL(url);
+                  const slug = u.pathname.replace(/\/$/, '') || '/';
+                  sitemapSlugs.push(slug);
+                } catch(e) {}
+              }
+              if (sitemapSlugs.length > 0) break; // got results, stop trying
+            } catch(e) {}
+          }
+        } catch(e) {}
+        console.log('[snapshot] sitemap slugs found:', sitemapSlugs.length);
+
+        // Deduplicate by slug — keep highest traffic entry per slug, merge in sitemap slugs
         const seenSlugs = new Map();
         const dedupedPages = [];
         for (const p of topPages) {
           const key = p.slug;
           if (!seenSlugs.has(key) || p.traffic > seenSlugs.get(key).traffic) {
             seenSlugs.set(key, p);
+          }
+        }
+        // Add sitemap-only pages (zero traffic, but exist on site)
+        for (const slug of sitemapSlugs) {
+          if (!seenSlugs.has(slug)) {
+            seenSlugs.set(slug, {
+              url: 'https://' + domain + slug,
+              slug,
+              traffic: 0,
+              topKeyword: '',
+              topKeywordPosition: null,
+              referringDomains: 0,
+              keywords: 0,
+              ur: 0,
+              rankingKws: [],
+              fromSitemap: true
+            });
           }
         }
         const finalPages = [...seenSlugs.values()].sort((a, b) => b.traffic - a.traffic);

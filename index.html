@@ -297,6 +297,15 @@ textarea.inp{resize:vertical}
         </div>
       </div>
 
+      <!-- Manual page add -->
+      <div id="snap-add-page-wrap" style="display:none;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:6px">Add Known Pages <span style="font-weight:400;color:var(--n2)">— pages not captured by traffic or sitemap (e.g. /about-us, /contact)</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="snap-add-page-input" type="text" placeholder="/about-us" autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:220px;background:var(--bg);color:var(--dark);font-family:monospace" onkeydown="if(event.key==='Enter')addSnapshotPage(this.value.trim())">
+          <button class="btn btn-ghost sm" onclick="addSnapshotPage(document.getElementById('snap-add-page-input').value.trim())"><i class="ti ti-plus"></i> Add Page</button>
+        </div>
+      </div>
+
       <!-- 301 Redirect Map -->
       <div id="snapshot-redirects-wrap" style="display:none;margin-bottom:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -1166,6 +1175,35 @@ async function runSnapshot() {
   }
 }
 
+function addSnapshotPage(slug) {
+  if (!slug) return;
+  if (!slug.startsWith('/')) slug = '/' + slug;
+  slug = slug.replace(/\/$/, '') || '/';
+  if (!S.snapshot) return;
+  if (!S.snapshot.topPages) S.snapshot.topPages = [];
+  // Check not already present
+  if (S.snapshot.topPages.find(function(p) { return p.slug === slug; })) {
+    alert('Page already in list: ' + slug);
+    return;
+  }
+  S.snapshot.topPages.push({
+    url: 'https://' + (S.setup && S.setup.url ? S.setup.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : '') + slug,
+    slug: slug,
+    traffic: 0,
+    topKeyword: '',
+    topKeywordPosition: null,
+    referringDomains: 0,
+    keywords: 0,
+    ur: 0,
+    rankingKws: [],
+    manuallyAdded: true
+  });
+  scheduleSave();
+  var input = document.getElementById('snap-add-page-input');
+  if (input) input.value = '';
+  renderSnapshot();
+}
+
 function renderSnapshot() {
   const snap = S.snapshot;
   if (!snap) return;
@@ -1196,18 +1234,29 @@ function renderSnapshot() {
   const tbody = document.getElementById('snap-pages-tbody');
   if (pagesWrap && tbody && snap.topPages?.length) {
     pagesWrap.style.display = 'block';
-    document.getElementById('snap-pages-count').textContent = snap.topPages.length + ' pages';
+    const withTraffic = snap.topPages.filter(p => p.traffic > 0).length;
+        const fromSitemap = snap.topPages.filter(p => p.fromSitemap).length;
+        const manualCount = snap.topPages.filter(p => p.manuallyAdded).length;
+        let countParts = [snap.topPages.length + ' pages'];
+        if (fromSitemap) countParts.push(fromSitemap + ' from sitemap');
+        if (manualCount) countParts.push(manualCount + ' manual');
+        document.getElementById('snap-pages-count').textContent = countParts.join(' · ');
     tbody.innerHTML = snap.topPages.map((p, i) => {
       const slug = p.slug || '/';
       const topKwHtml = (p.rankingKws && p.rankingKws.length)
         ? p.rankingKws.slice(0,3).map(k => `<span style="display:inline-block;padding:1px 6px;background:var(--panel);border-radius:10px;font-size:10px;color:var(--n3);margin:1px">${esc(k.kw)}<span style="color:var(--n2);margin-left:3px">#${k.pos}</span></span>`).join('')
         : '<span style="color:var(--n1);font-size:10px">—</span>';
+      const sourceTag = p.fromSitemap
+        ? '<span style="font-size:9px;padding:1px 5px;background:var(--panel);border-radius:8px;color:var(--n2);margin-left:4px">sitemap</span>'
+        : p.manuallyAdded
+        ? '<span style="font-size:9px;padding:1px 5px;background:rgba(21,142,29,0.1);border-radius:8px;color:var(--green);margin-left:4px">manual</span>'
+        : '';
       return `<tr style="border-bottom:1px solid var(--border);${i%2===0?'background:var(--bg)':'background:white'}">
         <td style="padding:7px 12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          <span title="${esc(p.url)}" style="color:var(--dark);font-family:monospace;font-size:11px">${esc(slug || '/')}</span>
+          <span title="${esc(p.url)}" style="color:var(--dark);font-family:monospace;font-size:11px">${esc(slug || '/')}</span>${sourceTag}
         </td>
-        <td style="padding:7px 10px;text-align:right;color:var(--dark);font-weight:500">${(p.traffic||0).toLocaleString()}</td>
-        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${(p.keywords||0).toLocaleString()}</td>
+        <td style="padding:7px 10px;text-align:right;color:${p.traffic>0?'var(--dark)':'var(--n1)'};font-weight:500">${p.traffic>0?(p.traffic||0).toLocaleString():'—'}</td>
+        <td style="padding:7px 10px;text-align:right;color:var(--n3)">${(p.keywords||0)||'—'}</td>
         <td style="padding:6px 10px;max-width:300px">${topKwHtml}</td>
       </tr>`;
     }).join('');
@@ -1217,6 +1266,10 @@ function renderSnapshot() {
   renderRedirectMap();
 
   // Show next button
+  // Manual add-page input
+  const addWrap = document.getElementById('snap-add-page-wrap');
+  if (addWrap) addWrap.style.display = 'block';
+
   const nextWrap = document.getElementById('snapshot-next-wrap');
   if (nextWrap) nextWrap.style.display = 'block';
 }
