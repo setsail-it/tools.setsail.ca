@@ -712,6 +712,7 @@ async function resumeProject(id) {
   // Re-render stage content
   if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (S.stage === 'research') { initResearch(); }
+  if (S.stage === 'keywords') { initKeywords(); }
   if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
   if (S.stage === 'images' && S.pages.length) { initImageStage(); }
@@ -2342,7 +2343,7 @@ function _renderKwSeedsTab() {
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Rebuild Seeds</button>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
-  html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
+  html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
   html += '</div></div>';
   if (fetched) {
