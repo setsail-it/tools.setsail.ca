@@ -3554,6 +3554,77 @@ async function aiAssignKeywordsAndQuestions() {
 
 
 // ── BRIEF CARD EDITING HELPERS ──────────────────────────────────────
+
+// Build <datalist> HTML for kw and question pickers
+function buildKwDatalist(pidx) {
+  var pool = getBriefKwPool(pidx);
+  if (!pool.length) return '';
+  return '<datalist id="brief-kw-list-'+pidx+'">'
+    + pool.map(function(k){ return '<option value="'+k.replace(/"/g,'&quot;')+'">'; }).join('')
+    + '</datalist>';
+}
+
+function buildQDatalist(pidx) {
+  var pool = getBriefQPool(pidx);
+  if (!pool.length) return '';
+  return '<datalist id="brief-q-list-'+pidx+'">'
+    + pool.map(function(q){ return '<option value="'+q.replace(/"/g,'&quot;')+'">'; }).join('')
+    + '</datalist>';
+}
+
+// Pool of all researched keywords not already on this page
+function getBriefKwPool(pageIdx) {
+  var p = S.pages[pageIdx] || {};
+  var assigned = new Set();
+  if (p.primary_keyword) assigned.add(p.primary_keyword.toLowerCase());
+  (p.supporting_keywords||[]).forEach(function(k){
+    var kw = typeof k==='object'?(k.kw||''):String(k);
+    assigned.add(kw.toLowerCase());
+  });
+  var pool = [];
+  var seen = new Set();
+  // From clusters
+  ((S.kwResearch&&S.kwResearch.clusters)||[]).forEach(function(c){
+    (c.supportingKws||[]).forEach(function(sk){
+      var kw = typeof sk==='object'?(sk.kw||''):String(sk);
+      if (kw && !assigned.has(kw.toLowerCase()) && !seen.has(kw.toLowerCase())) {
+        seen.add(kw.toLowerCase());
+        pool.push(kw);
+      }
+    });
+    if (c.primaryKw) {
+      var pk = typeof c.primaryKw==='object'?(c.primaryKw.kw||''):String(c.primaryKw);
+      if (pk && !assigned.has(pk.toLowerCase()) && !seen.has(pk.toLowerCase())) {
+        seen.add(pk.toLowerCase()); pool.push(pk);
+      }
+    }
+  });
+  // From seeds
+  ((S.kwResearch&&S.kwResearch.seeds)||[]).forEach(function(s){
+    var kw = typeof s==='object'?(s.kw||s.keyword||''):String(s);
+    if (kw && !assigned.has(kw.toLowerCase()) && !seen.has(kw.toLowerCase())) {
+      seen.add(kw.toLowerCase()); pool.push(kw);
+    }
+  });
+  return pool.sort();
+}
+
+// Pool of all researched questions not already on this page
+function getBriefQPool(pageIdx) {
+  var p = S.pages[pageIdx] || {};
+  var assigned = new Set((p.assignedQuestions||[]).map(function(q){ return q.toLowerCase(); }));
+  var pool = [];
+  var seen = new Set();
+  ((S.contentIntel&&S.contentIntel.paa&&S.contentIntel.paa.questions)||[]).forEach(function(qObj){
+    var q = typeof qObj==='object'?(qObj.question||''):String(qObj);
+    if (q && !assigned.has(q.toLowerCase()) && !seen.has(q.toLowerCase())) {
+      seen.add(q.toLowerCase()); pool.push(q);
+    }
+  });
+  return pool;
+}
+
+// ── BRIEF CARD EDITING HELPERS ──────────────────────────────────────
 function briefSaveText(pageIdx, val) {
   var p = S.pages[pageIdx];
   if (!p || !p.brief) return;
@@ -3695,7 +3766,8 @@ function renderBriefs() {
               +esc(k)+'<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1" title="Remove">×</span></span>'; }).join('')
           : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
       + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + '<input id="brief-kw-input-'+pidx+'" data-pidx="'+pidx+'" placeholder="add keyword…" class="brief-kw-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
+      + buildKwDatalist(pidx)
+      + '<input id="brief-kw-input-'+pidx+'" data-pidx="'+pidx+'" list="brief-kw-list-'+pidx+'" placeholder="add or pick keyword…" class="brief-kw-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
       + '<button onclick="briefAddKw('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
       + '</div>'
       + '</div>'
@@ -3709,7 +3781,8 @@ function renderBriefs() {
               +'</div>'; }).join('')
           : '<div style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned — run AI Assign or add manually</div>')
       + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + '<input id="brief-q-input-'+pidx+'" data-pidx="'+pidx+'" placeholder="add question…" class="brief-q-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
+      + buildQDatalist(pidx)
+      + '<input id="brief-q-input-'+pidx+'" data-pidx="'+pidx+'" list="brief-q-list-'+pidx+'" placeholder="add or pick question…" class="brief-q-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
       + '<button onclick="briefAddQ('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
       + '</div>'
       + '</div>'
