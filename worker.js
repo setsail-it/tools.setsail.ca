@@ -306,6 +306,7 @@ export default {
           expandData = JSON.parse(expandRaw);
         } catch(e) {
           expandData = { tasks: [] }; // graceful fallback
+          console.error('kw-expand: expand step failed:', e.message);
         }
 
         // Collect expanded keywords; always include all seeds as fallback
@@ -334,20 +335,20 @@ export default {
                 if (r.keyword) kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
               });
             });
-          } catch(e) { /* batch failed, continue */ }
+          } catch(e) { console.error('Vol batch error:', e.message); /* batch failed, continue */ }
         }
 
-        // Build final list — include seeds even if volume lookup missed them
+        // Return ALL expanded keywords; seeds always included with vol:0 if volume lookup missed them
         const keywords = kwList
           .map(kw => ({
             keyword: kw,
             volume: kwMap[kw]?.volume ?? 0,
             difficulty: kwMap[kw]?.kd ?? 0,
             cpc: kwMap[kw]?.cpc ?? 0
-          }))
-          .filter(k => kwMap[k.keyword]); // only return kws we actually got vol data for
+          })); // NO filter — client handles vol:0 keywords
 
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand' }), {
+        const volHits = Object.keys(kwMap).length;
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand', debug: { seedCount: seeds.length, expandedCount: kwList.length, volHits } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {

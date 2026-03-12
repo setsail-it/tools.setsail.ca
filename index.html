@@ -2025,15 +2025,17 @@ async function fetchKeywordResearch() {
       return;
     }
 
-    if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords — scoring opportunities…';
+    const _dbg = expandData.debug || {};
+    const _dbgStr = _dbg.seedCount ? ' (' + _dbg.seedCount + ' seeds, ' + (_dbg.volHits||0) + ' with vol data)' : '';
+    if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords' + _dbgStr + ' — scoring…';
 
     // Step 2: Score and rank
     // Opportunity score: logarithmic vol / KD — rewards high vol + low KD
     // Penalise KD 0 (often means no data) and vol < 10
     const scored = expandData.keywords
-      .filter(k => k.volume >= 10)
+      .filter(k => k.volume >= 0)
       .map(k => {
-        const kd = k.difficulty > 0 ? k.difficulty : 50; // treat KD=0 as competitive unknown
+        const kd = k.difficulty > 0 ? k.difficulty : 30; // KD=0 = no data, assume medium
         const score = Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10;
         return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score };
       })
