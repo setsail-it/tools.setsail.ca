@@ -336,7 +336,7 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
         <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
         <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
-          <button class="btn btn-ghost" onclick="goTo('sitemap')" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Sitemap</button>
+          <button class="btn btn-ghost" onclick="goTo('keywords');initKeywords()" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Keywords</button>
         </div>
       </div>
       <div style="border-bottom:2px solid var(--border);margin-bottom:16px"></div>
@@ -349,12 +349,33 @@ textarea.inp{resize:vertical}
     </div>
   </div>
 
+  <!-- KEYWORDS -->
+  <div class="screen" id="screen-keywords">
+    <div style="max-width:960px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 4 of 9</div>
+          <h2 class="ph sm">Keyword Research</h2>
+          <p class="psub" style="margin-bottom:0">Validate seed keywords, select opportunities, and cluster into page groups that feed the sitemap.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="goTo('research')" style="white-space:nowrap"><i class="ti ti-arrow-left"></i> Research</button>
+          <button class="btn btn-primary" id="kw-proceed-btn" onclick="goTo('sitemap')" style="display:none;white-space:nowrap"><i class="ti ti-sitemap"></i> Build Sitemap</button>
+        </div>
+      </div>
+      <!-- Tab nav -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>
+      <!-- Tab content -->
+      <div id="kw-tab-content"></div>
+    </div>
+  </div>
+
   <!-- SITEMAP -->
   <div class="screen" id="screen-sitemap">
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 3 of 8</div>
+          <div class="eyebrow">Stage 5 of 9</div>
           <h2 class="ph sm">Sitemap + Keyword Map</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
@@ -381,7 +402,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-copy">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 4 of 8</div>
+        <div class="eyebrow">Stage 6 of 9</div>
         <h2 class="ph sm">Copy Generation</h2>
         <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
@@ -402,7 +423,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:900px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 5 of 8</div>
+          <div class="eyebrow">Stage 7 of 9</div>
           <h2 class="ph sm">Image Generation</h2>
           <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
         </div>
@@ -664,7 +685,14 @@ async function resumeProject(id) {
   S.copy = data.copy || {};
   S.schema = data.schema || {};
   S.kwMetrics = data.kwMetrics || {};
-  S.kwResearch = data.kwResearch || null;
+  if (data.kwResearch) {
+    S.kwResearch = data.kwResearch;
+    if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
+    if (!S.kwResearch.selected) S.kwResearch.selected = [];
+    if (!S.kwResearch.clusters) S.kwResearch.clusters = [];
+  } else {
+    S.kwResearch = null;
+  }
   S.sitemapApproved = data.sitemapApproved || false;
   S.layout = data.layout || {};
   S.images = data.images || {};
@@ -726,6 +754,7 @@ const STAGES = [
   {id:'setup',label:'Setup',icon:'ti-settings'},
   {id:'snapshot',label:'Snapshot',icon:'ti-camera'},
   {id:'research',label:'Research',icon:'ti-search'},
+  {id:'keywords',label:'Keywords',icon:'ti-tags'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
   {id:'images',label:'Images',icon:'ti-photo'},
@@ -769,6 +798,7 @@ function navToStage(stage) {
 function renderStageContent(stage) {
   if (stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (stage === 'research') { initResearch(); }
+  if (stage === 'keywords') { initKeywords(); }
   if (stage === 'sitemap') {
     // Auto-populate import panel from snapshot top pages (if not already set)
     if (S.snapshot?.topPages?.length && !S.existingUrlsText) {
@@ -2203,6 +2233,328 @@ function renderKwResearchCard() {
 }
 
 // ── SITEMAP ────────────────────────────────────────────────────────// ── SITEMAP ────────────────────────────────────────────────────────
+
+// KEYWORDS STAGE
+var _kwTab = 'seeds';
+
+function initKeywords() {
+  if (!S.kwResearch) {
+    S.kwResearch = { seeds: buildKwSeeds(), keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
+  } else if (!S.kwResearch.seeds || !S.kwResearch.seeds.length) {
+    S.kwResearch.seeds = buildKwSeeds();
+  }
+  if (S.kwResearch.keywords.length && (!S.kwResearch.selected || !S.kwResearch.selected.length)) {
+    S.kwResearch.selected = S.kwResearch.keywords.slice(0, 50).map(function(k) { return k.kw; });
+  }
+  renderKwTabNav();
+  renderKwTabContent();
+  var proceedBtn = document.getElementById('kw-proceed-btn');
+  if (proceedBtn) proceedBtn.style.display = (S.kwResearch.clusters && S.kwResearch.clusters.length) ? '' : 'none';
+}
+
+function buildKwSeeds() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var services = r.primary_services || [];
+  var primaryGeo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
+  var _rawCity = (primaryGeo || '').replace(/,.*$/, '').trim().toLowerCase();
+  var geoL = _rawCity || (setup.geo || '').replace(/,.*$/, '').trim().toLowerCase() || 'vancouver';
+  var secondaryGeos = (r.geography && r.geography.secondary ? r.geography.secondary : []).slice(0, 3);
+  var seeds = new Set();
+  services.slice(0, 14).forEach(function(svc) {
+    var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform)$/i, '').trim();
+    if (s.length < 3) return;
+    seeds.add(s + ' ' + geoL);
+    seeds.add(s + ' agency ' + geoL);
+    seeds.add(s + ' company ' + geoL);
+    seeds.add(s + ' services ' + geoL);
+    seeds.add('best ' + s + ' ' + geoL);
+    seeds.add(s + ' consultant ' + geoL);
+  });
+  ['digital marketing', 'marketing agency', 'online marketing', 'full service marketing agency', 'marketing company', 'advertising agency'].forEach(function(t) {
+    seeds.add(t + ' ' + geoL);
+  });
+  seeds.add(geoL + ' marketing agency');
+  var skipSegs = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','resources','team']);
+  (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).slice(0, 40).forEach(function(p) {
+    var parts = (p.slug || '').replace(/^\//, '').split('/');
+    parts.forEach(function(seg) {
+      if (!seg || skipSegs.has(seg) || seg.length < 4) return;
+      var term = seg.replace(/-/g, ' ').replace(/\bvancouver\b|\btoronto\b|\bcalgary\b|\bbc\b/gi, '').trim();
+      if (term.length > 4 && !term.match(/^\d+$/) && !/^(proven|strategies|for|real|growth|what|is|how|guide)/.test(term)) {
+        seeds.add(term + ' ' + geoL);
+        seeds.add(term + ' agency ' + geoL);
+      }
+    });
+  });
+  secondaryGeos.forEach(function(geo) {
+    var sg = geo.replace(/,.*$/, '').trim().toLowerCase();
+    services.slice(0, 4).forEach(function(svc) {
+      var s = svc.toLowerCase().replace(/\s+(services?|management|agency)$/i, '').trim();
+      if (s.length > 3) { seeds.add(s + ' ' + sg); seeds.add(s + ' agency ' + sg); }
+    });
+  });
+  return Array.from(seeds).filter(function(k) { return k.length > 4 && k.split(' ').length >= 2; }).slice(0, 500);
+}
+
+function goToSitemap() { goTo('sitemap'); }
+
+function switchKwTab(i) { _kwTab = ['seeds','opps','clusters','questions'][i] || 'seeds'; renderKwTabContent(); }
+
+function renderKwTabNav() {
+  var el = document.getElementById('kw-tab-nav');
+  if (!el) return;
+  var kwr = S.kwResearch || {};
+  var tabs = [
+    { id: 'seeds', label: 'Seeds', count: (kwr.seeds || []).length, icon: 'ti-plant' },
+    { id: 'opps', label: 'Opportunities', count: (kwr.keywords || []).length, icon: 'ti-chart-bar' },
+    { id: 'clusters', label: 'Clusters', count: (kwr.clusters || []).length, icon: 'ti-stack-2' },
+    { id: 'questions', label: 'Questions', count: (S.research && S.research.paa_questions ? S.research.paa_questions.length : 0), icon: 'ti-help-circle' }
+  ];
+  el.innerHTML = tabs.map(function(t, i) {
+    var active = _kwTab === t.id;
+    var bg = active ? 'var(--dark)' : 'transparent';
+    var clr = active ? '#fff' : 'var(--n3)';
+    var fw = active ? '600' : '400';
+    var bb = active ? '2px solid var(--lime)' : '2px solid transparent';
+    return '<button onclick="switchKwTab(' + i + ')" style="padding:8px 14px;border:none;background:' + bg + ';color:' + clr + ';cursor:pointer;font-size:12px;font-weight:' + fw + ';border-bottom:' + bb + ';white-space:nowrap;display:inline-flex;align-items:center;gap:5px">'
+      + '<i class="ti ' + t.icon + '" style="font-size:11px"></i>' + t.label
+      + (t.count ? '<span style="background:var(--panel);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n2)">' + t.count + '</span>' : '')
+      + '</button>';
+  }).join('');
+}
+
+function renderKwTabContent() {
+  renderKwTabNav();
+  var el = document.getElementById('kw-tab-content');
+  if (!el) return;
+  if (_kwTab === 'seeds') el.innerHTML = _renderKwSeedsTab();
+  else if (_kwTab === 'opps') el.innerHTML = _renderKwOppsTab();
+  else if (_kwTab === 'clusters') el.innerHTML = _renderKwClustersTab();
+  else if (_kwTab === 'questions') el.innerHTML = _renderKwQuestionsTab();
+}
+
+function _renderKwSeedsTab() {
+  var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
+  var fetched = S.kwResearch && S.kwResearch.fetchedAt;
+  var html = '<div>';
+  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Auto-generated from services, geo, and existing pages. Edit before fetching \u2014 each seed = one volume lookup.</div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
+  html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
+  html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Rebuild Seeds</button>';
+  html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
+  html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
+  html += '</div>';
+  if (fetched) html += '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(21,142,29,0.1);border-radius:20px;font-size:11px;color:var(--green);margin-bottom:10px"><i class="ti ti-check"></i> Volumes fetched \u2014 ' + (S.kwResearch.keywords || []).length + ' keywords</div>';
+  html += '<div id="kw-seeds-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+  seeds.forEach(function(seed, i) {
+    html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 10px;background:var(--panel);border:1px solid var(--border);border-radius:20px;font-size:11px;color:var(--dark)">'
+      + esc(seed) + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:11px;padding:0;line-height:1;margin-left:2px">&times;</button></span>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+function _kwSeedAddBtn() { var i = document.getElementById('kw-seed-add-input'); if (i) { _addKwSeed(i.value); i.value = ''; } }
+
+function _kwSeedKeydown(e, el) { if (e.key === 'Enter') { _addKwSeed(el.value); el.value = ''; } }
+
+function _addKwSeed(val) {
+  val = (val || '').trim().toLowerCase();
+  if (!val || val.length < 3) return;
+  if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [], paaQuestions: [] };
+  if (S.kwResearch.seeds.indexOf(val) < 0) S.kwResearch.seeds.push(val);
+  renderKwTabContent();
+}
+
+function _removeKwSeed(idx) {
+  if (S.kwResearch && S.kwResearch.seeds) { S.kwResearch.seeds.splice(idx, 1); renderKwTabContent(); }
+}
+
+async function fetchKwVolumes() {
+  var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : buildKwSeeds();
+  var statusEl = document.getElementById('kw-seeds-status');
+  if (!seeds.length) { if (statusEl) statusEl.textContent = 'No seeds found.'; return; }
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Looking up volumes for ' + seeds.length + ' seeds...';
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
+  var country = (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) ? 'ca' : 'us';
+  try {
+    var res = await fetch('/api/kw-expand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seeds: seeds, country: country }) });
+    var data = await res.json();
+    if (!data.keywords || data.error) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(data.error || 'No data') + '</span>'; return; }
+    var scored = data.keywords.filter(function(k) { return k.volume >= 0; }).map(function(k) {
+      var kd = k.difficulty > 0 ? k.difficulty : 30;
+      return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score: Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10, monthly: k.monthly || [] };
+    }).sort(function(a, b) { return b.score - a.score; });
+    var seen = new Set();
+    var deduped = scored.filter(function(k) { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 300);
+    S.kwResearch.keywords = deduped;
+    S.kwResearch.fetchedAt = Date.now();
+    S.kwResearch.selected = deduped.slice(0, 50).map(function(k) { return k.kw; });
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + deduped.length + ' keywords found</span>';
+    _kwTab = 'opps';
+    renderKwTabContent();
+  } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
+}
+
+function _renderKwOppsTab() {
+  var kws = S.kwResearch && S.kwResearch.keywords ? S.kwResearch.keywords : [];
+  var selected = new Set(S.kwResearch && S.kwResearch.selected ? S.kwResearch.selected : []);
+  if (!kws.length) return '<div style="text-align:center;padding:40px 20px;color:var(--n2)"><i class="ti ti-chart-bar" style="font-size:32px;display:block;margin-bottom:8px"></i><div style="font-size:13px">No volumes yet \u2014 go to Seeds and click Fetch Volumes.</div></div>';
+  var html = '<div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
+  html += '<button class="btn btn-primary" onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
+  html += '<button class="btn btn-ghost sm" onclick="selectTopKws(50)">Select Top 50</button>';
+  html += '<button class="btn btn-ghost sm" onclick="selectTopKws(0)">Clear</button>';
+  html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
+  html += '</div>';
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  html += '<div style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3);gap:4px"><span></span><span>Keyword</span><span>Vol</span><span>KD</span><span>CPC</span><span>Trend</span><span>Score</span></div>';
+  kws.slice(0, 200).forEach(function(k, i) {
+    var isSel = selected.has(k.kw);
+    var kdClr = k.kd === 0 ? 'var(--n1)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    var volClr = k.vol >= 500 ? 'var(--green)' : k.vol >= 100 ? 'var(--n3)' : 'var(--n1)';
+    var rowBg = isSel ? 'rgba(21,142,29,0.05)' : (i % 2 ? 'var(--bg)' : '');
+    var spark = '';
+    if (k.monthly && k.monthly.length >= 2) {
+      var mx = Math.max.apply(null, k.monthly);
+      var tr = k.monthly[k.monthly.length - 1] > k.monthly[0] ? '<span style="color:var(--green)">&#x2191;</span>' : '<span style="color:var(--error)">&#x2193;</span>';
+      spark = '<span style="display:inline-flex;align-items:flex-end;gap:1px">' + k.monthly.slice(-6).map(function(v) { var h = mx > 0 ? Math.round((v / mx) * 14) + 2 : 2; return '<span style="display:inline-block;width:4px;height:' + h + 'px;background:var(--n1);border-radius:1px;vertical-align:bottom"></span>'; }).join('') + '</span>' + tr;
+    } else spark = '<span style="color:var(--n1)">-</span>';
+        html += '<div onclick="_toggleKwSel(' + i + ')" style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px">'
+      + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
+      + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
+      + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.vol || 0).toLocaleString() + '</span>'
+      + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + '</span>'
+      + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
+      + '<span style="font-size:11px">' + spark + '</span>'
+      + '<span style="font-size:11px;color:var(--n2)">' + k.score + '</span>'
+      + '</div>';
+  });
+  if (kws.length > 200) html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (kws.length - 200) + ' more available</div>';
+  html += '</div></div>';
+  return html;
+}
+
+function _toggleKwSel(i) {
+  if (!S.kwResearch || !S.kwResearch.keywords) return;
+  var kw = S.kwResearch.keywords[i] && S.kwResearch.keywords[i].kw;
+  if (!kw) return;
+  if (!S.kwResearch.selected) S.kwResearch.selected = [];
+  var pos = S.kwResearch.selected.indexOf(kw);
+  if (pos >= 0) S.kwResearch.selected.splice(pos, 1);
+  else S.kwResearch.selected.push(kw);
+  renderKwTabContent();
+}
+
+function selectTopKws(n) {
+  if (!S.kwResearch) return;
+  S.kwResearch.selected = n > 0 ? S.kwResearch.keywords.slice(0, n).map(function(k) { return k.kw; }) : [];
+  renderKwTabContent();
+}
+
+async function clusterSelectedKws() {
+  var selected = S.kwResearch && S.kwResearch.selected ? S.kwResearch.selected : [];
+  if (selected.length < 5) { alert('Select at least 5 keywords first.'); return; }
+  var statusEl = document.getElementById('kw-cluster-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Clustering...';
+  var kwMap = {};
+  (S.kwResearch.keywords || []).forEach(function(k) { kwMap[k.kw] = k; });
+  var selKws = selected.map(function(s) { return kwMap[s] || { kw: s, vol: 0, kd: 0, score: 0 }; });
+  var existingPages = (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).map(function(p) { return p.slug; }).filter(Boolean);
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
+  var userPrompt = 'KEYWORDS (' + selKws.length + '):\n';
+  userPrompt += 'kw | vol | kd | score\n';
+  selKws.forEach(function(k) { userPrompt += k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n'; });
+  userPrompt += '\nCLIENT: ' + (setup.client || '') + ' | Services: ' + (r.primary_services || []).join(', ') + ' | Geo: ' + geo;
+  if (existingPages.length) userPrompt += '\n\nEXISTING PAGES:\n' + existingPages.slice(0, 30).join('\n');
+  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.\n\nRules:\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.\n- Service(/services/slug): specific service+city. vol>0 required.\n- Location(/locations/slug): city+marketing. vol>100 required.\n- Industry(/industries/slug): marketing for [industry]. vol>100 required.\n- Blog(/blog/slug): informational intent. vol>50 required.\n- Always include /about and /contact as structural (vol:0 ok).\n- If cluster maps to existing page: recommendation=improve_existing, existingSlug=slug. Else build_new.\n- Set qualifies:false + disqualifyReason if vol thresholds not met.\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/seo-vancouver","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":[{"kw":"","vol":0,"kd":0}]}]';
+  try {
+    var result = await callClaude(systemPrompt, userPrompt, null, 3000);
+    var parsed = safeParseJSON(result);
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid cluster response');
+    S.kwResearch.clusters = parsed;
+    S.kwResearch.clusteredAt = Date.now();
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + parsed.length + ' clusters</span>';
+    var btn = document.getElementById('kw-proceed-btn');
+    if (btn) btn.style.display = '';
+    _kwTab = 'clusters';
+    renderKwTabContent();
+  } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
+}
+
+function _renderKwClustersTab() {
+  var clusters = S.kwResearch && S.kwResearch.clusters ? S.kwResearch.clusters : [];
+  if (!clusters.length) return '<div style="text-align:center;padding:40px 20px;color:var(--n2)"><i class="ti ti-stack-2" style="font-size:32px;display:block;margin-bottom:8px"></i><div style="font-size:13px">No clusters yet.</div><div style="font-size:12px;margin-top:6px">Select keywords in Opportunities, then click Cluster Selected.</div></div>';
+  var ts = S.kwResearch.clusteredAt ? new Date(S.kwResearch.clusteredAt).toLocaleTimeString('en-CA', {hour:'2-digit',minute:'2-digit'}) : '';
+  var newCt = clusters.filter(function(c) { return c.recommendation === 'build_new' && c.qualifies !== false; }).length;
+  var impCt = clusters.filter(function(c) { return c.recommendation === 'improve_existing'; }).length;
+  var flagCt = clusters.filter(function(c) { return c.qualifies === false; }).length;
+  var html = '<div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
+  html += '<button class="btn btn-primary" onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
+  html += '<button class="btn btn-ghost" onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
+  if (ts) html += '<span style="font-size:11px;color:var(--n2)">Clustered at ' + ts + '</span>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
+  html += '<div style="padding:8px 14px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);border-radius:8px;font-size:12px"><strong style="color:var(--green)">' + newCt + '</strong><span style="color:var(--n2);margin-left:4px">Build New</span></div>';
+  html += '<div style="padding:8px 14px;background:rgba(250,180,30,0.08);border:1px solid rgba(250,180,30,0.2);border-radius:8px;font-size:12px"><strong style="color:var(--warn)">' + impCt + '</strong><span style="color:var(--n2);margin-left:4px">Improve Existing</span></div>';
+  if (flagCt) html += '<div style="padding:8px 14px;background:var(--panel);border-radius:8px;font-size:12px"><strong style="color:var(--n2)">' + flagCt + '</strong><span style="color:var(--n2);margin-left:4px">Flagged</span></div>';
+  html += '</div>';
+  var ptIcons = {home:'ti-home',service:'ti-briefcase',location:'ti-map-pin',industry:'ti-building-factory',blog:'ti-pencil',structural:'ti-lock'};
+  clusters.forEach(function(c) {
+    var badgeClr = c.qualifies === false ? 'var(--n2)' : (c.recommendation === 'improve_existing' ? 'var(--warn)' : 'var(--green)');
+    var badgeTxt = c.qualifies === false ? 'LOW VOL' : (c.recommendation === 'improve_existing' ? 'IMPROVE' : 'BUILD NEW');
+    var ptIcon = (ptIcons[c.pageType] || 'ti-file');
+    html += '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:var(--bg)">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
+    html += '<div style="display:flex;gap:8px;align-items:center"><i class="ti ' + ptIcon + '" style="color:var(--n2);font-size:13px"></i>';
+    html += '<div><div style="font-size:13px;font-weight:500">' + esc(c.name || '') + '</div>';
+    html += '<div style="font-size:11px;color:var(--n2)">/' + esc(c.suggestedSlug || '') + (c.existingSlug ? ' <span style="color:var(--warn)">(existing: /' + esc(c.existingSlug) + ')</span>' : '') + '</div></div></div>';
+    html += '<span style="font-size:10px;font-weight:600;color:' + badgeClr + ';border:1px solid ' + badgeClr + ';padding:2px 7px;border-radius:10px;flex-shrink:0">' + badgeTxt + '</span>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:12px;font-size:11px;color:var(--n3);flex-wrap:wrap;align-items:center">';
+    html += '<strong style="color:var(--dark)">' + esc(c.primaryKw || '') + '</strong>';
+    if (c.primaryVol) html += '<span style="color:' + (c.primaryVol >= 500 ? 'var(--green)' : c.primaryVol >= 100 ? 'var(--n3)' : 'var(--n1)') + '">' + c.primaryVol.toLocaleString() + '/mo</span>';
+    if (c.primaryKd != null) html += '<span style="color:' + (c.primaryKd < 20 ? 'var(--green)' : c.primaryKd < 40 ? 'var(--warn)' : 'var(--error)') + '">KD:' + (c.primaryKd || '?') + '</span>';
+    if (c.score) html += '<span style="color:var(--n2)">score:' + c.score + '</span>';
+    html += '</div>';
+    if (c.disqualifyReason) html += '<div style="font-size:11px;color:var(--n1);margin-top:4px">' + esc(c.disqualifyReason) + '</div>';
+    if (c.supportingKws && c.supportingKws.length) {
+      html += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">';
+      c.supportingKws.slice(0, 5).forEach(function(sk) { html += '<span style="font-size:10px;padding:2px 7px;background:var(--panel);border-radius:10px;color:var(--n2)">' + esc(typeof sk === 'object' ? sk.kw : sk) + '</span>'; });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _renderKwQuestionsTab() {
+  var qs = [];
+  if (S.research && S.research.paa_questions) qs = S.research.paa_questions;
+  else if (S.research && S.research.brand && S.research.brand.faqs) qs = S.research.brand.faqs.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
+  var html = '<div><div style="font-size:12px;color:var(--n2);margin-bottom:12px">PAA / FAQ questions from research. These feed the blog pipeline.</div>';
+  if (!qs.length) html += '<div style="text-align:center;padding:40px 20px;color:var(--n2)"><i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i><div>No questions found. Run Research enrichment first.</div></div>';
+  else {
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    qs.forEach(function(q) {
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-radius:6px;font-size:12px"><i class="ti ti-help-circle" style="color:var(--n2);font-size:11px"></i><span>' + esc(typeof q === 'object' ? (q.question || '') : q) + '</span><span style="margin-left:auto;font-size:10px;padding:2px 7px;background:rgba(21,142,29,0.08);border-radius:10px;color:var(--green)">Blog</span></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 function attemptSitemapParse() {
   const streamEl = document.getElementById('sitemap-stream');
   const wrap = document.getElementById('sitemap-stream-wrap');
@@ -2271,35 +2623,29 @@ async function runSitemap(withRevisions) {
   prompt += 'Services: ' + ((r.primary_services || []).join(', ') || 'N/A') + '\n';
   prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n\n';
 
-  if (S.kwResearch?.keywords?.length) {
-    const kws = S.kwResearch.keywords.filter(k => k.vol > 0).slice(0, 250);
-    prompt += '## KEYWORD LIST (' + kws.length + ' keywords — USE THESE EXACT STRINGS, no others)\n';
-    prompt += '# | keyword | vol/mo | KD | score\n';
-    kws.forEach((k, i) => {
-      prompt += (i+1) + ' | ' + k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n';
+  // Use pre-clustered data if available (preferred), fall back to raw keywords
+  if (S.kwResearch?.clusters?.length) {
+    const clusters = S.kwResearch.clusters;
+    prompt += '## PRE-CLUSTERED PAGE GROUPS (' + clusters.length + ' clusters)\n';
+    prompt += 'Each cluster maps to one page. Use primaryKw as primary_keyword exactly.\n\n';
+    clusters.forEach((c, i) => {
+      const sk = (c.supportingKws || []).slice(0, 5).map(s => typeof s === 'object' ? s.kw : s).join(', ');
+      prompt += (i+1) + '. ' + (c.name||'') + ' | slug: ' + (c.suggestedSlug||'') + ' | type: ' + (c.pageType||'service') + ' | kw: ' + (c.primaryKw||'') + ' | vol: ' + (c.primaryVol||0) + ' | kd: ' + (c.primaryKd||0) + '\n';
+      if (sk) prompt += '   supporting: ' + sk + '\n';
+      if (c.recommendation) prompt += '   action: ' + c.recommendation + (c.existingSlug ? ' (existing: /' + c.existingSlug + ')' : '') + '\n';
     });
-    const _expectedPages = Math.min(Math.max(10, Math.ceil(kws.length / 4)), 60);
-    prompt += '\n## INSTRUCTIONS\n';
-    prompt += '- You have ' + kws.length + ' keywords. Cluster into topic groups. Aim for ' + _expectedPages + ' to ' + (_expectedPages + 10) + ' pages.\n';
-    prompt += '- primary_keyword MUST be the EXACT string from the list (highest score in cluster)\n';
-    prompt += '- supporting_keywords MUST also be exact strings from the list\n';
-    prompt += '- Assign every keyword to exactly one page. Do not leave keywords unassigned.\n';
-    prompt += '- Separate page for each distinct service/topic cluster (do not merge unrelated intents)\n';
-    prompt += '- Homepage: broadest brand/agency keyword (highest score)\n';
-    prompt += '- Location page for each city/geo with 2+ keywords at vol > 50\n';
-    prompt += '- Blog page for informational-intent keywords\n';
-    prompt += '- Priority: P1 = vol > 500 or score > 20; P2 = vol 100-500 or score 8-20; P3 = everything else\n';
+    prompt += '\n## INSTRUCTIONS\n- Convert each cluster to one page object\n- Use EXACT primaryKw string from each cluster\n- improve_existing: use existingSlug; build_new: use suggestedSlug\n- Priority: P1 = vol > 500; P2 = vol 100-500; P3 = rest\n- Always include /about and /contact as structural pages\n';
+  } else if (S.kwResearch?.keywords?.length) {
+    const kws = S.kwResearch.keywords.filter(k => k.vol > 0).slice(0, 150);
+    prompt += '## KEYWORD LIST (' + kws.length + ' keywords)\n';
+    kws.forEach((k, i) => { prompt += (i+1) + ' | ' + k.kw + ' | ' + k.vol + ' | ' + k.kd + '\n'; });
+    const _ep = Math.min(Math.max(8, Math.ceil(kws.length / 4)), 40);
+    prompt += '\n## INSTRUCTIONS\n- Cluster into ' + _ep + '-' + (_ep + 6) + ' pages. Homepage = broadest brand keyword. Service = specific service+city.\n';
   } else {
-    prompt += '## TASK\nNo keyword data available. Build best-guess sitemap from services list. Mark all as needing validation.\n';
+    prompt += '## TASK\nNo keyword data. Build best-guess sitemap from services list.\n';
   }
 
-  if (_importedPages.length) {
-    prompt += '\n## EXISTING SITE PAGES (already live — include these in output, optimise their keywords)\n';
-    _importedPages.forEach(u => { prompt += u + '\n'; });
-    prompt += '\nFor existing pages: keep them in the sitemap, assign the best keyword from the list above. For gaps: add new pages only where a matching keyword exists.\n';
-  }
-
-  if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n' + revNote.value;
+    if (withRevisions && revNote?.value.trim()) prompt += '\n## REVISION NOTES\n' + revNote.value;
 
   try {
     const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; }, 8000);
@@ -5697,4 +6043,4 @@ showProjects();
 </div>
 
 </body>
-</html>
+</html>    return '<button onclick="switchKwTab(' + i + ')" style="padding:8px 14px;border:none;background:' + bg + ';color:' + clr + ';cursor:pointer;font-size:12px;font-weight:' + fw + ';border-bottom:' + bb + ';white-space:nowrap;display:inline-flex;align-items:center;gap:5px">'
