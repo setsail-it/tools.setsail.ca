@@ -3552,7 +3552,74 @@ async function aiAssignKeywordsAndQuestions() {
   }
 }
 
-function initBriefs() { renderBriefs(); }
+
+// ── BRIEF CARD EDITING HELPERS ──────────────────────────────────────
+function briefSaveText(pageIdx, val) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.brief) return;
+  p.brief.summary = val;
+  scheduleSave();
+}
+
+function briefAddKw(pageIdx) {
+  var input = document.getElementById('brief-kw-input-'+pageIdx);
+  if (!input) return;
+  var val = input.value.trim();
+  if (!val) return;
+  var p = S.pages[pageIdx];
+  if (!p) return;
+  if (!p.supporting_keywords) p.supporting_keywords = [];
+  // Avoid duplicates
+  var existing = p.supporting_keywords.map(function(k){ return typeof k==='object'?(k.kw||''):k; });
+  if (!existing.includes(val)) p.supporting_keywords.push(val);
+  input.value = '';
+  scheduleSave();
+  renderBriefs();
+}
+
+function briefRemoveKw(pageIdx, kwIdx) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.supporting_keywords) return;
+  p.supporting_keywords.splice(kwIdx, 1);
+  scheduleSave();
+  renderBriefs();
+}
+
+function briefAddQ(pageIdx) {
+  var input = document.getElementById('brief-q-input-'+pageIdx);
+  if (!input) return;
+  var val = input.value.trim();
+  if (!val) return;
+  var p = S.pages[pageIdx];
+  if (!p) return;
+  if (!p.assignedQuestions) p.assignedQuestions = [];
+  if (!p.assignedQuestions.includes(val)) p.assignedQuestions.push(val);
+  input.value = '';
+  scheduleSave();
+  renderBriefs();
+}
+
+function briefRemoveQ(pageIdx, qIdx) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.assignedQuestions) return;
+  p.assignedQuestions.splice(qIdx, 1);
+  scheduleSave();
+  renderBriefs();
+}
+
+function initBriefs() {
+  renderBriefs();
+  // Enter key delegation for kw + question inputs
+  if (!window._briefInputsListening) {
+    window._briefInputsListening = true;
+    document.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter') return;
+      var t = e.target;
+      if (t.classList.contains('brief-kw-input')) { e.preventDefault(); briefAddKw(parseInt(t.dataset.pidx)); }
+      if (t.classList.contains('brief-q-input'))  { e.preventDefault(); briefAddQ(parseInt(t.dataset.pidx)); }
+    });
+  }
+}
 
 function renderBriefs() {
   var el = document.getElementById('briefs-results');
@@ -3603,9 +3670,11 @@ function renderBriefs() {
       : '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);font-weight:500">BUILD NEW</span>';
     var priBadge = '<span style="background:rgba(0,0,0,0.05);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">'+(p.priority||'P3')+'</span>';
 
-    var addlKws = (p.supporting_keywords||[]);
+    // Normalise supporting_keywords — may be objects {kw,vol,kd} or plain strings
+    var addlKws = (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?(k.kw||''):String(k); }).filter(Boolean);
     var assignedQs = (p.assignedQuestions||[]);
-    var leftCol = '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:0;display:flex;flex-direction:column;gap:8px">'
+
+    var leftCol = '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:0;display:flex;flex-direction:column;gap:8px;overflow-y:auto">'
       // Header
       + '<div>'
       + '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px">'+esc(p.page_name)+'</div>'
@@ -3618,22 +3687,34 @@ function renderBriefs() {
       + '<div style="font-size:11.5px;color:var(--dark);font-weight:600">'+(p.primary_keyword||'—')+'</div>'
       + '<div style="font-size:10px;color:var(--n2);margin-top:1px">'+(p.primary_vol?p.primary_vol.toLocaleString()+'/mo':'')+' '+(p.primary_kd?'· KD:'+p.primary_kd:'')+'</div>'
       + '</div>'
-      // Additional keywords
-      + (addlKws.length ? '<div style="border-top:1px solid var(--border);padding-top:8px">'
-        + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Keywords ('+addlKws.length+')</div>'
-        + addlKws.slice(0,8).map(function(k){ return '<span style="display:inline-block;background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9.5px;padding:1px 6px;margin:1px 2px 1px 0;color:var(--n3)">'+esc(k)+'</span>'; }).join('')
-        + (addlKws.length>8?'<span style="font-size:9px;color:var(--n1)">+' +(addlKws.length-8)+' more</span>':'')
-        + '</div>' : '')
-      // Questions
-      + (assignedQs.length ? '<div style="border-top:1px solid var(--border);padding-top:8px">'
-        + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Questions ('+assignedQs.length+')</div>'
-        + assignedQs.map(function(q){ return '<div style="font-size:9.5px;color:var(--n3);padding:2px 0;border-bottom:1px dashed rgba(0,0,0,0.06);line-height:1.4">'+esc(q)+'</div>'; }).join('')
-        + '</div>' : '<div style="border-top:1px solid var(--border);padding-top:8px">'
-          + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Questions</div>'
-          + '<div style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned — run AI Assign first</div>'
-          + '</div>')
+      // Keywords — chips + editable input
+      + '<div style="border-top:1px solid var(--border);padding-top:8px">'
+      + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Keywords ('+addlKws.length+')</div>'
+      + (addlKws.length
+          ? addlKws.map(function(k,ki){ return '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9.5px;padding:1px 5px;margin:1px 2px 1px 0;color:var(--n3)">'
+              +esc(k)+'<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1" title="Remove">×</span></span>'; }).join('')
+          : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
+      + '<div style="display:flex;gap:4px;margin-top:5px">'
+      + '<input id="brief-kw-input-'+pidx+'" data-pidx="'+pidx+'" placeholder="add keyword…" class="brief-kw-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
+      + '<button onclick="briefAddKw('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
+      + '</div>'
+      + '</div>'
+      // Questions — list + editable
+      + '<div style="border-top:1px solid var(--border);padding-top:8px">'
+      + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Questions ('+assignedQs.length+')</div>'
+      + (assignedQs.length
+          ? assignedQs.map(function(q,qi){ return '<div style="display:flex;align-items:flex-start;gap:4px;padding:3px 0;border-bottom:1px dashed rgba(0,0,0,0.06)">'
+              +'<span style="font-size:9.5px;color:var(--n3);line-height:1.4;flex:1">'+esc(q)+'</span>'
+              +'<span onclick="briefRemoveQ('+pidx+','+qi+')" style="cursor:pointer;color:var(--n1);font-size:11px;flex-shrink:0;margin-top:1px" title="Remove">×</span>'
+              +'</div>'; }).join('')
+          : '<div style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned — run AI Assign or add manually</div>')
+      + '<div style="display:flex;gap:4px;margin-top:5px">'
+      + '<input id="brief-q-input-'+pidx+'" data-pidx="'+pidx+'" placeholder="add question…" class="brief-q-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
+      + '<button onclick="briefAddQ('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
+      + '</div>'
+      + '</div>'
       // Traffic
-      + (trafficStr ? '<div style="border-top:1px solid var(--border);padding-top:8px">'
+      + (trafficStr ? '<div style="border-top:1px solid var(--border);padding-top:6px">'
         + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Existing Traffic</div>'
         + '<div style="font-size:11px;color:var(--green);font-weight:500">'+trafficStr+'</div></div>' : '')
       // Generate button
@@ -3645,8 +3726,8 @@ function renderBriefs() {
       + '</div>';
 
     var rightContent = isBriefed
-      ? '<div style="padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;white-space:pre-wrap;overflow-y:auto;max-height:320px">'+esc(p.brief.summary||'')+'</div>'
-      : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px">No brief yet — click Generate Brief</div>';
+      ? '<textarea onblur="briefSaveText('+pidx+',this.value)" style="width:100%;height:100%;min-height:300px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:none;font-family:var(--font);background:transparent;box-sizing:border-box">'+esc(p.brief.summary||'')+'</textarea>'
+      : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
 
     var rightCol = '<div style="min-width:0;flex:1;display:flex;flex-direction:column">'
       + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px 14px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:320px;overflow-y:auto;flex:1"></div>'
@@ -3721,7 +3802,7 @@ async function generatePageBrief(pageIdx) {
     if (streamEl) streamEl.style.display = 'none';
     if (contentEl) {
       contentEl.style.display = 'flex';
-      contentEl.innerHTML = '<div style="padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;white-space:pre-wrap;overflow-y:auto;max-height:320px">'+esc(briefText)+'</div>';
+      contentEl.innerHTML = '<textarea onblur="briefSaveText('+pageIdx+',this.value)" style="width:100%;height:100%;min-height:300px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:none;font-family:var(--font);background:transparent;box-sizing:border-box">'+esc(briefText)+'</textarea>';
     }
     if (btn) { btn.disabled = false; btn.innerHTML = '↺ Regenerate'; }
   } catch(e) {
