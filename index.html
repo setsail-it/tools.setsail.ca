@@ -2385,7 +2385,13 @@ function buildKwSeeds() {
   return Array.from(seeds).filter(function(k) { return k.length > 1 && k.split(' ').length <= 7; }).slice(0, 500);
 }
 
-function goToSitemap() { goTo('sitemap'); }
+function goToSitemap() {
+  goTo('sitemap');
+  // Auto-run sitemap generation if clusters exist but no pages built yet
+  if (S.kwResearch && S.kwResearch.clusters && S.kwResearch.clusters.length && (!S.pages || !S.pages.length)) {
+    setTimeout(function() { runSitemap(false); }, 300);
+  }
+}
 
 function switchKwTab(i) { _kwTab = ['questions','seeds','opps','clusters'][i] || 'questions'; renderKwTabContent(); }
 
