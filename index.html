@@ -2324,17 +2324,39 @@ function buildKwSeeds() {
   services.slice(0, 14).forEach(function(svc) {
     var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform)$/i, '').trim();
     if (s.length < 3) return;
+    // Geo-qualified (high purchase intent for local search)
     seeds.add(s + ' ' + geoL);
     seeds.add(s + ' agency ' + geoL);
     seeds.add(s + ' company ' + geoL);
     seeds.add(s + ' services ' + geoL);
     seeds.add('best ' + s + ' ' + geoL);
     seeds.add(s + ' consultant ' + geoL);
+    // Non-geo bare service terms (national volume, DataForSEO expands these well)
+    seeds.add(s + ' agency');
+    seeds.add(s + ' services');
+    seeds.add(s + ' company');
+    seeds.add('best ' + s + ' agency');
+    seeds.add(s + ' agency near me');
+    seeds.add('hire ' + s + ' agency');
+    seeds.add(s + ' pricing');
+    seeds.add(s + ' cost');
   });
-  ['digital marketing', 'marketing agency', 'online marketing', 'full service marketing agency', 'marketing company', 'advertising agency'].forEach(function(t) {
+  // Hardcoded high-value non-geo commercial terms
+  ['digital marketing agency', 'marketing agency', 'advertising agency', 'online marketing agency',
+   'full service marketing agency', 'marketing company', 'ppc agency', 'google ads agency',
+   'seo agency', 'web design agency', 'social media agency', 'ecommerce marketing agency',
+   'b2b marketing agency', 'local seo agency', 'ecommerce seo agency', 'google adwords agency',
+   'content marketing agency', 'marketing agency near me', 'best marketing agency',
+   'marketing consultant', 'small business marketing agency'].forEach(function(t) {
+    seeds.add(t);
+  });
+  // Geo versions of the above
+  ['digital marketing', 'marketing agency', 'online marketing', 'full service marketing agency', 'marketing company', 'advertising agency', 'seo agency', 'ppc agency', 'web design', 'social media agency'].forEach(function(t) {
     seeds.add(t + ' ' + geoL);
   });
   seeds.add(geoL + ' marketing agency');
+  seeds.add(geoL + ' seo agency');
+  seeds.add(geoL + ' seo company');
   var skipSegs = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','resources','team']);
   (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).slice(0, 40).forEach(function(p) {
     var parts = (p.slug || '').replace(/^\//, '').split('/');
