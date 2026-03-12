@@ -6658,7 +6658,7 @@ function getQCItems(pageType, tab) {
 
 
 async function generateMetaTags(slug, page, copyHtml) {
-  var stripped = (copyHtml||'').replace(/<[^>]+>/g,' ').slice(0,2000);
+  var stripped = (copyHtml||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
   var p = page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
   var prompt = 'Write an SEO meta title and meta description for this page.\n\nPage: ' + (p.page_name||slug)
     + '\nPrimary keyword: ' + (p.primary_keyword||'')
@@ -6741,13 +6741,13 @@ async function runCopyAudit(slug) {
     + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
     + 'Intent: ' + (p.search_intent||'') + '\n'
     + 'Word count target: ' + (p.word_count_target||1500) + '\n\n'
-    + '## COPY\n' + (c.copy||'').replace(/<[^>]+>/g,' ').slice(0,3000) + '\n\n'
+    + '## COPY (full text, stripped of HTML tags):\n' + (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,7000) + '\n\n'
     + '## CHECKS\nFor each check return pass:true or pass:false plus a max-8-word note.\n'
     + checks.map(function(ch){ return '- ' + ch.id + ': ' + ch.label; }).join('\n')
     + '\n\nReturn raw JSON only. No markdown, no backticks. Schema: {"checks":[{"id":"h1_kw","pass":true,"note":"8 words max"},...],"humanFlags":[{"item":"Stats/numbers need fact-checking","reason":"AI cannot verify real stats","severity":"high"},...]}\n\nFor humanFlags: flag 2-4 things a human MUST verify that AI cannot (real stats, placeholder text, brand examples, legal claims, pricing accuracy). Be specific — name the actual stat or claim in the copy if possible.'
 
   try {
-    var result = await callClaude('You are a strict copy auditor. Return raw JSON only, no markdown.', prompt, null, 800);
+    var result = await callClaude('You are a strict copy auditor. Return raw JSON only, no markdown.', prompt, null, 1200);
     var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
     var parsed = JSON.parse(clean);
     var checkMap = {};
