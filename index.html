@@ -2090,10 +2090,11 @@ async function fetchKeywordResearch() {
   if (!seedList.length) return;
 
   const kwEl = document.getElementById('research-kw-status');
+  console.log('[KW] seedList sample:', seedList.slice(0,5), 'total:', seedList.length);
   if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Looking up volumes for ' + seedList.length + ' keyword variations…';
 
   try {
-    // Step 1: Expand seeds into related keyword universe
+    // Send full seedList directly to volume lookup (keywords_for_keywords unavailable on plan)
     const expandRes = await fetch('/api/kw-expand', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2107,7 +2108,9 @@ async function fetchKeywordResearch() {
     }
 
     const _dbg = expandData.debug || {};
-    const _dbgStr = ' (' + (_dbg.volHits||expandData.keywords.length) + ' with volume data)';
+    console.log('[KW] worker response:', { count: expandData.keywords.length, debug: _dbg, error: expandData.error });
+    if (expandData.error) { if(kwEl) kwEl.innerHTML = '<span style="color:var(--error);font-size:11px">⚠ ' + esc(expandData.error) + '</span>'; return; }
+    const _dbgStr = ' (' + (_dbg.volHits||expandData.keywords.length) + ' with vol data, ' + (_dbg.kwListCount||0) + ' sent)';
     if (kwEl) kwEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Found ' + expandData.keywords.length + ' keywords' + _dbgStr + ' — scoring…';
 
     // Step 2: Score and rank

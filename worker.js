@@ -293,7 +293,9 @@ export default {
         // ── keywords_for_keywords is disabled on this plan — seeds arrive pre-expanded from client ──
         // Just run search_volume/live on the full seed list in batches of 200
 
+        console.log('[kw-expand] seeds received:', seeds.length, 'sample:', JSON.stringify(seeds.slice(0,3)));
         const kwList = [...new Set(seeds)].slice(0, 600);
+        console.log('[kw-expand] kwList:', kwList.length);
         const kwMap = {};
         const batchSize = 200;
         for (let bi = 0; bi < kwList.length; bi += batchSize) {
@@ -305,17 +307,22 @@ export default {
               body: JSON.stringify([{ keywords: batch, location_code: locationCode, language_code: 'en' }])
             });
             const volData = await volRes.json();
+            const hits = [];
             (volData.tasks || []).forEach(task => {
               (task.result || []).forEach(r => {
-                if (r.keyword) kwMap[r.keyword] = {
-                  volume: r.search_volume || 0,
-                  kd: r.competition_index || 0,
-                  cpc: r.cpc || 0,
-                  monthly: (r.monthly_searches || []).slice(0, 3).map(m => m.search_volume)
-                };
+                if (r.keyword) {
+                  kwMap[r.keyword] = {
+                    volume: r.search_volume || 0,
+                    kd: r.competition_index || 0,
+                    cpc: r.cpc || 0,
+                    monthly: (r.monthly_searches || []).slice(0, 6).map(m => m.search_volume)
+                  };
+                  hits.push(r.keyword);
+                }
               });
             });
-          } catch(e) { console.error('Vol batch error:', e.message); }
+            console.log('[kw-expand] batch sent:', batch.length, 'hits:', hits.length, 'api_code:', volData.status_code, 'api_msg:', volData.status_message);
+          } catch(e) { console.error('[kw-expand] batch error:', e.message); }
         }
 
         const keywords = kwList
