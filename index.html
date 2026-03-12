@@ -696,6 +696,7 @@ async function resumeProject(id) {
   S.copy = data.copy || {};
   S.schema = data.schema || {};
   S.kwMetrics = data.kwMetrics || {};
+  S.contentIntel = data.contentIntel || null;
   if (data.kwResearch) {
     S.kwResearch = data.kwResearch;
     if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
