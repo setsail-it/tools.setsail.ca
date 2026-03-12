@@ -2752,12 +2752,15 @@ function _renderKwQuestionsTab() {
   if (!normalised.length) {
     html += '<div style="text-align:center;padding:40px 20px;color:var(--n2)">';
     html += '<i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i>';
-    html += '<div style="font-size:13px;margin-bottom:8px">No questions found yet.</div>';
-    html += '<div style="font-size:12px;color:var(--n2)">Run Research enrichment first \u2014 questions are pulled from Google People Also Ask for your top keywords.</div>';
+    html += '<div style="font-size:13px;margin-bottom:8px">No questions fetched yet.</div>';
+    html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">Pulls People Also Ask from Google for your top keywords.</div>';
+    html += '<button class="btn btn-primary" onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">People Also Ask questions pulled during Research. Review these first — they reveal intent gaps, blog opportunities, and FAQ content your pages need.</div>';
+    html += '<div id="kw-questions-fetch-status" style="font-size:11px;color:var(--n2);margin-bottom:8px"></div>';
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
+    html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch Questions</button>';
     html += '<button class="btn btn-ghost" onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Generate Blog Seeds from Questions</button>';
     html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All as Seeds</button>';
     html += '</div>';
@@ -2827,6 +2830,40 @@ function addAllQuestionsAsSeeds() {
   scheduleSave();
   renderKwTabContent();
   if (added) alert(added + ' questions added to seeds.');
+}
+
+async function fetchPAAFromKeywords() {
+  // Use top keywords from opportunities as seeds if available, else top seeds
+  var seeds = [];
+  if (S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.length) {
+    seeds = S.kwResearch.keywords.slice(0, 6).map(function(k) { return k.kw; });
+  } else if (S.kwResearch && S.kwResearch.seeds && S.kwResearch.seeds.length) {
+    seeds = S.kwResearch.seeds.slice(0, 6);
+  } else if (S.research && S.research.primary_services) {
+    var geo = (S.research.geography && S.research.geography.primary ? S.research.geography.primary : (S.setup && S.setup.geo ? S.setup.geo : '')).replace(/,.*$/,'').trim();
+    seeds = (S.research.primary_services || []).slice(0, 4).map(function(s) { return s.toLowerCase() + (geo ? ' ' + geo.toLowerCase() : ''); });
+  }
+  if (!seeds.length) { alert('No keywords available — run Fetch Volumes first or go to Research → Content Intelligence to run PAA.'); return; }
+
+  var statusEl = document.getElementById('kw-questions-fetch-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Fetching questions...';
+
+  var country = (S.setup && S.setup.geo && S.setup.geo.toUpperCase().includes('US')) ? 'US' : 'CA';
+  try {
+    var res = await fetch('/api/paa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: seeds, country: country })
+    });
+    var data = await res.json();
+    if (!data.questions || !data.questions.length) throw new Error(data.error || 'No questions returned');
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    S.contentIntel.paa = { questions: data.questions, seeds: seeds.join(', '), fetchedAt: Date.now() };
+    scheduleSave();
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
+    else alert('PAA fetch error: ' + e.message);
+  }
 }
 
 async function generateBlogSeedsFromQuestions() {
