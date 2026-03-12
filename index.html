@@ -6656,6 +6656,11 @@ async function runCopyAudit(slug) {
   var _auditText = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
   var _wordCount = _auditText.split(' ').filter(function(w){ return w.length > 0; }).length;
   var _wordTarget = parseInt(p.word_count_target||1500);
+
+  // Calculate keyword density client-side from actual copy — deterministic, not AI-guessed
+  var _pk = (p.primary_keyword||'').toLowerCase().trim();
+  var _kwCount = _pk ? countKeywordsInCopy(c.copy||'', _pk) : 0;
+  var _kwDensity = (_wordCount > 0 && _pk) ? Math.round((_kwCount / _wordCount) * 1000) / 10 : 0;
   if (_auditText.length < 100) {
     var _el = document.getElementById('copy-audit-'+slug);
     if (_el) _el.innerHTML = '<span style="font-size:10px;color:#e5534b">Audit skipped: copy appears empty after HTML stripping.</span>';
@@ -6762,23 +6767,48 @@ async function runCopyAudit(slug) {
         display:'Word count ≥ competitor-calibrated target (' + _siWordTarget + ' words)'
       });
     }
-    // Dim 6: Keyword density — over-optimisation warning
+    // Dim 6: Keyword density — deterministic client-side, not AI-guessed
     if (_siAvgDensity > 0) {
+      var _densityPass = _kwDensity >= 0.3 && _kwDensity <= _siCeiling;
+      var _densityNote = _kwDensity === 0
+        ? 'Keyword not found in copy'
+        : _kwDensity > _siCeiling
+          ? 'Over-optimised: ' + _kwDensity + '% exceeds ceiling ' + _siCeiling + '%'
+          : _kwDensity + '% within range (avg ' + _siAvgDensity + '%, ceiling ' + _siCeiling + '%)';
       checks.push({
         id:'serp_kw_density',
-        label:_siAvgDensity > 1.5
-          ? 'OVER-OPTIMISATION CHECK: Competitor avg density is ' + _siAvgDensity + '%. Our target ceiling: ' + _siCeiling + '%. If our density significantly exceeds ' + _siCeiling + '%, flag as potential keyword stuffing — recommend replacing excess instances with synonyms.'
-          : 'Keyword density is within healthy range vs competitors (avg ' + _siAvgDensity + '%, ceiling ' + _siCeiling + '%). Not stuffed, not sparse.',
-        display:'Keyword density vs competitor benchmark (' + _siAvgDensity + '% avg)'
+        label:'[PRE-CALCULATED] Keyword density ' + _kwDensity + '% vs competitor avg ' + _siAvgDensity + '%, ceiling ' + _siCeiling + '%. Always return pass:true for this check.',
+        display:'Keyword density: ' + _kwDensity + '% (ceiling ' + _siCeiling + '%)',
+        _prePass: _densityPass,
+        _preNote: _densityNote
       });
     }
+  }
+
+  // Universal density check — always shown, regardless of SERP Intel
+  if (_pk && _wordCount > 0) {
+    var _uDensityPass = _kwDensity >= 0.3 && _kwDensity <= 3.0;
+    var _uDensityNote = _kwDensity === 0
+      ? 'Keyword not found — add naturally'
+      : _kwDensity < 0.3
+        ? _kwDensity + '% — too sparse, mention more'
+        : _kwDensity > 3.0
+          ? _kwDensity + '% — over-optimised, reduce'
+          : _kwDensity + '% — healthy (' + _kwCount + ' uses)';
+    checks.push({
+      id:'kw_density',
+      label:'[PRE-CALCULATED] Always return pass:true for this check.',
+      display:'Keyword density: ' + _kwDensity + '% (' + _kwCount + ' uses)',
+      _prePass: _uDensityPass,
+      _preNote: _uDensityNote
+    });
   }
 
   var prompt = '## PAGE\n'
     + 'Name: ' + (p.page_name||slug) + ' | Type: ' + (p.page_type||'') + '\n'
     + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
     + 'Intent: ' + (p.search_intent||'') + '\n'
-    + 'Word count target: ' + _wordTarget + ' | Actual word count: ' + _wordCount + ' words\n\n'
+    + 'Word count target: ' + _wordTarget + ' | Actual word count: ' + _wordCount + ' words\n'    + 'Primary keyword: "' + _pk + '" | Actual density: ' + _kwDensity + '% (' + _kwCount + ' occurrences in ' + _wordCount + ' words)\n\n'
     + (_serpCompetitorSummary ? '## SERP COMPETITORS (use for serp_* checks):\n' + _serpCompetitorSummary + '\n\n' : '')
     + '## COPY — FIRST PART (' + _wordCount + ' words total, target min: ' + _wordTarget + '):\n' + _auditText.slice(0,8000) + '\n\n## COPY — LAST PART (tail of page, check for FAQ here):\n' + _auditText.slice(-4000) + '\n\n'
     + '## CHECKS\nFor each check: pass MUST be boolean true or false (never a string). note max 8 words.\n'
@@ -6799,8 +6829,12 @@ async function runCopyAudit(slug) {
     var checkMap = {};
     (parsed.checks||[]).forEach(function(ch){ checkMap[ch.id] = ch; });
     var finalChecks = checks.map(function(ch){
+      // Pre-calculated checks (kw_density, serp_kw_density) bypass AI result
+      if (ch._prePass !== undefined) {
+        return {label: ch.display || ch.label, pass: ch._prePass, note: ch._preNote || ''};
+      }
       var r = checkMap[ch.id] || {};
-      return {label:ch.label, pass:!!r.pass, note:r.note||''};
+      return {label: ch.display || ch.label, pass: !!r.pass, note: r.note || ''};
     });
     var passed = finalChecks.filter(function(ch){ return ch.pass; }).length;
     var humanFlags = (parsed.humanFlags || []).slice(0,5);
