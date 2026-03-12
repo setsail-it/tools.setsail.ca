@@ -359,25 +359,15 @@ textarea.inp{resize:vertical}
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-file-import"></i> Import Existing</button>
+          <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-building-estate"></i> Existing Site</button>
           <button class="btn btn-primary" id="sitemap-run-btn" onclick="confirmRunSitemap()"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
         </div>
       </div>
-      <!-- Import existing sitemap panel -->
-      <div id="sitemap-import-panel" style="display:none;margin-bottom:14px" class="card">
-        <div style="font-size:13px;font-weight:500;margin-bottom:6px;display:flex;align-items:center;gap:6px"><i class="ti ti-file-import" style="color:var(--green)"></i> Import Existing Sitemap</div>
-        <p style="font-size:12px;color:var(--n2);margin-bottom:10px">Paste existing page URLs (one per line). Claude will compare against the generated sitemap and surface missing page opportunities.</p>
-        <textarea id="sitemap-import-urls" rows="5" placeholder="https://example.com/services/plumbing&#10;https://example.com/about&#10;https://example.com/contact" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--dark);font-size:12px;font-family:var(--font);resize:vertical;outline:none;box-sizing:border-box" oninput="S.existingUrlsText=this.value"></textarea>
-        <script>document.addEventListener('DOMContentLoaded',function(){var ta=document.getElementById('sitemap-import-urls');if(ta&&!ta.value&&S&&S.existingUrlsText)ta.value=S.existingUrlsText;});</script>
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-primary" id="sitemap-gap-btn" onclick="runGapAnalysis()"><i class="ti ti-search"></i> Analyse Gaps</button>
-          <span style="font-size:11px;color:var(--n2)">Compares existing pages against AI-generated recommendations</span>
-        </div>
-        <div id="sitemap-gap-stream-wrap" style="display:none;margin-top:10px">
-          <div class="eyebrow" style="margin-bottom:4px">Analysing gaps...</div>
-          <div class="stream-box" id="sitemap-gap-stream"></div>
-        </div>
-        <div id="sitemap-gap-results" style="display:none;margin-top:10px"></div>
+      <!-- Existing Site Analysis panel -->
+      <div id="sitemap-import-panel" style="display:none;margin-bottom:14px">
+        <div id="existing-site-panel"></div>
+        <!-- Hidden textarea keeps backward-compat for Active/Suggested split -->
+        <textarea id="sitemap-import-urls" style="display:none" oninput="S.existingUrlsText=this.value"></textarea>
       </div>
       <div id="sitemap-stream-wrap" style="display:none" class="card">
         <div class="eyebrow" style="margin-bottom:0">Building sitemap...</div>
@@ -3587,12 +3577,145 @@ function toggleSitemapImport() {
   const panel = document.getElementById('sitemap-import-panel');
   const isOpen = panel.style.display !== 'none';
   panel.style.display = isOpen ? 'none' : 'block';
-  if (!isOpen) {
-    // Populate from saved state or snapshot when opened
-    const ta = document.getElementById('sitemap-import-urls');
-    if (ta && !ta.value && S.existingUrlsText) ta.value = S.existingUrlsText;
-  }
+  if (!isOpen) renderExistingSitePanel();
 }
+
+function renderExistingSitePanel() {
+  const wrap = document.getElementById('existing-site-panel');
+  if (!wrap) return;
+
+  const snapPages = (S.snapshot?.topPages || []).slice(0, 80);
+  const baseUrl = (S.setup?.url || '').replace(/\/$/, '');
+  const mapping = S.existingSiteMapping || {}; // { slug -> { keyword, isNew } }
+
+  // Sync hidden textarea for Active/Suggested split
+  const ta = document.getElementById('sitemap-import-urls');
+  if (ta && snapPages.length) {
+    const urls = snapPages.map(p => baseUrl + p.slug).join('\n');
+    ta.value = urls;
+    S.existingUrlsText = urls;
+  }
+
+  const hasMapping = Object.keys(mapping).length > 0;
+  const hasKwData = (S.kwResearch?.keywords?.length || 0) > 0;
+
+  let html = '<div class="card" style="margin-bottom:0">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+  html += '<div>';
+  html += '<div style="font-size:13px;font-weight:500;color:var(--dark)">Existing Site Analysis</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">'+(snapPages.length ? snapPages.length+' pages from snapshot' : 'No snapshot data')+'</div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  if (hasKwData) {
+    html += '<button onclick="runKeywordMapping()" id="kw-map-btn" class="btn btn-primary sm"><i class="ti ti-git-merge"></i> Map Keywords to Pages</button>';
+  } else {
+    html += '<span style="font-size:11px;color:var(--warn)">Run keyword research first to enable mapping</span>';
+  }
+  html += '</div></div>';
+
+  if (!snapPages.length) {
+    html += '<div style="font-size:12px;color:var(--n2);padding:12px 0">Run Site Snapshot first to load existing pages.</div>';
+    html += '</div>'; wrap.innerHTML = html; return;
+  }
+
+  // Pages table
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px">';
+  html += '<div style="display:grid;grid-template-columns:1fr 70px 60px 1.2fr;background:var(--bg);padding:7px 12px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">';
+  html += '<span>Page URL</span><span>Traffic</span><span>KWs</span><span>Mapped Keyword</span></div>';
+  html += '<div style="max-height:340px;overflow-y:auto">';
+  snapPages.forEach(p => {
+    const m = mapping[p.slug];
+    const mappedKw = m?.keyword || '';
+    const isNew = m?.isNew || false;
+    const kwColor = mappedKw ? (isNew ? 'var(--warn)' : 'var(--green)') : 'var(--n2)';
+    const traffic = p.traffic || 0;
+    const kws = p.keywords || 0;
+    const trafficColor = traffic > 100 ? 'var(--green)' : traffic > 20 ? 'var(--warn)' : 'var(--n2)';
+    html += '<div style="display:grid;grid-template-columns:1fr 70px 60px 1.2fr;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04);align-items:center">';
+    html += '<span style="font-size:11.5px;color:var(--dark);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.slug || '/')+'</span>';
+    html += '<span style="font-size:11px;font-weight:500;color:'+trafficColor+'">'+(traffic > 0 ? traffic.toLocaleString() : '<span style="color:var(--n1)">0</span>')+'</span>';
+    html += '<span style="font-size:11px;color:var(--n2)">'+kws+'</span>';
+    html += '<span style="font-size:11px;color:'+kwColor+'">'+esc(mappedKw || (hasMapping ? '(no match)' : ''))+'</span>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // Mapping stream/status
+  html += '<div id="kw-map-stream-wrap" style="display:none;margin-bottom:10px"><div class="stream-box" id="kw-map-stream"></div></div>';
+
+  // Gap summary
+  if (hasMapping) {
+    const gaps = Object.values(mapping).filter(m => m.isNew);
+    if (gaps.length) {
+      html += '<div style="border:1px solid rgba(214,158,46,0.3);border-radius:6px;padding:10px 12px;background:rgba(214,158,46,0.05)">';
+      html += '<div style="font-size:11px;font-weight:500;color:var(--warn);margin-bottom:6px">';
+      html += '<i class="ti ti-plus" style="font-size:11px"></i> '+gaps.length+' New Page Opportunities Identified</div>';
+      gaps.forEach(g => {
+        html += '<div style="font-size:11px;color:var(--n3);padding:2px 0">';
+        html += '<span style="font-family:monospace;color:var(--n2)">/'+esc(g.suggestedSlug||'')+'</span>';
+        html += ' <span style="color:var(--warn)">'+esc(g.keyword)+'</span>';
+        if (g.vol) html += ' <span style="color:var(--n2);font-size:10px">'+g.vol.toLocaleString()+'/mo</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--green)"><i class="ti ti-check"></i> All keywords mapped to existing pages.</div>';
+    }
+  }
+
+  html += '</div>';
+  wrap.innerHTML = html;
+}
+
+async function runKeywordMapping() {
+  const btn = document.getElementById('kw-map-btn');
+  const streamWrap = document.getElementById('kw-map-stream-wrap');
+  const streamEl = document.getElementById('kw-map-stream');
+  if (!btn || !streamWrap || !streamEl) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Mapping...';
+  streamWrap.style.display = 'block';
+  streamEl.textContent = '';
+
+  const snapPages = (S.snapshot?.topPages || []).slice(0, 80);
+  const kws = (S.kwResearch?.keywords || []).slice(0, 200);
+
+  const existingList = snapPages.map(p => p.slug + (p.traffic ? ' (traffic:'+p.traffic+')' : '')).join('\n');
+  const kwList = kws.map(k => k.kw + ' | vol:' + k.vol + ' | kd:' + k.kd + ' | score:' + k.score).join('\n');
+
+  const system = 'You are an SEO architect. Map keywords to pages and identify gaps. Output ONLY raw JSON, no markdown.';
+  const prompt = '## EXISTING PAGES\n' + existingList
+    + '\n\n## KEYWORD LIST\n' + kwList
+    + '\n\n## TASK\nFor each existing page, assign the best matching keyword from the list (by intent + topic). For keywords that have NO good match in existing pages, mark as a gap (new page needed).\n\n'
+    + 'Output JSON:\n{"mappings":[{"slug":"/services/seo","keyword":"seo vancouver","vol":2900,"rationale":"exact intent match"}],"gaps":[{"keyword":"google ads vancouver","vol":20,"suggestedSlug":"services/google-ads-vancouver","rationale":"no existing PPC page"}]}';
+
+  try {
+    const result = await callClaude(system, prompt, t => { streamEl.textContent = t; }, 4000);
+    const parsed = safeParseJSON(result);
+    if (parsed && (parsed.mappings || parsed.gaps)) {
+      const newMapping = {};
+      (parsed.mappings || []).forEach(m => {
+        const slug = m.slug.replace(/^\//, '');
+        newMapping['/'+slug] = { keyword: m.keyword, vol: m.vol || 0, isNew: false };
+      });
+      (parsed.gaps || []).forEach(g => {
+        newMapping['__gap__'+g.keyword] = { keyword: g.keyword, vol: g.vol || 0, suggestedSlug: g.suggestedSlug || '', isNew: true };
+      });
+      S.existingSiteMapping = newMapping;
+      scheduleSave();
+      streamWrap.style.display = 'none';
+      renderExistingSitePanel();
+    } else {
+      streamEl.textContent = 'Parse failed. Raw: ' + result.slice(0, 300);
+    }
+  } catch(e) {
+    streamEl.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-git-merge"></i> Map Keywords to Pages';
+}
+
 
 async function fetchAhrefsMetrics(forceRefresh) {
   if (!S.pages.length) return;

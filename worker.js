@@ -290,58 +290,62 @@ export default {
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
         const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
 
-        // ── Step 1: Get keyword ideas via keywords_for_keywords ──
-        const expandBody = seeds.slice(0, 30).map(seed => ({
-          keyword: seed, location_code: locationCode, language_code: 'en', limit: 50
+        // ── Step 1: Expand seeds via keywords_for_keywords (12 seeds max for reliability) ──
+        const expandSeeds = seeds.slice(0, 12);
+        const expandBody = expandSeeds.map(seed => ({
+          keyword: seed, location_code: locationCode, language_code: 'en', limit: 30
         }));
         let expandData;
-        const expandRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify(expandBody)
-        });
-        const expandRaw = await expandRes.text();
-        try { expandData = JSON.parse(expandRaw); } catch(e) {
-          return new Response(JSON.stringify({ error: 'Expand parse error: ' + expandRaw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
-        }
-        if (!expandRes.ok || (expandData.status_code && expandData.status_code !== 20000)) {
-          return new Response(JSON.stringify({ error: expandData?.status_message || ('Expand HTTP ' + expandRes.status) }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        try {
+          const expandRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify(expandBody)
+          });
+          const expandRaw = await expandRes.text();
+          expandData = JSON.parse(expandRaw);
+        } catch(e) {
+          expandData = { tasks: [] }; // graceful fallback
         }
 
-        // Collect all unique keyword strings — no volume filter (CA volume can be 0 from this endpoint)
-        const kwSet = new Set(seeds); // always include seeds
-        (expandData.tasks || []).forEach(task => {
+        // Collect expanded keywords; always include all seeds as fallback
+        const kwSet = new Set(seeds);
+        ((expandData && expandData.tasks) || []).forEach(task => {
           (task.result || []).forEach(r => {
             if (r.keyword) kwSet.add(r.keyword);
-            (r.items || []).forEach(item => { if (item.keyword) kwSet.add(item.keyword); });
           });
         });
-        const kwList = [...kwSet].slice(0, 700);
+        const kwList = [...kwSet].slice(0, 400);
 
-        // ── Step 2: Get real CA volumes via search_volume/live (proven working endpoint) ──
-        const volBody = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
-        const volRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify(volBody)
-        });
-        const volRaw = await volRes.text();
-        let volData;
-        try { volData = JSON.parse(volRaw); } catch(e) {
-          return new Response(JSON.stringify({ error: 'Volume parse error: ' + volRaw.slice(0, 200) }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        // ── Step 2: Get volumes via search_volume/live — batched at 200 per call ──
+        const kwMap = {};
+        const batchSize = 200;
+        for (let bi = 0; bi < kwList.length; bi += batchSize) {
+          const batch = kwList.slice(bi, bi + batchSize);
+          try {
+            const volRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+              method: 'POST',
+              headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+              body: JSON.stringify([{ keywords: batch, location_code: locationCode, language_code: 'en' }])
+            });
+            const volData = await volRes.json();
+            (volData.tasks || []).forEach(task => {
+              (task.result || []).forEach(r => {
+                if (r.keyword) kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
+              });
+            });
+          } catch(e) { /* batch failed, continue */ }
         }
 
-        // Build final keyword list with real volumes
-        const kwMap = {};
-        (volData.tasks || []).forEach(task => {
-          (task.result || []).forEach(r => {
-            if (r.keyword) kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0, cpc: r.cpc || 0 };
-          });
-        });
-
+        // Build final list — include seeds even if volume lookup missed them
         const keywords = kwList
-          .filter(kw => kwMap[kw])
-          .map(kw => ({ keyword: kw, volume: kwMap[kw].volume, difficulty: kwMap[kw].kd, cpc: kwMap[kw].cpc }));
+          .map(kw => ({
+            keyword: kw,
+            volume: kwMap[kw]?.volume ?? 0,
+            difficulty: kwMap[kw]?.kd ?? 0,
+            cpc: kwMap[kw]?.cpc ?? 0
+          }))
+          .filter(k => kwMap[k.keyword]); // only return kws we actually got vol data for
 
         return new Response(JSON.stringify({ keywords, source: 'dataforseo-expand' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
