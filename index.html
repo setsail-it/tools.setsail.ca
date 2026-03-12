@@ -6681,7 +6681,14 @@ async function generateMetaTags(slug, page, copyHtml) {
 
 async function runCopyAudit(slug) {
   var c = S.copy[slug];
-  if (!c || !c.copy) return;
+  if (!c || !c.copy || c.copy.length < 200) return;
+  // Ensure stripped text has real content
+  var _auditText = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  if (_auditText.length < 100) {
+    var _el = document.getElementById('copy-audit-'+slug);
+    if (_el) _el.innerHTML = '<span style="font-size:10px;color:#e5534b">Audit skipped: copy appears empty after HTML stripping.</span>';
+    return;
+  }
   var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
   var auditEl = document.getElementById('copy-audit-'+slug);
   if (auditEl) auditEl.innerHTML = '<span style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:5px"><span class="spinner" style="width:10px;height:10px"></span>Auditing…</span>';
@@ -6824,15 +6831,21 @@ async function runCopyPass2(slug) {
       if (el) el.textContent = t.slice(-600);
     }, 6000);
     if (!copyStopFlag) {
-      var passNum = ((c.drafts||[]).filter(function(d){ return d.pass===2; }).length) + 2;
-      var drafts = c.drafts || [{v:1, html:c.copy, pass:1, generatedAt:c.writtenAt||Date.now()}];
-      // Keep all previous drafts, append new one
-      drafts.push({v:passNum, html:result, pass:2, generatedAt:Date.now()});
-      S.copy[slug].drafts = drafts;
-      S.copy[slug].activeDraft = drafts.length - 1;
-      S.copy[slug].copy = result;
-      S.copy[slug].audit = null;
-      scheduleSave();
+      // Validate result is actual HTML — not a prose refusal or empty string
+      var isValidHtml = result && result.length > 500 && result.indexOf('<') !== -1;
+      if (!isValidHtml) {
+        var auditEl2 = document.getElementById('copy-audit-'+slug);
+        if (auditEl2) auditEl2.innerHTML = '<span style="font-size:10px;color:#e5534b">Pass failed: model returned non-HTML response. Previous draft preserved.</span>';
+      } else {
+        var passNum = ((c.drafts||[]).filter(function(d){ return d.pass===2; }).length) + 2;
+        var drafts = c.drafts || [{v:1, html:c.copy, pass:1, generatedAt:c.writtenAt||Date.now()}];
+        drafts.push({v:passNum, html:result, pass:2, generatedAt:Date.now()});
+        S.copy[slug].drafts = drafts;
+        S.copy[slug].activeDraft = drafts.length - 1;
+        S.copy[slug].copy = result;
+        S.copy[slug].audit = null;
+        scheduleSave();
+      }
     }
   } catch(e) {
     console.error('Pass 2 error', e);
@@ -6841,8 +6854,10 @@ async function runCopyPass2(slug) {
   S.copyCurrentSlug = null;
   S.copyRunning = false;
   renderCopyQueue(); updateCopyProgress();
-  // Auto-reaudit on the fresh draft
-  if (!copyStopFlag) setTimeout(function(){ runCopyAudit(slug); }, 500);
+  // Auto-reaudit on the fresh draft — only if valid copy exists
+  if (!copyStopFlag && S.copy[slug] && S.copy[slug].copy && S.copy[slug].copy.length > 500) {
+    setTimeout(function(){ runCopyAudit(slug); }, 600);
+  }
 }
 
 function toggleCopyCode(slug) {
