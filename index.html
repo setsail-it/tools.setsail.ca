@@ -6698,14 +6698,14 @@ async function runCopyAudit(slug) {
 
   // Universal checks (all page types)
   var checks = [
-    {id:'h1_kw',     label:'H1 contains primary keyword'},
-    {id:'pk_intro',  label:'PK appears in first 120 words'},
-    {id:'intent',    label:'Search intent matched throughout'},
-    {id:'unique',    label:'Unique angle — not generic agency copy'},
-    {id:'no_placeholders', label:'No [placeholder] text remaining'},
-    {id:'wordcount', label:'Word count meets minimum target (PASS if actual >= target). Target: '+_wordTarget+' words, Actual: '+_wordCount+' words. PASS='+(_wordCount>=_wordTarget)+'.'},
-    {id:'canadian',  label:'Canadian spelling throughout'},
-    {id:'no_fluff',  label:'No filler / vanity copy'},
+    {id:'h1_kw',          label:'H1 tag contains primary keyword verbatim (exact match, not paraphrase)'},
+    {id:'pk_intro',        label:'Primary keyword appears within the first 120 words of body copy'},
+    {id:'intent',          label:'Page satisfies '+((p.search_intent||'commercial')).split(' ')[0]+' search intent throughout — reader can take action'},
+    {id:'no_placeholders', label:'No [placeholder], [INSERT], [TBD], or template brackets remaining in copy', display:'No [placeholder] text remaining'},
+    {id:'wordcount',       label:'Word count >= minimum target. Target='+_wordTarget+' Actual='+_wordCount+'. PASS if '+_wordCount+'>='+_wordTarget, display:'Word count meets page target (target: '+_wordTarget+', actual: '+_wordCount+')'},
+    {id:'canadian',        label:'Canadian spelling used. Canadian uses: -ise (optimise/organise/specialise), -our (colour/honour), -re (centre/theatre), -yse (analyse). American -ize/-ize/-ize are FAILURES. Verify no American spellings like optimize/organize/specialize/color/center/analyze', display:'Canadian spelling throughout'},
+    {id:'unique',          label:'Page has a specific differentiating angle — not generic claims like \'we are passionate\' or \'full-service\''},
+    {id:'no_fluff',        label:'No filler phrases: \'in today\'s world\', \'at the end of the day\', \'leverage\', \'synergy\', \'holistic approach\'. Copy is direct and outcome-led', display:'No filler / vanity copy'},
   ];
   // Page-type specific checks
   var _pt = p.page_type || 'service';
@@ -6738,11 +6738,11 @@ async function runCopyAudit(slug) {
   } else {
     // service, industry, other
     checks = checks.concat([
-      {id:'proof',         label:'Proof / social proof present and specific'},
-      {id:'cta_fold',      label:'CTA visible above fold'},
-      {id:'objection',     label:'Objections addressed'},
-      {id:'faq',           label:'FAQ section present (8+ Q&As)'},
-      {id:'differentiator',label:'Differentiators specific — not generic claims'},
+      {id:'proof',         label:'Specific social proof present: named client type + measurable result (e.g. \'427% leads increase\' not just \'great results\')'},
+      {id:'cta_fold',      label:'A clickable CTA button or link appears before the page fold (within first ~300 words of copy)'},
+      {id:'objection',     label:'At least one common buyer objection is named and answered (price, trust, timing, or ROI concern)'},
+      {id:'faq',           label:'Page contains an FAQ section with a heading containing \'FAQ\' or \'Frequently Asked\' or \'Questions\', with 8 or more Q&A pairs'},
+      {id:'differentiator',label:'At least 2 specific differentiators named — must be concrete (e.g. \'ROI guarantee\', \'outcome-based pricing\') not generic (\'experienced team\')'},
     ]);
   }
 
@@ -7132,7 +7132,7 @@ function renderCopyQueue() {
               var bg = pass ? 'rgba(21,142,29,0.05)' : 'rgba(229,83,75,0.05)';
               html += '<div title="'+esc(ch.note||'')+'" style="display:flex;align-items:flex-start;gap:5px;padding:3px 6px;border-radius:4px;background:'+bg+';cursor:default">';
               html += '<span style="font-size:11px;color:'+clr+';font-weight:700;flex-shrink:0;margin-top:1px">'+icon+'</span>';
-              html += '<span style="font-size:10px;color:var(--dark);line-height:1.4">'+esc(ch.label)+'</span>';
+              html += '<span style="font-size:10px;color:var(--dark);line-height:1.4">'+esc(ch.display||ch.label)+'</span>';
               if (ch.note) html += '<span style="font-size:9.5px;color:var(--n2);margin-left:auto;white-space:nowrap">'+esc(ch.note)+'</span>';
               html += '</div>';
             });
