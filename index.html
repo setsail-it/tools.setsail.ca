@@ -4180,6 +4180,28 @@ async function generatePageBrief(pageIdx) {
     return pg.slug !== p.slug && pg.primary_keyword && (pg.page_type==='service'||pg.page_type==='location'||pg.page_type==='industry');
   }).slice(0,8).map(function(pg){ return '- /'+pg.slug+' ('+pg.primary_keyword+')'; }).join('\n') || 'None available yet';
 
+  // ── SERP INTEL (fetch silently before brief generation) ─────────────────
+  var serpBriefBlock = '';
+  if (p.primary_keyword) {
+    try {
+      var geo2 = (R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '';
+      var country2 = /canada|bc|vancouver/i.test(geo2) ? 'CA' : 'US';
+      if (streamEl) streamEl.textContent = 'Fetching SERP Intel for "' + p.primary_keyword + '"…';
+      var siRes = await fetch('/api/serp-intel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: p.primary_keyword, country: country2 })
+      });
+      var siData = await siRes.json();
+      if (siData.competitors && siData.competitors.length) {
+        S.pages[pageIdx].serpIntel = siData;
+        scheduleSave();
+        serpBriefBlock = buildSerpIntelBlock(p);
+      }
+    } catch(siErr) { /* non-fatal — continue without */ }
+    if (streamEl) streamEl.textContent = 'Writing brief…';
+  }
+
   // ── PAGE TYPE ROUTING ────────────────────────────────────────────
   var isService  = /^(service|location|industry)$/.test(pt);
   var isBlog     = /^(blog|faq|resource)$/.test(pt);
@@ -4205,6 +4227,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
       + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
       + '\n\n## COMPETITORS TO BEAT\n'+ctxCompetitors
+      + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. READER PROFILE\n'
@@ -4257,6 +4280,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
       + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
+      + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. READER PROFILE + AWARENESS STAGE\n'
@@ -4311,6 +4335,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
       + '\n\n## COMPETITORS\n'+ctxCompetitors
+      + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. PAGE PURPOSE + SEARCH INTENT\n'
@@ -6640,18 +6665,79 @@ async function runCopyAudit(slug) {
     ]);
   }
 
+  // ── SERP COMPARISON CHECKS (trainer's 8 dimensions) ────────────
+  var _si = p.serpIntel;
+  var _siOk = !!(_si && _si.competitors && _si.competitors.length);
+  var _serpCompetitorSummary = '';
+  if (_siOk) {
+    var _siComps = _si.competitors.filter(function(c){ return c.fetch_ok; });
+    var _siD = _si.directives || {};
+    var _siWordTarget = _siD.word_count_target || 0;
+    var _siAvgDensity = _siD.avg_kw_density || 0;
+    var _siCeiling   = _siD.density_ceiling || 0;
+    // Build compact competitor summary for prompt
+    _serpCompetitorSummary = _siComps.map(function(c, i) {
+      return 'Competitor ' + (i+1) + ' (pos ' + c.position + '):'
+        + '\n  Title: ' + c.title
+        + '\n  Meta: ' + (c.meta_description||'').slice(0,150)
+        + '\n  H1: ' + (c.h1||'')
+        + '\n  H2s: ' + (c.h2s||[]).slice(0,10).join(' | ')
+        + '\n  Words: ' + c.word_count + ' | KW density: ' + c.kw_density + '%';
+    }).join('\n\n');
+
+
+    // Dim 1+8: Title trust signals
+    checks.push({
+      id:'serp_title',
+      label:'Title tag has equal or stronger trust signal than top competitor title ("' + (_siComps[0]&&_siComps[0].title||'') + '"). Look for credentials, years, outcome, or guarantee.',
+      display:'Title trust signals ≥ top competitor'
+    });
+    // Dim 2: Meta description CTR
+    checks.push({
+      id:'serp_meta',
+      label:'Meta description out-sells competitor meta ("' + ((_siComps[0]&&_siComps[0].meta_description)||'').slice(0,80) + '…"). Must have clearer outcome hook and explicit CTA.',
+      display:'Meta description beats competitor CTR'
+    });
+    // Dim 4: H2 coverage
+    var _allCompH2s = (_siD.all_competitor_h2s||[]).slice(0,12).join(', ');
+    checks.push({
+      id:'serp_h2_coverage',
+      label:'Page H2 structure covers key topics present in competitor headings: ' + _allCompH2s + '. Not every H2 must match — but major topic gaps should be filled.',
+      display:'H2 coverage matches/exceeds competitor depth'
+    });
+    // Dim 5: Word count vs competitors
+    if (_siWordTarget > 0) {
+      checks.push({
+        id:'serp_wordcount',
+        label:'Word count meets competitor-calibrated target. Competitor max × 1.05 = ' + _siWordTarget + ' words. Actual: ' + _wordCount + '. PASS if ' + _wordCount + ' >= ' + _siWordTarget + '.',
+        display:'Word count ≥ competitor-calibrated target (' + _siWordTarget + ' words)'
+      });
+    }
+    // Dim 6: Keyword density — over-optimisation warning
+    if (_siAvgDensity > 0) {
+      checks.push({
+        id:'serp_kw_density',
+        label:_siAvgDensity > 1.5
+          ? 'OVER-OPTIMISATION CHECK: Competitor avg density is ' + _siAvgDensity + '%. Our target ceiling: ' + _siCeiling + '%. If our density significantly exceeds ' + _siCeiling + '%, flag as potential keyword stuffing — recommend replacing excess instances with synonyms.'
+          : 'Keyword density is within healthy range vs competitors (avg ' + _siAvgDensity + '%, ceiling ' + _siCeiling + '%). Not stuffed, not sparse.',
+        display:'Keyword density vs competitor benchmark (' + _siAvgDensity + '% avg)'
+      });
+    }
+  }
+
   var prompt = '## PAGE\n'
     + 'Name: ' + (p.page_name||slug) + ' | Type: ' + (p.page_type||'') + '\n'
     + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
     + 'Intent: ' + (p.search_intent||'') + '\n'
     + 'Word count target: ' + _wordTarget + ' | Actual word count: ' + _wordCount + ' words\n\n'
+    + (_serpCompetitorSummary ? '## SERP COMPETITORS (use for serp_* checks):\n' + _serpCompetitorSummary + '\n\n' : '')
     + '## COPY — FIRST PART (' + _wordCount + ' words total, target min: ' + _wordTarget + '):\n' + _auditText.slice(0,8000) + '\n\n## COPY — LAST PART (tail of page, check for FAQ here):\n' + _auditText.slice(-4000) + '\n\n'
     + '## CHECKS\nFor each check: pass MUST be boolean true or false (never a string). note max 8 words.\n'
     + checks.map(function(ch){ return '- ' + ch.id + ': ' + ch.label; }).join('\n')
     + '\n\nReturn raw JSON only. No markdown. Schema: {"checks":[{"id":"h1_kw","pass":true,"note":"short note"},...],"humanFlags":[{"item":"Specific claim","reason":"why human must verify","severity":"high"}]}'
 
   try {
-    var result = await callClaude('You are a strict copy auditor. OUTPUT ONLY VALID JSON. No prose, no markdown, no backticks. The pass field for every check MUST be boolean true or false, never a string. Start your response with { and end with }.', prompt, null, 1500);
+    var result = await callClaude('You are a strict copy auditor. OUTPUT ONLY VALID JSON. No prose, no markdown, no backticks. The pass field for every check MUST be boolean true or false, never a string. Start your response with { and end with }.', prompt, null, 2000);
     var jsonStart = result.indexOf('{'), jsonEnd = result.lastIndexOf('}');
 
     var clean = (jsonStart >= 0 && jsonEnd > jsonStart) ? result.slice(jsonStart, jsonEnd+1) : result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
@@ -7108,7 +7194,7 @@ function renderCopyQueue() {
           var _siWDone = !!(_siW && _siW.competitors && _siW.competitors.length);
           html += '<div style="display:flex;align-items:center;gap:6px;padding:10px 14px;flex-wrap:wrap">';
           html += '<button onclick="redoCopyPage(\''+p.slug+'\')" class="btn '+(_stale?'btn-primary':'btn-ghost')+' sm"><i class="ti ti-refresh" style="font-size:10px"></i> Redo</button>';
-          html += '<button id="serp-intel-btn-'+p.slug+'" onclick="runSerpIntel(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+(_siWDone?'rgba(21,142,29,0.08)':'rgba(0,0,0,0.04)')+';color:'+(_siWDone?'var(--green)':'var(--n2)')+';cursor:pointer;font-family:var(--font)">'+(_siWDone?'✓ SERP Intel':'⟳ SERP Intel')+'</button>';
+          html += '<button id="serp-intel-btn-'+p.slug+'" onclick="runSerpIntel(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+(_siWDone?'rgba(21,142,29,0.08)':'rgba(0,0,0,0.04)')+';color:'+(_siWDone?'var(--green)':'var(--n2)')+';cursor:pointer;font-family:var(--font)">'+(_siWDone?'↻ Refresh SERP Intel':'⟳ Run SERP Intel')+'</button>';
           html += '<span id="serp-intel-status-'+p.slug+'" style="font-size:9px;color:var(--n2)"></span>';
           html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 14px;font-size:11px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:'+(_approved?'var(--green)':'var(--dark)')+';color:white">'+(_approved?'✓ Approved':'Approve for Schema')+'</button>';
           html += '</div>';
