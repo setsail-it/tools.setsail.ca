@@ -2292,7 +2292,7 @@ function buildKwSeeds() {
       if (s.length > 3) { seeds.add(s + ' ' + sg); seeds.add(s + ' agency ' + sg); }
     });
   });
-  return Array.from(seeds).filter(function(k) { return k.length > 4 && k.split(' ').length >= 2; }).slice(0, 500);
+  return Array.from(seeds).filter(function(k) { return k.length > 4 && k.split(' ').length >= 2 && k.split(' ').length <= 7; }).slice(0, 500);
 }
 
 function goToSitemap() { goTo('sitemap'); }

@@ -310,7 +310,7 @@ export default {
         // Just run search_volume/live on the full seed list in batches of 200
 
         console.log('[kw-expand] seeds received:', seeds.length, 'sample:', JSON.stringify(seeds.slice(0,3)));
-        const kwList = [...new Set(seeds)].slice(0, 600);
+        const kwList = [...new Set(seeds)].filter(k => k.split(' ').length <= 10 && k.length <= 80).slice(0, 600);
         console.log('[kw-expand] kwList:', kwList.length);
         const kwMap = {};
         let lastTaskDebug = {};
