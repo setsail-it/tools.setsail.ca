@@ -6794,7 +6794,9 @@ async function runCopyPass2(slug) {
     + '\nVoice: ' + ((r.tone_and_voice)||(s&&s.voice)||'Confident, direct. Canadian spelling.');
 
   // Trim HTML for input — strip inline styles and class attrs to save tokens
-  var trimmedHtml = (c.copy||'').replace(/ style="[^"]*"/g,'').replace(/ class="[^"]*"/g,'').slice(0,5000);
+  // Strip style/class attrs to save tokens, keep up to 7500 chars of actual content
+  var trimmedHtml = (c.copy||'').replace(/ style="[^"]*"/g,'').replace(/ class="[^"]*"/g,'').replace(/ data-[^=]*="[^"]*"/g,'').slice(0,7500);
+  var draftWordCount = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().split(' ').length;
 
   var pass2System = 'You are a senior CRO copywriter doing a surgical improvement pass on existing page copy.'
     + ' Your job is to fix ONLY the specific failed checks listed below.'
@@ -6808,9 +6810,11 @@ async function runCopyPass2(slug) {
     + '\n\n## FAILED CHECKS TO FIX (improve specifically for these):\n' + failList
     + '\n\n## EXISTING DRAFT (your base — output the full improved version of this):\n' + trimmedHtml
     + '\n\n## INSTRUCTION\nOutput the COMPLETE improved HTML. Fix the failed checks above.'
-    + ' Do not truncate. Do not stop early. Write every section through to the final CTA.'
-    + ' If word count is failing, expand thin sections with specific, outcome-led content.'
-    + ' If FAQ is missing, add a full FAQ section (8+ questions) before the final CTA.';
+    + ' CRITICAL: The existing draft has approx '+draftWordCount+' words. Do NOT output less than this.'
+    + ' Do not truncate. Do not stop mid-sentence. Write every section through to the final CTA.'
+    + ' If word count is failing, expand every thin section — add specific stats, client outcomes, named results.'
+    + ' If FAQ is missing, insert a complete FAQ section (8+ Q&As) immediately before the final CTA.'
+    + ' If Canadian spelling is failing, fix: maximize→maximise, optimize→optimise, analyze→analyse, center→centre.';
 
   try {
     var result = await callClaude(pass2System, prompt, function(t){
@@ -6836,6 +6840,8 @@ async function runCopyPass2(slug) {
   S.copyCurrentSlug = null;
   S.copyRunning = false;
   renderCopyQueue(); updateCopyProgress();
+  // Auto-reaudit on the fresh draft
+  if (!copyStopFlag) setTimeout(function(){ runCopyAudit(slug); }, 500);
 }
 
 function toggleCopyCode(slug) {
