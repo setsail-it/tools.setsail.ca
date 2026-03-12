@@ -2619,7 +2619,7 @@ function _renderKwOppsTab() {
       var tr = k.monthly[k.monthly.length - 1] > k.monthly[0] ? '<span style="color:var(--green)">&#x2191;</span>' : '<span style="color:var(--error)">&#x2193;</span>';
       spark = '<span style="display:inline-flex;align-items:flex-end;gap:1px">' + k.monthly.slice(-6).map(function(v) { var h = mx > 0 ? Math.round((v / mx) * 14) + 2 : 2; return '<span style="display:inline-block;width:4px;height:' + h + 'px;background:var(--n1);border-radius:1px;vertical-align:bottom"></span>'; }).join('') + '</span>' + tr;
     } else spark = '<span style="color:var(--n1)">-</span>';
-        html += '<div onclick="_toggleKwSel(' + i + ')" style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px">'
+        html += '<div onclick="_toggleKwSel(' + encodeURIComponent(k.kw) + ')" style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px">'
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
       + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
       + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.vol || 0).toLocaleString() + '</span>'
@@ -2634,9 +2634,9 @@ function _renderKwOppsTab() {
   return html;
 }
 
-function _toggleKwSel(i) {
+function _toggleKwSel(kwEncoded) {
   if (!S.kwResearch || !S.kwResearch.keywords) return;
-  var kw = S.kwResearch.keywords[i] && S.kwResearch.keywords[i].kw;
+  var kw = decodeURIComponent(kwEncoded);
   if (!kw) return;
   if (!S.kwResearch.selected) S.kwResearch.selected = [];
   var pos = S.kwResearch.selected.indexOf(kw);
