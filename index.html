@@ -6703,7 +6703,7 @@ async function runCopyAudit(slug) {
     {id:'intent',    label:'Search intent matched throughout'},
     {id:'unique',    label:'Unique angle — not generic agency copy'},
     {id:'no_placeholders', label:'No [placeholder] text remaining'},
-    {id:'wordcount', label:'Word count meets page target (target: '+_wordTarget+', actual: '+_wordCount+')'},
+    {id:'wordcount', label:'Word count meets minimum target (PASS if actual >= target). Target: '+_wordTarget+' words, Actual: '+_wordCount+' words. PASS='+(_wordCount>=_wordTarget)+'.'},
     {id:'canadian',  label:'Canadian spelling throughout'},
     {id:'no_fluff',  label:'No filler / vanity copy'},
   ];
@@ -6751,7 +6751,7 @@ async function runCopyAudit(slug) {
     + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
     + 'Intent: ' + (p.search_intent||'') + '\n'
     + 'Word count target: ' + _wordTarget + ' | Actual word count: ' + _wordCount + ' words\n\n'
-    + '## COPY (evaluate this full page text — ' + _wordCount + ' words):\n' + _auditText.slice(0,12000) + '\n\n'
+    + '## COPY — FIRST PART (' + _wordCount + ' words total, target min: ' + _wordTarget + '):\n' + _auditText.slice(0,8000) + '\n\n## COPY — LAST PART (tail of page, check for FAQ here):\n' + _auditText.slice(-4000) + '\n\n'
     + '## CHECKS\nFor each check: pass MUST be boolean true or false (never a string). note max 8 words.\n'
     + checks.map(function(ch){ return '- ' + ch.id + ': ' + ch.label; }).join('\n')
     + '\n\nReturn raw JSON only. No markdown. Schema: {"checks":[{"id":"h1_kw","pass":true,"note":"short note"},...],"humanFlags":[{"item":"Specific claim","reason":"why human must verify","severity":"high"}]}'
