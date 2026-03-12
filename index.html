@@ -6407,9 +6407,9 @@ function copySetQCTab(slug, tab) {
   renderCopyQueue();
 }
 
-function copyMarkAllQC(slug, tab) {
+function copyMarkAllQC(slug) {
   var p = orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
-  var items = getQCItems(p.page_type||'service', tab);
+  var items = getQCItems(p.page_type||'service');
   if (!S.copy[slug]) S.copy[slug] = {};
   if (!S.copy[slug].humanQC) S.copy[slug].humanQC = {};
   var allDone = items.every(function(i){ return !!S.copy[slug].humanQC[i.key]; });
@@ -6417,6 +6417,15 @@ function copyMarkAllQC(slug, tab) {
   scheduleSave();
   renderCopyQueue();
 }
+
+
+
+
+
+
+
+
+
 
 function copyToggleQC(slug, key) {
   if (!S.copy[slug]) return;
@@ -6435,236 +6444,34 @@ function copyApprove(slug) {
   renderCopyQueue();
 }
 
-// ── QC_MAP: SEO + CRO checklists by page type ─────────────────────────────
-// Each entry: {key, label, tab:'seo'|'cro', note?}
-// note = tooltip shown on hover
+// ── HUMAN QC: items only a human can verify ─────────────────────────────────
+// AI handles structural/content checks. Human QC = things AI cannot confirm.
 
 var QC_MAP = {
-
-  // ── HOME ────────────────────────────────────────────────────────────────
-  home: {
-    seo: [
-      {key:'pk_h1',          label:'PK verbatim in H1'},
-      {key:'pk_intro',       label:'PK in first 120 words'},
-      {key:'meta_title_ok',  label:'Meta title: PK near start, under 60 chars'},
-      {key:'meta_desc_ok',   label:'Meta description: PK once, 150-155 chars, benefit-led'},
-      {key:'slug_ok',        label:'Slug: short, lowercase, hyphens, PK included'},
-      {key:'int_links',      label:'Internal links to top service pages'},
-      {key:'schema_ok',      label:'Schema: Organisation + WebSite + SiteLinks'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'word_count',     label:'Word count meets target (1200+ for homepage)'},
-    ],
-    cro: [
-      {key:'value_prop_fold',  label:'Value prop clear above fold — who it\'s for + what they get'},
-      {key:'h1_outcome',       label:'H1 leads with outcome, not service category'},
-      {key:'cta_fold',         label:'Single primary CTA visible without scrolling'},
-      {key:'cta_specific',     label:'CTA is specific ("Get $750 Strategy Audit"), not "Contact Us"'},
-      {key:'trust_fold',       label:'Trust signal above fold (stars, years, client count)'},
-      {key:'proof_specific',   label:'Social proof is specific (company type + result)'},
-      {key:'multi_entry',      label:'Multiple entry points for different service/audience segments'},
-      {key:'no_carousel',      label:'No auto-rotating carousel (kills conversions)'},
-      {key:'secondary_cta',    label:'Low-commitment secondary CTA exists'},
-      {key:'voice_confirmed',  label:'Brand voice confirmed — direct, outcome-led, Canadian spelling'},
-      {key:'stats_verified',   label:'Stats / numbers reviewed and accurate'},
-    ]
-  },
-
-  // ── ABOUT ───────────────────────────────────────────────────────────────
-  about: {
-    seo: [
-      {key:'pk_h1',          label:'PK verbatim in H1'},
-      {key:'pk_intro',       label:'PK in first 120 words'},
-      {key:'meta_title_ok',  label:'Meta title: PK near start, under 60 chars'},
-      {key:'meta_desc_ok',   label:'Meta description: PK once, 150-155 chars'},
-      {key:'int_links',      label:'Internal links to service pages'},
-      {key:'schema_ok',      label:'Schema: Organisation + AboutPage'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'eeat_signals',   label:'E-E-A-T: Real team info, founding story, credentials'},
-    ],
-    cro: [
-      {key:'brand_voice',    label:'Brand voice confirmed — sounds like Setsail, not generic agency'},
-      {key:'team_accurate',  label:'Team names, roles, photos accurate'},
-      {key:'origin_story',   label:'Origin story or mission resonates — specific, not vague'},
-      {key:'proof_present',  label:'Credibility signals: years, clients, results, B-Corp'},
-      {key:'cta_present',    label:'CTA present — leads toward a service or audit'},
-      {key:'stats_verified', label:'Stats / numbers reviewed'},
-      {key:'no_stale_info',  label:'No stale info (old team members, outdated services)'},
-    ]
-  },
-
-  // ── SERVICE ─────────────────────────────────────────────────────────────
-  service: {
-    seo: [
-      {key:'pk_h1',          label:'PK verbatim in H1'},
-      {key:'pk_intro',       label:'PK in first 120 words'},
-      {key:'h2_supporting',  label:'H2s use supporting keywords naturally'},
-      {key:'meta_title_ok',  label:'Meta title: PK near start, under 60 chars, hooked for CTR'},
-      {key:'meta_desc_ok',   label:'Meta description: PK once, 150-155 chars, promise + benefit'},
-      {key:'slug_ok',        label:'Slug: short, lowercase, hyphens, PK included, no dates'},
-      {key:'int_links',      label:'Internal links: ~1 per 200 words to related pages'},
-      {key:'ext_links',      label:'External links: 1-2 to authoritative resources'},
-      {key:'faq_longtail',   label:'FAQ section targets long-tail question variants (8+)'},
-      {key:'schema_ok',      label:'Schema: Service + FAQPage + LocalBusiness'},
-      {key:'word_count',     label:'Word count meets SERP threshold for this keyword'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'intent_match',   label:'Commercial intent satisfied — can reader make a decision here?'},
-      {key:'entity_terms',   label:'Expected entity terms present (city, service type, outcomes)'},
-    ],
-    cro: [
-      {key:'h1_outcome',     label:'H1 leads with outcome, not service name'},
-      {key:'cta_fold',       label:'Primary CTA visible above fold'},
-      {key:'cta_specific',   label:'CTA is specific and action + benefit (not "Contact Us")'},
-      {key:'trust_fold',     label:'Trust signal above fold'},
-      {key:'problem_first',  label:'Problem named before solution offered'},
-      {key:'voc_language',   label:'Voice of customer language — mirrors how clients describe the pain'},
-      {key:'differentiators',label:'Differentiators are specific, not generic ("we\'re passionate")'},
-      {key:'price_anchor',   label:'Pricing or price anchor present (even "starting from")'},
-      {key:'objections',     label:'Objections addressed before reader voices them'},
-      {key:'proof_specific', label:'Social proof is specific: company type + measurable result'},
-      {key:'numbers_real',   label:'Numbers are believable and sourced (47%, not "up to 300%")'},
-      {key:'no_dead_ends',   label:'No dead-end sections — every section has a logical next step'},
-      {key:'secondary_cta',  label:'Low-commitment secondary CTA ("or book a free 15-min call")'},
-      {key:'stats_verified', label:'Stats / revenue claims verified'},
-    ]
-  },
-
-  // ── INDUSTRY ────────────────────────────────────────────────────────────
-  industry: {
-    seo: [
-      {key:'pk_h1',          label:'PK verbatim in H1'},
-      {key:'pk_intro',       label:'PK in first 120 words'},
-      {key:'h2_supporting',  label:'H2s use supporting keywords + industry terms'},
-      {key:'meta_title_ok',  label:'Meta title: PK near start, under 60 chars'},
-      {key:'meta_desc_ok',   label:'Meta description: PK once, 150-155 chars'},
-      {key:'slug_ok',        label:'Slug: short, lowercase, hyphens, PK included'},
-      {key:'int_links',      label:'Internal links to relevant service pages'},
-      {key:'faq_longtail',   label:'FAQ targets industry-specific long-tail questions (6+)'},
-      {key:'schema_ok',      label:'Schema: Service + FAQPage'},
-      {key:'word_count',     label:'Word count meets SERP threshold'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'entity_terms',   label:'Industry entity terms present (sector, job titles, pain points)'},
-    ],
-    cro: [
-      {key:'industry_specific', label:'Copy speaks directly to this industry — not generic service page'},
-      {key:'pain_accurate',  label:'Pain points reflect this industry\'s actual buying objections'},
-      {key:'proof_industry', label:'Social proof references this industry or adjacent (logos, results)'},
-      {key:'cta_fold',       label:'Primary CTA above fold'},
-      {key:'cta_specific',   label:'CTA is specific to this audience segment'},
-      {key:'differentiators',label:'Why Setsail over a specialist? Answered explicitly'},
-      {key:'objections',     label:'Top 3 industry-specific objections addressed'},
-      {key:'stats_verified', label:'Industry stats and claims verified'},
-    ]
-  },
-
-  // ── LOCATION ────────────────────────────────────────────────────────────
-  location: {
-    seo: [
-      {key:'pk_h1',          label:'PK verbatim in H1 (includes city)'},
-      {key:'pk_intro',       label:'PK in first 120 words'},
-      {key:'h2_supporting',  label:'H2s use geo-modified supporting keywords'},
-      {key:'meta_title_ok',  label:'Meta title: PK + city, under 60 chars'},
-      {key:'meta_desc_ok',   label:'Meta description: PK + city, 150-155 chars'},
-      {key:'slug_ok',        label:'Slug: service + city, lowercase, hyphens'},
-      {key:'int_links',      label:'Internal links to parent service page + related locations'},
-      {key:'local_signals',  label:'Local signals accurate: city, region, neighbourhood references'},
-      {key:'faq_local',      label:'FAQ includes location-specific questions'},
-      {key:'schema_ok',      label:'Schema: LocalBusiness + Service + FAQPage + GeoCoordinates'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'word_count',     label:'Word count meets SERP threshold (800-1200 typical for local)'},
-    ],
-    cro: [
-      {key:'city_authentic', label:'Copy feels genuinely local — not "city-swap" generic'},
-      {key:'local_proof',    label:'Social proof references local clients or local results'},
-      {key:'local_context',  label:'Local context present: neighbourhoods, business districts, local competitors mentioned'},
-      {key:'cta_fold',       label:'Primary CTA above fold'},
-      {key:'cta_local',      label:'CTA references the city ("Get your Vancouver SEO audit")'},
-      {key:'trust_local',    label:'Local trust signals: Chamber membership, local awards, years in market'},
-      {key:'objections',     label:'Geo-specific objections addressed ("do you serve X area?")'},
-      {key:'stats_verified', label:'Local stats verified'},
-    ]
-  },
-
-  // ── BLOG ────────────────────────────────────────────────────────────────
-  blog: {
-    seo: [
-      {key:'pk_h1',          label:'PK in H1 — within first 3 words ideally'},
-      {key:'pk_intro',       label:'PK exactly once in first 120 words'},
-      {key:'h2_count',       label:'5-12 H2s — flow resolves search intent start to finish'},
-      {key:'h3_nested',      label:'Nested H3s where content depth warrants'},
-      {key:'meta_title_ok',  label:'Meta title: PK near start, under 60 chars, emotional hook'},
-      {key:'meta_desc_ok',   label:'Meta description: PK once, 150-155 chars, promise + tease + benefit'},
-      {key:'slug_ok',        label:'Slug: short, PK included, no dates, lowercase hyphens'},
-      {key:'int_links',      label:'Internal links: ~1 per 200-300 words to related pages'},
-      {key:'ext_links',      label:'External links: 1 per 500-700 words to authoritative sources'},
-      {key:'word_count',     label:'Word count meets SERP threshold for this intent'},
-      {key:'schema_ok',      label:'Schema: Article + FAQPage (if FAQ present) + BreadcrumbList'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-      {key:'intent_match',   label:'Informational intent fully satisfied — no unanswered questions'},
-      {key:'entity_terms',   label:'Expected entity + semantic terms present throughout'},
-      {key:'question_vars',  label:'Question-based keyword variations present (how, what, why, best)'},
-      {key:'toc_present',    label:'Table of Contents with jump links for 1500+ word posts'},
-      {key:'reading_time',   label:'Reading time indicator present'},
-      {key:'eeat_author',    label:'E-E-A-T: Author bio with real expertise signals'},
-      {key:'eeat_sources',   label:'E-E-A-T: Sources cited or clearly noted'},
-      {key:'eeat_data',      label:'E-E-A-T: Real data, case studies, or original findings'},
-      {key:'og_meta',        label:'OG / social metadata present'},
-    ],
-    cro: [
-      {key:'hook_strong',    label:'First paragraph hooks immediately — no "In today\'s landscape..."'},
-      {key:'promise_delivered', label:'Headline promise fully delivered in the article'},
-      {key:'reader_payoff',  label:'Reader knows what they\'ll get within 3 sentences'},
-      {key:'skimmable',      label:'Skimmable: can someone get 80% of value from headings + bullets alone?'},
-      {key:'short_paras',    label:'Short paragraphs — max 3-4 sentences, wide white space'},
-      {key:'pull_quotes',    label:'Pull quotes or TL;DR boxes used for long posts'},
-      {key:'no_orphan_sections', label:'No orphaned sections — every H2 ties back to the core promise'},
-      {key:'internal_cta',   label:'Internal CTA at natural resolution point (not just article end)'},
-      {key:'soft_cta',       label:'Soft CTA matches intent (tool, checklist, audit — not "buy now")'},
-      {key:'expertise_real', label:'Expertise feels real — specific, opinionated, not AI-generic'},
-      {key:'backlink_stat',  label:'Backlink potential: original stat, framework, or data point present'},
-      {key:'contrarian',     label:'Contrarian angle or unique POV present where relevant'},
-      {key:'voice_confirmed',label:'Brand voice confirmed — direct, confident, Canadian spelling'},
-    ]
-  },
-
-  // ── UTILITY (Privacy, T&C, etc.) ─────────────────────────────────────────
-  utility: {
-    seo: [
-      {key:'meta_title_ok',  label:'Meta title present and accurate'},
-      {key:'meta_desc_ok',   label:'Meta description present'},
-      {key:'no_index_check', label:'Consider noindex if thin/duplicate content'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-    ],
-    cro: [
-      {key:'readable',       label:'Readable — plain language, not legalese where possible'},
-      {key:'contact_link',   label:'Contact link or email present for questions'},
-    ]
-  },
-
-  // ── CONTACT ─────────────────────────────────────────────────────────────
-  contact: {
-    seo: [
-      {key:'pk_h1',          label:'PK in H1'},
-      {key:'meta_title_ok',  label:'Meta title: clear, PK, under 60 chars'},
-      {key:'meta_desc_ok',   label:'Meta description present and benefit-led'},
-      {key:'schema_ok',      label:'Schema: ContactPage + LocalBusiness'},
-      {key:'no_placeholders',label:'No [placeholder] text remaining'},
-    ],
-    cro: [
-      {key:'value_prop',     label:'Why contact us? Value prop stated above the form'},
-      {key:'form_friction',  label:'Form friction minimised — 3 fields max above fold'},
-      {key:'trust_signals',  label:'Trust signals adjacent to form (response time, social proof)'},
-      {key:'secondary_option', label:'Secondary option present ("or call us at...")'},
-      {key:'no_dead_form',   label:'Form confirmed working — not a dead-end'},
-    ]
-  }
+  // Universal items for every page type
+  _universal: [
+    {key:'stats_verified',   label:'Stats & numbers verified', note:'Every %, $, count, or claim confirmed against real source'},
+    {key:'proof_approved',   label:'Client proof approved for use', note:'Named clients, logos, testimonials have permission to be cited'},
+    {key:'offer_accurate',   label:'Offer & pricing current', note:'Guarantees, pricing anchors, packages match current offering'},
+    {key:'links_working',    label:'CTAs & links work', note:'Every button and link tested — no 404s or dead forms'},
+    {key:'voice_on_point',   label:'Brand voice on-point', note:'Sounds like us — direct, confident, not generic AI copy'},
+    {key:'no_stale_content', label:'No stale content', note:'No outdated team, discontinued services, or old events'},
+  ],
+  // Additional items per page type
+  service:  [{key:'pricing_current', label:'Pricing anchor is current', note:'"Starting from" or anchor price reflects real current pricing'}],
+  industry: [{key:'pricing_current', label:'Pricing anchor is current', note:'"Starting from" or anchor price reflects real current pricing'}],
+  location: [{key:'local_accurate',  label:'Local details accurate', note:'Address, phone, service radius, neighbourhood refs are correct'}],
+  about:    [{key:'team_accurate',   label:'Team info & photos accurate', note:'Names, roles, headshots are current — no ex-employees'}],
+  blog:     [{key:'sources_real',    label:'Sources & links are real', note:'Every cited stat, study, or external link is live and accurate'}],
+  contact:  [{key:'form_tested',     label:'Form tested & working', note:'Submission confirmed — emails arrive, no broken routing'}],
+  home:     [{key:'primary_cta_live',label:'Primary CTA destination live', note:'Hero CTA button links to a real working page or form'}],
+  utility:  [],
 };
 
-// Fallback for unknown page types
-QC_MAP['other'] = QC_MAP['service'];
-
-function getQCItems(pageType, tab) {
-  var map = QC_MAP[pageType] || QC_MAP['service'];
-  return map[tab] || [];
+function getQCItems(pageType) {
+  var universal = QC_MAP._universal || [];
+  var specific  = QC_MAP[pageType] || QC_MAP['service'] || [];
+  return universal.concat(specific);
 }
 
 
@@ -7135,16 +6942,15 @@ function renderCopyQueue() {
             html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:1px 8px;font-size:9px;cursor:pointer;font-family:var(--font);color:var(--n2)">Re-audit</button>';
             html += '</div>';
             // Checks as rows
-            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 12px">';
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;margin-top:4px">';
             (_audit.checks||[]).forEach(function(ch) {
               var pass = ch.pass;
-              var icon = pass ? '\u2713' : '\u2717';
-              var clr = pass ? 'var(--green)' : '#e5534b';
-              var bg = pass ? 'rgba(21,142,29,0.05)' : 'rgba(229,83,75,0.05)';
-              html += '<div title="'+esc(ch.note||'')+'" style="display:flex;align-items:flex-start;gap:5px;padding:3px 6px;border-radius:4px;background:'+bg+';cursor:default">';
-              html += '<span style="font-size:11px;color:'+clr+';font-weight:700;flex-shrink:0;margin-top:1px">'+icon+'</span>';
-              html += '<span style="font-size:10px;color:var(--dark);line-height:1.4">'+esc(ch.display||ch.label)+'</span>';
-              if (ch.note) html += '<span style="font-size:9.5px;color:var(--n2);margin-left:auto;white-space:nowrap">'+esc(ch.note)+'</span>';
+              var clr  = pass ? 'var(--green)' : '#e5534b';
+              var bg   = pass ? 'rgba(21,142,29,0.04)' : 'rgba(229,83,75,0.04)';
+              var tip  = esc(ch.note||ch.label||'');
+              html += '<div title="'+tip+'" style="display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:3px;background:'+bg+'">';
+              html += '<span style="font-size:10px;color:'+clr+';font-weight:700;flex-shrink:0">'+(pass?'\u2713':'\u2717')+'</span>';
+              html += '<span style="font-size:10px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">'+esc(ch.display||ch.label)+'</span>';
               html += '</div>';
             });
             html += '</div>';
@@ -7160,82 +6966,56 @@ function renderCopyQueue() {
           // HUMAN QC
           var _hFlags = (_audit && _audit.humanFlags) ? _audit.humanFlags : [];
           var _pageType = p.page_type || 'service';
-          var _qcTab = S_qcTab[p.slug] || 'seo';
-          var _seoItems = getQCItems(_pageType, 'seo');
-          var _croItems = getQCItems(_pageType, 'cro');
-          var _seoChecked = _seoItems.filter(function(i){ return !!_humanQC[i.key]; }).length;
-          var _croChecked = _croItems.filter(function(i){ return !!_humanQC[i.key]; }).length;
-          var _seoTotal = _seoItems.length;
-          var _croTotal = _croItems.length;
+          // QC items computed in Human QC block below
 
           html += '<div style="border-bottom:1px solid var(--border)">';
 
-          // HUMAN QC — fast scan mode
-          var _allSeoChecked = _seoChecked === _seoTotal;
-          var _allCroChecked = _croChecked === _croTotal;
-          var _allQCDone = _allSeoChecked && _allCroChecked;
-          var _qcBg = _allQCDone ? 'rgba(21,142,29,0.06)' : 'var(--bg)';
+          // HUMAN QC — human-only verification
+          var _qcItems  = getQCItems(_pageType);
+          var _qcChecked = _qcItems.filter(function(i){ return !!_humanQC[i.key]; }).length;
+          var _qcTotal   = _qcItems.length;
+          var _allDone   = _qcChecked === _qcTotal && _qcTotal > 0;
+          var _qcBg      = _allDone ? 'rgba(21,142,29,0.05)' : 'transparent';
 
-          html += '<div style="border-bottom:1px solid var(--border);background:'+_qcBg+'">';
-          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px 4px">';
-          html += '<span style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Human QC</span>';
-          html += '<div style="display:flex;align-items:center;gap:6px">';
-          // Bulk mark-all buttons
-          var _seoBtnClr = _allSeoChecked ? 'var(--green)' : 'var(--n2)';
-          var _croBtnClr = _allCroChecked ? 'var(--green)' : 'var(--n2)';
-          var _seoBtnBg  = _allSeoChecked ? 'rgba(21,142,29,0.1)' : 'rgba(0,0,0,0.04)';
-          var _croBtnBg  = _allCroChecked ? 'rgba(21,142,29,0.1)' : 'rgba(0,0,0,0.04)';
-          html += '<button onclick="copyMarkAllQC(\''+p.slug+'\',\'seo\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+_seoBtnBg+';color:'+_seoBtnClr+';cursor:pointer;font-family:var(--font)">'
-            + (_allSeoChecked ? '✓ SEO' : '○ SEO') + ' '+_seoChecked+'/'+_seoTotal+'</button>';
-          html += '<button onclick="copyMarkAllQC(\''+p.slug+'\',\'cro\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+_croBtnBg+';color:'+_croBtnClr+';cursor:pointer;font-family:var(--font)">'
-            + (_allCroChecked ? '✓ CRO' : '○ CRO') + ' '+_croChecked+'/'+_croTotal+'</button>';
-          html += '</div></div>';
+          html += '<div style="border-bottom:1px solid var(--border)">';
 
-          // AI flags — things that NEED human eyes
+          // Header row
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 14px">';
+          html += '<span style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Human QC — '+_qcChecked+'/'+_qcTotal+'</span>';
+          var _markBtnClr = _allDone ? 'var(--green)' : 'var(--n2)';
+          html += '<button onclick="copyMarkAllQC(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:'+(_allDone?'rgba(21,142,29,0.1)':'rgba(0,0,0,0.04)')+';color:'+_markBtnClr+';cursor:pointer;font-family:var(--font)">'
+            + (_allDone ? '✓ All verified' : 'Mark all done') + '</button>';
+          html += '</div>';
+
+          // AI flags first — claims that NEED eyes
           if (_hFlags.length) {
             html += '<div style="padding:0 14px 6px;display:flex;flex-direction:column;gap:3px">';
             _hFlags.forEach(function(flag) {
-              var sev = flag.severity === 'high' ? '#e5534b' : 'var(--warn)';
-              var sevBg = flag.severity === 'high' ? 'rgba(229,83,75,0.05)' : 'rgba(255,165,0,0.05)';
-              var sevBorder = flag.severity === 'high' ? 'rgba(229,83,75,0.15)' : 'rgba(255,165,0,0.2)';
-              html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 7px;background:'+sevBg+';border:1px solid '+sevBorder+';border-radius:4px">';
+              var sev = flag.severity === 'high' ? '#e5534b' : '#d97706';
+              html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 8px;background:rgba(0,0,0,0.02);border-radius:4px;border-left:2px solid '+sev+'">';
               html += '<i class="ti ti-alert-triangle" style="font-size:10px;color:'+sev+';flex-shrink:0;margin-top:2px"></i>';
-              html += '<div style="font-size:10px;color:var(--dark)"><strong>'+esc(flag.item)+'</strong> — '+esc(flag.reason)+'</div>';
+              html += '<div style="font-size:10px"><span style="font-weight:600;color:var(--dark)">'+esc(flag.item)+'</span> <span style="color:var(--n2)">— '+esc(flag.reason)+'</span></div>';
               html += '</div>';
             });
             html += '</div>';
-          } else {
-            html += '<div style="padding:2px 14px 6px;font-size:10px;color:var(--green)"><i class="ti ti-check" style="font-size:10px"></i> No claims flagged by AI</div>';
           }
 
-          // Collapsible detail list (click to expand)
-          var _showDetail = S_qcTab[p.slug] === 'detail';
-          html += '<div style="padding:0 14px 6px">';
-          html += '<button onclick="copySetQCTab(\''+p.slug+'\',\''+(_showDetail?'seo':'detail')+'\')" style="font-size:9px;color:var(--n2);background:none;border:none;cursor:pointer;padding:0;font-family:var(--font);text-decoration:underline">'
-            + (_showDetail ? '▲ Hide checklist' : '▼ View full checklist ('+(_seoChecked+_croChecked)+'/'+(_seoTotal+_croTotal)+' items)') + '</button>';
+          // Checklist — compact single column
+          html += '<div style="padding:0 14px 8px;display:flex;flex-direction:column;gap:2px;background:'+_qcBg+'">';
+          _qcItems.forEach(function(item) {
+            var chk = !!_humanQC[item.key];
+            html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" title="'+esc(item.note||'')+
+              '" style="display:flex;align-items:center;gap:7px;padding:3px 4px;border-radius:3px;cursor:pointer;transition:background .1s" onmouseover="this.style.background=\'rgba(0,0,0,0.03)\'" onmouseout="this.style.background=\'transparent\'">';
+            html += '<div style="width:13px;height:13px;flex-shrink:0;border-radius:2px;border:1.5px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'var(--green)':'white')+';display:flex;align-items:center;justify-content:center">';
+            if (chk) html += '<i class="ti ti-check" style="font-size:7px;color:white"></i>';
+            html += '</div>';
+            html += '<span style="font-size:10px;color:'+(chk?'var(--dark)':'var(--n2)')+'">'+ esc(item.label) +'</span>';
+            html += '</div>';
+          });
+          html += '</div>';
           html += '</div>';
 
-          // Detail grid (only when expanded)
-          if (_showDetail) {
-            ['seo','cro'].forEach(function(tab) {
-              var tabItems = tab === 'seo' ? _seoItems : _croItems;
-              html += '<div style="padding:4px 14px 6px">';
-              html += '<div style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">'+tab.toUpperCase()+'</div>';
-              html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">';
-              tabItems.forEach(function(item) {
-                var chk = !!_humanQC[item.key];
-                html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" style="display:flex;align-items:flex-start;gap:5px;padding:3px 5px;border-radius:3px;cursor:pointer;background:'+(chk?'rgba(21,142,29,0.06)':'transparent')+'">';
-                html += '<div style="width:12px;height:12px;border-radius:2px;border:1.5px solid '+(chk?'var(--green)':'var(--n2)')+';background:'+(chk?'var(--green)':'transparent')+';flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center">';
-                if (chk) html += '<i class="ti ti-check" style="font-size:7px;color:white"></i>';
-                html += '</div>';
-                html += '<span style="font-size:9.5px;color:'+(chk?'var(--dark)':'var(--n2)')+';line-height:1.4">'+esc(item.label)+'</span>';
-                html += '</div>';
-              });
-              html += '</div></div>';
-            });
-          }
-          html += '</div>';
-          // META TAGS
+                    // META TAGS
           var _mt2 = esc(p.meta_title||''), _md2 = esc(p.meta_description||'');
           var _mtL=(p.meta_title||'').length, _mdL=(p.meta_description||'').length;
           var _mtC2=_mtL>60?'#E53935':_mtL>50?'var(--warn)':_mtL===0?'var(--n2)':'var(--green)';
