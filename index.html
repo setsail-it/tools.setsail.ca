@@ -537,6 +537,7 @@ textarea.inp{resize:vertical}
 const S = {
   projectId: null, stage: 'setup',
   setup: null, snapshot: null, research: null, pages: [], copy: {}, schema: {}, images: {},
+  kwSort: { col: 'score', dir: 'desc' },
   copyStop: false, schemaStop: false,
   copyRunning: false, schemaRunning: false,
   copyPreviewSlug: null, schemaPreviewSlug: null,
@@ -2501,6 +2502,17 @@ async function fetchKwVolumes() {
   } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
 }
 
+function sortKwOpps(col) {
+  if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
+  if (S.kwSort.col === col) {
+    S.kwSort.dir = S.kwSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    S.kwSort.col = col;
+    S.kwSort.dir = 'desc';
+  }
+  renderKwTabContent();
+}
+
 function _renderKwOppsTab() {
   var kws = S.kwResearch && S.kwResearch.keywords ? S.kwResearch.keywords : [];
   var selected = new Set(S.kwResearch && S.kwResearch.selected ? S.kwResearch.selected : []);
@@ -2513,8 +2525,24 @@ function _renderKwOppsTab() {
   html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
   html += '</div>';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3);gap:4px"><span></span><span>Keyword</span><span>Vol</span><span>KD</span><span>CPC</span><span>Trend</span><span>Score</span></div>';
-  kws.slice(0, 200).forEach(function(k, i) {
+  if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
+  var sortCol = S.kwSort.col, sortDir = S.kwSort.dir;
+  var sortedKws = kws.slice().sort(function(a, b) {
+    var av, bv;
+    if (sortCol === 'vol') { av = a.vol; bv = b.vol; }
+    else if (sortCol === 'kd') { av = a.kd === 0 ? 999 : a.kd; bv = b.kd === 0 ? 999 : b.kd; }
+    else if (sortCol === 'cpc') { av = a.cpc || 0; bv = b.cpc || 0; }
+    else { av = a.score; bv = b.score; }
+    return sortDir === 'asc' ? av - bv : bv - av;
+  });
+  function hdrBtn(label, col) {
+    var active = sortCol === col;
+    var arrow = active ? (sortDir === 'asc' ? ' &#x2191;' : ' &#x2193;') : '';
+    var clr = active ? 'var(--dark)' : 'var(--n3)';
+    return '<span onclick="sortKwOpps(\'' + col + '\')" style="cursor:pointer;color:' + clr + ';user-select:none;white-space:nowrap" title="Sort by ' + label + '">' + label + arrow + '</span>';
+  }
+  html += '<div style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span style="color:var(--n3)">Keyword</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
+  sortedKws.slice(0, 200).forEach(function(k, i) {
     var isSel = selected.has(k.kw);
     var kdClr = k.kd === 0 ? 'var(--n1)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
     var volClr = k.vol >= 500 ? 'var(--green)' : k.vol >= 100 ? 'var(--n3)' : 'var(--n1)';
@@ -2535,7 +2563,7 @@ function _renderKwOppsTab() {
       + '<span style="font-size:11px;color:var(--n2)">' + k.score + '</span>'
       + '</div>';
   });
-  if (kws.length > 200) html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (kws.length - 200) + ' more available</div>';
+  if (sortedKws.length > 200) html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (sortedKws.length - 200) + ' more available</div>';
   html += '</div></div>';
   return html;
 }
