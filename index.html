@@ -6684,6 +6684,7 @@ async function runCopyAudit(slug) {
   if (!c || !c.copy || c.copy.length < 200) return;
   // Ensure stripped text has real content
   var _auditText = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  console.log('[audit] c.copy length:', (c.copy||'').length, '| _auditText length:', _auditText.length, '| first 200:', _auditText.slice(0,200));
   if (_auditText.length < 100) {
     var _el = document.getElementById('copy-audit-'+slug);
     if (_el) _el.innerHTML = '<span style="font-size:10px;color:#e5534b">Audit skipped: copy appears empty after HTML stripping.</span>';
