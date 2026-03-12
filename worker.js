@@ -235,11 +235,27 @@ export default {
           const kwMap = {};
           (dfsData?.tasks || []).forEach(task => {
             (task.result || []).forEach(r => {
-              kwMap[r.keyword] = { volume: r.search_volume || 0, kd: r.competition_index || 0 };
+              kwMap[r.keyword] = {
+                    volume: r.search_volume || 0,
+                    kd: r.competition_index || 0,
+                    cpc: r.cpc || 0,
+                    monthly: (r.monthly_searches || []).map(m => m.search_volume || 0)
+                  };
             });
           });
+          // Only return keywords that exist in kwMap (have vol data), plus a debug count
+          const withData = kwList.filter(kw => kwMap[kw] && kwMap[kw].volume > 0);
+          const allKws = kwList.map(kw => ({
+            keyword: kw,
+            volume: kwMap[kw]?.volume || 0,
+            difficulty: kwMap[kw]?.kd || 0,
+            cpc: kwMap[kw]?.cpc || 0,
+            monthly: kwMap[kw]?.monthly || []
+          }));
+          console.log('[kw-expand] kwMap hits:', Object.keys(kwMap).length, 'with vol>0:', withData.length, 'out of', kwList.length, 'seeds');
           const normalized = {
-            keywords: kwList.map(kw => ({ keyword: kw, volume: kwMap[kw]?.volume || 0, difficulty: kwMap[kw]?.kd || 0 })),
+            keywords: allKws,
+            debug: { sent: kwList.length, withData: withData.length, kwMapSize: Object.keys(kwMap).length },
             source: 'dataforseo'
           };
           return new Response(JSON.stringify(normalized), {

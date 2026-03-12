@@ -783,7 +783,7 @@ function renderStageBar(current) {
     const canClick = i < idx || (i > idx && S.pages.length > 0);
     const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
     const icon = done ? 'ti-check' : s.icon;
-    html += '<div class="' + cls + '" onclick="' + (canClick ? 'navToStage(\'' + s.id + '\')' : '') + '" style="' + (canClick && !active ? '' : 'cursor:default') + '">'
+    html += '<div class="' + cls + '"' + (canClick ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + ' style="' + (canClick && !active ? '' : 'cursor:default') + '">'
       + '<i class="ti ' + icon + '" style="font-size:9px"></i>' + s.label + '</div>';
     if (i < STAGES.length-1) html += '<div class="stage-dot' + (done?' done':'') + '"></div>';
   });
@@ -1287,7 +1287,6 @@ const RESEARCH_TABS = [
   { id:'brand',        label:'Brand',        icon:'ti-palette' },
   { id:'schema',       label:'Schema & Local', icon:'ti-map-pin' },
   { id:'competitors',  label:'Competitors',  icon:'ti-trending-up' },
-  { id:'keywords',     label:'Keywords',     icon:'ti-search' },
 ];
 
 let _rTab = 'business';
@@ -1377,7 +1376,6 @@ function renderResearchTabContent() {
     case 'brand':       el.innerHTML = renderRBrand(r); break;
     case 'schema':      el.innerHTML = renderRSchema(r); break;
     case 'competitors': el.innerHTML = renderRCompetitors(r); break;
-    case 'keywords':    renderRKeywords(el); break;
     default: el.innerHTML = '';
   }
 }
@@ -2337,28 +2335,39 @@ function renderKwTabContent() {
 function _renderKwSeedsTab() {
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
   var fetched = S.kwResearch && S.kwResearch.fetchedAt;
+  var kwCount = (S.kwResearch && S.kwResearch.keywords) ? S.kwResearch.keywords.length : 0;
   var html = '<div>';
-  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Auto-generated from services, geo, and existing pages. Edit before fetching \u2014 each seed = one volume lookup.</div>';
+  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Auto-generated from services, geo, and existing pages. Remove noise before fetching — each seed = one volume lookup.</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Rebuild Seeds</button>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
-  html += '</div>';
-  if (fetched) html += '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(21,142,29,0.1);border-radius:20px;font-size:11px;color:var(--green);margin-bottom:10px"><i class="ti ti-check"></i> Volumes fetched \u2014 ' + (S.kwResearch.keywords || []).length + ' keywords</div>';
-  html += '<div id="kw-seeds-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
-  seeds.forEach(function(seed, i) {
-    html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px 3px 10px;background:var(--panel);border:1px solid var(--border);border-radius:20px;font-size:11px;color:var(--dark)">'
-      + esc(seed) + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:11px;padding:0;line-height:1;margin-left:2px">&times;</button></span>';
-  });
   html += '</div></div>';
+  if (fetched) {
+    html += '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:' + (kwCount > 0 ? 'rgba(21,142,29,0.1)' : 'var(--panel)') + ';border-radius:20px;font-size:11px;color:' + (kwCount > 0 ? 'var(--green)' : 'var(--n2)') + ';margin-bottom:10px">'
+      + '<i class="ti ti-' + (kwCount > 0 ? 'check' : 'alert-circle') + '"></i> Volumes fetched — ' + kwCount + ' keywords</div>';
+  }
+  html += '<div id="kw-seeds-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>';
+
+  // Table layout
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3)">';
+  html += '<span>Seed Keyword</span><span>Remove</span></div>';
+  html += '<div style="max-height:360px;overflow-y:auto">';
+  seeds.forEach(function(seed, i) {
+    html += '<div style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
+      + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + '</span>'
+      + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove">&times;</button>'
+      + '</div>';
+  });
+  if (!seeds.length) {
+    html += '<div style="padding:20px;text-align:center;color:var(--n2);font-size:12px">No seeds — click Rebuild Seeds to generate.</div>';
+  }
+  html += '</div></div></div>';
   return html;
 }
-
-function _kwSeedAddBtn() { var i = document.getElementById('kw-seed-add-input'); if (i) { _addKwSeed(i.value); i.value = ''; } }
-
-function _kwSeedKeydown(e, el) { if (e.key === 'Enter') { _addKwSeed(el.value); el.value = ''; } }
 
 function _addKwSeed(val) {
   val = (val || '').trim().toLowerCase();
@@ -2385,7 +2394,8 @@ async function fetchKwVolumes() {
     var res = await fetch('/api/kw-expand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seeds: seeds, country: country }) });
     var data = await res.json();
     if (!data.keywords || data.error) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(data.error || 'No data') + '</span>'; return; }
-    var scored = data.keywords.filter(function(k) { return k.volume >= 0; }).map(function(k) {
+    console.log('[fetchKwVolumes] received:', data.keywords.length, 'kws, debug:', JSON.stringify(data.debug || {}));
+    var scored = data.keywords.filter(function(k) { return k.volume > 0; }).map(function(k) {
       var kd = k.difficulty > 0 ? k.difficulty : 30;
       return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score: Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10, monthly: k.monthly || [] };
     }).sort(function(a, b) { return b.score - a.score; });
