@@ -3844,13 +3844,28 @@ async function scoreBrief(pageIdx) {
     { id:'wordcount',label:'Word count'       },
   ];
 
+  // Add SERP-aware checks if serpIntel data exists
+  var serpContext = '';
+  if (p.serpIntel && p.serpIntel.directives) {
+    var siD = p.serpIntel.directives;
+    checks.push({ id:'serp_wordcount', label:'Word count meets SERP target ('+siD.word_count_target+' words)' });
+    checks.push({ id:'serp_h2_gaps',   label:'H2s cover competitor topic gaps' });
+    serpContext = '\n\n## SERP INTEL CONTEXT\n'
+      + 'Word count target: '+siD.word_count_target+' words (competitor calibrated)\n'
+      + 'Avg competitor density: '+siD.avg_kw_density+'%\n'
+      + 'Key H2 topics competitors cover: '+((siD.all_competitor_h2s||[]).slice(0,15).join(', '))+'\n'
+      + 'For serp_wordcount: pass ONLY if the brief word count target >= '+siD.word_count_target+'.\n'
+      + 'For serp_h2_gaps: pass if the brief H2 skeleton covers at least 3 topics from the competitor H2 list above.';
+  }
+
   var checkList = checks.map(function(c){ return '- '+c.id+': '+c.label; }).join('\n');
 
   var prompt = 'You are evaluating a content brief for completeness and quality.\n\n'
     + '## BRIEF TO EVALUATE\n'+p.brief.summary+'\n\n'
     + '## PAGE\n'
     + 'Type: '+p.page_type+' | Primary keyword: '+(p.primary_keyword||'none')+'\n\n'
-    + '## CHECKS\nFor each check below, return pass:true or pass:false plus a one-line note (max 8 words).\n\n'
+     + serpContext
+    + '\n## CHECKS\\nFor each check below, return pass:true  or pass:false plus a one-line note (max 8 words).\n\n'
     + checkList+'\n\n'
     + 'Return raw JSON only — no markdown:\n'
     + '{"checks":[{"id":"reader","pass":true,"note":"Specific ICP defined with pain point"},...]}\n\n'
@@ -4091,8 +4106,32 @@ function renderBriefs() {
     }
 
     var taHtml = isBriefed ? '<textarea class="brief-ta" data-pidx="'+pidx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc((p.brief&&p.brief.summary)||'')+'</textarea>' : '';
+    // SERP INTEL STRIP
+    var siStripHtml = '';
+    if (p.serpIntel && p.serpIntel.competitors && p.serpIntel.competitors.length) {
+      var siComps = p.serpIntel.competitors.filter(function(c){ return c.fetch_ok; });
+      var siD = p.serpIntel.directives || {};
+      var siPanelId = 'serp-strip-' + pidx;
+      siStripHtml += '<div style="border-bottom:1px solid var(--border)">';
+      siStripHtml += '<div onclick="var e=document.getElementById(\''+siPanelId+'\');e.style.display=e.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;background:rgba(21,142,29,0.03)">';
+      siStripHtml += '<span style="font-size:9px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em">✓ SERP Intel</span>';
+      siStripHtml += '<span style="font-size:9px;color:var(--n2)">' + siComps.length + ' competitors · avg ' + (siD.avg_word_count||0) + ' words · target ' + (siD.word_count_target||0) + ' words · density ceiling ' + (siD.density_ceiling||0) + '%</span>';
+      siStripHtml += '<span style="font-size:9px;color:var(--n2);margin-left:auto">▼ expand</span>';
+      siStripHtml += '</div>';
+      siStripHtml += '<div id="' + siPanelId + '" style="display:none;padding:6px 14px 8px">';
+      siComps.forEach(function(c) {
+        siStripHtml += '<div style="margin-bottom:5px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:4px;border-left:2px solid var(--border)">';
+        siStripHtml += '<div style="font-size:9.5px;font-weight:600;color:var(--dark);margin-bottom:1px">Pos ' + c.position + ' — ' + esc(c.title) + '</div>';
+        if (c.meta_description) siStripHtml += '<div style="font-size:9px;color:var(--n2);margin-bottom:2px">' + esc((c.meta_description||'').slice(0,140)) + '</div>';
+        if (c.h2s && c.h2s.length) siStripHtml += '<div style="font-size:9px;color:var(--n3)">H2s: ' + esc(c.h2s.slice(0,8).join(' · ')) + '</div>';
+        siStripHtml += '<div style="font-size:9px;color:var(--n2);margin-top:2px">' + (c.word_count||0) + ' words · ' + (c.kw_density||0) + '% density</div>';
+        siStripHtml += '</div>';
+      });
+      siStripHtml += '</div></div>';
+    }
+
     var rightContent = isBriefed
-      ? scoreHtml + taHtml
+      ? scoreHtml + siStripHtml + taHtml
       : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
 
     var rightCol = '<div style="min-width:0;display:flex;flex-direction:column">'
