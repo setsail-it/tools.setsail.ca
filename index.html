@@ -421,7 +421,7 @@ textarea.inp{resize:vertical}
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <button class="btn btn-ghost" onclick="goTo('sitemap')"><i class="ti ti-arrow-left"></i> Back to Sitemap</button>
-          <button class="btn btn-primary" id="briefs-run-btn" onclick="generateAllBriefs()"><i class="ti ti-sparkles"></i> Generate All Briefs</button>
+          <button class="btn btn-ghost" id="briefs-run-btn" onclick="generateAllBriefs()" title="Generates briefs for all unbriefed pages sequentially"><i class="ti ti-sparkles"></i> Generate All</button>
         </div>
       </div>
       <div id="briefs-results"></div>
@@ -3435,53 +3435,74 @@ function renderBriefs() {
     el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--n2)">No sitemap pages yet. Complete Stage 5 first.</div>';
     return;
   }
-  var seoPages = S.pages.filter(function(p){ return !['utility'].includes(p.page_type); });
+  var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
+  var briefed = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
+
   var html = '';
   html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
-  var briefed = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
-  html += '<span class="chip '+(briefed===seoPages.length?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
+  html += '<span class="chip '+(briefed===seoPages.length&&briefed>0?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
   html += '<button onclick="goTo(\'copy\')" style="margin-left:auto;background:var(--lime);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Approve &amp; Go to Copy →</button>';
   html += '</div>';
 
-  // Group by action
-  var buildNew = seoPages.filter(function(p){ return (p.action||'build_new') === 'build_new'; });
-  var improve = seoPages.filter(function(p){ return (p.action||'') === 'improve_existing'; });
-
-  function pageCard(p, idx) {
-    var briefed = p.brief && p.brief.generated;
-    var trafficStr = p.existing_traffic > 0 ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo' : '';
+  function pageCard(p, pidx) {
+    var isBriefed = p.brief && p.brief.generated;
+    var trafficStr = p.existing_traffic > 0
+      ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo'
+      : '';
     var paqCount = (p.assignedQuestions||[]).length;
-    return '<div class="tbl-row card" style="margin-bottom:8px;padding:12px 16px;border-radius:6px;border:1px solid var(--border)">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+    var actionBadge = p.action === 'improve_existing'
+      ? '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500">IMPROVE</span>'
+      : '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);font-weight:500">BUILD NEW</span>';
+    var priBadge = '<span style="background:rgba(0,0,0,0.05);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">'+(p.priority||'P3')+'</span>';
+
+    var leftCol = '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:0;display:flex;flex-direction:column;gap:6px">'
       + '<div>'
-      + '<span style="font-size:13px;font-weight:600;color:var(--dark)">'+esc(p.page_name)+'</span>'
-      + '<span style="color:var(--n2);font-size:11px;margin-left:8px">/'+esc(p.slug||'')+'</span>'
-      + (p.action==='improve_existing'?'<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;margin-left:8px;font-weight:500">IMPROVE</span>':'<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);margin-left:8px;font-weight:500">BUILD NEW</span>')
+      + '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px">'+esc(p.page_name)+'</div>'
+      + '<div style="font-size:10.5px;color:var(--n2);margin-bottom:5px">/'+(p.slug||'')+'</div>'
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap">'+actionBadge+priBadge+'</div>'
       + '</div>'
-      + '<button onclick="generatePageBrief('+idx+')" id="brief-btn-'+idx+'" style="background:var(--lime);border:none;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'+(briefed?'Regenerate':'Generate Brief')+'</button>'
+      + '<div style="border-top:1px solid var(--border);padding-top:6px">'
+      + '<div style="font-size:10px;color:var(--n2);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Primary KW</div>'
+      + '<div style="font-size:11px;color:var(--dark);font-weight:500">'+(p.primary_keyword||'—')+'</div>'
+      + '<div style="font-size:10px;color:var(--n2)">'+(p.primary_vol?p.primary_vol.toLocaleString()+'/mo':'')+' '+(p.primary_kd?'KD:'+p.primary_kd:'')+'</div>'
       + '</div>'
-      + '<div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">'
-      + '<span style="font-size:11px;color:var(--n2)"><b style="color:var(--dark)">KW:</b> '+(p.primary_keyword||'—')+' <span style="color:var(--n1)">'+(p.primary_vol?p.primary_vol.toLocaleString()+'/mo':'')+' KD:'+(p.primary_kd||0)+'</span></span>'
-      + (trafficStr?'<span style="font-size:11px;color:var(--green)"><b>Traffic:</b> '+trafficStr+'</span>':'')
-      + (paqCount?'<span style="font-size:11px;color:var(--n2)"><b>PAQs:</b> '+paqCount+'</span>':'')
-      + '<span style="font-size:11px;color:var(--n2)"><b>Priority:</b> '+(p.priority||'P3')+'</span>'
+      + (trafficStr ? '<div><div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em">Traffic</div><div style="font-size:11px;color:var(--green);font-weight:500">'+trafficStr+'</div></div>' : '')
+      + (paqCount ? '<div><div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em">PAQs assigned</div><div style="font-size:11px;color:var(--dark)">'+paqCount+' questions</div></div>' : '')
+      + '<div style="margin-top:auto;padding-top:8px">'
+      + '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="width:100%;background:var(--lime);border:none;padding:6px 0;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">'
+      + (isBriefed ? '↺ Regenerate' : '✦ Generate Brief')
+      + '</button>'
       + '</div>'
-      + (briefed ? '<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.03);border-radius:4px;font-size:11px;color:var(--n3);white-space:pre-wrap">'+esc(p.brief.summary||'')+'</div>' : '')
-      + '<div id="brief-stream-'+idx+'" style="display:none;margin-top:8px;padding:8px;background:#0d1117;border-radius:4px;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:200px;overflow-y:auto"></div>'
       + '</div>';
+
+    var rightContent = isBriefed
+      ? '<div style="padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;white-space:pre-wrap;overflow-y:auto;max-height:320px">'+esc(p.brief.summary||'')+'</div>'
+      : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px">No brief yet — click Generate Brief</div>';
+
+    var rightCol = '<div style="min-width:0;flex:1;display:flex;flex-direction:column">'
+      + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px 14px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:320px;overflow-y:auto;flex:1"></div>'
+      + '<div id="brief-content-'+pidx+'" style="flex:1">'+rightContent+'</div>'
+      + '</div>';
+
+    return '<div class="tbl-row" style="display:grid;grid-template-columns:200px 1fr;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;overflow:hidden;background:var(--white);min-height:140px">'
+      + leftCol + rightCol + '</div>';
   }
+
+  var buildNew = seoPages.filter(function(p){ return (p.action||'build_new') !== 'improve_existing'; });
+  var improve  = seoPages.filter(function(p){ return (p.action||'') === 'improve_existing'; });
 
   if (buildNew.length) {
     html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:4px">Build New ('+buildNew.length+')</div>';
     buildNew.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
   }
   if (improve.length) {
-    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:12px">Improve Existing ('+improve.length+')</div>';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:16px">Improve Existing ('+improve.length+')</div>';
     improve.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
   }
   el.innerHTML = html;
 }
+
 
 async function generatePageBrief(pageIdx) {
   var p = S.pages[pageIdx];
@@ -3494,17 +3515,25 @@ async function generatePageBrief(pageIdx) {
   var paqList = (p.assignedQuestions||[]).map(function(q,i){ return (i+1)+'. '+q; }).join('\n');
   var prompt = 'Page: '+p.page_name+'\nURL: /'+p.slug+'\nType: '+p.page_type+'\nAction: '+(p.action||'build_new')+'\nPrimary keyword: '+(p.primary_keyword||'none')+' ('+p.primary_vol+'/mo, KD:'+p.primary_kd+')\nSupporting keywords: '+((p.supporting_keywords||[]).join(', ')||'none')+'\nExisting traffic: '+(p.existing_traffic||0)+'/mo\nExisting ranking kws: '+((p.existing_ranking_kws||[]).slice(0,5).map(function(k){return k.kw||k;}).join(', ')||'none')+'\nPAA questions assigned:\n'+(paqList||'none')+'\n\nWrite a concise page brief covering:\n1. Primary keyword target + semantic variants to include\n2. Recommended H1\n3. Search intent and CTA direction\n4. Word count target (based on intent and page type)\n5. Key sections to cover\n6. FAQ questions to include (from PAA list above)\n7. Internal link opportunities to/from this page\n\nBe specific and actionable. No fluff.';
 
+  var contentEl = document.getElementById('brief-content-'+pageIdx);
+  if (contentEl) contentEl.style.display = 'none';
   try {
-    var briefText = await callClaude('You are a senior SEO content strategist. Write precise, actionable page briefs for a web development agency.', prompt, function(t){ if(streamEl) { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 1500);
+    var briefText = await callClaude('You are a senior SEO content strategist. Write precise, actionable page briefs for a web development agency.', prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 1500);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
     p.brief.summary = briefText;
     p.brief.generatedAt = Date.now();
     scheduleSave();
-    renderBriefs();
+    // Update content div directly without full re-render (preserve scroll position)
+    if (streamEl) streamEl.style.display = 'none';
+    if (contentEl) {
+      contentEl.style.display = 'flex';
+      contentEl.innerHTML = '<div style="padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;white-space:pre-wrap;overflow-y:auto;max-height:320px">'+esc(briefText)+'</div>';
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '↺ Regenerate'; }
   } catch(e) {
-    if (streamEl) streamEl.textContent = 'Error: '+e.message;
-    if (btn) { btn.disabled = false; btn.innerHTML = 'Retry'; }
+    if (streamEl) { streamEl.style.display = 'block'; streamEl.textContent = 'Error: '+e.message; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '↺ Retry'; }
   }
 }
 
@@ -3566,10 +3595,17 @@ function buildSitemapFromClusters() {
   var covered = new Set();
 
   // 1. Structurals — always present
+  // Resolve structural slugs against actual existing pages (e.g. about-us vs about)
+  function _resolveStructuralSlug(candidates) {
+    for (var i=0; i<candidates.length; i++) {
+      if (allExisting.has(candidates[i])) return candidates[i];
+    }
+    return candidates[0]; // default
+  }
   var structurals = [
-    { slug: '', page_name: 'Homepage', page_type: 'home', is_structural: true, search_intent: 'navigational' },
-    { slug: 'about', page_name: 'About', page_type: 'about', is_structural: true, search_intent: 'navigational' },
-    { slug: 'contact', page_name: 'Contact', page_type: 'contact', is_structural: true, search_intent: 'transactional' },
+    { slug: _resolveStructuralSlug(['','index']), page_name: 'Homepage', page_type: 'home', is_structural: true, search_intent: 'navigational' },
+    { slug: _resolveStructuralSlug(['about','about-us','our-story','who-we-are']), page_name: 'About', page_type: 'about', is_structural: true, search_intent: 'navigational' },
+    { slug: _resolveStructuralSlug(['contact','contact-us','get-in-touch','reach-us']), page_name: 'Contact', page_type: 'contact', is_structural: true, search_intent: 'transactional' },
   ];
   structurals.forEach(function(s) {
     var sp = snapPage(s.slug);
@@ -3649,6 +3685,19 @@ function buildSitemapFromClusters() {
   });
 
   S.pages = pages;
+
+  // Inject assigned PAA questions into their matching pages
+  var questions = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) || [];
+  questions.forEach(function(q) {
+    if (!q.assignedSlug || !q.question) return;
+    var qSlug = q.assignedSlug.replace(/^\//, '');
+    var target = S.pages.find(function(p) { return _normSlug(p.slug) === qSlug; });
+    if (target) {
+      if (!target.assignedQuestions) target.assignedQuestions = [];
+      if (!target.assignedQuestions.includes(q.question)) target.assignedQuestions.push(q.question);
+    }
+  });
+
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; }
   enrichSitemapWithKwData();
   document.getElementById('sitemap-stream-wrap').style.display = 'none';
