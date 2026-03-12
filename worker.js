@@ -76,8 +76,10 @@ export default {
           stage: data.stage || 'setup',
           updatedAt: Date.now(),
         };
-        await env.SETSAIL_OS.put('project:' + id, JSON.stringify(data), { metadata: meta });
-        return new Response(JSON.stringify({ ok: true, id }), {
+        const serialized = JSON.stringify(data);
+        console.log('[worker save] payload size:', Math.round(serialized.length/1024) + 'KB');
+        await env.SETSAIL_OS.put('project:' + id, serialized, { metadata: meta });
+        return new Response(JSON.stringify({ ok: true, id, sizeKB: Math.round(serialized.length/1024) }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch (err) {

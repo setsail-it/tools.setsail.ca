@@ -588,7 +588,12 @@ async function saveProject() {
       copy: S.copy,
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
-      kwResearch: S.kwResearch || null,
+      // Strip monthly trend arrays from keywords before saving — reconstructed from DataForSEO on next fetch
+      kwResearch: S.kwResearch ? Object.assign({}, S.kwResearch, {
+        keywords: (S.kwResearch.keywords || []).map(function(k) {
+          return { kw: k.kw, vol: k.vol, kd: k.kd, cpc: k.cpc, score: k.score };
+        })
+      }) : null,
       contentIntel: S.contentIntel || null,
       sitemapApproved: S.sitemapApproved || false,
       layout: Object.fromEntries(Object.entries(S.layout || {}).map(([slug, v]) => [slug, v?.rawHtml ? { ...v, rawHtml: undefined } : v])),
@@ -599,10 +604,14 @@ async function saveProject() {
       ])),
       savedAt: Date.now(),
     };
+    const payloadStr = JSON.stringify(payload);
+    const payloadKB = Math.round(payloadStr.length / 1024);
+    console.log('[save] payload size:', payloadKB + 'KB');
+    if (payloadKB > 900) console.warn('[save] payload near 1MB limit — may fail');
     const res = await fetch('/api/projects/' + S.projectId, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(payload)
+      body: payloadStr
     });
     if (!res.ok) throw new Error('Save failed');
     showSaveIndicator('saved');
