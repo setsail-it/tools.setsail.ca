@@ -2338,10 +2338,14 @@ function _renderKwSeedsTab() {
   var fetched = S.kwResearch && S.kwResearch.fetchedAt;
   var kwCount = (S.kwResearch && S.kwResearch.keywords) ? S.kwResearch.keywords.length : 0;
   var html = '<div>';
-  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Auto-generated from services, geo, and existing pages. Remove noise before fetching — each seed = one volume lookup.</div>';
+  var aiStatus = S.kwResearch && S.kwResearch.aiSeedsGeneratedAt
+    ? '<span style="color:var(--green)"><i class="ti ti-sparkles" style="font-size:10px"></i> AI seeds generated ' + new Date(S.kwResearch.aiSeedsGeneratedAt).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}) + '</span>'
+    : '';
+  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Seed keywords sent to DataForSEO for volume lookup. Each seed = one lookup. Use <strong style=\"color:var(--dark)\">AI Generate Seeds</strong> to build an intelligent list from your client context first.</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
-  html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Rebuild Seeds</button>';
+  html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
+  html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
@@ -2380,6 +2384,91 @@ function _addKwSeed(val) {
 
 function _removeKwSeed(idx) {
   if (S.kwResearch && S.kwResearch.seeds) { S.kwResearch.seeds.splice(idx, 1); renderKwTabContent(); }
+}
+
+async function generateAISeeds() {
+  var btn = document.getElementById('ai-seeds-btn');
+  var statusEl = document.getElementById('kw-seeds-status');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Generating...'; }
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Analysing client context...';
+
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+  var secondaryGeos = (r.geography && r.geography.secondary ? r.geography.secondary : []).slice(0, 3).map(function(g) { return g.replace(/,.*$/,'').trim(); });
+
+  // Build rich context block
+  var ctx = '';
+  ctx += 'CLIENT: ' + (setup.client || r.client_name || 'Unknown') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || r.sub_industry || '') + '\n';
+  ctx += 'BUSINESS MODEL: ' + (r.business_model || '') + '\n';
+  ctx += 'OVERVIEW: ' + (r.business_overview || '') + '\n';
+  ctx += 'VALUE PROP: ' + (r.value_proposition || '') + '\n';
+  ctx += 'PRIMARY GEO: ' + geo + '\n';
+  if (secondaryGeos.length) ctx += 'SECONDARY GEOS: ' + secondaryGeos.join(', ') + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (r.top_offers && r.top_offers.length) ctx += 'TOP OFFERS: ' + r.top_offers.join(', ') + '\n';
+  if (r.key_differentiators && r.key_differentiators.length) ctx += 'DIFFERENTIATORS: ' + r.key_differentiators.join(', ') + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'AUDIENCE PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  if (r.target_audience && r.target_audience.length) ctx += 'TARGET AUDIENCE: ' + r.target_audience.join(', ') + '\n';
+  if (r.buyer_roles_titles && r.buyer_roles_titles.length) ctx += 'BUYER ROLES: ' + r.buyer_roles_titles.join(', ') + '\n';
+  if (r.competitors && r.competitors.length) {
+    ctx += 'COMPETITORS: ' + r.competitors.slice(0,6).map(function(c) { return c.name || c; }).join(', ') + '\n';
+  }
+  if (setup.competitors) ctx += 'COMPETITOR NOTES: ' + setup.competitors.slice(0, 400) + '\n';
+  if (r.pricing_model) ctx += 'PRICING MODEL: ' + r.pricing_model + '\n';
+
+  // Strategy doc + uploaded docs (truncated)
+  if (setup.strategy && setup.strategy.trim()) {
+    ctx += '\nSTRATEGY DOCUMENT (excerpt):\n' + setup.strategy.slice(0, 1200) + '\n';
+  }
+  if (setup.voice && setup.voice.trim()) {
+    ctx += 'BRAND VOICE: ' + setup.voice.slice(0, 300) + '\n';
+  }
+  var docs = setup.docs || [];
+  docs.slice(0, 3).forEach(function(d) {
+    if (d.content && d.content.trim()) {
+      ctx += '\nDOC [' + (d.name || 'uploaded') + '] (excerpt):\n' + d.content.slice(0, 800) + '\n';
+    }
+  });
+
+  // Existing top pages for context
+  var topPages = (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).slice(0, 15);
+  if (topPages.length) {
+    ctx += '\nEXISTING TOP PAGES: ' + topPages.map(function(p) { return p.slug; }).join(', ') + '\n';
+  }
+
+  var systemPrompt = 'You are an expert SEO strategist. Generate a curated list of seed keywords for a DataForSEO volume lookup.\n\nYour job is to think like a potential client searching for this business — not like a marketer. Consider:\n- How do people in this industry actually search? (job-type terms, outcome terms, problem terms)\n- What commercial intent phrases have real search volume? (not jargon, not internal names)\n- What location + service combinations are likely searched?\n- What comparison/alternative queries apply? (e.g. "vs", "alternative", "cost", "price")\n- What pain-point queries lead to this type of business?\n- Which competitor brand names are worth including?\n- What are the core service categories (not just company names)?\n\nRules:\n- Output ONLY a JSON array of strings, no markdown, no explanation\n- Max 7 words per keyword\n- Max 300 seeds total\n- All lowercase\n- Include the primary city in location-specific terms\n- Mix: branded (agency/company/services), transactional (hire/get/find), problem-based, comparison, and bare service terms\n- DO NOT include obviously unsearchable phrases or internal jargon\n- DO NOT pad with low-value variations — quality over quantity\n\nExample output format:\n["seo agency vancouver","best seo company vancouver","seo services vancouver","hire seo expert bc","seo pricing vancouver","local seo vancouver","technical seo audit vancouver"]';
+
+  var userPrompt = 'Generate seed keywords for this client:\n\n' + ctx;
+
+  try {
+    var result = await callClaude(systemPrompt, userPrompt, null, 2000);
+    var parsed = safeParseJSON(result);
+    if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid response: ' + result.slice(0, 100));
+
+    // Normalise + dedupe + cap at 7 words
+    var seen = new Set();
+    var cleaned = parsed
+      .map(function(k) { return String(k).toLowerCase().trim(); })
+      .filter(function(k) { return k.length > 3 && k.split(' ').length <= 7 && !seen.has(k) && seen.add(k); })
+      .slice(0, 300);
+
+    if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
+    S.kwResearch.seeds = cleaned;
+    S.kwResearch.aiSeedsGeneratedAt = Date.now();
+    // Clear stale volume data since seeds changed
+    S.kwResearch.keywords = [];
+    S.kwResearch.selected = [];
+    S.kwResearch.fetchedAt = null;
+    scheduleSave();
+
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + cleaned.length + ' AI seeds generated — review then click Fetch Volumes</span>';
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> AI Generate Seeds'; }
+  }
 }
 
 async function fetchKwVolumes() {
