@@ -2510,8 +2510,14 @@ async function generateAISeeds() {
   var userPrompt = 'Generate seed keywords for this client:\n\n' + ctx;
 
   try {
-    var result = await callClaude(systemPrompt, userPrompt, null, 2000);
-    var parsed = safeParseJSON(result);
+    var result = await callClaude(systemPrompt, userPrompt, null, 4000);
+    // Repair: if response starts with quoted string (missing opening bracket), wrap it
+    var repaired = result.trim();
+    if (repaired.startsWith('"') || /^[a-z]/.test(repaired)) {
+      repaired = '[' + repaired;
+      if (!repaired.endsWith(']')) repaired = repaired + ']';
+    }
+    var parsed = safeParseJSON(repaired) || safeParseJSON(result);
     if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid response: ' + result.slice(0, 100));
 
     // Normalise + dedupe + cap at 7 words
