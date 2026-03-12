@@ -3483,7 +3483,17 @@ async function aiAssignKeywordsAndQuestions() {
     + 'Return JSON array only:\n'
     + '[{"slug":"services/seo-vancouver","additional_keywords":["seo company bc","..."],"assigned_questions":["How long does SEO take?","..."]},...]';
 
-  var systemPrompt = 'You are a senior SEO content strategist. Assign keywords and questions to pages with precision. Each keyword and question goes on exactly one page. Return raw JSON array only — no markdown, no preamble.';
+  var R2 = S.research || {};
+  var ctxForAssign = 'Client: '+(R2.client_name||'')
+    + ' | Industry: '+(R2.industry||'')
+    + ' | Services: '+((R2.primary_services||[]).join(', ')||'')
+    + ' | Audience: '+(R2.primary_audience_description||'')
+    + ' | Geography: '+((R2.geography&&R2.geography.primary)||R2.target_geography||'');
+  var systemPrompt = 'You are a senior SEO content strategist. '
+    + 'Assign keywords and questions to pages with precision. '
+    + 'Each keyword and question goes on exactly one page — the page where it best matches search intent. '
+    + 'Client context: '+ctxForAssign+'. '
+    + 'Return raw JSON array only — no markdown, no preamble.';
 
   try {
     var streamEl = document.getElementById('briefs-assign-stream');
@@ -3943,37 +3953,208 @@ async function generatePageBrief(pageIdx) {
   if (streamEl) { streamEl.style.display = 'block'; streamEl.textContent = ''; }
 
   var assignedQs = (p.assignedQuestions||[]);
-  var addlKws = (p.supporting_keywords||[]);
+  var addlKws = (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?(k.kw||''):String(k); }).filter(Boolean);
   var existingRkws = (p.existing_ranking_kws||[]).slice(0,5).map(function(k){return k.kw||k;});
+  var R = S.research || {};
+  var pt = (p.page_type||'service').toLowerCase();
 
-  var prompt = '## PAGE\n'
-    + 'Name: '+p.page_name+'\n'
-    + 'URL: /'+p.slug+'\n'
-    + 'Type: '+p.page_type+'\n'
-    + 'Action: '+(p.action||'build_new')+'\n'
-    + (p.existing_traffic?'Existing traffic: '+p.existing_traffic+'/mo\n':'')
-    + '\n## PRIMARY KEYWORD\n'
-    + (p.primary_keyword||'none')+' — '+(p.primary_vol||0)+'/mo, KD:'+(p.primary_kd||0)+'\n'
-    + '\n## SUPPORTING KEYWORDS TO WEAVE IN\n'
-    + (addlKws.join(', ')||'none')+'\n'
-    + (existingRkws.length?'\n## CURRENTLY RANKING FOR\n'+existingRkws.join(', ')+'\n':'')
-    + '\n## QUESTIONS THIS PAGE MUST ANSWER\n'
-    + (assignedQs.length ? assignedQs.map(function(q,i){return (i+1)+'. '+q;}).join('\n') : 'None assigned yet — suggest 3-5 relevant questions based on page intent')
-    + '\n\n## BRIEF REQUIREMENTS\n'
-    + 'Write a tight, actionable brief covering:\n'
-    + '1. Recommended H1 (include primary keyword naturally)\n'
-    + '2. Search intent + ideal CTA (what action should the visitor take?)\n'
-    + '3. Word count target (justify based on intent + competition)\n'
-    + '4. Page sections — structured around answering the questions above\n'
-    + '5. How to naturally integrate the supporting keywords (where/how often)\n'
-    + '6. FAQ section (use the assigned questions verbatim as H3s)\n'
-    + '7. Internal link targets — which other pages should this link to and from\n'
-    + '\nThe assigned questions are the spine of this page. Every section should be building toward answering them. Be specific, no generic advice.';
+  // ── SHARED CONTEXT ───────────────────────────────────────────────
+  var ctxBusiness = [
+    'Client: '+(R.client_name||S.setup&&S.setup.client_name||'Unknown'),
+    'Industry: '+(R.industry||''),
+    'Value proposition: '+(R.value_proposition||''),
+    'Key differentiators: '+((R.key_differentiators||[]).join('; ')||'none provided'),
+    'Proof points: '+((R.proof_points||[]).join('; ')||'none provided'),
+    'Brand voice: '+(R.brand_voice_style||R.tone_and_voice||'professional'),
+  ].filter(function(l){ return l.split(': ')[1]; }).join('\n');
+
+  var ctxAudience = [
+    'Primary audience: '+(R.primary_audience_description||((R.target_audience||[])[0])||''),
+    'Best customer example: '+(R.best_customer_examples||''),
+    'Top pain points: '+((R.pain_points_top5||[]).slice(0,3).join('; ')||''),
+    'Top objections: '+((R.objections_top5||[]).slice(0,3).join('; ')||''),
+    'Geography: '+((R.geography&&R.geography.primary)||R.target_geography||''),
+  ].filter(function(l){ return l.split(': ')[1]; }).join('\n');
+
+  var ctxCompetitors = (R.competitors||[]).slice(0,3).map(function(c){
+    return '- '+(c.name||c.url||c);
+  }).join('\n') || 'None identified';
+
+  var ctxKeywords = '**Primary:** '+(p.primary_keyword||'none')+' ('+( p.primary_vol||0)+'/mo, KD:'+(p.primary_kd||0)+')\n'
+    + (addlKws.length ? '**Supporting:** '+addlKws.join(', ') : '')
+    + (existingRkws.length ? '\n**Currently ranking for:** '+existingRkws.join(', ') : '');
+
+  var ctxQuestions = assignedQs.length
+    ? assignedQs.map(function(q,i){ return (i+1)+'. '+q; }).join('\n')
+    : 'None assigned — suggest 4-6 questions matched to search intent';
+
+  var ctxInternalLinks = (S.pages||[]).filter(function(pg){
+    return pg.slug !== p.slug && pg.primary_keyword && (pg.page_type==='service'||pg.page_type==='location'||pg.page_type==='industry');
+  }).slice(0,8).map(function(pg){ return '- /'+pg.slug+' ('+pg.primary_keyword+')'; }).join('\n') || 'None available yet';
+
+  // ── PAGE TYPE ROUTING ────────────────────────────────────────────
+  var isService  = /^(service|location|industry)$/.test(pt);
+  var isBlog     = /^(blog|faq|resource)$/.test(pt);
+  var isUtility  = /^(home|about|team|utility)$/.test(pt);
+
+  var sysPrompt, prompt;
+
+  if (isService) {
+    // ── TEMPLATE 1: SERVICE / LOCATION / INDUSTRY ─────────────────
+    // CRO-first. Conversion architecture is the spine.
+    sysPrompt = 'You are a senior CRO + SEO strategist. You write conversion-optimised page briefs for service businesses. '
+      + 'CRO and SEO are equally important. Every section must serve both search intent AND move the reader toward the primary CTA. '
+      + 'Be specific, direct, no generic advice. Canadian spelling.';
+
+    prompt = '## PAGE\n'
+      + 'Name: '+p.page_name+'\n'
+      + 'URL: /'+p.slug+'\n'
+      + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
+      + (p.existing_traffic ? 'Existing traffic: '+p.existing_traffic+'/mo\n' : '')
+      + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + '\n\n## AUDIENCE\n'+ctxAudience
+      + '\n\n## KEYWORDS\n'+ctxKeywords
+      + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
+      + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
+      + '\n\n## COMPETITORS TO BEAT\n'+ctxCompetitors
+      + '\n\n---\n'
+      + '## BRIEF OUTPUT — write each section:\n\n'
+      + '### 1. READER PROFILE\n'
+      + 'Who is landing on this page, from what search, at what awareness stage? '
+      + 'What specific fear or desire brings them here? (2-3 sentences — be a real person, not a persona category)\n\n'
+      + '### 2. UNIQUE ANGLE\n'
+      + 'What does this page say that the top 3 SERP results do NOT say? '
+      + 'What proof, claim, or POV makes this worth clicking over the rest? (1-2 sentences, specific)\n\n'
+      + '### 3. H1 + TITLE TAG\n'
+      + 'Recommended H1 (primary keyword in first 3 words). '
+      + 'Title tag variation under 60 chars (optimised for CTR).\n\n'
+      + '### 4. CONVERSION ARCHITECTURE\n'
+      + 'Primary CTA (exact label + placement: hero / post-intro / sticky / end). '
+      + 'Secondary CTA if needed. '
+      + 'Primary objection this page must overcome. '
+      + 'Trust signals required (e.g. testimonial, case study, guarantee, logo bar) and where each appears.\n\n'
+      + '### 5. PAGE STRUCTURE (H2 SKELETON)\n'
+      + 'List 5-10 H2 sections in order. Each H2 should serve both a search intent signal AND a conversion micro-step. '
+      + 'Note the purpose of each section in brackets (e.g. [builds trust], [removes objection], [CTA]).\n\n'
+      + '### 6. KEYWORD INTEGRATION NOTES\n'
+      + 'Where and how often to use the primary keyword. Where to place each supporting keyword. '
+      + 'Which entity terms must appear for topical authority.\n\n'
+      + '### 7. FAQ SECTION (H3s)\n'
+      + 'Use the assigned questions verbatim as H3s. For each, note the answer angle (1 line — not the answer, the direction).\n\n'
+      + '### 8. INTERNAL LINKS\n'
+      + 'Which 3-5 pages from the internal link list should this page link to, and with what anchor text? '
+      + 'Which pages should link TO this page?\n\n'
+      + '### 9. WORD COUNT + FORMAT TARGET\n'
+      + 'Target word count (justify from intent + page type). '
+      + 'Recommended content format (e.g. service landing page with proof blocks, not a listicle).\n\n'
+      + '### 10. E-E-A-T INPUTS REQUIRED\n'
+      + 'What proof must appear on this page to be credible? '
+      + '(e.g. specific case study result, stat, team credential, guarantee). '
+      + 'Flag if any of this is missing from what you know about the client.\n';
+
+  } else if (isBlog) {
+    // ── TEMPLATE 2: BLOG / FAQ / RESOURCE ────────────────────────
+    // E-E-A-T and backlink potential are the priorities alongside SEO.
+    sysPrompt = 'You are a senior content strategist and SEO specialist. You write editorial briefs for blog posts and resource pages. '
+      + 'E-E-A-T signals, unique insight, and backlink potential are your top priorities alongside search intent match. '
+      + 'Never produce a brief that would result in generic AI-flavoured content. Push for real expertise and original angles. '
+      + 'Canadian spelling.';
+
+    prompt = '## PAGE\n'
+      + 'Name: '+p.page_name+'\n'
+      + 'URL: /'+p.slug+'\n'
+      + 'Type: blog/resource | Action: '+(p.action||'build_new')+'\n'
+      + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + '\n\n## AUDIENCE\n'+ctxAudience
+      + '\n\n## KEYWORDS\n'+ctxKeywords
+      + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
+      + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
+      + '\n\n---\n'
+      + '## BRIEF OUTPUT — write each section:\n\n'
+      + '### 1. READER PROFILE + AWARENESS STAGE\n'
+      + 'Who is searching this, what do they already know, what are they hoping to learn or resolve? '
+      + 'What makes them click this over the top result? (2-3 sentences)\n\n'
+      + '### 2. UNIQUE ANGLE + CONTRARIAN HOOK\n'
+      + 'What does this article say or show that the existing top results do NOT? '
+      + 'Is there a contrarian position, proprietary framework, or insider take this business can credibly make? '
+      + '(Specific — not "bring a fresh perspective")\n\n'
+      + '### 3. HEADLINE OPTIONS\n'
+      + 'H1 option (primary keyword in first 3 words, promise-led). '
+      + 'Title tag variation under 60 chars. '
+      + 'One curiosity-gap alternative headline.\n\n'
+      + '### 4. ARTICLE STRUCTURE (H2 SKELETON)\n'
+      + 'List 6-12 H2 sections in reading order. '
+      + 'Flow must resolve search intent start to finish — reader should feel the article answered their question completely. '
+      + 'Note where pull quotes, data callouts, or tables would live.\n\n'
+      + '### 5. INTRO REQUIREMENTS\n'
+      + 'Primary keyword placement (first 120 words). '
+      + 'Hook approach (stat, counterintuitive claim, story, problem statement). '
+      + 'What promise does the intro make to the reader?\n\n'
+      + '### 6. E-E-A-T INPUTS\n'
+      + 'What real experience, data, or proof must appear in this article to be credible? '
+      + 'Specific sections where case study, stat, or first-person experience should be injected. '
+      + 'Is an expert quote or external source citation needed, and on what claim?\n\n'
+      + '### 7. BACKLINK POTENTIAL INPUTS\n'
+      + 'What stat, framework, visual, or original research in this article would make other sites want to link to it? '
+      + 'Be specific about what to include (e.g. "a comparison table of X vs Y that doesn\'t exist anywhere else").\n\n'
+      + '### 8. FAQ SECTION (H3s)\n'
+      + 'Use assigned questions verbatim as H3s. Note the answer angle for each (1 line).\n\n'
+      + '### 9. INTERNAL LINKS + SOFT CTA\n'
+      + 'Which 3-5 internal pages should this link to, and where/why? '
+      + 'What soft CTA fits at the end (not pushy — this is an info page)?\n\n'
+      + '### 10. WORD COUNT + SKIMMABILITY FORMAT\n'
+      + 'Target word count. Required skimmability elements (bullets, table, TL;DR box, pull quote, summary section). '
+      + 'Reading time estimate.\n';
+
+  } else {
+    // ── TEMPLATE 3: HOME / ABOUT / UTILITY ───────────────────────
+    // Intent match + trust signals + brand voice priority.
+    sysPrompt = 'You are a senior brand strategist and conversion copywriter. '
+      + 'You write briefs for homepage, about, and utility pages where brand voice and trust signals drive performance. '
+      + 'Search intent must be matched but these pages are also heavy brand touchpoints. '
+      + 'Canadian spelling.';
+
+    prompt = '## PAGE\n'
+      + 'Name: '+p.page_name+'\n'
+      + 'URL: /'+p.slug+'\n'
+      + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
+      + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + '\n\n## AUDIENCE\n'+ctxAudience
+      + '\n\n## KEYWORDS\n'+ctxKeywords
+      + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
+      + '\n\n## COMPETITORS\n'+ctxCompetitors
+      + '\n\n---\n'
+      + '## BRIEF OUTPUT — write each section:\n\n'
+      + '### 1. PAGE PURPOSE + SEARCH INTENT\n'
+      + 'What is this page\'s primary job? Who lands here and from where (organic, direct, referral)? '
+      + 'What do they need to feel/know/do within 5 seconds of landing?\n\n'
+      + '### 2. BRAND VOICE DIRECTION\n'
+      + 'Specific tone instructions for this page (e.g. "warm and direct, not corporate"). '
+      + 'Words/phrases to use. Words to avoid. One sentence that captures the voice this page should feel like.\n\n'
+      + '### 3. H1 + ABOVE-FOLD CONTENT\n'
+      + 'Recommended H1. What goes above the fold: headline, subheadline, CTA, visual direction.\n\n'
+      + '### 4. PAGE STRUCTURE (H2 SKELETON)\n'
+      + 'Section list in order. For home/about pages this is lighter (4-7 sections). '
+      + 'Each section note: what trust signal or brand story moment lives here.\n\n'
+      + '### 5. TRUST SIGNAL REQUIREMENTS\n'
+      + 'Exactly which trust signals must appear and where: '
+      + 'testimonials, case study callouts, awards, team credentials, client logos, guarantees, stats. '
+      + 'Flag any that are missing from what you know about the client.\n\n'
+      + '### 6. CTA ARCHITECTURE\n'
+      + 'Primary CTA (what, where, what copy). Secondary CTA if needed. '
+      + 'What objection must be removed before a visitor will take action?\n\n'
+      + '### 7. KEYWORD + INTENT INTEGRATION\n'
+      + 'How to work the primary keyword in naturally without making it feel like an SEO page. '
+      + 'For about/team pages: how to integrate expertise signals for E-E-A-T without sounding like a CV.\n\n'
+      + '### 8. WORD COUNT + FORMAT\n'
+      + 'Target word count (home/about pages are shorter — justify). '
+      + 'Format: landing page blocks, narrative, hybrid?\n';
+  }
 
   var contentEl = document.getElementById('brief-content-'+pageIdx);
   if (contentEl) contentEl.style.display = 'none';
   try {
-    var briefText = await callClaude('You are a senior SEO content strategist. Write precise, actionable page briefs for a web development agency.', prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 1500);
+    var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 2500);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
     p.brief.summary = briefText;
