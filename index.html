@@ -601,7 +601,12 @@ async function saveProject() {
       setup: S.setup,
       snapshot: S.snapshot || null,
       research: S.research,
-      pages: S.pages,
+      pages: S.pages.map(function(p) {
+        if (!p.serpIntel) return p;
+        return Object.assign({}, p, {
+          serpIntel: { directives: p.serpIntel.directives, fetchedAt: p.serpIntel.fetchedAt, keyword: p.serpIntel.keyword }
+        });
+      }),
       copy: S.copy,
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
@@ -624,7 +629,8 @@ async function saveProject() {
     const payloadStr = JSON.stringify(payload);
     const payloadKB = Math.round(payloadStr.length / 1024);
     console.log('[save] payload size:', payloadKB + 'KB');
-    if (payloadKB > 900) console.warn('[save] payload near 1MB limit — may fail');
+    if (payloadKB > 20000) console.warn('[save] payload near 25MB KV limit — may fail (' + payloadKB + 'KB)');
+    if (payloadKB > 24000) { showSaveIndicator('error'); console.error('[save] payload too large, aborting save (' + payloadKB + 'KB)'); return; }
     const res = await fetch('/api/projects/' + S.projectId, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -2266,7 +2272,7 @@ async function fetchKeywordResearch() {
       .filter(k => k.volume >= 0)
       .map(k => {
         const kd = k.difficulty > 0 ? k.difficulty : 30; // KD=0 = no data, assume medium
-        const score = k.volume >= 50 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+        const score = k.volume >= 10 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
         return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score, monthly: k.monthly || [] };
       })
       .sort((a, b) => b.score - a.score);
