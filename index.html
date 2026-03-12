@@ -6407,6 +6407,17 @@ function copySetQCTab(slug, tab) {
   renderCopyQueue();
 }
 
+function copyMarkAllQC(slug, tab) {
+  var p = orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  var items = getQCItems(p.page_type||'service', tab);
+  if (!S.copy[slug]) S.copy[slug] = {};
+  if (!S.copy[slug].humanQC) S.copy[slug].humanQC = {};
+  var allDone = items.every(function(i){ return !!S.copy[slug].humanQC[i.key]; });
+  items.forEach(function(i){ S.copy[slug].humanQC[i.key] = !allDone; });
+  scheduleSave();
+  renderCopyQueue();
+}
+
 function copyToggleQC(slug, key) {
   if (!S.copy[slug]) return;
   if (!S.copy[slug].humanQC) S.copy[slug].humanQC = {};
@@ -6703,7 +6714,7 @@ async function runCopyAudit(slug) {
     {id:'intent',          label:'Page satisfies '+((p.search_intent||'commercial')).split(' ')[0]+' search intent throughout — reader can take action'},
     {id:'no_placeholders', label:'No [placeholder], [INSERT], [TBD], or template brackets remaining in copy', display:'No [placeholder] text remaining'},
     {id:'wordcount',       label:'Word count >= minimum target. Target='+_wordTarget+' Actual='+_wordCount+'. PASS if '+_wordCount+'>='+_wordTarget, display:'Word count meets page target (target: '+_wordTarget+', actual: '+_wordCount+')'},
-    {id:'canadian',        label:'Canadian spelling used. Canadian uses: -ise (optimise/organise/specialise), -our (colour/honour), -re (centre/theatre), -yse (analyse). American -ize/-ize/-ize are FAILURES. Verify no American spellings like optimize/organize/specialize/color/center/analyze', display:'Canadian spelling throughout'},
+    {id:'canadian',        label:'Canadian English spelling. PASS if: colour/honour/favour (not color/honor/favor), centre/theatre (not center/theater), analyse/catalyse (not analyze/catalyze). NOTE: -ize endings (optimize, organize, specialize) are CORRECT in Canadian English — do NOT flag them. Only flag -our/-re/-yse errors.', display:'Canadian spelling throughout'},
     {id:'unique',          label:'Page has a specific differentiating angle — not generic claims like \'we are passionate\' or \'full-service\''},
     {id:'no_fluff',        label:'No filler phrases: \'in today\'s world\', \'at the end of the day\', \'leverage\', \'synergy\', \'holistic approach\'. Copy is direct and outcome-led', display:'No filler / vanity copy'},
   ];
@@ -7159,49 +7170,70 @@ function renderCopyQueue() {
 
           html += '<div style="border-bottom:1px solid var(--border)">';
 
-          // Tab bar
-          html += '<div style="display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.01)">';
-          html += '<span style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.08em;margin-right:10px">Human QC</span>';
+          // HUMAN QC — fast scan mode
+          var _allSeoChecked = _seoChecked === _seoTotal;
+          var _allCroChecked = _croChecked === _croTotal;
+          var _allQCDone = _allSeoChecked && _allCroChecked;
+          var _qcBg = _allQCDone ? 'rgba(21,142,29,0.06)' : 'var(--bg)';
 
-          var _seoTabActive = _qcTab === 'seo';
-          var _seoScore = _seoTotal > 0 ? Math.round((_seoChecked/_seoTotal)*100) : 0;
-          var _croScore = _croTotal > 0 ? Math.round((_croChecked/_croTotal)*100) : 0;
-          var _seoScoreClr = _seoScore===100?'var(--green)':_seoScore>50?'var(--warn)':'var(--n2)';
-          var _croScoreClr = _croScore===100?'var(--green)':_croScore>50?'var(--warn)':'var(--n2)';
+          html += '<div style="border-bottom:1px solid var(--border);background:'+_qcBg+'">';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px 4px">';
+          html += '<span style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Human QC</span>';
+          html += '<div style="display:flex;align-items:center;gap:6px">';
+          // Bulk mark-all buttons
+          var _seoBtnClr = _allSeoChecked ? 'var(--green)' : 'var(--n2)';
+          var _croBtnClr = _allCroChecked ? 'var(--green)' : 'var(--n2)';
+          var _seoBtnBg  = _allSeoChecked ? 'rgba(21,142,29,0.1)' : 'rgba(0,0,0,0.04)';
+          var _croBtnBg  = _allCroChecked ? 'rgba(21,142,29,0.1)' : 'rgba(0,0,0,0.04)';
+          html += '<button onclick="copyMarkAllQC(\''+p.slug+'\',\'seo\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+_seoBtnBg+';color:'+_seoBtnClr+';cursor:pointer;font-family:var(--font)">'
+            + (_allSeoChecked ? '✓ SEO' : '○ SEO') + ' '+_seoChecked+'/'+_seoTotal+'</button>';
+          html += '<button onclick="copyMarkAllQC(\''+p.slug+'\',\'cro\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+_croBtnBg+';color:'+_croBtnClr+';cursor:pointer;font-family:var(--font)">'
+            + (_allCroChecked ? '✓ CRO' : '○ CRO') + ' '+_croChecked+'/'+_croTotal+'</button>';
+          html += '</div></div>';
 
-          html += '<button onclick="copySetQCTab(\''+p.slug+'\',\'seo\')" style="padding:7px 12px;font-size:10px;font-weight:'+(_seoTabActive?'600':'400')+';border:none;background:none;cursor:pointer;font-family:var(--font);color:'+(_seoTabActive?'var(--dark)':'var(--n2)')+';border-bottom:2px solid '+(_seoTabActive?'var(--dark)':'transparent')+';margin-bottom:-1px">'
-            + 'SEO <span style="font-size:9px;color:'+_seoScoreClr+'">'+_seoChecked+'/'+_seoTotal+'</span></button>';
-          html += '<button onclick="copySetQCTab(\''+p.slug+'\',\'cro\')" style="padding:7px 12px;font-size:10px;font-weight:'+(!_seoTabActive?'600':'400')+';border:none;background:none;cursor:pointer;font-family:var(--font);color:'+(!_seoTabActive?'var(--dark)':'var(--n2)')+';border-bottom:2px solid '+(!_seoTabActive?'var(--dark)':'transparent')+';margin-bottom:-1px">'
-            + 'CRO <span style="font-size:9px;color:'+_croScoreClr+'">'+_croChecked+'/'+_croTotal+'</span></button>';
-          html += '</div>';
-
-          // AI flags (shown on both tabs)
+          // AI flags — things that NEED human eyes
           if (_hFlags.length) {
-            html += '<div style="padding:8px 14px 4px;display:flex;flex-direction:column;gap:3px">';
+            html += '<div style="padding:0 14px 6px;display:flex;flex-direction:column;gap:3px">';
             _hFlags.forEach(function(flag) {
               var sev = flag.severity === 'high' ? '#e5534b' : 'var(--warn)';
               var sevBg = flag.severity === 'high' ? 'rgba(229,83,75,0.05)' : 'rgba(255,165,0,0.05)';
-              var sevBorder = flag.severity === 'high' ? 'rgba(229,83,75,0.18)' : 'rgba(255,165,0,0.22)';
-              html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:'+sevBg+';border:1px solid '+sevBorder+';border-radius:4px">';
-              html += '<i class="ti ti-alert-triangle" style="font-size:11px;color:'+sev+';flex-shrink:0;margin-top:1px"></i>';
-              html += '<div><div style="font-size:10.5px;font-weight:600;color:var(--dark)">'+esc(flag.item)+'</div>';
-              html += '<div style="font-size:9.5px;color:var(--n2);margin-top:1px">'+esc(flag.reason)+'</div></div>';
+              var sevBorder = flag.severity === 'high' ? 'rgba(229,83,75,0.15)' : 'rgba(255,165,0,0.2)';
+              html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 7px;background:'+sevBg+';border:1px solid '+sevBorder+';border-radius:4px">';
+              html += '<i class="ti ti-alert-triangle" style="font-size:10px;color:'+sev+';flex-shrink:0;margin-top:2px"></i>';
+              html += '<div style="font-size:10px;color:var(--dark)"><strong>'+esc(flag.item)+'</strong> — '+esc(flag.reason)+'</div>';
               html += '</div>';
             });
             html += '</div>';
+          } else {
+            html += '<div style="padding:2px 14px 6px;font-size:10px;color:var(--green)"><i class="ti ti-check" style="font-size:10px"></i> No claims flagged by AI</div>';
           }
 
-          // Checklist items
-          var _activeItems = _qcTab === 'seo' ? _seoItems : _croItems;
-          html += '<div style="padding:8px 14px;display:grid;grid-template-columns:1fr 1fr;gap:4px">';
-          _activeItems.forEach(function(item) {
-            var chk = !!_humanQC[item.key];
-            html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" style="display:flex;align-items:flex-start;gap:6px;cursor:pointer;padding:4px 7px;border-radius:4px;border:1px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'rgba(21,142,29,0.05)':'var(--white)')+';">';
-            html += '<div style="width:14px;height:14px;border-radius:3px;border:1.5px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'var(--green)':'var(--white)')+';display:flex;align-items:center;justify-content:center;font-size:9px;color:white;flex-shrink:0;margin-top:1px">'+(chk?'&#10003;':'')+'</div>';
-            html += '<span style="font-size:10px;color:'+(chk?'var(--dark)':'var(--n2)')+';line-height:1.4">'+esc(item.label)+'</span>';
-            html += '</div>';
-          });
+          // Collapsible detail list (click to expand)
+          var _showDetail = S_qcTab[p.slug] === 'detail';
+          html += '<div style="padding:0 14px 6px">';
+          html += '<button onclick="copySetQCTab(\''+p.slug+'\',\''+(_showDetail?'seo':'detail')+'\')" style="font-size:9px;color:var(--n2);background:none;border:none;cursor:pointer;padding:0;font-family:var(--font);text-decoration:underline">'
+            + (_showDetail ? '▲ Hide checklist' : '▼ View full checklist ('+(_seoChecked+_croChecked)+'/'+(_seoTotal+_croTotal)+' items)') + '</button>';
           html += '</div>';
+
+          // Detail grid (only when expanded)
+          if (_showDetail) {
+            ['seo','cro'].forEach(function(tab) {
+              var tabItems = tab === 'seo' ? _seoItems : _croItems;
+              html += '<div style="padding:4px 14px 6px">';
+              html += '<div style="font-size:9px;font-weight:700;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">'+tab.toUpperCase()+'</div>';
+              html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px">';
+              tabItems.forEach(function(item) {
+                var chk = !!_humanQC[item.key];
+                html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" style="display:flex;align-items:flex-start;gap:5px;padding:3px 5px;border-radius:3px;cursor:pointer;background:'+(chk?'rgba(21,142,29,0.06)':'transparent')+'">';
+                html += '<div style="width:12px;height:12px;border-radius:2px;border:1.5px solid '+(chk?'var(--green)':'var(--n2)')+';background:'+(chk?'var(--green)':'transparent')+';flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center">';
+                if (chk) html += '<i class="ti ti-check" style="font-size:7px;color:white"></i>';
+                html += '</div>';
+                html += '<span style="font-size:9.5px;color:'+(chk?'var(--dark)':'var(--n2)')+';line-height:1.4">'+esc(item.label)+'</span>';
+                html += '</div>';
+              });
+              html += '</div></div>';
+            });
+          }
           html += '</div>';
           // META TAGS
           var _mt2 = esc(p.meta_title||''), _md2 = esc(p.meta_description||'');
