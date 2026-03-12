@@ -2476,6 +2476,14 @@ function _renderKwSeedsTab() {
   return html;
 }
 
+function _setKwDR(val) {
+  if (!S.kwResearch) S.kwResearch = {};
+  var dr = parseInt(val);
+  S.kwResearch.siteDR = (dr > 0 && dr <= 100) ? dr : 0;
+  scheduleSave();
+  renderKwTabContent();
+}
+
 function _kwPinKeydown(e, el) { if (e.key === 'Enter') { _kwPinAdd(el.value); el.value = ''; } }
 function _kwPinAddBtn() { var el = document.getElementById('kw-pin-input'); if (el) { _kwPinAdd(el.value); el.value = ''; } }
 function _kwPinAdd(val) {
@@ -2675,6 +2683,13 @@ function _renderKwOppsTab() {
   html += '<button class="btn btn-ghost sm" onclick="selectTopKws(50)">Select Top 50</button>';
   html += '<button class="btn btn-ghost sm" onclick="selectTopKws(0)">Clear</button>';
   html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
+  // DR input for rankability indicator
+  var drVal = (S.kwResearch && S.kwResearch.siteDR) ? S.kwResearch.siteDR : '';
+  html += '<div style="display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:4px 10px;background:var(--panel);border-radius:6px;border:1px solid var(--border)">';
+  html += '<span style="font-size:11px;color:var(--n2);white-space:nowrap"><i class="ti ti-shield-half" style="margin-right:3px"></i>Site DR</span>';
+  html += '<input id="kw-dr-input" type="number" min="0" max="100" placeholder="e.g. 36" value="' + esc(String(drVal)) + '" style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg);color:var(--dark)" onchange="_setKwDR(this.value)" oninput="_setKwDR(this.value)">';
+  html += '<span style="font-size:10px;color:var(--n2)">→ rankability</span>';
+  html += '</div>';
   html += '</div>';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
@@ -2702,7 +2717,26 @@ function _renderKwOppsTab() {
   html += '<div style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span style="color:var(--n3)">Keyword</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
   sortedKws.slice(0, 200).forEach(function(k, i) {
     var isSel = selected.has(k.kw);
-    var kdClr = k.kd === 0 ? 'var(--n1)' : k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+    // DR-aware rankability: Green=rankable, Yellow=stretch, Red=out of range, Grey=no data
+    var siteDR = (S.kwResearch && S.kwResearch.siteDR) ? parseInt(S.kwResearch.siteDR) : 0;
+    var kdClr, kdLabel2, rankTip;
+    if (k.kd === 0) {
+      kdClr = 'var(--n1)'; kdLabel2 = ''; rankTip = 'No KD data';
+    } else if (!siteDR) {
+      // No DR set — fallback to old static colouring
+      kdClr = k.kd < 20 ? 'var(--green)' : k.kd < 40 ? 'var(--warn)' : 'var(--error)';
+      kdLabel2 = ''; rankTip = 'Enter Site DR above for rankability';
+    } else {
+      var maxGreen = Math.round(siteDR * 0.7);
+      var maxYellow = Math.round(siteDR * 1.1);
+      if (k.kd <= maxGreen) {
+        kdClr = 'var(--green)'; kdLabel2 = ' ✓'; rankTip = 'Rankable (KD within DR range)';
+      } else if (k.kd <= maxYellow) {
+        kdClr = 'var(--warn)'; kdLabel2 = ' ~'; rankTip = 'Stretch — possible with strong content + links';
+      } else {
+        kdClr = 'var(--error)'; kdLabel2 = ' ✗'; rankTip = 'Too competitive for current DR (' + siteDR + ')';
+      }
+    }
     var volClr = k.vol >= 500 ? 'var(--green)' : k.vol >= 100 ? 'var(--n3)' : 'var(--n1)';
     var rowBg = isSel ? 'rgba(21,142,29,0.05)' : (i % 2 ? 'var(--bg)' : '');
     var spark = '';
@@ -2715,7 +2749,7 @@ function _renderKwOppsTab() {
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
       + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
       + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.vol || 0).toLocaleString() + '</span>'
-      + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + '</span>'
+      + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + (typeof kdLabel2 !== 'undefined' ? kdLabel2 : '') + '</span>'
       + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
       + '<span style="font-size:11px">' + spark + '</span>'
       + '<span style="font-size:11px;color:var(--n2)">' + k.score + '</span>'
