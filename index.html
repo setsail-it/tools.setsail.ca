@@ -2797,6 +2797,8 @@ async function clusterSelectedKws() {
   if (selected.length < 5) { alert('Select at least 5 keywords first.'); return; }
   var statusEl = document.getElementById('kw-cluster-status');
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Clustering...';
+  var reclusterBtn = document.getElementById('recluster-btn');
+  if (reclusterBtn) { reclusterBtn.disabled = true; reclusterBtn.innerHTML = '<span class="spinner" style="width:11px;height:11px"></span> Clustering…'; }
   var kwMap = {};
   (S.kwResearch.keywords || []).forEach(function(k) { kwMap[k.kw] = k; });
   var selKws = selected.map(function(s) { return kwMap[s] || { kw: s, vol: 0, kd: 0, score: 0 }; });
@@ -2837,7 +2839,13 @@ async function clusterSelectedKws() {
     if (btn) btn.style.display = '';
     _kwTab = 'clusters';
     renderKwTabContent();
-  } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
+    var reclusterBtnDone = document.getElementById('recluster-btn');
+    if (reclusterBtnDone) { reclusterBtnDone.disabled = false; reclusterBtnDone.innerHTML = '<i class="ti ti-refresh"></i> Re-cluster'; }
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
+    var reclusterBtnErr = document.getElementById('recluster-btn');
+    if (reclusterBtnErr) { reclusterBtnErr.disabled = false; reclusterBtnErr.innerHTML = '<i class="ti ti-refresh"></i> Re-cluster'; }
+  }
 }
 
 function _renderKwClustersTab() {
@@ -2850,7 +2858,7 @@ function _renderKwClustersTab() {
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
-  html += '<button class="btn btn-ghost" onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
+  html += '<button id="recluster-btn" class="btn btn-ghost" onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
   if (ts) html += '<span style="font-size:11px;color:var(--n2)">Clustered at ' + ts + '</span>';
   html += '</div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
