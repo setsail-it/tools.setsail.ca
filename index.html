@@ -2830,36 +2830,64 @@ function addAllQuestionsAsSeeds() {
 }
 
 async function fetchPAAFromKeywords() {
-  // Use top keywords from opportunities as seeds if available, else top seeds
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim().toLowerCase();
+  var services = (r.primary_services || []).slice(0, 4).map(function(s) { return s.toLowerCase(); });
+
+  // Build BOFU buyer-intent seeds — "how to choose X", "best X agency", "X agency cost"
+  // These trigger questions real buyers ask, not generic marketing education
   var seeds = [];
-  if (S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.length) {
-    seeds = S.kwResearch.keywords.slice(0, 6).map(function(k) { return k.kw; });
-  } else if (S.kwResearch && S.kwResearch.seeds && S.kwResearch.seeds.length) {
-    seeds = S.kwResearch.seeds.slice(0, 6);
-  } else if (S.research && S.research.primary_services) {
-    var geo = (S.research.geography && S.research.geography.primary ? S.research.geography.primary : (S.setup && S.setup.geo ? S.setup.geo : '')).replace(/,.*$/,'').trim();
-    seeds = (S.research.primary_services || []).slice(0, 4).map(function(s) { return s.toLowerCase() + (geo ? ' ' + geo.toLowerCase() : ''); });
+  services.forEach(function(svc) {
+    if (geo) seeds.push(svc + ' agency ' + geo);
+    seeds.push('how to choose ' + svc + ' agency');
+    seeds.push('best ' + svc + ' agency');
+  });
+  // Add agency-level buyer intent seeds
+  if (geo) {
+    seeds.push('marketing agency ' + geo);
+    seeds.push('how to choose a marketing agency');
+    seeds.push('digital marketing agency cost');
   }
-  if (!seeds.length) { alert('No keywords available — run Fetch Volumes first or go to Research → Content Intelligence to run PAA.'); return; }
+  // Dedupe and cap at 6 (PAA API limit)
+  seeds = seeds.filter(function(s, i, a) { return a.indexOf(s) === i; }).slice(0, 6);
+
+  if (!seeds.length) { alert('Add services and geo in Setup first.'); return; }
 
   var statusEl = document.getElementById('kw-questions-fetch-status');
-  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Fetching questions...';
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Fetching buyer-intent questions...';
 
-  var country = (S.setup && S.setup.geo && S.setup.geo.toUpperCase().includes('US')) ? 'US' : 'CA';
+  var country = (setup.geo && setup.geo.toUpperCase().includes('US')) ? 'US' : 'CA';
   try {
     var res = await fetch('/api/paa', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keywords: seeds, country: country })
     });
     var data = await res.json();
-    if (!data.questions || !data.questions.length) throw new Error(data.error || 'No questions returned');
+    if (!data.questions || !data.questions.length) throw new Error(data.error || 'No questions returned for seeds: ' + seeds.join(', '));
+
+    // Filter out generic education questions — keep only buyer/evaluation intent
+    var rawQs = data.questions.map(function(q) { return typeof q === 'object' ? q.question : q; }).filter(Boolean);
+    var buyerQs = rawQs.filter(function(q) {
+      var ql = q.toLowerCase();
+      // Keep: choosing, hiring, cost, worth it, how does X work, what to expect, vs/compare
+      if (ql.match(/\b(choose|choosing|hire|hiring|cost|price|pricing|worth|vs\b|compare|best|how does|what does|what to expect|how long|do i need|should i|difference between|when (to|should)|what happens|how much|what is included|questions to ask)\b/)) return true;
+      // Keep if it contains a service name or agency/company
+      var hasService = services.some(function(s) { return ql.includes(s.split(' ')[0]); });
+      if (hasService && ql.match(/\b(agency|company|firm|consultant|expert|specialist|provider)\b/)) return true;
+      return false;
+    });
+
+    // If filter is too aggressive, fall back to all questions
+    var finalQs = buyerQs.length >= 5 ? buyerQs : rawQs;
+
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
-    S.contentIntel.paa = { questions: data.questions, seeds: seeds.join(', '), fetchedAt: Date.now() };
+    S.contentIntel.paa = { questions: finalQs.map(function(q) { return { question: q }; }), seeds: seeds.join(', '), fetchedAt: Date.now() };
     scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + finalQs.length + ' buyer-intent questions fetched</span>';
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
-    else alert('PAA fetch error: ' + e.message);
   }
 }
 
