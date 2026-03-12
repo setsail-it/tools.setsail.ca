@@ -124,6 +124,7 @@ textarea.inp{resize:vertical}
 .mobile-stage-item.done .msi-icon{background:var(--dark);color:white}
 .mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
 .tbl-row{transition:background 0.1s ease}
+.brief-pick-item:hover { background: rgba(0,0,0,0.04) !important; }
 </style>
 </head>
 <body>
@@ -3553,6 +3554,103 @@ async function aiAssignKeywordsAndQuestions() {
 }
 
 
+// ── BRIEF MULTI-SELECT PICKER ────────────────────────────────────────
+
+function briefTogglePicker(pidx, type) {
+  var pickerId = 'brief-'+type+'-picker-'+pidx;
+  var el = document.getElementById(pickerId);
+  if (!el) return;
+  if (el.style.display !== 'none') {
+    el.style.display = 'none';
+    return;
+  }
+  var pool = type === 'kw' ? getBriefKwPool(pidx) : getBriefQPool(pidx);
+  if (!pool.length) {
+    el.innerHTML = '<div style="padding:6px 8px;font-size:9.5px;color:var(--n1);font-style:italic">'
+      + (type==='kw' ? 'No unassigned keywords in research yet' : 'No unassigned questions in research yet')
+      + '</div>';
+    el.style.display = 'block';
+    return;
+  }
+  var html = '<div style="border:1px solid var(--border);border-radius:4px;margin-top:4px;background:white;box-shadow:0 3px 12px rgba(0,0,0,0.1);max-height:220px;overflow-y:auto">';
+  // Search input
+  html += '<div style="padding:5px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:white;z-index:1">';
+  html += '<input id="brief-'+type+'-search-'+pidx+'" data-pidx="'+pidx+'" data-type="'+type+'" placeholder="Filter…" class="brief-picker-search" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:3px 7px;font-family:var(--font);outline:none;box-sizing:border-box">';
+  html += '</div>';
+  // Items
+  html += '<div id="brief-'+type+'-pickerlist-'+pidx+'">';
+  pool.forEach(function(item, i) {
+    var esc_item = item.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+    html += '<div class="brief-pick-item" data-pidx="'+pidx+'" data-type="'+type+'" data-val="'+esc_item+'" '
+      + 'onclick="briefPickItem(this)" '
+      + 'style="padding:5px 10px;font-size:10px;color:var(--n3);cursor:pointer;border-bottom:1px solid rgba(0,0,0,0.04);'
+      + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .1s">'
+      + esc_item + '</div>';
+  });
+  html += '</div>';
+  // Footer
+  html += '<div style="padding:5px 8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:white;position:sticky;bottom:0">';
+  html += '<span id="brief-'+type+'-selcount-'+pidx+'" style="font-size:9.5px;color:var(--n2)">0 selected</span>';
+  html += '<button class="brief-add-selected-btn" data-pidx="'+pidx+'" data-type="'+type+'" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:3px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">Add Selected</button>';
+  html += '</div>';
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  // Auto-focus search
+  setTimeout(function(){ var s = document.getElementById('brief-'+type+'-search-'+pidx); if(s) s.focus(); }, 50);
+}
+
+function briefPickItem(el) {
+  var pidx = el.dataset.pidx;
+  var type = el.dataset.type;
+  if (el.dataset.sel) {
+    delete el.dataset.sel;
+    el.style.background = '';
+    el.style.fontWeight = '';
+    el.style.color = 'var(--n3)';
+  } else {
+    el.dataset.sel = '1';
+    el.style.background = 'var(--lime)';
+    el.style.fontWeight = '600';
+    el.style.color = 'var(--dark)';
+  }
+  // Update count
+  var list = document.getElementById('brief-'+type+'-pickerlist-'+pidx);
+  var count = list ? list.querySelectorAll('[data-sel]').length : 0;
+  var cEl = document.getElementById('brief-'+type+'-selcount-'+pidx);
+  if (cEl) cEl.textContent = count + ' selected';
+}
+
+function briefFilterPicker(pidx, type) {
+  var input = document.getElementById('brief-'+type+'-search-'+pidx);
+  var list  = document.getElementById('brief-'+type+'-pickerlist-'+pidx);
+  if (!input || !list) return;
+  var q = input.value.toLowerCase();
+  list.querySelectorAll('.brief-pick-item').forEach(function(el) {
+    el.style.display = el.dataset.val.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function briefAddSelected(pidx, type) {
+  var list = document.getElementById('brief-'+type+'-pickerlist-'+pidx);
+  if (!list) return;
+  var p = S.pages[pidx];
+  if (!p) return;
+  var selected = Array.from(list.querySelectorAll('[data-sel]')).map(function(el){ return el.dataset.val; });
+  if (!selected.length) return;
+  if (type === 'kw') {
+    if (!p.supporting_keywords) p.supporting_keywords = [];
+    var existing = p.supporting_keywords.map(function(k){ return (typeof k==='object'?(k.kw||''):String(k)).toLowerCase(); });
+    selected.forEach(function(kw){ if(!existing.includes(kw.toLowerCase())) p.supporting_keywords.push(kw); });
+  } else {
+    if (!p.assignedQuestions) p.assignedQuestions = [];
+    var existingQ = p.assignedQuestions.map(function(q){ return q.toLowerCase(); });
+    selected.forEach(function(q){ if(!existingQ.includes(q.toLowerCase())) p.assignedQuestions.push(q); });
+  }
+  scheduleSave();
+  renderBriefs();
+}
+
 // ── BRIEF CARD EDITING HELPERS ──────────────────────────────────────
 
 // Build <datalist> HTML for kw and question pickers
@@ -3689,6 +3787,18 @@ function initBriefs() {
       if (t.classList.contains('brief-kw-input')) { e.preventDefault(); briefAddKw(parseInt(t.dataset.pidx)); }
       if (t.classList.contains('brief-q-input'))  { e.preventDefault(); briefAddQ(parseInt(t.dataset.pidx)); }
     });
+    document.addEventListener('input', function(e) {
+      var t = e.target;
+      if (t.classList.contains('brief-picker-search')) {
+        briefFilterPicker(parseInt(t.dataset.pidx), t.dataset.type);
+      }
+    });
+    document.addEventListener('click', function(e) {
+      var t = e.target.closest('.brief-add-selected-btn');
+      if (t) { briefAddSelected(parseInt(t.dataset.pidx), t.dataset.type); return; }
+      var tog = e.target.closest('.brief-toggle-picker-btn');
+      if (tog) briefTogglePicker(parseInt(tog.dataset.pidx), tog.dataset.type);
+    });
   }
 }
 
@@ -3766,9 +3876,8 @@ function renderBriefs() {
               +esc(k)+'<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1" title="Remove">×</span></span>'; }).join('')
           : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
       + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + buildKwDatalist(pidx)
-      + '<input id="brief-kw-input-'+pidx+'" data-pidx="'+pidx+'" list="brief-kw-list-'+pidx+'" placeholder="add or pick keyword…" class="brief-kw-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
-      + '<button onclick="briefAddKw('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
+      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="kw" style="width:100%;text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);margin-top:2px">＋ Pick from researched keywords…</button>'
+      + '<div id="brief-kw-picker-'+pidx+'" style="display:none"></div>'
       + '</div>'
       + '</div>'
       // Questions — list + editable
@@ -3781,9 +3890,8 @@ function renderBriefs() {
               +'</div>'; }).join('')
           : '<div style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned — run AI Assign or add manually</div>')
       + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + buildQDatalist(pidx)
-      + '<input id="brief-q-input-'+pidx+'" data-pidx="'+pidx+'" list="brief-q-list-'+pidx+'" placeholder="add or pick question…" class="brief-q-input" style="flex:1;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:2px 6px;font-family:var(--font);outline:none;background:rgba(0,0,0,0.02)">'
-      + '<button onclick="briefAddQ('+pidx+')" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:2px 7px;font-size:10px;cursor:pointer">+</button>'
+      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="q" style="width:100%;text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);margin-top:2px">＋ Pick from researched questions…</button>'
+      + '<div id="brief-q-picker-'+pidx+'" style="display:none"></div>'
       + '</div>'
       + '</div>'
       // Traffic
