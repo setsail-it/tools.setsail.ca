@@ -7103,6 +7103,7 @@ function renderCopyQueue() {
           html += '</div>';
 
           // BOTTOM BAR
+          var _approved = !!(r && r.approved);
           var _siW = p.serpIntel;
           var _siWDone = !!(_siW && _siW.competitors && _siW.competitors.length);
           html += '<div style="display:flex;align-items:center;gap:6px;padding:10px 14px;flex-wrap:wrap">';
