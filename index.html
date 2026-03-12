@@ -1654,10 +1654,12 @@ function renderRCompetitors(r) {
 }
 
 function renderRKeywords(el) {
-  el.innerHTML = '<div style="display:flex;gap:8px;margin-bottom:16px">'
+  el.innerHTML = '<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap">'
     + '<button class="btn btn-primary" onclick="fetchKeywordResearch()"><i class="ti ti-refresh"></i> Run Keyword Research</button>'
+    + '<button class="btn btn-ghost" style="font-size:11px" onclick="runKwDebug()"><i class="ti ti-bug"></i> Debug DataForSEO</button>'
     + '</div>'
     + '<div id="research-kw-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>'
+    + '<div id="kw-debug-output" style="display:none;margin-bottom:10px;font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;white-space:pre-wrap;max-height:300px;overflow-y:auto"></div>'
     + '<div id="research-kw-card" style="display:none"></div>';
   if (S.kwResearch) renderKwResearchCard();
 }
@@ -1951,6 +1953,65 @@ function saveResearchEdits() { /* deprecated — fields save on change */ }
 function attemptResearchParse() { /* deprecated */ }
 
 // ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────
+async function runKwDebug() {
+  const out = document.getElementById('kw-debug-output');
+  if (!out) return;
+  out.style.display = 'block';
+  out.textContent = 'Testing DataForSEO endpoints...';
+
+  const services = (S.research?.primary_services || ['seo','digital marketing']).slice(0, 2);
+  const city = (S.research?.geography?.primary || 'vancouver').split(',')[0].trim().toLowerCase();
+  const testSeeds = services.map(s => s.toLowerCase().replace(/\s+(services?|management)$/i,'').trim() + ' ' + city).slice(0, 3);
+
+  try {
+    const res = await fetch('/api/kw-debug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds: testSeeds })
+    });
+    const data = await res.json();
+
+    let report = 'TEST SEEDS: ' + JSON.stringify(data.testSeeds) + '\n\n';
+
+    // Expand check
+    report += '=== EXPAND (keywords_for_keywords) ===\n';
+    if (data.expandError) {
+      report += 'ERROR: ' + data.expandError + '\n';
+    } else if (data.expandResult) {
+      const r = data.expandResult;
+      report += 'HTTP Status: ' + r.status + '\n';
+      report += 'API status_code: ' + (r.body?.status_code || '?') + '\n';
+      report += 'API status_message: ' + (r.body?.status_message || '?') + '\n';
+      const tasks = r.body?.tasks || [];
+      const resultCount = tasks.reduce((n,t) => n + (t.result?.length || 0), 0);
+      report += 'Tasks: ' + tasks.length + ', Results: ' + resultCount + '\n';
+      if (tasks[0]?.result?.[0]) {
+        report += 'Sample item: ' + JSON.stringify(tasks[0].result[0]).slice(0, 200) + '\n';
+      }
+    }
+
+    report += '\n=== VOLUME (search_volume/live) ===\n';
+    if (data.volError) {
+      report += 'ERROR: ' + data.volError + '\n';
+    } else if (data.volResult) {
+      const r = data.volResult;
+      report += 'HTTP Status: ' + r.status + '\n';
+      report += 'API status_code: ' + (r.body?.status_code || '?') + '\n';
+      report += 'API status_message: ' + (r.body?.status_message || '?') + '\n';
+      const tasks = r.body?.tasks || [];
+      const resultCount = tasks.reduce((n,t) => n + (t.result?.length || 0), 0);
+      report += 'Tasks: ' + tasks.length + ', Results: ' + resultCount + '\n';
+      if (tasks[0]?.result?.[0]) {
+        report += 'Sample: ' + JSON.stringify(tasks[0].result[0]) + '\n';
+      }
+    }
+
+    out.textContent = report;
+  } catch(e) {
+    out.textContent = 'Fetch error: ' + e.message;
+  }
+}
+
 async function fetchKeywordResearch() {
   const r = S.research || {};
   const setup = S.setup || {};

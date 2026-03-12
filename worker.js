@@ -358,6 +358,49 @@ export default {
 
 
 
+
+    // ── KW DEBUG ───────────────────────────────────────────────────────
+    if (url.pathname === '/api/kw-debug' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const { seeds } = await request.json();
+        const testSeeds = (seeds || ['seo vancouver', 'digital marketing vancouver']).slice(0, 3);
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+
+        // Test 1: keywords_for_keywords
+        let expandResult, expandError;
+        try {
+          const r = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify(testSeeds.map(s => ({ keyword: s, location_code: 2124, language_code: 'en', limit: 5 })))
+          });
+          const raw = await r.text();
+          expandResult = { status: r.status, body: JSON.parse(raw) };
+        } catch(e) { expandError = e.message; }
+
+        // Test 2: search_volume/live
+        let volResult, volError;
+        try {
+          const r = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ keywords: testSeeds, location_code: 2124, language_code: 'en' }])
+          });
+          const raw = await r.text();
+          volResult = { status: r.status, body: JSON.parse(raw) };
+        } catch(e) { volError = e.message; }
+
+        return new Response(JSON.stringify({ testSeeds, expandResult, expandError, volResult, volError }, null, 2), {
+          status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── PAA DEBUG ─────────────────────────────────────────────────
     if (url.pathname === '/api/paa-debug' && (request.method === 'GET' || request.method === 'POST')) {
       try {
