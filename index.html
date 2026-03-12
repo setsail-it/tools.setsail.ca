@@ -3792,6 +3792,8 @@ function briefToggleApprove(pidx) {
   var p = S.pages[pidx];
   if (!p || !p.brief || !p.brief.generated) return;
   p.brief.approved = !p.brief.approved;
+  if (p.brief.approved) p.brief.approvedAt = Date.now();
+  else delete p.brief.approvedAt;
   scheduleSave();
   renderBriefs();
 }
@@ -6347,7 +6349,7 @@ async function runCopyPage(slug) {
       if (el) el.textContent = t.slice(-600);
     });
     if (!copyStopFlag) {
-      S.copy[slug] = {copy, page};
+      S.copy[slug] = {copy, page, writtenAt: Date.now()};
       scheduleSave();
       // Auto-advance expanded to next incomplete
       const pages = orderedPages();
@@ -6555,11 +6557,21 @@ function renderCopyQueue() {
           html += '<div style="background:var(--dg);border-radius:6px;padding:12px;min-height:80px;max-height:160px;overflow:auto;font-family:monospace;font-size:11px;color:rgba(255,255,255,0.45);line-height:1.65;white-space:pre-wrap;word-break:break-word" id="copy-stream-'+p.slug+'"></div>'
             +'<div style="margin-top:10px"><button class="btn btn-danger sm" onclick="stopCopy()"><i class="ti ti-player-stop"></i> Stop</button></div>';
         } else if (isDone) {
+          var _briefApproved = !!(p.brief && p.brief.approved && p.brief.summary && p.brief.summary.trim().length > 50);
+          var _copyWrittenAt = (S.copy[p.slug]||{}).writtenAt || 0;
+          var _briefApprovedAt = (p.brief||{}).approvedAt || 0;
+          var _stale = _briefApproved && _briefApprovedAt > _copyWrittenAt;
+          if (_stale) {
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:7px 12px;background:rgba(21,142,29,0.07);border:1px solid rgba(21,142,29,0.25);border-radius:5px"><i class="ti ti-sparkles" style="color:var(--green);font-size:13px"></i><span style="font-size:11.5px;color:var(--dark);font-weight:500">Brief approved after copy was written.</span> <span style="font-size:11px;color:var(--n2)">Redo to regenerate copy using the brief.</span></div>';
+          }
           html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
             +'<button class="btn btn-ghost sm" onclick="copyToClip2((S.copy[\''+p.slug+'\']||{}).copy)"><i class="ti ti-copy"></i> Copy HTML</button>'
-            +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">Show code</button>'
+            +'<button class="btn btn-ghost sm" id="copy-code-btn-'+p.slug+'" onclick="toggleCopyCode(\''+p.slug+'\')">' + 'Show code</button>'
             +'<button class="btn btn-ghost sm" id="copy-edit-btn-'+p.slug+'" onclick="toggleCopyEdit(\''+p.slug+'\')"><i class="ti ti-edit"></i> Edit</button>'
-            +'<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+            +(_stale
+              ? '<button class="btn btn-primary sm" style="background:var(--lime);border:none;color:var(--dark)" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo with Brief ✦</button>'
+              : '<button class="btn btn-danger sm" onclick="redoCopyPage(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
+            )
             +'</div>'
             +'<div id="copy-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;padding:18px 22px;background:var(--white);font-size:13.5px;line-height:1.75;color:var(--dark);max-height:480px;overflow:auto"></div>'
             +'<div id="copy-code-'+p.slug+'" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.copy)+'</div>';
