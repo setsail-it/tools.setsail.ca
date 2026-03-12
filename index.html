@@ -6364,6 +6364,8 @@ async function runCopyPage(slug) {
         writtenAt: Date.now()
       });
       scheduleSave();
+      // Auto-generate meta tags in background
+      generateMetaTags(slug, page, copy);
       // Auto-advance expanded to next incomplete
       const pages = orderedPages();
       const curIdx = pages.findIndex(p => p.slug === slug);
@@ -6441,6 +6443,28 @@ var QC_ITEMS = [
   {key:'links_checked', label:'Internal links confirmed'},
 ];
 
+async function generateMetaTags(slug, page, copyHtml) {
+  var stripped = (copyHtml||'').replace(/<[^>]+>/g,' ').slice(0,2000);
+  var p = page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  var prompt = 'Write an SEO meta title and meta description for this page.\n\nPage: ' + (p.page_name||slug)
+    + '\nPrimary keyword: ' + (p.primary_keyword||'')
+    + '\nURL: /' + (p.slug||slug)
+    + '\nCopy excerpt:\n' + stripped
+    + '\n\nRules:\n- Title: 50-60 chars, include primary keyword near start, brand name at end separated by |\n- Description: 150-160 chars, action-oriented, include primary keyword naturally, no clickbait\n\nReturn raw JSON only:\n{"title":"...","description":"..."}';
+  try {
+    var result = await callClaude('You write SEO meta tags. Return raw JSON only, no markdown or explanation.', prompt, null, 300);
+    var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
+    var parsed = JSON.parse(clean);
+    var pageObj = S.pages.find(function(pp){ return pp.slug===slug; });
+    if (pageObj && parsed.title) {
+      pageObj.meta_title = parsed.title;
+      pageObj.meta_description = parsed.description || '';
+      scheduleSave();
+      renderCopyQueue();
+    }
+  } catch(e) { console.warn('Meta gen failed', e); }
+}
+
 async function runCopyAudit(slug) {
   var c = S.copy[slug];
   if (!c || !c.copy) return;
@@ -6469,7 +6493,7 @@ async function runCopyAudit(slug) {
     + '## COPY\n' + (c.copy||'').replace(/<[^>]+>/g,' ').slice(0,3000) + '\n\n'
     + '## CHECKS\nFor each check return pass:true or pass:false plus a max-8-word note.\n'
     + checks.map(function(ch){ return '- ' + ch.id + ': ' + ch.label; }).join('\n')
-    + '\n\nReturn raw JSON only — no markdown:\n{"checks":[{"id":"h1_kw","pass":true,"note":"Primary keyword in H1"},...]}\n\nBe strict.';
+    + '\n\nReturn raw JSON only. No markdown, no backticks. Schema: {"checks":[{"id":"h1_kw","pass":true,"note":"8 words max"},...],"humanFlags":[{"item":"Stats/numbers need fact-checking","reason":"AI cannot verify real stats","severity":"high"},...]}\n\nFor humanFlags: flag 2-4 things a human MUST verify that AI cannot (real stats, placeholder text, brand examples, legal claims, pricing accuracy). Be specific — name the actual stat or claim in the copy if possible.'
 
   try {
     var result = await callClaude('You are a strict copy auditor. Return raw JSON only, no markdown.', prompt, null, 800);
@@ -6482,7 +6506,8 @@ async function runCopyAudit(slug) {
       return {label:ch.label, pass:!!r.pass, note:r.note||''};
     });
     var passed = finalChecks.filter(function(ch){ return ch.pass; }).length;
-    S.copy[slug].audit = {checks:finalChecks, passed:passed, total:finalChecks.length, auditedAt:Date.now()};
+    var humanFlags = (parsed.humanFlags || []).slice(0,5);
+    S.copy[slug].audit = {checks:finalChecks, passed:passed, total:finalChecks.length, humanFlags:humanFlags, auditedAt:Date.now()};
     scheduleSave();
     renderCopyQueue();
   } catch(e) {
@@ -6783,35 +6808,64 @@ function renderCopyQueue() {
           if (_audit) {
             var _aPct = Math.round((_audit.passed/_audit.total)*100);
             var _aClr = _aPct>=80?'var(--green)':_aPct>=55?'var(--warn)':'#e5534b';
-            html += '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">';
-            html += '<div style="width:70px;height:5px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+_aPct+'%;height:100%;background:'+_aClr+'"></div></div>';
-            html += '<span style="font-size:10px;font-weight:700;color:'+_aClr+'">'+_aPct+'%</span>';
-            html += '<span style="font-size:9.5px;color:var(--n2)">AI audit</span>';
+            // Score bar header
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+            html += '<div style="width:80px;height:6px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+_aPct+'%;height:100%;background:'+_aClr+';border-radius:3px"></div></div>';
+            html += '<span style="font-size:11px;font-weight:700;color:'+_aClr+'">'+_aPct+'%</span>';
+            html += '<span style="font-size:10px;color:var(--n2)">AI copy audit — '+_audit.passed+'/'+_audit.total+' checks passed</span>';
+            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:1px 8px;font-size:9px;cursor:pointer;font-family:var(--font);color:var(--n2)">Re-audit</button>';
+            html += '</div>';
+            // Checks as rows
+            html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 12px">';
             (_audit.checks||[]).forEach(function(ch) {
-              var clr = ch.pass?'var(--green)':'#e5534b';
-              var bg = ch.pass?'rgba(21,142,29,0.07)':'rgba(229,83,75,0.07)';
-              html += '<span title="'+esc(ch.note||'')+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;background:'+bg+';border-radius:3px;cursor:default">'+(ch.pass?'\u2713':'\u2717')+' '+esc(ch.label)+'</span>';
+              var pass = ch.pass;
+              var icon = pass ? '\u2713' : '\u2717';
+              var clr = pass ? 'var(--green)' : '#e5534b';
+              var bg = pass ? 'rgba(21,142,29,0.05)' : 'rgba(229,83,75,0.05)';
+              html += '<div title="'+esc(ch.note||'')+'" style="display:flex;align-items:flex-start;gap:5px;padding:3px 6px;border-radius:4px;background:'+bg+';cursor:default">';
+              html += '<span style="font-size:11px;color:'+clr+';font-weight:700;flex-shrink:0;margin-top:1px">'+icon+'</span>';
+              html += '<span style="font-size:10px;color:var(--dark);line-height:1.4">'+esc(ch.label)+'</span>';
+              if (ch.note) html += '<span style="font-size:9.5px;color:var(--n2);margin-left:auto;white-space:nowrap">'+esc(ch.note)+'</span>';
+              html += '</div>';
             });
-            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:9px;cursor:pointer;font-family:var(--font);color:var(--n2)">Re-audit</button>';
             html += '</div>';
             if (_aPct < 100) {
-              html += '<div style="margin-top:6px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 12px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">\u2726 Run Pass 2 \u2014 Patch failed checks</button></div>';
+              html += '<div style="margin-top:8px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 14px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">\u2726 Run Pass 2 \u2014 Fix '+(_audit.total-_audit.passed)+' failed checks</button></div>';
             }
           } else {
-            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:4px 12px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font);color:var(--n3)"><i class="ti ti-robot" style="font-size:10px"></i> Run AI Audit</button>';
+            html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:5px 14px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font);color:var(--n3)"><i class="ti ti-robot" style="font-size:11px"></i> Run AI Audit (10 checks)</button>';
           }
           html += '</div>';
 
           // HUMAN QC
+          var _hFlags = (_audit && _audit.humanFlags) ? _audit.humanFlags : [];
           html += '<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
-          html += '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Human QC</div>';
+          html += '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Human QC</div>';
+          // AI flags for human
+          if (_hFlags.length) {
+            html += '<div style="margin-bottom:8px;display:flex;flex-direction:column;gap:3px">';
+            _hFlags.forEach(function(flag) {
+              var sev = flag.severity === 'high' ? '#e5534b' : 'var(--warn)';
+              var sevBg = flag.severity === 'high' ? 'rgba(229,83,75,0.06)' : 'rgba(255,165,0,0.06)';
+              var sevBorder = flag.severity === 'high' ? 'rgba(229,83,75,0.2)' : 'rgba(255,165,0,0.25)';
+              html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 8px;background:'+sevBg+';border:1px solid '+sevBorder+';border-radius:4px">';
+              html += '<i class="ti ti-alert-triangle" style="font-size:11px;color:'+sev+';flex-shrink:0;margin-top:1px"></i>';
+              html += '<div>';
+              html += '<div style="font-size:10.5px;font-weight:600;color:var(--dark)">'+esc(flag.item)+'</div>';
+              html += '<div style="font-size:9.5px;color:var(--n2);margin-top:1px">'+esc(flag.reason)+'</div>';
+              html += '</div>';
+              html += '</div>';
+            });
+            html += '</div>';
+          }
+          // Checklist
           html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
           QC_ITEMS.forEach(function(item) {
             var chk = !!_humanQC[item.key];
             html += '<div onclick="copyToggleQC(\''+p.slug+'\',\''+item.key+'\')" style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 8px;border-radius:4px;border:1px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'rgba(21,142,29,0.06)':'var(--white)')+'"><div id="copy-qc-'+p.slug+'-'+item.key+'" style="width:13px;height:13px;border-radius:3px;border:1px solid '+(chk?'var(--green)':'var(--border)')+';background:'+(chk?'var(--green)':'var(--white)')+';display:flex;align-items:center;justify-content:center;font-size:9px;color:white;flex-shrink:0">'+(chk?'&#10003;':'')+'</div><span style="font-size:10px;color:'+(chk?'var(--dark)':'var(--n2)')+'">'+esc(item.label)+'</span></div>';
           });
-          html += '</div></div>';
-
+          html += '</div>';
+          html += '</div>';
           // META TAGS
           var _mt2 = esc(p.meta_title||''), _md2 = esc(p.meta_description||'');
           var _mtL=(p.meta_title||'').length, _mdL=(p.meta_description||'').length;
@@ -6819,8 +6873,8 @@ function renderCopyQueue() {
           var _mdC2=_mdL>160?'#E53935':_mdL>140?'var(--warn)':_mdL===0?'var(--n2)':'var(--green)';
           html += '<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
           html += '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"><i class="ti ti-tag" style="font-size:9px"></i> Meta Tags</div>';
-          html += '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">TITLE</label><span style="font-size:9.5px;color:'+_mtC2+'">'+_mtL+'/60</span></div><input class="inp" style="font-size:11.5px;padding:5px 8px" placeholder="50-60 chars" value="'+_mt2+'" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_title=this.value;scheduleSave()" /></div>';
-          html += '<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">DESCRIPTION</label><span style="font-size:9.5px;color:'+_mdC2+'">'+_mdL+'/160</span></div><textarea class="inp" style="font-size:11.5px;padding:5px 8px;height:52px;resize:none" placeholder="150-160 chars" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_description=this.value;scheduleSave()">'+_md2+'</textarea></div>';
+          html += '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">TITLE</label><span style="font-size:9.5px;color:'+_mtC2+'">'+_mtL+'/60</span></div><input class="inp" data-meta-slug=\'+p.slug+\' style="font-size:11.5px;padding:5px 8px" placeholder="50-60 chars" value="'+_mt2+'" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_title=this.value;scheduleSave()" /></div>';
+          html += '<div><div style="display:flex;justify-content:space-between;margin-bottom:3px"><label style="font-size:10px;color:var(--n2)">DESCRIPTION</label><span style="font-size:9.5px;color:'+_mdC2+'">'+_mdL+'/160</span></div><textarea class="inp" data-meta-slug=\'+p.slug+\' style="font-size:11.5px;padding:5px 8px;height:52px;resize:none" placeholder="150-160 chars" oninput="S.pages.find(function(pp){return pp.slug===\''+p.slug+'\';}).meta_description=this.value;scheduleSave()">'+_md2+'</textarea></div>';
           html += '</div>';
 
           // BOTTOM BAR
