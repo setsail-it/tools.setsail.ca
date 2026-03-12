@@ -2599,6 +2599,12 @@ function _renderKwOppsTab() {
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
   var sortCol = S.kwSort.col, sortDir = S.kwSort.dir;
+  // Always recalculate score at render time — ensures stale KV data gets updated formula
+  kws = kws.map(function(k) {
+    var kd = k.kd > 0 ? k.kd : 30;
+    var score = k.vol >= 50 ? Math.round((Math.log(k.vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+    return Object.assign({}, k, { score: score });
+  });
   var sortedKws = kws.slice().sort(function(a, b) {
     var av, bv;
     if (sortCol === 'vol') { av = a.vol; bv = b.vol; }
