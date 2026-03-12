@@ -736,7 +736,14 @@ async function resumeProject(id) {
   if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (S.stage === 'research') { initResearch(); }
   if (S.stage === 'keywords') { initKeywords(); }
-  if (S.stage === 'sitemap' && S.pages.length) { document.getElementById('sitemap-run-btn').innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; renderSitemapResults(true); }
+  if (S.stage === 'sitemap') {
+    var sitemapBtn = document.getElementById('sitemap-run-btn');
+    if (S.pages && S.pages.length) {
+      if (sitemapBtn) sitemapBtn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+      document.getElementById('sitemap-results').style.display = '';
+      renderSitemapResults(true);
+    }
+  }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
   if (S.stage === 'images' && S.pages.length) { initImageStage(); }
   if (S.stage === 'layout' && S.pages.length) { initLayout(); }
@@ -2387,9 +2394,19 @@ function buildKwSeeds() {
 
 function goToSitemap() {
   goTo('sitemap');
-  // Auto-run sitemap generation if clusters exist but no pages built yet
-  if (S.kwResearch && S.kwResearch.clusters && S.kwResearch.clusters.length && (!S.pages || !S.pages.length)) {
-    setTimeout(function() { runSitemap(false); }, 300);
+  // If pages exist — show them immediately
+  if (S.pages && S.pages.length) {
+    var sitemapBtn = document.getElementById('sitemap-run-btn');
+    if (sitemapBtn) sitemapBtn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+    setTimeout(function() {
+      document.getElementById('sitemap-results').style.display = '';
+      renderSitemapResults(true);
+    }, 100);
+    return;
+  }
+  // No pages yet — auto-run if clusters exist
+  if (S.kwResearch && S.kwResearch.clusters && S.kwResearch.clusters.length) {
+    setTimeout(function() { runSitemap(false); }, 400);
   }
 }
 
@@ -6885,4 +6902,4 @@ document.addEventListener('mouseout', function(e) {
 </div>
 
 </body>
-</html>    return '<button onclick="switchKwTab(' + i + ')" style="padding:8px 14px;border:none;background:' + bg + ';color:' + clr + ';cursor:pointer;font-size:12px;font-weight:' + fw + ';border-bottom:' + bb + ';white-space:nowrap;display:inline-flex;align-items:center;gap:5px">'
+</html>
