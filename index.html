@@ -2364,7 +2364,7 @@ function renderKwTabNav() {
   if (!el) return;
   var kwr = S.kwResearch || {};
   var tabs = [
-    { id: 'questions', label: 'Questions', count: (S.research && S.research.paa_questions ? S.research.paa_questions.length : 0), icon: 'ti-help-circle' },
+    { id: 'questions', label: 'Questions', count: (_getQuestionsArray ? _getQuestionsArray().length : 0), icon: 'ti-help-circle' },
     { id: 'seeds', label: 'Seeds', count: (kwr.seeds || []).length, icon: 'ti-plant' },
     { id: 'opps', label: 'Opportunities', count: (kwr.keywords || []).length, icon: 'ti-chart-bar' },
     { id: 'clusters', label: 'Clusters', count: (kwr.clusters || []).length, icon: 'ti-stack-2' }
@@ -2785,8 +2785,18 @@ function _renderKwQuestionsTab() {
 
 var _paaQuestionCache = null;
 function _getQuestionsArray() {
-  if (S.research && S.research.paa_questions && S.research.paa_questions.length) return S.research.paa_questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
-  if (S.research && S.research.brand && S.research.brand.faqs) return S.research.brand.faqs.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
+  // Primary: contentIntel PAA (from Research stage)
+  if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length) {
+    return S.contentIntel.paa.questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
+  }
+  // Fallback: research.paa_questions
+  if (S.research && S.research.paa_questions && S.research.paa_questions.length) {
+    return S.research.paa_questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
+  }
+  // Fallback: research.brand.faqs
+  if (S.research && S.research.brand && S.research.brand.faqs) {
+    return S.research.brand.faqs.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
+  }
   return [];
 }
 
