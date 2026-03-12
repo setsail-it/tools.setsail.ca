@@ -386,7 +386,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 5 of 9</div>
+          <div class="eyebrow">Stage 5 of 10</div>
           <h2 class="ph sm">Sitemap + Keyword Map</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
@@ -409,11 +409,30 @@ textarea.inp{resize:vertical}
     </div>
   </div>
 
+
+  <!-- BRIEFS -->
+  <div class="screen" id="screen-briefs">
+    <div style="max-width:960px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="eyebrow">Stage 6 of 10</div>
+          <h2 class="ph sm">Page Briefs</h2>
+          <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 2</span> — Approve briefs before copy is written.</p>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-ghost" onclick="goTo('sitemap')"><i class="ti ti-arrow-left"></i> Back to Sitemap</button>
+          <button class="btn btn-primary" id="briefs-run-btn" onclick="generateAllBriefs()"><i class="ti ti-sparkles"></i> Generate All Briefs</button>
+        </div>
+      </div>
+      <div id="briefs-results"></div>
+    </div>
+  </div>
+
   <!-- COPY -->
   <div class="screen" id="screen-copy">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 6 of 9</div>
+        <div class="eyebrow">Stage 7 of 10</div>
         <h2 class="ph sm">Copy Generation</h2>
         <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
@@ -434,7 +453,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:900px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 7 of 9</div>
+          <div class="eyebrow">Stage 8 of 10</div>
           <h2 class="ph sm">Image Generation</h2>
           <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
         </div>
@@ -475,7 +494,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 6 of 8</div>
+          <div class="eyebrow">Stage 9 of 10</div>
           <h2 class="ph sm">Page Wireframes</h2>
           <p class="psub" style="margin-bottom:0">AI generates full annotated wireframes — ready to hand to a designer.</p>
         </div>
@@ -502,7 +521,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-schema">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 7 of 8</div>
+        <div class="eyebrow">Stage 9 of 10</div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
         <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
       </div>
@@ -523,7 +542,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:920px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 8 of 8</div>
+          <div class="eyebrow">Stage 10 of 10</div>
           <h2 class="ph sm">Export Package</h2>
           <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
         </div>
@@ -559,9 +578,9 @@ let _sitemapCatTab = 'all'; // 'all' | 'service' | 'location' | 'blog' | 'core'
 
 function confirmRunSitemap() {
   if (S.pages && S.pages.length > 0) {
-    if (!confirm('This will regenerate the sitemap and overwrite all current pages.\n\nCopy, images, and schema data will be preserved but keyword assignments will reset.\n\nContinue?')) return;
+    if (!confirm('Rebuild the sitemap? This will recalculate all pages from clusters.\n\nExisting copy, images, and schema data will be preserved.\n\nContinue?')) return;
   }
-  runSitemap(false);
+  buildSitemapFromClusters();
 }
 
 // ── PERSISTENCE ────────────────────────────────────────────────────
@@ -744,6 +763,7 @@ async function resumeProject(id) {
       renderSitemapResults(true);
     }
   }
+  if (S.stage === 'briefs' && S.pages.length) { initBriefs(); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
   if (S.stage === 'images' && S.pages.length) { initImageStage(); }
   if (S.stage === 'layout' && S.pages.length) { initLayout(); }
@@ -787,6 +807,7 @@ const STAGES = [
   {id:'research',label:'Research',icon:'ti-search'},
   {id:'keywords',label:'Keywords',icon:'ti-tags'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
+  {id:'briefs',label:'Briefs',icon:'ti-file-description'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
   {id:'images',label:'Images',icon:'ti-photo'},
   {id:'layout',label:'Layout',icon:'ti-layout'},
@@ -2400,7 +2421,6 @@ function buildKwSeeds() {
 
 function goToSitemap() {
   goTo('sitemap');
-  // If pages exist — show them immediately
   if (S.pages && S.pages.length) {
     var sitemapBtn = document.getElementById('sitemap-run-btn');
     if (sitemapBtn) sitemapBtn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
@@ -2410,9 +2430,9 @@ function goToSitemap() {
     }, 100);
     return;
   }
-  // No pages yet — auto-run if clusters exist
+  // Auto-build from clusters if available
   if (S.kwResearch && S.kwResearch.clusters && S.kwResearch.clusters.length) {
-    setTimeout(function() { runSitemap(false); }, 400);
+    setTimeout(function() { buildSitemapFromClusters(); }, 300);
   }
 }
 
@@ -3403,6 +3423,241 @@ async function generateBlogSeedsFromQuestions() {
   }
 }
 
+
+
+// ── STAGE 6: PAGE BRIEFS ────────────────────────────────────────────
+function initBriefs() { renderBriefs(); }
+
+function renderBriefs() {
+  var el = document.getElementById('briefs-results');
+  if (!el) return;
+  if (!S.pages || !S.pages.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--n2)">No sitemap pages yet. Complete Stage 5 first.</div>';
+    return;
+  }
+  var seoPages = S.pages.filter(function(p){ return !['utility'].includes(p.page_type); });
+  var html = '';
+  html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
+  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
+  var briefed = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
+  html += '<span class="chip '+(briefed===seoPages.length?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
+  html += '<button onclick="goTo(\'copy\')" style="margin-left:auto;background:var(--lime);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Approve &amp; Go to Copy →</button>';
+  html += '</div>';
+
+  // Group by action
+  var buildNew = seoPages.filter(function(p){ return (p.action||'build_new') === 'build_new'; });
+  var improve = seoPages.filter(function(p){ return (p.action||'') === 'improve_existing'; });
+
+  function pageCard(p, idx) {
+    var briefed = p.brief && p.brief.generated;
+    var trafficStr = p.existing_traffic > 0 ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo' : '';
+    var paqCount = (p.assignedQuestions||[]).length;
+    return '<div class="tbl-row card" style="margin-bottom:8px;padding:12px 16px;border-radius:6px;border:1px solid var(--border)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      + '<div>'
+      + '<span style="font-size:13px;font-weight:600;color:var(--dark)">'+esc(p.page_name)+'</span>'
+      + '<span style="color:var(--n2);font-size:11px;margin-left:8px">/'+esc(p.slug||'')+'</span>'
+      + (p.action==='improve_existing'?'<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;margin-left:8px;font-weight:500">IMPROVE</span>':'<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);margin-left:8px;font-weight:500">BUILD NEW</span>')
+      + '</div>'
+      + '<button onclick="generatePageBrief('+idx+')" id="brief-btn-'+idx+'" style="background:var(--lime);border:none;padding:4px 12px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'+(briefed?'Regenerate':'Generate Brief')+'</button>'
+      + '</div>'
+      + '<div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">'
+      + '<span style="font-size:11px;color:var(--n2)"><b style="color:var(--dark)">KW:</b> '+(p.primary_keyword||'—')+' <span style="color:var(--n1)">'+(p.primary_vol?p.primary_vol.toLocaleString()+'/mo':'')+' KD:'+(p.primary_kd||0)+'</span></span>'
+      + (trafficStr?'<span style="font-size:11px;color:var(--green)"><b>Traffic:</b> '+trafficStr+'</span>':'')
+      + (paqCount?'<span style="font-size:11px;color:var(--n2)"><b>PAQs:</b> '+paqCount+'</span>':'')
+      + '<span style="font-size:11px;color:var(--n2)"><b>Priority:</b> '+(p.priority||'P3')+'</span>'
+      + '</div>'
+      + (briefed ? '<div style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.03);border-radius:4px;font-size:11px;color:var(--n3);white-space:pre-wrap">'+esc(p.brief.summary||'')+'</div>' : '')
+      + '<div id="brief-stream-'+idx+'" style="display:none;margin-top:8px;padding:8px;background:#0d1117;border-radius:4px;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:200px;overflow-y:auto"></div>'
+      + '</div>';
+  }
+
+  if (buildNew.length) {
+    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:4px">Build New ('+buildNew.length+')</div>';
+    buildNew.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
+  }
+  if (improve.length) {
+    html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:12px">Improve Existing ('+improve.length+')</div>';
+    improve.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
+  }
+  el.innerHTML = html;
+}
+
+async function generatePageBrief(pageIdx) {
+  var p = S.pages[pageIdx];
+  if (!p) return;
+  var btn = document.getElementById('brief-btn-'+pageIdx);
+  var streamEl = document.getElementById('brief-stream-'+pageIdx);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>'; }
+  if (streamEl) { streamEl.style.display = 'block'; streamEl.textContent = ''; }
+
+  var paqList = (p.assignedQuestions||[]).map(function(q,i){ return (i+1)+'. '+q; }).join('\n');
+  var prompt = 'Page: '+p.page_name+'\nURL: /'+p.slug+'\nType: '+p.page_type+'\nAction: '+(p.action||'build_new')+'\nPrimary keyword: '+(p.primary_keyword||'none')+' ('+p.primary_vol+'/mo, KD:'+p.primary_kd+')\nSupporting keywords: '+((p.supporting_keywords||[]).join(', ')||'none')+'\nExisting traffic: '+(p.existing_traffic||0)+'/mo\nExisting ranking kws: '+((p.existing_ranking_kws||[]).slice(0,5).map(function(k){return k.kw||k;}).join(', ')||'none')+'\nPAA questions assigned:\n'+(paqList||'none')+'\n\nWrite a concise page brief covering:\n1. Primary keyword target + semantic variants to include\n2. Recommended H1\n3. Search intent and CTA direction\n4. Word count target (based on intent and page type)\n5. Key sections to cover\n6. FAQ questions to include (from PAA list above)\n7. Internal link opportunities to/from this page\n\nBe specific and actionable. No fluff.';
+
+  try {
+    var briefText = await callClaude('You are a senior SEO content strategist. Write precise, actionable page briefs for a web development agency.', prompt, function(t){ if(streamEl) { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 1500);
+    if (!p.brief) p.brief = {};
+    p.brief.generated = true;
+    p.brief.summary = briefText;
+    p.brief.generatedAt = Date.now();
+    scheduleSave();
+    renderBriefs();
+  } catch(e) {
+    if (streamEl) streamEl.textContent = 'Error: '+e.message;
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Retry'; }
+  }
+}
+
+async function generateAllBriefs() {
+  var btn = document.getElementById('briefs-run-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...'; }
+  var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
+  for (var i = 0; i < seoPages.length; i++) {
+    var idx = S.pages.indexOf(seoPages[i]);
+    await generatePageBrief(idx);
+    await new Promise(function(r){ setTimeout(r, 400); });
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Regenerate All'; }
+}
+
+// ── PROGRAMMATIC SITEMAP BUILD FROM CLUSTERS ───────────────────────
+function _normSlug(url) {
+  return (url||'').trim().replace(/^https?:\/\/[^/]+/,'').replace(/^\/+/,'').replace(/\/+$/,'').toLowerCase();
+}
+function _slugToName(slug) {
+  if (!slug) return 'Homepage';
+  return slug.split(/[/\-_]/).map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+}
+function _guessPageType(slug) {
+  if (!slug) return 'home';
+  var s = slug.toLowerCase();
+  if (/about/.test(s)) return 'about';
+  if (/contact|quote|consult/.test(s)) return 'contact';
+  if (/blog|news|article|post|guide|resource/.test(s)) return 'blog';
+  if (/location|city|area|region|near/.test(s)) return 'location';
+  if (/case-stud|portfolio|work|project/.test(s)) return 'blog';
+  if (/team|people|staff/.test(s)) return 'team';
+  if (/faq|faqs/.test(s)) return 'faq';
+  if (/privacy|terms|sitemap|thank/.test(s)) return 'utility';
+  return 'service';
+}
+
+function buildSitemapFromClusters() {
+  var btn = document.getElementById('sitemap-run-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Building...'; }
+
+  var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
+  var topPages = (S.snapshot && S.snapshot.topPages) || [];
+
+  // Build existing slug index
+  var importRaw = (document.getElementById('sitemap-import-urls')&&document.getElementById('sitemap-import-urls').value) || S.existingUrlsText || '';
+  var importSlugs = importRaw.split('\n').map(_normSlug).filter(Boolean);
+  var snapSlugs = topPages.map(function(p){ return _normSlug(p.slug); }).filter(Boolean);
+  var allExisting = new Set(importSlugs.concat(snapSlugs));
+
+  // Helpers to pull snapshot data for a slug
+  function snapPage(slug) {
+    return topPages.find(function(p){ return _normSlug(p.slug) === slug; }) || null;
+  }
+  function existingTraffic(slug) { var p = snapPage(slug); return p ? (p.traffic||0) : 0; }
+  function existingRankKws(slug) { var p = snapPage(slug); return p ? (p.rankingKws||[]) : []; }
+
+  var pages = [];
+  var covered = new Set();
+
+  // 1. Structurals — always present
+  var structurals = [
+    { slug: '', page_name: 'Homepage', page_type: 'home', is_structural: true, search_intent: 'navigational' },
+    { slug: 'about', page_name: 'About', page_type: 'about', is_structural: true, search_intent: 'navigational' },
+    { slug: 'contact', page_name: 'Contact', page_type: 'contact', is_structural: true, search_intent: 'transactional' },
+  ];
+  structurals.forEach(function(s) {
+    var sp = snapPage(s.slug);
+    // Assign best ranking kw if available
+    var rkws = existingRankKws(s.slug);
+    pages.push(Object.assign({}, s, {
+      priority: 'P1',
+      action: 'improve_existing',
+      primary_keyword: sp && rkws.length ? (rkws[0].kw || '') : '',
+      primary_vol: sp && rkws.length ? (rkws[0].volume || 0) : 0,
+      primary_kd: 0,
+      score: 0,
+      supporting_keywords: rkws.slice(1,6).map(function(k){ return k.kw||k; }),
+      existing_traffic: existingTraffic(s.slug),
+      existing_ranking_kws: rkws,
+    }));
+    covered.add(s.slug);
+  });
+
+  // 2. Clusters → pages
+  clusters.forEach(function(c) {
+    var slug = _normSlug(c.suggestedSlug||'');
+    if (covered.has(slug)) return;
+    var isExisting = allExisting.has(slug) || c.recommendation === 'improve_existing';
+    var vol = c.primaryVol || 0;
+    var kd = c.primaryKd || 0;
+    var score = vol >= 50 && kd > 0 ? Math.round((Math.log(vol+1)*100/Math.max(kd,5))*10)/10 : 0;
+    var priority = vol >= 500 ? 'P1' : vol >= 100 ? 'P2' : 'P3';
+    pages.push({
+      page_name: c.name || _slugToName(slug),
+      slug: slug,
+      page_type: c.pageType || 'service',
+      is_structural: false,
+      priority: priority,
+      action: isExisting ? 'improve_existing' : 'build_new',
+      primary_keyword: c.primaryKw || '',
+      primary_vol: vol,
+      primary_kd: kd,
+      score: score,
+      supporting_keywords: (c.supportingKws||[]).slice(0,10).map(function(k){ return typeof k==='object'?k.kw:k; }),
+      search_intent: c.searchIntent || 'commercial',
+      existing_traffic: existingTraffic(slug),
+      existing_ranking_kws: existingRankKws(slug),
+    });
+    covered.add(slug);
+  });
+
+  // 3. Existing pages not matched by any cluster
+  allExisting.forEach(function(slug) {
+    if (covered.has(slug)) return;
+    var sp = snapPage(slug);
+    var rkws = existingRankKws(slug);
+    pages.push({
+      page_name: _slugToName(slug),
+      slug: slug,
+      page_type: _guessPageType(slug),
+      is_structural: false,
+      priority: 'P3',
+      action: 'improve_existing',
+      primary_keyword: rkws.length ? (rkws[0].kw||'') : '',
+      primary_vol: 0, primary_kd: 0, score: 0,
+      supporting_keywords: rkws.slice(1,6).map(function(k){ return k.kw||k; }),
+      search_intent: 'commercial',
+      existing_traffic: sp ? (sp.traffic||0) : 0,
+      existing_ranking_kws: rkws,
+    });
+  });
+
+  // Sort: structurals first, then P1→P3, then by score desc
+  var pOrd = {P1:0,P2:1,P3:2};
+  pages.sort(function(a,b){
+    if (a.is_structural && !b.is_structural) return -1;
+    if (!a.is_structural && b.is_structural) return 1;
+    var pd = pOrd[a.priority] - pOrd[b.priority];
+    if (pd !== 0) return pd;
+    return (b.score||0) - (a.score||0);
+  });
+
+  S.pages = pages;
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate'; }
+  enrichSitemapWithKwData();
+  document.getElementById('sitemap-stream-wrap').style.display = 'none';
+  document.getElementById('sitemap-results').style.display = '';
+  renderSitemapResults(false);
+  scheduleSave();
+  enrichSitemapWithLiveData();
+}
+
 function attemptSitemapParseFromText(text) {
   // Shared parse logic — returns true if successful
   function fixTrailing(s) { return s.replace(/,\s*([\]\}])/g, '$1'); }
@@ -4255,10 +4510,10 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]
-  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px';
+  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px 60px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px 60px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
-    + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span>'
+    + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span><span title="Existing monthly organic traffic">Traffic</span>'
     + ''
     + '</div>';
 
@@ -4326,7 +4581,13 @@ function _renderSitemapResultsInner(approved) {
       if (isSubPage) html += '<span style="width:8px;height:8px;border-left:1px solid var(--n1);border-bottom:1px solid var(--n1);display:inline-block;margin-right:6px;margin-bottom:-1px;vertical-align:middle"></span>';
       html += '<span style="color:var(--dark);font-size:12.5px">'+esc(p.page_name)+'</span>';
       if (isStructural) html += '<span style="background:rgba(0,0,0,0.05);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);margin-left:6px;vertical-align:middle">STRUCTURAL</span>';
-      html += '<div style="color:var(--n2);font-size:10.5px">/'+esc(p.slug)+'</div>';
+      var _action = p.action || (p.recommendation) || 'build_new';
+      if (_action === 'improve_existing') {
+        html += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;margin-left:6px;vertical-align:middle;font-weight:500">IMPROVE</span>';
+      } else if (_action === 'build_new') {
+        html += '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);margin-left:6px;vertical-align:middle;font-weight:500">BUILD NEW</span>';
+      }
+      html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       html += '</div>';
       const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
@@ -4343,6 +4604,12 @@ function _renderSitemapResultsInner(approved) {
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
     }
+    // Traffic column
+    var _traffic = p.existing_traffic || 0;
+    var _trafficHtml = _traffic > 0
+      ? '<span style="color:var(--green);font-size:11px;font-weight:500">'+(_traffic>=1000?((_traffic/1000).toFixed(1)+'k'):_traffic)+'</span>'
+      : '<span style="color:var(--n1);font-size:10px">–</span>';
+    html += _trafficHtml;
     html += '</div>'; // end main row
 
     // ── Inline result panels ──
@@ -4545,6 +4812,7 @@ function _renderSitemapResultsInner(approved) {
     html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
     html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
+    html += '<button class="btn btn-primary" onclick="approveSitemap();goTo(\'briefs\')" style="background:var(--lime);color:var(--dark)"><i class="ti ti-file-description"></i> Approve &amp; Build Briefs</button>';
     html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
     html += '</div></div>';
   } else {
