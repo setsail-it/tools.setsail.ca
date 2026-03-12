@@ -172,16 +172,6 @@ export default {
     }
 
 
-    if (url.pathname === '/api/debug-env' && request.method === 'GET') {
-      return new Response(JSON.stringify({
-        has_anthropic: !!env.ANTHROPIC_API_KEY,
-        has_dfs_login: !!env.DATAFORSEO_LOGIN,
-        has_dfs_pass: !!env.DATAFORSEO_PASSWORD,
-        has_ahrefs: !!env.AHREFS_API_KEY,
-        dfs_login_len: env.DATAFORSEO_LOGIN ? env.DATAFORSEO_LOGIN.length : 0,
-        dfs_pass_len: env.DATAFORSEO_PASSWORD ? env.DATAFORSEO_PASSWORD.length : 0,
-      }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
-    }
 
     // ── KEYWORD METRICS (DataForSEO primary, Ahrefs fallback) ────
     if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
@@ -438,57 +428,6 @@ export default {
       }
     }
 
-    // ── PAA DEBUG ─────────────────────────────────────────────────
-    if (url.pathname === '/api/paa-debug' && (request.method === 'GET' || request.method === 'POST')) {
-      try {
-        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
-          return new Response(JSON.stringify({ error: 'No creds' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-        }
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const kw = url.searchParams.get('kw') || 'seo services vancouver';
-        // Strip location modifiers so Google returns PAA (not just local pack)
-        const cleanKw = kw.replace(/\b(vancouver|victoria|burnaby|surrey|toronto|calgary|edmonton|montreal|canada|bc|ontario|near me)\b/gi, '').replace(/\s+/g, ' ').trim() || kw;
-        const body = [{ keyword: cleanKw, location_code: 2124, language_code: 'en', depth: 10, people_also_ask_click_depth: 4 }];
-        const res = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const raw = await res.text();
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch(e) {
-          return new Response(JSON.stringify({ parseError: e.message, raw: raw.slice(0,500) }), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
-        }
-        const task = (parsed?.tasks || [])[0] || {};
-        const results = task?.result || [];
-        // Dump first result raw (truncated) to understand the structure
-        const firstResult = results[0] || null;
-        const firstResultKeys = firstResult ? Object.keys(firstResult) : [];
-        // Try to find questions at various paths
-        const topItems = firstResult?.items || [];
-        const questions = [];
-        const walk = (nodes, depth) => {
-          (nodes||[]).forEach(n => {
-            const q = n.title || n.question || '';
-            if (q) questions.push({ q, type: n.type, depth, subItems: (n.items||[]).length });
-            if (n.items) walk(n.items, depth+1);
-          });
-        };
-        walk(topItems, 0);
-        return new Response(JSON.stringify({
-          http_status: res.status,
-          task_status: task.status_code,
-          task_msg: task.status_message,
-          result_count: results.length,
-          first_result_keys: firstResultKeys,
-          top_item_count: topItems.length,
-          all_questions_found: questions.slice(0, 20),
-          first_result_raw: JSON.stringify(firstResult).slice(0, 2000)
-        }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json', ...cors } });
-      } catch(err) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
-      }
-    }
 
     // ── PEOPLE ALSO ASK (via SERP organic/live/advanced — PAA embedded in results) ──
     if (url.pathname === '/api/paa' && request.method === 'POST') {
