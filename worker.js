@@ -336,7 +336,7 @@ export default {
           }));
 
         const volHits = keywords.length;
-        return new Response(JSON.stringify({ keywords, source: 'dataforseo-volume', debug: { seedCount: seeds.length, kwListCount: kwList.length, volHits } }), {
+        return new Response(JSON.stringify({ keywords, source: 'dataforseo-volume', debug: { seedCount: seeds.length, kwListCount: kwList.length, volHits, seedSample: seeds.slice(0,5) } }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {

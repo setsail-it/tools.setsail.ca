@@ -2025,11 +2025,15 @@ async function fetchKeywordResearch() {
   const geoStr = allGeos.join(' ').toLowerCase();
   const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
 
+  // Always ensure a valid geo -- fall back to 'vancouver' so seeds are never blank
+  const _rawCity = (primaryGeo || '').replace(/,.*$/, '').trim().toLowerCase();
+  const _fallbackGeo = _rawCity || (setup.geo || '').replace(/,.*$/, '').trim().toLowerCase() || 'vancouver';
+
   // keywords_for_keywords is unavailable on this DataForSEO plan
   // Generate a rich programmatic seed list and run it straight through search_volume/live
   const seeds = new Set();
-  const shortGeo = primaryGeo.replace(/,.*$/, '').trim();
-  const geoL = shortGeo.toLowerCase();
+  const geoL = _fallbackGeo;
+  console.log('[KW] geoL:', geoL, 'services:', services.slice(0,3));
 
   // Modifiers that produce distinct keyword types
   const suffixMods = ['agency', 'company', 'services', 'consultant', 'specialist', 'expert', 'firm'];
