@@ -2369,7 +2369,10 @@ function buildKwSeeds() {
       if (s.length > 3) { seeds.add(s + ' ' + sg); seeds.add(s + ' agency ' + sg); }
     });
   });
-  return Array.from(seeds).filter(function(k) { return k.length > 4 && k.split(' ').length >= 2 && k.split(' ').length <= 7; }).slice(0, 500);
+  // Always merge pinned seeds — they survive Reset to Mechanical
+  var pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+  pinned.forEach(function(k) { seeds.add(k); });
+  return Array.from(seeds).filter(function(k) { return k.length > 1 && k.split(' ').length <= 7; }).slice(0, 500);
 }
 
 function goToSitemap() { goTo('sitemap'); }
@@ -2432,6 +2435,29 @@ function _renderKwSeedsTab() {
   }
   html += '<div id="kw-seeds-status" style="font-size:11px;color:var(--n2);margin-bottom:8px;display:flex;align-items:center;gap:6px"></div>';
 
+  // Pinned seeds section
+  var pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+  html += '<div style="border:1px solid var(--lime,#D8FF29);border-radius:8px;overflow:hidden;margin-bottom:12px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;background:rgba(216,255,41,0.08);padding:6px 12px;border-bottom:1px solid var(--lime,#D8FF29)">';
+  html += '<span style="font-size:11px;font-weight:600;color:var(--dark)"><i class="ti ti-pin" style="margin-right:4px"></i>Pinned Keywords <span style="font-weight:400;color:var(--n2)">(always included — survive Reset)</span></span>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  html += '<input id="kw-pin-input" type="text" placeholder="Add pinned keyword..." autocomplete="off" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;width:200px;background:var(--bg);color:var(--dark)" onkeydown="_kwPinKeydown(event,this)">';
+  html += '<button class="btn btn-ghost sm" onclick="_kwPinAddBtn()"><i class="ti ti-plus"></i></button>';
+  html += '</div></div>';
+  if (pinned.length) {
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px">';
+    pinned.forEach(function(kw, i) {
+      html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:rgba(216,255,41,0.15);border:1px solid rgba(216,255,41,0.4);border-radius:20px;font-size:11px;color:var(--dark)">'
+        + esc(kw)
+        + '<button onclick="_kwPinRemove(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:11px;padding:0;line-height:1;margin-left:2px">&times;</button>'
+        + '</span>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="padding:8px 12px;font-size:11px;color:var(--n2)">No pinned keywords yet. Add your must-have terms here — e.g. \"digital marketing agency vancouver\"</div>';
+  }
+  html += '</div>';
+
   // Table layout
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3)">';
@@ -2448,6 +2474,35 @@ function _renderKwSeedsTab() {
   }
   html += '</div></div></div>';
   return html;
+}
+
+function _kwPinKeydown(e, el) { if (e.key === 'Enter') { _kwPinAdd(el.value); el.value = ''; } }
+function _kwPinAddBtn() { var el = document.getElementById('kw-pin-input'); if (el) { _kwPinAdd(el.value); el.value = ''; } }
+function _kwPinAdd(val) {
+  val = (val || '').trim().toLowerCase();
+  if (!val || val.length < 2) return;
+  if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
+  if (!S.kwResearch.pinnedSeeds) S.kwResearch.pinnedSeeds = [];
+  if (S.kwResearch.pinnedSeeds.indexOf(val) < 0) {
+    S.kwResearch.pinnedSeeds.push(val);
+    // Also inject into current seeds list if not already there
+    if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
+    if (S.kwResearch.seeds.indexOf(val) < 0) S.kwResearch.seeds.push(val);
+    scheduleSave();
+  }
+  renderKwTabContent();
+}
+function _kwPinRemove(i) {
+  if (S.kwResearch && S.kwResearch.pinnedSeeds) {
+    var removed = S.kwResearch.pinnedSeeds.splice(i, 1)[0];
+    // Also remove from seeds list
+    if (removed && S.kwResearch.seeds) {
+      var si = S.kwResearch.seeds.indexOf(removed);
+      if (si >= 0) S.kwResearch.seeds.splice(si, 1);
+    }
+    scheduleSave();
+    renderKwTabContent();
+  }
 }
 
 function _addKwSeed(val) {
@@ -2543,6 +2598,9 @@ async function generateAISeeds() {
       .slice(0, 300);
 
     if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
+    // Merge pinned seeds — always included regardless of AI output
+    var pinnedKws = S.kwResearch.pinnedSeeds || [];
+    pinnedKws.forEach(function(k) { if (cleaned.indexOf(k) < 0) cleaned.push(k); });
     S.kwResearch.seeds = cleaned;
     S.kwResearch.aiSeedsGeneratedAt = Date.now();
     // Clear stale volume data since seeds changed
