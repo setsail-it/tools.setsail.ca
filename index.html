@@ -3786,6 +3786,108 @@ function briefRemoveQ(pageIdx, qIdx) {
   renderBriefs();
 }
 
+
+// ── BRIEF QUALITY SCORECARD ───────────────────────────────────────
+async function scoreBrief(pageIdx) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.brief || !p.brief.summary) return;
+
+  var scoreEl = document.getElementById('brief-score-'+pageIdx);
+  if (scoreEl) {
+    scoreEl.innerHTML = '<span style="font-size:9.5px;color:var(--n2);display:flex;align-items:center;gap:6px">'
+      + '<span class="spinner" style="width:10px;height:10px"></span> Evaluating brief…</span>';
+  }
+
+  var pt = (p.page_type||'service').toLowerCase();
+  var isService = /^(service|location|industry)$/.test(pt);
+  var isBlog = /^(blog|faq|resource)$/.test(pt);
+
+  // Build checklist based on page type
+  var checks = isService ? [
+    { id:'reader',   label:'Reader profile'   },
+    { id:'angle',    label:'Unique angle'      },
+    { id:'h1',       label:'H1 + title tag'   },
+    { id:'cta',      label:'CTA defined'       },
+    { id:'objection',label:'Objection named'  },
+    { id:'trust',    label:'Trust signals'     },
+    { id:'h2s',      label:'5+ H2 sections'   },
+    { id:'kws',      label:'Keyword guidance'  },
+    { id:'links',    label:'Internal links'    },
+    { id:'eeat',     label:'E-E-A-T inputs'    },
+    { id:'wordcount',label:'Word count'        },
+  ] : isBlog ? [
+    { id:'reader',   label:'Reader profile'   },
+    { id:'angle',    label:'Unique angle'      },
+    { id:'headlines',label:'Headline options'  },
+    { id:'h2s',      label:'6+ H2 sections'   },
+    { id:'intro',    label:'Intro brief'       },
+    { id:'eeat',     label:'E-E-A-T inputs'    },
+    { id:'backlink', label:'Backlink hook'     },
+    { id:'faq',      label:'FAQ spine'         },
+    { id:'links',    label:'Internal links'    },
+    { id:'wordcount',label:'Word count'        },
+  ] : [
+    { id:'purpose',  label:'Page purpose'     },
+    { id:'voice',    label:'Brand voice'      },
+    { id:'h1',       label:'H1 above-fold'    },
+    { id:'h2s',      label:'Sections listed'  },
+    { id:'trust',    label:'Trust signals'    },
+    { id:'cta',      label:'CTA defined'      },
+    { id:'wordcount',label:'Word count'       },
+  ];
+
+  var checkList = checks.map(function(c){ return '- '+c.id+': '+c.label; }).join('\n');
+
+  var prompt = 'You are evaluating a content brief for completeness and quality.\n\n'
+    + '## BRIEF TO EVALUATE\n'+p.brief.summary+'\n\n'
+    + '## PAGE\n'
+    + 'Type: '+p.page_type+' | Primary keyword: '+(p.primary_keyword||'none')+'\n\n'
+    + '## CHECKS\nFor each check below, return pass:true or pass:false plus a one-line note (max 8 words).\n\n'
+    + checkList+'\n\n'
+    + 'Return raw JSON only — no markdown:\n'
+    + '{"checks":[{"id":"reader","pass":true,"note":"Specific ICP defined with pain point"},...]}\n\n'
+    + 'Be strict. A vague mention does not count as a pass. The brief must contain real, specific content for each check.';
+
+  try {
+    var result = await callClaude(
+      'You are a strict content brief evaluator. Return raw JSON only, no markdown.',
+      prompt,
+      null,
+      800
+    );
+    var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
+    var parsed = JSON.parse(clean);
+    // Merge pass/note back onto our check definitions
+    var checkMap = {};
+    (parsed.checks||[]).forEach(function(c){ checkMap[c.id] = c; });
+    var finalChecks = checks.map(function(c){
+      var r = checkMap[c.id] || {};
+      return { label: c.label, pass: !!r.pass, note: r.note||'' };
+    });
+    var passed = finalChecks.filter(function(c){ return c.pass; }).length;
+    p.brief.score = { checks: finalChecks, passed: passed, total: finalChecks.length, scoredAt: Date.now() };
+    scheduleSave();
+    // Re-render just the score bar
+    var pct = Math.round((passed / finalChecks.length) * 100);
+    var barClr = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--warn)' : '#e5534b';
+    if (scoreEl) {
+      scoreEl.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex:none">'
+        + '<div style="width:80px;height:6px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barClr+';border-radius:3px"></div></div>'
+        + '<span style="font-size:10px;font-weight:700;color:'+barClr+'">'+pct+'%</span>'
+        + '<span style="font-size:9.5px;color:var(--n2)">brief quality</span>'
+        + '</div>'
+        + finalChecks.map(function(c){
+            var icon = c.pass ? '✓' : '✗';
+            var clr = c.pass ? 'var(--green)' : '#e5534b';
+            return '<span title="'+esc(c.note)+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;border:1px solid '+clr+';border-radius:3px;opacity:0.85;cursor:default">'+icon+' '+esc(c.label)+'</span>';
+          }).join('')
+        + '<button onclick="scoreBrief('+pageIdx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>';
+    }
+  } catch(e) {
+    if (scoreEl) scoreEl.innerHTML = '<span style="font-size:9.5px;color:#e5534b">Evaluation failed — '+esc(e.message)+'</span>';
+  }
+}
+
 function initBriefs() {
   renderBriefs();
   // Enter key delegation for kw + question inputs
@@ -3802,12 +3904,28 @@ function initBriefs() {
       if (t.classList.contains('brief-picker-search')) {
         briefFilterPicker(parseInt(t.dataset.pidx), t.dataset.type);
       }
+      if (t.classList.contains('brief-ta')) {
+        t.style.height = 'auto';
+        t.style.height = t.scrollHeight + 'px';
+      }
     });
+    document.addEventListener('blur', function(e) {
+      var t = e.target;
+      if (t.classList.contains('brief-ta')) {
+        briefSaveText(parseInt(t.dataset.pidx), t.value);
+      }
+    }, true);
     document.addEventListener('click', function(e) {
       var t = e.target.closest('.brief-add-selected-btn');
       if (t) { briefAddSelected(parseInt(t.dataset.pidx), t.dataset.type); return; }
       var tog = e.target.closest('.brief-toggle-picker-btn');
-      if (tog) briefTogglePicker(parseInt(tog.dataset.pidx), tog.dataset.type);
+      if (tog) { briefTogglePicker(parseInt(tog.dataset.pidx), tog.dataset.type); return; }
+      // Close any open pickers when clicking outside
+      if (!e.target.closest('[id^="brief-kw-picker-"]') && !e.target.closest('[id^="brief-q-picker-"]')) {
+        document.querySelectorAll('[id^="brief-kw-picker-"],[id^="brief-q-picker-"]').forEach(function(el){
+          el.style.display = 'none';
+        });
+      }
     });
   }
 }
@@ -3916,8 +4034,34 @@ function renderBriefs() {
       + '</div>'
       + '</div>';
 
+    var scoreHtml = '';
+    if (p.brief && p.brief.generated && p.brief.score) {
+      var sc = p.brief.score;
+      var pct = Math.round((sc.passed / sc.total) * 100);
+      var barClr = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--warn)' : '#e5534b';
+      scoreHtml = '<div id="brief-score-'+pidx+'" style="border-bottom:1px solid var(--border);padding:8px 14px;background:rgba(0,0,0,0.02);display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        + '<div style="display:flex;align-items:center;gap:6px;flex:none">'
+        + '<div style="width:80px;height:6px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barClr+';border-radius:3px"></div></div>'
+        + '<span style="font-size:10px;font-weight:700;color:'+barClr+'">'+pct+'%</span>'
+        + '<span style="font-size:9.5px;color:var(--n2)">brief quality</span>'
+        + '</div>'
+        + (sc.checks||[]).map(function(c){
+            var icon = c.pass ? '✓' : '✗';
+            var clr = c.pass ? 'var(--green)' : '#e5534b';
+            return '<span title="'+esc(c.note||'')+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;border:1px solid '+clr+';border-radius:3px;opacity:0.85;cursor:default">'+icon+' '+esc(c.label)+'</span>';
+          }).join('')
+        + '<button onclick="scoreBrief('+pidx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>'
+        + '</div>';
+    } else if (p.brief && p.brief.generated) {
+      scoreHtml = '<div id="brief-score-'+pidx+'" style="border-bottom:1px solid var(--border);padding:6px 14px;background:rgba(0,0,0,0.02);display:flex;align-items:center;gap:8px">'
+        + '<span style="font-size:9.5px;color:var(--n2)">Brief not yet evaluated</span>'
+        + '<button onclick="scoreBrief('+pidx+')" style="background:var(--lime);border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:600;cursor:pointer;font-family:var(--font)">✦ Evaluate Brief</button>'
+        + '</div>';
+    }
+
+    var taHtml = '<textarea class="brief-ta" data-pidx="'+pidx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(p.brief.summary||'')+'</textarea>';
     var rightContent = isBriefed
-      ? '<textarea onblur="briefSaveText('+pidx+',this.value)" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(p.brief.summary||'')+'</textarea>'
+      ? scoreHtml + taHtml
       : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
 
     var rightCol = '<div style="min-width:0;display:flex;flex-direction:column">'
@@ -4166,14 +4310,17 @@ async function generatePageBrief(pageIdx) {
     p.brief.generated = true;
     p.brief.summary = briefText;
     p.brief.generatedAt = Date.now();
+    p.brief.score = null; // reset score — will be evaluated after render
     scheduleSave();
     // Update content div directly without full re-render (preserve scroll position)
     if (streamEl) streamEl.style.display = 'none';
     if (contentEl) {
       contentEl.style.display = 'flex';
-      contentEl.innerHTML = '<textarea onblur="briefSaveText('+pageIdx+',this.value)" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(briefText)+'</textarea>';
+      contentEl.innerHTML = '<textarea class="brief-ta" data-pidx="'+pageIdx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(briefText)+'</textarea>';
     }
     if (btn) { btn.disabled = false; btn.innerHTML = '↺ Regenerate'; }
+    // Auto-evaluate the brief
+    setTimeout(function(){ scoreBrief(pageIdx); }, 300);
   } catch(e) {
     if (streamEl) { streamEl.style.display = 'block'; streamEl.textContent = 'Error: '+e.message; }
     if (btn) { btn.disabled = false; btn.innerHTML = '↺ Retry'; }
