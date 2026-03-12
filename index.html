@@ -6680,8 +6680,10 @@ async function generateMetaTags(slug, page, copyHtml) {
 }
 
 async function runCopyAudit(slug) {
+
   var c = S.copy[slug];
   if (!c || !c.copy || c.copy.length < 200) return;
+  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
   // Ensure stripped text has real content
   var _auditText = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
   var _wordCount = _auditText.split(' ').filter(function(w){ return w.length > 0; }).length;
@@ -6691,7 +6693,6 @@ async function runCopyAudit(slug) {
     if (_el) _el.innerHTML = '<span style="font-size:10px;color:#e5534b">Audit skipped: copy appears empty after HTML stripping.</span>';
     return;
   }
-  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
   var auditEl = document.getElementById('copy-audit-'+slug);
   if (auditEl) auditEl.innerHTML = '<span style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:5px"><span class="spinner" style="width:10px;height:10px"></span>Auditing…</span>';
 
