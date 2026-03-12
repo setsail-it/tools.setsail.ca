@@ -825,6 +825,14 @@ function goTo(stage) {
   renderStageBar(stage);
   window.scrollTo(0,0);
   if (stage === 'setup' && S.setup) prefillSetup();
+  if (stage === 'briefs') initBriefs();
+  if (stage === 'sitemap') {
+    if (S.pages && S.pages.length) {
+      var sb = document.getElementById('sitemap-run-btn');
+      if (sb) sb.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+      setTimeout(function(){ document.getElementById('sitemap-results').style.display=''; renderSitemapResults(true); }, 80);
+    }
+  }
   scheduleSave();
 }
 
@@ -3550,15 +3558,36 @@ function renderBriefs() {
   var el = document.getElementById('briefs-results');
   if (!el) return;
   if (!S.pages || !S.pages.length) {
-    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--n2)">No sitemap pages yet. Complete Stage 5 first.</div>';
+    el.innerHTML = '<div style="padding:60px 40px;text-align:center">'
+      + '<div style="font-size:32px;margin-bottom:12px">📋</div>'
+      + '<div style="font-size:16px;font-weight:600;color:var(--dark);margin-bottom:6px">No sitemap built yet</div>'
+      + '<div style="font-size:13px;color:var(--n2);margin-bottom:20px">Go to Stage 5 and build your sitemap from keyword clusters first.<br>Once approved, come back here to generate page briefs.</div>'
+      + '<button onclick="goToSitemap()" style="background:var(--lime);border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font)">→ Go to Sitemap</button>'
+      + '</div>';
     return;
   }
   var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
   var briefed = seoPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
+  var hasQs = seoPages.filter(function(p){ return (p.assignedQuestions||[]).length > 0; }).length;
+  var hasKws = seoPages.filter(function(p){ return (p.supporting_keywords||[]).length > 0; }).length;
 
   var html = '';
+
+  // Step banner
+  var _step = (!hasQs && !hasKws) ? 1 : !briefed ? 2 : 3;
+  var _bannerTxt = _step === 1
+    ? '<b>Step 1:</b> Click <b>AI Assign Keywords + Questions</b> — Claude distributes all remaining keywords and PAQs across your pages in one pass.'
+    : _step === 2
+    ? '<b>Step 2:</b> Assignments done. Click <b>Generate Brief</b> on each page to write the content brief.'
+    : '<b>Step 3:</b> Briefs written. Review them, then <b>Approve &amp; Go to Copy</b>.';
+  html += '<div style="background:rgba(21,142,29,0.06);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--n3);display:flex;align-items:center;gap:10px">'
+    + '<span style="background:var(--green);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap">Step '+_step+' of 3</span>'
+    + _bannerTxt + '</div>';
+
   html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
+  html += '<span class="chip">'+hasKws+' with keywords</span>';
+  html += '<span class="chip">'+hasQs+' with questions</span>';
   html += '<span class="chip '+(briefed===seoPages.length&&briefed>0?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
   html += '<button onclick="goTo(\'copy\')" style="margin-left:auto;background:var(--lime);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Approve &amp; Go to Copy →</button>';
   html += '</div>';
