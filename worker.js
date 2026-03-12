@@ -1158,12 +1158,17 @@ export default {
 
           if (onPageRes.ok) {
             const onPageData = await onPageRes.json();
-            const pageItems = onPageData?.tasks?.[0]?.result?.[0]?.items || [];
+            // instant_pages returns one task per URL — tasks[0] for URL1, tasks[1] for URL2, etc.
+            const tasks = onPageData?.tasks || [];
 
-            pageItems.forEach((pageItem, idx) => {
-              if (!pageItem || !pageItem.meta) return;
-              const comp = competitors[idx];
+            tasks.forEach((task, taskIdx) => {
+              const comp = competitors[taskIdx];
               if (!comp) return;
+              const pageItem = task?.result?.[0]?.items?.[0];
+              if (!pageItem || !pageItem.meta) {
+                comp.fetch_error = task?.status_message || 'No data returned';
+                return;
+              }
               const meta = pageItem.meta;
               const htags = meta.htags || {};
               const contentMeta = meta.content || {};
@@ -1171,8 +1176,6 @@ export default {
               comp.h1 = (htags.h1 || [])[0] || '';
               comp.h2s = (htags.h2 || []).slice(0, 20);
               comp.word_count = contentMeta.plain_text_word_count || 0;
-              // kw_density: estimated from title+description keyword presence since full text not returned
-              // Mark as fetched if we got structured data back
               comp.fetch_ok = pageItem.status_code === 200;
               if (!comp.fetch_ok) comp.fetch_error = 'HTTP ' + pageItem.status_code;
             });
