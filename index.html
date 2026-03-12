@@ -4137,8 +4137,8 @@ function renderBriefs() {
         // SERP Intel ran but fetched no usable data — show warning with re-run button
         siStripHtml += '<div style="border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:5px 14px;background:rgba(229,83,75,0.03)">';
         siStripHtml += '<span style="font-size:9px;font-weight:700;color:#e5534b;text-transform:uppercase;letter-spacing:.06em">⚠ SERP Intel</span>';
-        siStripHtml += '<span style="font-size:9px;color:var(--n2)">No competitor data fetched — Jina may have been blocked or timed out</span>';
-        siStripHtml += '<button onclick="runSerpIntel(\''+p.slug+'\')" style="margin-left:auto;font-size:9px;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;cursor:pointer">Re-run</button>';
+        siStripHtml += '<span id="serp-strip-status-'+p.slug+'" style="font-size:9px;color:var(--n2)">No competitor data — some sites block crawlers.</span>';
+        siStripHtml += '<button onclick="runSerpIntelFromBrief(\''+p.slug+'\')" style="margin-left:auto;font-size:9px;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;cursor:pointer">Re-run</button>';
         siStripHtml += '</div>';
       }
     }
@@ -6361,6 +6361,13 @@ function initCopy() {
 
 
 // ── SERP INTEL ─────────────────────────────────────────────────────────────
+async function runSerpIntelFromBrief(slug) {
+  // Update the strip status inline before full re-render
+  var stripStatus = document.getElementById('serp-strip-status-' + slug);
+  if (stripStatus) stripStatus.textContent = 'Fetching…';
+  await runSerpIntel(slug);
+}
+
 async function runSerpIntel(slug) {
   const page = orderedPages().find(p => p.slug === slug);
   if (!page || !page.primary_keyword) return;
@@ -6387,8 +6394,10 @@ async function runSerpIntel(slug) {
     if (pi >= 0) { S.pages[pi].serpIntel = data; }
     scheduleSave();
     renderCopyQueue();
-    // Re-render briefs so SERP Intel strip updates immediately
-    if (typeof renderBriefs === 'function') renderBriefs();
+    // Re-render briefs stage if it's currently visible
+    if (typeof renderBriefs === 'function' && document.getElementById('briefs-results')) {
+      renderBriefs();
+    }
   } catch(err) {
     if (status) status.textContent = '⚠ ' + err.message;
     if (btn) { btn.disabled = false; btn.innerHTML = '⟳ SERP Intel'; }
