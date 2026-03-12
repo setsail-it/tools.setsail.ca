@@ -2656,12 +2656,12 @@ async function generateAISeeds() {
     ctx += '\nEXISTING TOP PAGES: ' + topPages.map(function(p) { return p.slug; }).join(', ') + '\n';
   }
 
-  var systemPrompt = 'You are an expert SEO strategist generating seed keywords for a service business website.\\n\\nGOAL: Surface keywords that a BUYER types into Google when they want to HIRE or PURCHASE a service. Not what a marketer writes about.\\n\\nPRIORITISE IN THIS ORDER:\\n1. Service + location: \"seo agency vancouver\", \"ppc company bc\", \"google ads agency vancouver\"\\n2. Bare service category: \"seo agency\", \"ppc agency\", \"web design agency\", \"social media agency\"\\n3. Transactional modifiers: \"best\", \"top\", \"local\", \"affordable\", \"hire\", \"near me\"\\n4. Service type variants: \"ecommerce seo\", \"local seo services\", \"technical seo audit\"\\n5. Comparison/pricing: \"marketing agency pricing\", \"seo agency vs freelancer\"\\n6. Problem-to-service: \"not ranking on google\", \"need more website leads\"\\n\\nNEVER INCLUDE (these are informational blog terms, not buyer searches):\\n- Strategic concepts: \"marketing transparency\", \"sales alignment\", \"go to market strategy\"\\n- Academic jargon: \"market segmentation\", \"value proposition\", \"performance driven marketing\"\\n- Internal terms: \"marketing differentiation\", \"cross device tracking\", \"predictive analytics\"\\n- Vague thought-leadership without service+location modifier: \"marketing strategy\", \"brand strategy\"\\n- Anything a consultant says in a deck but a client never Googles\\n\\nRules:\\n- Output ONLY a JSON array of strings, no markdown, no explanation\\n- Max 7 words per keyword, all lowercase\\n- Max 300 seeds total, no duplicates\\n- Include the primary city/region in location-specific terms\\n\\nGOOD seeds: [\"seo agency vancouver\",\"local seo agency\",\"ppc agency\",\"google ads agency\",\"web design company vancouver\",\"social media agency\",\"digital marketing agency vancouver\",\"best seo company vancouver\",\"ecommerce seo agency\",\"technical seo audit\"]\\nBAD seeds (NEVER output these): [\"marketing transparency\",\"sales alignment\",\"go to market strategy\",\"market segmentation\",\"performance driven marketing\",\"marketing strategy consulting\"]"]';
+  var systemPrompt = 'You are an expert SEO strategist generating seed keywords for a service business website.\\n\\nGOAL: Surface keywords that a BUYER types into Google when they want to HIRE or PURCHASE a service. Not what a marketer writes about.\\n\\nPRIORITISE IN THIS ORDER:\\n1. Service + location: \"seo agency vancouver\", \"ppc company bc\", \"google ads agency vancouver\"\\n2. Bare service category: \"seo agency\", \"ppc agency\", \"web design agency\", \"social media agency\"\\n3. Transactional modifiers: \"best\", \"top\", \"local\", \"affordable\", \"hire\", \"near me\"\\n4. Service type variants: \"ecommerce seo\", \"local seo services\", \"technical seo audit\"\\n5. Comparison/pricing: \"marketing agency pricing\", \"seo agency vs freelancer\"\\n6. Problem-to-service: \"not ranking on google\", \"need more website leads\"\\n\\nNEVER INCLUDE (these are informational blog terms, not buyer searches):\\n- Strategic concepts: \"marketing transparency\", \"sales alignment\", \"go to market strategy\"\\n- Academic jargon: \"market segmentation\", \"value proposition\", \"performance driven marketing\"\\n- Internal terms: \"marketing differentiation\", \"cross device tracking\", \"predictive analytics\"\\n- Vague thought-leadership without service+location modifier: \"marketing strategy\", \"brand strategy\"\\n- Anything a consultant says in a deck but a client never Googles\\n\\nRules:\\n- Output ONLY a JSON array of strings, no markdown, no explanation\\n- Max 7 words per keyword, all lowercase\\n- Max 300 seeds total, no duplicates\\n- Include the primary city/region in location-specific terms\\n\\nGOOD seeds: [\"seo agency vancouver\",\"local seo agency\",\"ppc agency\",\"google ads agency\",\"web design company vancouver\",\"social media agency\",\"digital marketing agency vancouver\",\"best seo company vancouver\",\"ecommerce seo agency\",\"technical seo audit\"]\\nBAD seeds (NEVER output these): [\"marketing transparency\",\"sales alignment\",\"go to market strategy\",\"market segmentation\",\"performance driven marketing\",\"marketing strategy consulting\"]';
 
   var userPrompt = 'Generate seed keywords for this client:\n\n' + ctx;
 
   try {
-    var result = await callClaude(systemPrompt, userPrompt, null, 6000);
+    var result = await callClaude(systemPrompt, userPrompt, null, 8000);
     // Robust JSON repair for truncated or bracket-missing arrays
     var repaired = result.trim();
     // Strip any markdown fences
@@ -2674,6 +2674,18 @@ async function generateAISeeds() {
     if (!repaired.endsWith(']')) {
       // Remove trailing incomplete token (partial quoted string or trailing comma)
       repaired = repaired.replace(/,?\s*"[^"]*$/, '').replace(/,\s*$/, '') + ']';
+    }
+    // Try bracket-depth extraction as final fallback — handles preamble/postamble from Claude
+    if (!safeParseJSON(repaired)) {
+      var _start = result.indexOf('[');
+      if (_start >= 0) {
+        var _depth = 0, _end = -1;
+        for (var _i = _start; _i < result.length; _i++) {
+          if (result[_i] === '[') _depth++;
+          else if (result[_i] === ']') { _depth--; if (_depth === 0) { _end = _i; break; } }
+        }
+        if (_end > _start) repaired = result.slice(_start, _end + 1);
+      }
     }
     var parsed = safeParseJSON(repaired) || safeParseJSON(result);
     if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid response: ' + result.slice(0, 100));
