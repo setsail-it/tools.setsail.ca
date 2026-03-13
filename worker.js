@@ -29,65 +29,6 @@ export default {
     // Keeps all data isolated per user. Migration path: swap userId source only.
     const userPrefix = userId ? 'u:' + userId + ':' : '';
 
-    // ── ONE-TIME MIGRATION — re-key legacy projects to user scope ──
-    // DELETE THIS ENDPOINT after running once.
-    if (url.pathname === '/api/migrate' && request.method === 'POST') {
-      const body = await request.json().catch(() => ({}));
-      const targetEmail = (body.email || '').toLowerCase().trim();
-      if (!targetEmail || !targetEmail.includes('@')) {
-        return new Response(JSON.stringify({ error: 'Provide { email } in request body' }), {
-          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
-        });
-      }
-      const prefix = 'u:' + targetEmail + ':';
-      const migrated = [];
-      const skipped = [];
-
-      // Migrate project keys
-      const projList = await env.SETSAIL_OS.list({ prefix: 'project:' });
-      for (const key of projList.keys) {
-        const oldKey = key.name;
-        const newKey = prefix + oldKey;
-        // Check not already migrated
-        const existing = await env.SETSAIL_OS.get(newKey);
-        if (existing) { skipped.push(oldKey); continue; }
-        const val = await env.SETSAIL_OS.getWithMetadata(oldKey);
-        if (!val.value) { skipped.push(oldKey); continue; }
-        await env.SETSAIL_OS.put(newKey, val.value, { metadata: val.metadata || {} });
-        migrated.push({ from: oldKey, to: newKey });
-      }
-
-      // Migrate img keys
-      const imgList = await env.SETSAIL_OS.list({ prefix: 'img:' });
-      for (const key of imgList.keys) {
-        const oldKey = key.name;
-        const newKey = prefix + oldKey;
-        const existing = await env.SETSAIL_OS.get(newKey);
-        if (existing) { skipped.push(oldKey); continue; }
-        const val = await env.SETSAIL_OS.get(oldKey);
-        if (!val) { skipped.push(oldKey); continue; }
-        await env.SETSAIL_OS.put(newKey, val);
-        migrated.push({ from: oldKey, to: newKey });
-      }
-
-      // Migrate copy keys
-      const copyList = await env.SETSAIL_OS.list({ prefix: 'copy:' });
-      for (const key of copyList.keys) {
-        const oldKey = key.name;
-        const newKey = prefix + oldKey;
-        const existing = await env.SETSAIL_OS.get(newKey);
-        if (existing) { skipped.push(oldKey); continue; }
-        const val = await env.SETSAIL_OS.get(oldKey);
-        if (!val) { skipped.push(oldKey); continue; }
-        await env.SETSAIL_OS.put(newKey, val);
-        migrated.push({ from: oldKey, to: newKey });
-      }
-
-      return new Response(JSON.stringify({ ok: true, migrated, skipped }), {
-        headers: { 'Content-Type': 'application/json', ...cors }
-      });
-    }
-
         // ── WHOAMI — returns current user identity ──────────────────
     if (url.pathname === '/api/whoami' && request.method === 'GET') {
       return new Response(JSON.stringify({ email: userId, ok: true }), {
