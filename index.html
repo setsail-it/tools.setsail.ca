@@ -19,7 +19,7 @@ input,textarea,button,select{font-family:var(--font)!important}
 input::placeholder,textarea::placeholder{color:#bbb}
 
 /* NAV / TOPBAR */
-#nav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 20px;height:48px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:200;background:#ffffff;backdrop-filter:blur(10px)}
+#nav{display:grid;grid-template-columns:1fr 320px 1fr;align-items:center;padding:0 20px;height:48px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:200;background:#ffffff;backdrop-filter:blur(10px)}
 .nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
 .logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
@@ -44,10 +44,10 @@ input::placeholder,textarea::placeholder{color:#bbb}
 .sb-projects-btn:hover{background:rgba(0,0,0,0.05);color:var(--dark)}
 
 /* AI PROGRESS BAR */
-#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:240px;max-width:360px;opacity:0;transition:opacity .2s;pointer-events:none}
-#ai-bar.active{opacity:1;pointer-events:auto}
-#ai-bar-label{font-size:11px;color:var(--n3);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
-#ai-bar-track{width:100%;height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
+#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;opacity:1;pointer-events:none}
+#ai-bar.active #ai-bar-track{opacity:1}#ai-bar.active #ai-bar-label{color:var(--dark)}#ai-bar.active{pointer-events:auto}
+#ai-bar-label{font-size:11px;color:var(--n2);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:center;transition:color .2s}
+#ai-bar-track{width:100%;height:3px;background:var(--n1);border-radius:3px;overflow:hidden;opacity:0;transition:opacity .2s}
 #ai-bar-fill{height:100%;border-radius:3px;background:var(--green);width:0%;transition:width .4s ease}
 #ai-bar-fill.indeterminate{animation:aiPulse 1.6s ease-in-out infinite}
 @keyframes aiPulse{0%{width:0%;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0%;margin-left:100%}}
@@ -147,6 +147,18 @@ textarea.inp{resize:vertical}
 .mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
 .tbl-row{transition:background 0.1s ease}
 .brief-pick-item:hover { background: rgba(0,0,0,0.04) !important; }
+
+/* USER DROPDOWN */
+#user-pill{position:relative;cursor:pointer!important}
+#user-dropdown{display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:180px;z-index:300;padding:6px;overflow:hidden}
+#user-dropdown.open{display:block}
+.ud-header{padding:8px 10px 6px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.ud-email{font-size:11px;color:var(--n2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud-name{font-size:13px;font-weight:500;color:var(--dark)}
+.ud-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:12.5px;color:var(--n3);cursor:pointer;transition:background .1s;border:none;background:none;width:100%;font-family:var(--font);text-align:left}
+.ud-item:hover{background:var(--n1);color:var(--dark)}
+.ud-item.ud-danger{color:var(--error)}
+.ud-item.ud-danger:hover{background:rgba(229,57,53,.08)}
 </style>
 </head>
 <body>
@@ -178,9 +190,22 @@ textarea.inp{resize:vertical}
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
-    <div id="user-pill" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:default" title="Signed in via Cloudflare Access">
+    <div id="user-pill" onclick="toggleUserDropdown(event)" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3)" title="Account">
       <i class="ti ti-user-circle" style="font-size:13px;color:var(--green)"></i>
       <span id="user-email-nav">—</span>
+      <i class="ti ti-chevron-down" style="font-size:10px;color:var(--n2)"></i>
+      <div id="user-dropdown">
+        <div class="ud-header">
+          <div class="ud-name" id="ud-name">—</div>
+          <div class="ud-email" id="ud-email">—</div>
+        </div>
+        <button class="ud-item" onclick="goToAdmin();closeUserDropdown()">
+          <i class="ti ti-shield-cog" style="font-size:13px"></i> Admin
+        </button>
+        <button class="ud-item ud-danger" onclick="handleLogout()">
+          <i class="ti ti-logout" style="font-size:13px"></i> Log out
+        </button>
+      </div>
     </div>
   </div>
   <!-- Hidden stage-bar kept for JS compat -->
@@ -1595,7 +1620,35 @@ document.addEventListener('mouseout', function(e) {
 });
 
 // ── USER IDENTITY ────────────────────────────────────────────
-async function initAuth() {
+async 
+// ── USER DROPDOWN ─────────────────────────────────────────────────────────────
+function toggleUserDropdown(e) {
+  e.stopPropagation();
+  var dd = document.getElementById('user-dropdown');
+  if (dd) dd.classList.toggle('open');
+}
+function closeUserDropdown() {
+  var dd = document.getElementById('user-dropdown');
+  if (dd) dd.classList.remove('open');
+}
+document.addEventListener('click', function(e) {
+  var pill = document.getElementById('user-pill');
+  if (pill && !pill.contains(e.target)) closeUserDropdown();
+});
+function handleLogout() {
+  // Cloudflare Access logout
+  window.location.href = 'https://setsail.cloudflareaccess.com/cdn-cgi/access/logout';
+}
+function goToAdmin() {
+  document.getElementById('projects-screen').style.display = 'none';
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  var adminScreen = document.getElementById('screen-admin');
+  if (adminScreen) { adminScreen.classList.add('active'); loadAdminUsers(); }
+  document.getElementById('sidebar').classList.remove('visible');
+  document.body.classList.remove('in-project');
+}
+
+function initAuth() {
   try {
     const r = await fetch('/api/whoami');
     if (r.status === 401) {
@@ -1609,6 +1662,10 @@ async function initAuth() {
       S.currentUser = data.email;
       const el = document.getElementById('user-email-nav');
       if (el) el.textContent = data.email.split('@')[0]; // show name part only
+      var udName = document.getElementById('ud-name');
+      var udEmail = document.getElementById('ud-email');
+      if (udName) udName.textContent = data.name || data.email.split('@')[0];
+      if (udEmail) udEmail.textContent = data.email;
     }
   } catch(e) {
     console.warn('Auth check failed:', e);
@@ -1637,7 +1694,99 @@ function toggleHelpPanel() {
 <script src="prompts.js"></script>
 <script src="schema.js"></script>
 <script src="copy.js"></script>
-<script src="images.js"></script>
+<script src="images.js">
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+async function loadAdminUsers() {
+  var el = document.getElementById('admin-users-list');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;color:var(--n2);font-size:13px">Loading…</div>';
+  try {
+    var res = await fetch('/api/admin/users');
+    if (res.status === 403) { el.innerHTML = '<div style="padding:20px;color:var(--error);font-size:13px">Admin access required.</div>'; return; }
+    var data = await res.json();
+    var users = data.users || [];
+    if (!users.length) {
+      el.innerHTML = '<div style="padding:20px;color:var(--n2);font-size:13px">No users yet. Add the first one.</div>';
+      return;
+    }
+    var ROLE_BADGE = { admin: 'background:#002A0F;color:white', strategist: 'background:rgba(21,142,29,.12);color:var(--green)', viewer: 'background:var(--n1);color:var(--n3)' };
+    var rows = users.map(function(u) {
+      var badge = ROLE_BADGE[u.role] || ROLE_BADGE.viewer;
+      var projects = u.projects ? u.projects.split(',').filter(Boolean).length : 0;
+      return '<div style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border)">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(u.name || u.email.split('@')[0]) + '</div>'
+        + '<div style="font-size:11px;color:var(--n2)">' + esc(u.email) + '</div>'
+        + '</div>'
+        + '<span style="font-size:10px;padding:3px 8px;border-radius:20px;' + badge + '">' + (u.role||'viewer') + '</span>'
+        + '<span style="font-size:11px;color:var(--n2)">' + (u.projects ? projects + ' project' + (projects!==1?'s':'') : 'All projects') + '</span>'
+        + '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openUserModal(' + JSON.stringify(JSON.stringify(u)) + ')"><i class="ti ti-pencil" style="font-size:11px"></i> Edit</button>'
+        + '</div>';
+    });
+    el.innerHTML = rows.join('');
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--error);font-size:13px">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+function openUserModal(userJson) {
+  var u = userJson ? JSON.parse(userJson) : null;
+  document.getElementById('user-modal-title').textContent = u ? 'Edit user' : 'Add user';
+  document.getElementById('um-id').value = u ? (u.id || u.email) : '';
+  document.getElementById('um-name').value = u ? (u.name || '') : '';
+  document.getElementById('um-email').value = u ? (u.email || '') : '';
+  document.getElementById('um-role').value = u ? (u.role || 'viewer') : 'strategist';
+  document.getElementById('um-projects').value = u ? (u.projects || '') : '';
+  document.getElementById('um-delete-btn').style.display = u ? '' : 'none';
+  document.getElementById('um-error').style.display = 'none';
+  if (u) document.getElementById('um-email').setAttribute('readonly','readonly');
+  else document.getElementById('um-email').removeAttribute('readonly');
+  document.getElementById('user-modal-overlay').style.display = '';
+  document.getElementById('user-modal').style.display = '';
+  setTimeout(function(){ document.getElementById('um-name').focus(); }, 50);
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal-overlay').style.display = 'none';
+  document.getElementById('user-modal').style.display = 'none';
+}
+
+async function saveAdminUser() {
+  var errEl = document.getElementById('um-error');
+  errEl.style.display = 'none';
+  var payload = {
+    id: document.getElementById('um-id').value || document.getElementById('um-email').value,
+    name: document.getElementById('um-name').value.trim(),
+    email: document.getElementById('um-email').value.trim().toLowerCase(),
+    role: document.getElementById('um-role').value,
+    projects: document.getElementById('um-projects').value.split(',').map(s=>s.trim()).filter(Boolean).join(','),
+  };
+  if (!payload.email) { errEl.textContent = 'Email is required.'; errEl.style.display = ''; return; }
+  if (!payload.name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
+  try {
+    var res = await fetch('/api/admin/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    closeUserModal();
+    loadAdminUsers();
+  } catch(e) { errEl.textContent = e.message; errEl.style.display = ''; }
+}
+
+async function deleteAdminUser() {
+  var email = document.getElementById('um-email').value;
+  if (!confirm('Delete user ' + email + '?')) return;
+  try {
+    var res = await fetch('/api/admin/users/' + encodeURIComponent(email), { method: 'DELETE' });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    closeUserModal();
+    loadAdminUsers();
+  } catch(e) {
+    var errEl = document.getElementById('um-error');
+    errEl.textContent = e.message; errEl.style.display = '';
+  }
+}
+</script>
 
 <!-- Image Picker Modal -->
 <div id="img-pick-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
@@ -1831,6 +1980,64 @@ function toggleHelpPanel() {
   </div>
 </div>
 <div id="help-overlay" onclick="toggleHelpPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:999"></div>
+<!-- ADMIN SCREEN -->
+<div id="screen-admin" class="screen" style="max-width:760px;margin:0 auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+    <div>
+      <div class="eyebrow">SetSailOS</div>
+      <h2 class="page-title">Admin</h2>
+    </div>
+    <button class="btn btn-ghost" onclick="showProjects()"><i class="ti ti-arrow-left"></i> Back</button>
+  </div>
+
+  <!-- Users table -->
+  <div style="background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px;font-weight:500">Users</span>
+      <button class="btn btn-ghost" style="font-size:12px" onclick="openUserModal(null)"><i class="ti ti-plus"></i> Add user</button>
+    </div>
+    <div id="admin-users-list" style="min-height:80px"></div>
+  </div>
+</div>
+
+<!-- USER EDIT MODAL -->
+<div id="user-modal-overlay" onclick="closeUserModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500"></div>
+<div id="user-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:white;border-radius:14px;box-shadow:0 12px 48px rgba(0,0,0,0.15);z-index:501;padding:24px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <span id="user-modal-title" style="font-size:14px;font-weight:600">Edit user</span>
+    <button onclick="closeUserModal()" style="background:none;border:none;cursor:pointer;padding:4px"><i class="ti ti-x" style="font-size:15px;color:var(--n2)"></i></button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <input type="hidden" id="um-id">
+    <div>
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Name</label>
+      <input id="um-name" type="text" placeholder="Jane Smith" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Email</label>
+      <input id="um-email" type="email" placeholder="jane@company.com" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Role</label>
+      <select id="um-role" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:white">
+        <option value="admin">Admin</option>
+        <option value="strategist">Strategist</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Assigned projects <span style="color:var(--n2);font-weight:400">(comma-separated project IDs or leave blank for all)</span></label>
+      <input id="um-projects" type="text" placeholder="proj_abc, proj_xyz" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+    <button class="btn btn-ghost" onclick="closeUserModal()">Cancel</button>
+    <button id="um-delete-btn" class="btn btn-ghost" style="color:var(--error);display:none" onclick="deleteAdminUser()"><i class="ti ti-trash"></i> Delete</button>
+    <button class="btn btn-primary" onclick="saveAdminUser()"><i class="ti ti-check"></i> Save</button>
+  </div>
+  <div id="um-error" style="font-size:12px;color:var(--error);margin-top:8px;display:none"></div>
+</div>
+
 
 
 </body>

@@ -163,12 +163,63 @@ export default {
 
         // ── WHOAMI — returns current user identity ──────────────────
     if (url.pathname === '/api/whoami' && request.method === 'GET') {
-      return new Response(JSON.stringify({ email: userId, ok: true }), {
+      let profile = { email: userId, name: null, role: 'strategist' };
+      if (userId) {
+        const pRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+        if (pRaw) { const p = JSON.parse(pRaw); profile.name = p.name || null; profile.role = p.role || 'strategist'; }
+        else if (userId === (env.ADMIN_EMAIL || '').toLowerCase()) profile.role = 'admin';
+      }
+      return new Response(JSON.stringify({ ...profile, ok: true }), {
         headers: { 'Content-Type': 'application/json', ...cors }
       });
     }
 
         // ── ANTHROPIC PROXY ──────────────────────────────────────────
+    // ── ADMIN — user management ──────────────────────────────────────────────────
+    // Only admins (role=admin) or the seeded owner email can access these
+    async function isAdmin() {
+      if (!userId) return false;
+      // Owner email always has admin access
+      if (userId === (env.ADMIN_EMAIL || '').toLowerCase()) return true;
+      const userRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+      if (!userRaw) return false;
+      const u = JSON.parse(userRaw);
+      return u.role === 'admin';
+    }
+
+    // GET /api/admin/users
+    if (url.pathname === '/api/admin/users' && request.method === 'GET') {
+      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const list = await env.SETSAIL_OS.list({ prefix: 'admin:user:' });
+      const users = [];
+      for (const key of list.keys) {
+        const raw = await env.SETSAIL_OS.get(key.name);
+        if (raw) users.push(JSON.parse(raw));
+      }
+      return new Response(JSON.stringify({ users }), { headers: { 'Content-Type': 'application/json', ...cors } });
+    }
+
+    // POST /api/admin/users — create or update
+    if (url.pathname === '/api/admin/users' && request.method === 'POST') {
+      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const { email, name, role, projects } = await request.json();
+      if (!email) return new Response(JSON.stringify({ error: 'email required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+      const key = 'admin:user:' + email.toLowerCase().trim();
+      const existing = await env.SETSAIL_OS.get(key);
+      const data = existing ? JSON.parse(existing) : {};
+      const updated = { ...data, email: email.toLowerCase().trim(), name: name || data.name || '', role: role || 'viewer', projects: projects || '', updatedAt: new Date().toISOString() };
+      await env.SETSAIL_OS.put(key, JSON.stringify(updated));
+      return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+    }
+
+    // DELETE /api/admin/users/:email
+    if (url.pathname.startsWith('/api/admin/users/') && request.method === 'DELETE') {
+      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const email = decodeURIComponent(url.pathname.replace('/api/admin/users/', ''));
+      await env.SETSAIL_OS.delete('admin:user:' + email.toLowerCase().trim());
+      return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+    }
+
     // ── GENERATION QUEUE — submit jobs + poll status ──────────────────────────
     // POST /api/queue-submit  { projectId, jobs: [{type, slug, pageIdx}] }
     if (url.pathname === '/api/queue-submit' && request.method === 'POST') {
