@@ -185,6 +185,9 @@ textarea.inp{resize:vertical}
 [data-tip]:hover::after{opacity:1;transition-delay:.3s}
 [data-tip]::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--dark);pointer-events:none;opacity:0;transition:opacity .15s;z-index:400}
 [data-tip]:hover::before{opacity:1;transition-delay:.3s}
+/* Nav tooltips flip downward — backdrop-filter clips upward ::after */
+#nav [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
+#nav [data-tip]::before{bottom:auto;top:calc(100% + 1px);border-top-color:transparent;border-bottom-color:var(--dark)}
 </style>
 </head>
 <body>
@@ -1897,21 +1900,18 @@ function closeUserDropdown() {
   var dd = document.getElementById('user-dropdown');
   if (dd) dd.classList.remove('open');
 }
-document.addEventListener('click', function(e) {
-  // Close project switcher on outside click
+// Use mousedown so it fires before any child stopPropagation handlers
+document.addEventListener('mousedown', function(e) {
   var sw = document.getElementById('proj-switcher');
   if (sw && !sw.contains(e.target)) closeProjSwitcher();
-  // Close user dropdown on outside click
   var pill = document.getElementById('user-pill');
   if (pill && !pill.contains(e.target)) closeUserDropdown();
-  // Close name modal on outside click (if clicking outside the modal box)
-  var nameModal = document.getElementById('name-modal');
+});
+document.addEventListener('click', function(e) {
   var nameOverlay = document.getElementById('name-modal-overlay');
-  if (nameModal && nameModal.style.display !== 'none' && nameOverlay && e.target === nameOverlay) closeNameModal();
-  // Close user modal on outside click
-  var userModal = document.getElementById('user-modal');
+  if (nameOverlay && e.target === nameOverlay) closeNameModal();
   var userOverlay = document.getElementById('user-modal-overlay');
-  if (userModal && userModal.style.display !== 'none' && userOverlay && e.target === userOverlay) closeUserModal();
+  if (userOverlay && e.target === userOverlay) closeUserModal();
 });
 function handleLogout() {
   // Cloudflare Access logout

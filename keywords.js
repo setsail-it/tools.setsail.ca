@@ -1554,19 +1554,18 @@ function _addQuestionAsSeed(i) {
 // Strips a question to its core keyword phrase for seed lookup.
 // "how much does dental marketing cost in Sydney" → "dental marketing cost Sydney"
 function _questionToSeedKeyword(q) {
-  var s = (q || '').trim().toLowerCase()
-    // Remove leading question words + connectors
-    .replace(/^(how much does|how much is|how do i|how to|how do|how can|what is|what are|what does|what's|who is|who are|why does|why is|when do|where can|where do|which is|which are|can i|do i need|is there|is it|should i|will|does|do)\s+/i, '')
-    // Remove filler at end
-    .replace(/\s+(work|work\?|\?|near me)$/i, '')
-    // Remove possessives and articles mid-phrase
-    .replace(/(a |an |the |my |your |our |their |this |that |for a |for an |for the )/gi, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-  // Keep only if 2-7 words (seeds should be tight head terms)
+  var s = (q || '').trim().toLowerCase();
+  // Strip leading question openers (multi-word first, then single)
+  s = s.replace(/^(how much does|how much is|how much|how do i|how to|how do|how can|what results can i expect from|what results|what is the|what are the|what is|what are|what does|who is the|who is|who are|why does|why is|when do|where can|where do|which is|which are|can i|do i need|is there an?|is it|should i|will i|does it|do i)/i, '');
+  // Strip trailing filler
+  s = s.replace(/[?]\s*$/i, '').replace(/\s+(near me|work|help me|for me|right now)\s*$/i, '');
+  s = s.replace(/^(before seeing|when hiring|when choosing|when working with|results from|long before|long does it take to|flags when|signs that)\s*/i, '');
+  // Strip filler words anywhere in the phrase
+  s = s.replace(/\b(a |an |the |my |your |our |their |this |that |for a |for an |for the |i |we |you )\b/g, ' ');
+  s = s.replace(/  +/g, ' ').trim();
   var words = s.split(/\s+/).filter(Boolean);
-  if (words.length < 2 || words.length > 7) return null;
-  return s;
+  if (words.length < 2 || words.length > 8) return null;
+  return words.join(' ');
 }
 
 function addAllQuestionsAsSeeds() {
