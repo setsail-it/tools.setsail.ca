@@ -489,27 +489,10 @@ async function briefPageAssign(pidx) {
     }
     var nicheKws = (S.kwResearch&&S.kwResearch.keywords||[]).filter(function(k){ return (k.source||'').includes(p.slug); }).slice(0,10).map(function(k){ return k.kw; }).join(', ');
     var R2 = S.research || {};
-    var prompt = '## PAGE
-/'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+(nicheKws?' | niche_kws: '+nicheKws:'')
-      + '
-
-## KEYWORDS (keyword|vol|KD)
-'+(allKws.join('
-')||'none')
-      + '
-
-## QUESTIONS (People Also Ask)
-'+(allQs.map(function(q,i){ return (i+1)+'. '+q; }).join('
-')||'none')
-      + '
-
-## TASK
-Assign for this single page:
-1. additional_keywords — 3-8 keywords from the list that match this page's intent
-2. assigned_questions — 3-6 questions from the PAQ list best suited for this page
-
-Rules: match intent strictly. Return JSON only:
-[{"slug":"'+p.slug+'","additional_keywords":[...],"assigned_questions":[...]}]';
+    var prompt = '## PAGE\n/'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+(nicheKws?' | niche_kws: '+nicheKws:'')
+      + '\n\n## KEYWORDS (keyword|vol|KD)\n'+(allKws.join('\n')||'none')
+      + '\n\n## QUESTIONS (People Also Ask)\n'+(allQs.map(function(q,i){ return (i+1)+'. '+q; }).join('\n')||'none')
+      + '\n\n## TASK\nAssign for this single page:\n1. additional_keywords — 3-8 keywords from the list that match this page\'s intent\n2. assigned_questions — 3-6 questions from the PAQ list best suited for this page\n\nRules: match intent strictly. Return JSON only:\n[{"slug":"'+p.slug+'","additional_keywords":[...],"assigned_questions":[...]}]';
     var sys = 'You are a senior SEO strategist. Assign keywords and questions to a single page based on strict intent match. Client: '+(R2.client_name||'')+' | Industry: '+(R2.industry||'')+'. Return raw JSON array only — no markdown.';
     var result = await callClaude(sys, prompt, null, 1500);
     function fixT(s){ return s.replace(/,\s*([\]\}])/g,'$1'); }
