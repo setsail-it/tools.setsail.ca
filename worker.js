@@ -121,7 +121,7 @@ export default {
 
         const systemPrompt = 'You are an SEO strategist generating targeted FAQ questions for each page of a marketing agency website. Return ONLY valid JSON — no markdown, no explanation.';
 
-        const userPrompt = 'Generate 6 targeted FAQ questions for each page below. Questions must:\n'
+        const userPrompt = 'Generate 8 targeted FAQ questions for each page below. Questions must:\n'
           + '- Be specific to that page\'s niche and primary keyword\n'
           + '- Match real search intent (things prospects actually ask)\n'
           + '- Include a mix of: what/how/why/cost/compare/best questions\n'
@@ -129,7 +129,7 @@ export default {
           + '- NOT be generic marketing questions\n\n'
           + 'SITE CONTEXT: ' + (siteContext || 'Full-service marketing agency') + '\n\n'
           + 'PAGES:\n' + pageList + '\n\n'
-          + 'Return JSON array: [{"slug":"...","questions":["q1","q2","q3","q4","q5","q6"]}, ...]\n'
+          + 'Return JSON array: [{"slug":"...","questions":["q1","q2","q3","q4","q5","q6","q7","q8"]}, ...]\n'
           + 'Return ONLY the JSON array. No markdown.';
 
         const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -137,7 +137,7 @@ export default {
           headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
-            max_tokens: 4000,
+            max_tokens: 5000,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }]
           })
