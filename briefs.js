@@ -393,6 +393,156 @@ async function generateBriefV2(pageIdx) {
   await generatePageBrief(pageIdx);
 }
 
+// ── PER-PAGE ENRICHMENT ACTIONS ──────────────────────────────────────────────
+// These call the same endpoints as the global buttons in the toolbar but scoped
+// to a single page. Buttons live in the per-card action bar (rightCol top).
+
+async function briefPageNicheExpand(pidx) {
+  var p = S.pages[pidx];
+  if (!p || !p.primary_keyword) { alert('No primary keyword on this page.'); return; }
+  var btn = document.getElementById('brief-niche-btn-'+pidx);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding...'; }
+  try {
+    var country = (S.kwResearch && S.kwResearch.country) || 'CA';
+    var res = await fetch('/api/niche-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: [{ slug: p.slug, primaryKeyword: p.primary_keyword, supportingKws: (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?k.kw:k; }) }],
+        country: country
+      })
+    });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Expand failed');
+    if (!S.kwResearch) S.kwResearch = {};
+    if (!S.kwResearch.keywords) S.kwResearch.keywords = [];
+    var existing = new Set(S.kwResearch.keywords.map(function(k){ return (k.kw||'').toLowerCase(); }));
+    var added = 0;
+    (data.results[0] && data.results[0].keywords || []).forEach(function(k) {
+      if (!k.kw || existing.has(k.kw.toLowerCase())) return;
+      S.kwResearch.keywords.push({ kw: k.kw, vol: k.vol, kd: k.kd, score: (k.vol||0)*0.5+20, source: 'niche:'+p.slug });
+      existing.add(k.kw.toLowerCase());
+      added++;
+    });
+    scheduleSave();
+    if (btn) { btn.disabled = false; btn.innerHTML = '✓ '+added+' added'; }
+    setTimeout(function(){ if (btn) { btn.disabled = false; btn.innerHTML = '⌖ Niche KW'; } }, 3000);
+  } catch(e) {
+    console.error('[brief-niche-expand]', e);
+    if (btn) { btn.disabled = false; btn.innerHTML = '⌖ Niche KW'; }
+    alert('Niche expand failed: '+e.message);
+  }
+}
+
+async function briefPageQuestions(pidx) {
+  var p = S.pages[pidx];
+  if (!p || !p.primary_keyword) { alert('No primary keyword on this page.'); return; }
+  var btn = document.getElementById('brief-quest-btn-'+pidx);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Generating...'; }
+  try {
+    var R = S.research || {};
+    var siteContext = (R.company_name||'') + ' — ' + (R.primary_services||[]).join(', ') + '. Location: ' + (R.location||'') + '. USP: ' + (R.usp||'');
+    var res = await fetch('/api/page-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: [{ slug: p.slug, pageType: p.page_type, primaryKeyword: p.primary_keyword, supportingKws: (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?k.kw:k; }).slice(0,5) }],
+        siteContext: siteContext
+      })
+    });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Questions failed');
+    var added = 0;
+    (data.results[0] && data.results[0].questions || []).forEach(function(q) {
+      p.pageQuestions = p.pageQuestions || [];
+      if (!p.pageQuestions.includes(q)) p.pageQuestions.push(q);
+      p.assignedQuestions = p.assignedQuestions || [];
+      if (!p.assignedQuestions.includes(q)) { p.assignedQuestions.push(q); added++; }
+    });
+    scheduleSave();
+    renderBriefs();
+    if (btn) { btn.disabled = false; btn.innerHTML = '✓ '+added+' added'; }
+    setTimeout(function(){ if (btn) { btn.disabled = false; btn.innerHTML = '? Questions'; } }, 3000);
+  } catch(e) {
+    console.error('[brief-page-questions]', e);
+    if (btn) { btn.disabled = false; btn.innerHTML = '? Questions'; }
+    alert('Page questions failed: '+e.message);
+  }
+}
+
+async function briefPageAssign(pidx) {
+  var p = S.pages[pidx];
+  if (!p) return;
+  var btn = document.getElementById('brief-assign-btn-'+pidx);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Assigning...'; }
+  try {
+    var usedPrimaries = new Set((S.pages||[]).map(function(pg){ return (pg.primary_keyword||'').toLowerCase().trim(); }));
+    var alreadyAssigned = new Set((p.assignedQuestions||[]).concat(p.pageQuestions||[]));
+    var allKws = (S.kwResearch&&S.kwResearch.keywords||[])
+      .filter(function(k){ return k.vol >= 10 && !usedPrimaries.has((k.kw||'').toLowerCase().trim()); })
+      .sort(function(a,b){ return (b.score||0)-(a.score||0); })
+      .slice(0,80)
+      .map(function(k){ return k.kw+'|'+k.vol+'/mo|KD:'+k.kd; });
+    var allQs = [];
+    if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) {
+      S.contentIntel.paa.questions.forEach(function(q){ if (q.question && !alreadyAssigned.has(q.question)) allQs.push(q.question); });
+    }
+    var nicheKws = (S.kwResearch&&S.kwResearch.keywords||[]).filter(function(k){ return (k.source||'').includes(p.slug); }).slice(0,10).map(function(k){ return k.kw; }).join(', ');
+    var R2 = S.research || {};
+    var prompt = '## PAGE
+/'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+(nicheKws?' | niche_kws: '+nicheKws:'')
+      + '
+
+## KEYWORDS (keyword|vol|KD)
+'+(allKws.join('
+')||'none')
+      + '
+
+## QUESTIONS (People Also Ask)
+'+(allQs.map(function(q,i){ return (i+1)+'. '+q; }).join('
+')||'none')
+      + '
+
+## TASK
+Assign for this single page:
+1. additional_keywords — 3-8 keywords from the list that match this page's intent
+2. assigned_questions — 3-6 questions from the PAQ list best suited for this page
+
+Rules: match intent strictly. Return JSON only:
+[{"slug":"'+p.slug+'","additional_keywords":[...],"assigned_questions":[...]}]';
+    var sys = 'You are a senior SEO strategist. Assign keywords and questions to a single page based on strict intent match. Client: '+(R2.client_name||'')+' | Industry: '+(R2.industry||'')+'. Return raw JSON array only — no markdown.';
+    var result = await callClaude(sys, prompt, null, 1500);
+    function fixT(s){ return s.replace(/,\s*([\]\}])/g,'$1'); }
+    var parsed = null;
+    try { parsed = JSON.parse(fixT(result.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim())); } catch(e){}
+    if (!parsed) { var s=result.indexOf('['),e=result.lastIndexOf(']'); if(s>=0&&e>s) try{parsed=JSON.parse(fixT(result.slice(s,e+1)));}catch(e2){} }
+    if (!parsed || !Array.isArray(parsed) || !parsed[0]) throw new Error('Parse error — check console');
+    var asgn = parsed[0];
+    if (asgn.additional_keywords && asgn.additional_keywords.length) {
+      if (!p.supporting_keywords) p.supporting_keywords = [];
+      var existingKwStrs = new Set((p.supporting_keywords||[]).map(function(k){ return (typeof k==='object'?k.kw:k).toLowerCase(); }));
+      asgn.additional_keywords.forEach(function(kw) {
+        if (!existingKwStrs.has(kw.toLowerCase())) {
+          var kwObj = (S.kwResearch&&S.kwResearch.keywords||[]).find(function(k){ return (k.kw||'').toLowerCase()===kw.toLowerCase(); });
+          p.supporting_keywords.push(kwObj ? { kw: kwObj.kw, vol: kwObj.vol, kd: kwObj.kd } : { kw: kw, vol: 0, kd: 0 });
+        }
+      });
+    }
+    if (asgn.assigned_questions && asgn.assigned_questions.length) {
+      if (!p.assignedQuestions) p.assignedQuestions = [];
+      asgn.assigned_questions.forEach(function(q){ if (!p.assignedQuestions.includes(q)) p.assignedQuestions.push(q); });
+    }
+    scheduleSave();
+    renderBriefs();
+    if (btn) { btn.disabled = false; btn.innerHTML = '✓ Assigned'; }
+    setTimeout(function(){ if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; } }, 3000);
+  } catch(e) {
+    console.error('[brief-page-assign]', e);
+    if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; }
+    alert('Assign failed: '+e.message);
+  }
+}
+
 function initBriefs() {
   renderBriefs();
   // Enter key delegation for kw + question inputs
@@ -548,21 +698,6 @@ function renderBriefs() {
       + (trafficStr ? '<div style="border-top:1px solid var(--border);padding-top:6px">'
         + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Existing Traffic</div>'
         + '<div style="font-size:11px;color:var(--green);font-weight:500">'+trafficStr+'</div></div>' : '')
-      // Generate + Approve buttons
-      + '<div style="margin-top:auto;padding-top:10px;display:flex;flex-direction:column;gap:5px">'
-      + '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="width:100%;background:var(--lime);border:none;padding:6px 0;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">'
-      + (isBriefed ? '↺ Regenerate Brief' : '✦ Generate Brief')
-      + '</button>'
-      + (isBriefed && (p.brief.drafts||[]).length > 0
-          ? '<button onclick="generateBriefV2('+pidx+')" style="width:100%;background:var(--white);border:1px solid var(--border);border-radius:4px;padding:5px 0;font-size:10px;font-weight:500;color:var(--n2);cursor:pointer;font-family:var(--font)">+ Run V'+(((p.brief.drafts||[]).length)+1)+'</button>'
-          : '')
-      + (isBriefed
-          ? (isApproved
-              ? '<button onclick="briefToggleApprove('+pidx+')" style="width:100%;background:rgba(21,142,29,0.08);border:1px solid var(--green);border-radius:4px;padding:5px 0;font-size:11px;font-weight:600;color:var(--green);cursor:pointer;font-family:var(--font)">✓ Approved — Click to Unapprove</button>'
-              : '<button onclick="briefToggleApprove('+pidx+')" style="width:100%;background:var(--white);border:1px solid var(--border);border-radius:4px;padding:5px 0;font-size:11px;font-weight:500;color:var(--n3);cursor:pointer;font-family:var(--font)">Approve Brief</button>'
-            )
-          : '')
-      + '</div>'
       + '</div>';
 
     var scoreHtml = '';
@@ -582,6 +717,7 @@ function renderBriefs() {
             var clr = c.pass ? 'var(--green)' : '#e5534b';
             return '<span title="'+esc(c.note||'')+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;border:1px solid '+clr+';border-radius:3px;opacity:0.85;cursor:default">'+icon+' '+esc(c.label)+'</span>';
           }).join('')
+        + _briefVersionPills(p, pidx)
         + '<button onclick="scoreBrief('+pidx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>'
         + '</div>';
     } else if (_hasBriefText) {
@@ -630,11 +766,37 @@ function renderBriefs() {
       }
     }
 
+    // ── RIGHT COL ACTION BAR ─────────────────────────────────────────────────
+    var _nextV = (p.brief && p.brief.drafts && p.brief.drafts.length > 0)
+      ? p.brief.drafts[p.brief.drafts.length-1].v + 1
+      : 1;
+    var _approveBtn = isBriefed
+      ? (isApproved
+          ? '<button onclick="briefToggleApprove('+pidx+')" style="background:rgba(21,142,29,0.08);border:1px solid var(--green);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap">✓ Approved</button>'
+          : '<button onclick="briefToggleApprove('+pidx+')" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:500;color:var(--n3);cursor:pointer;font-family:var(--font);white-space:nowrap">Approve Brief</button>'
+        )
+      : '';
+    var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
+      + (isBriefed ? '↺ Regenerate' : '✦ Generate Brief')
+      + '</button>';
+    var _runV2Btn = (isBriefed && (p.brief.drafts||[]).length > 0)
+      ? '<button onclick="generateBriefV2('+pidx+')" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;font-weight:500;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">+ V'+_nextV+'</button>'
+      : '';
+    var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')"  id="brief-niche-btn-'+pidx+'"  title="Expand niche keywords for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">⌖ Niche KW</button>';
+    var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"    id="brief-quest-btn-'+pidx+'"  title="Generate FAQ questions for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">? Questions</button>';
+    var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"       id="brief-assign-btn-'+pidx+'" title="AI assign keywords + questions for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">✦ Assign</button>';
+    var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.01)">'
+      + _nicheBtn + _questBtn + _assignBtn
+      + '<span style="flex:1"></span>'
+      + _runV2Btn + _regenBtn + _approveBtn
+      + '</div>';
+
     var rightContent = isBriefed
       ? scoreHtml + siStripHtml + taHtml
       : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
 
     var rightCol = '<div style="min-width:0;display:flex;flex-direction:column">'
+      + actionBar
       + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px 14px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;min-height:200px;overflow-y:auto"></div>'
       + '<div id="brief-content-'+pidx+'" style="flex:1">'+rightContent+'</div>'
       + '</div>';
