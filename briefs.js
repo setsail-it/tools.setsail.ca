@@ -323,7 +323,13 @@ async function scoreBrief(pageIdx) {
       return { label: c.label, pass: !!r.pass, note: r.note||'' };
     });
     var passed = finalChecks.filter(function(c){ return c.pass; }).length;
-    p.brief.score = { checks: finalChecks, passed: passed, total: finalChecks.length, scoredAt: Date.now() };
+    var _scoreObj = { checks: finalChecks, passed: passed, total: finalChecks.length, scoredAt: Date.now() };
+    p.brief.score = _scoreObj;
+    // Save score back to the active draft too
+    if (p.brief.drafts && p.brief.drafts.length > 0) {
+      var _ai = p.brief.activeDraft || 0;
+      if (p.brief.drafts[_ai]) p.brief.drafts[_ai].score = _scoreObj;
+    }
     scheduleSave();
     // Re-render just the score bar
     var pct = Math.round((passed / finalChecks.length) * 100);
@@ -339,11 +345,52 @@ async function scoreBrief(pageIdx) {
             var clr = c.pass ? 'var(--green)' : '#e5534b';
             return '<span title="'+esc(c.note)+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;border:1px solid '+clr+';border-radius:3px;opacity:0.85;cursor:default">'+icon+' '+esc(c.label)+'</span>';
           }).join('')
+        + _briefVersionPills(p, pidx)
         + '<button onclick="scoreBrief('+pageIdx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>';
     }
   } catch(e) {
     if (scoreEl) scoreEl.innerHTML = '<span style="font-size:9.5px;color:#e5534b">Evaluation failed — '+esc(e.message)+'</span>';
   }
+}
+
+
+// ── BRIEF VERSIONING ─────────────────────────────────────────────────────────
+
+function _briefVersionPills(p, pidx) {
+  var drafts = p.brief && p.brief.drafts;
+  if (!drafts || drafts.length < 2) return '';
+  var activeDraft = p.brief.activeDraft || 0;
+  var pills = drafts.map(function(d, i) {
+    var isActive = i === activeDraft;
+    var hasPassed = d.score && d.score.passed != null;
+    var pct = hasPassed ? Math.round((d.score.passed / d.score.total) * 100) : null;
+    var label = 'V' + d.v + (pct !== null ? ' · ' + pct + '%' : '');
+    var bg = isActive ? 'var(--dark)' : 'transparent';
+    var clr = isActive ? 'var(--white)' : 'var(--n2)';
+    var border = isActive ? 'var(--dark)' : 'var(--border)';
+    return '<button onclick="switchBriefDraft(' + pidx + ',' + i + ')" style="font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid ' + border + ';background:' + bg + ';color:' + clr + ';cursor:pointer;font-family:var(--font);font-weight:' + (isActive?'600':'400') + '">' + label + '</button>';
+  }).join('');
+  return '<div style="display:flex;gap:4px;align-items:center;margin-left:8px">' + pills + '</div>';
+}
+
+function switchBriefDraft(pidx, draftIdx) {
+  var p = S.pages[pidx];
+  if (!p || !p.brief || !p.brief.drafts) return;
+  var draft = p.brief.drafts[draftIdx];
+  if (!draft) return;
+  p.brief.activeDraft = draftIdx;
+  p.brief.summary = draft.summary;
+  p.brief.score = draft.score || null;
+  scheduleSave();
+  renderBriefs();
+}
+
+async function generateBriefV2(pageIdx) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.brief || !p.brief.summary) return;
+  // Mark as new version run — generatePageBrief will push a new draft
+  p.brief._requestNewVersion = true;
+  await generatePageBrief(pageIdx);
 }
 
 function initBriefs() {
@@ -443,7 +490,7 @@ function renderBriefs() {
   html += '</div>';
 
   function pageCard(p, pidx) {
-    var isBriefed = p.brief && p.brief.generated;
+    var isBriefed = p.brief && (p.brief.generated || p.brief.summary);
     var isApproved = !!(p.brief && p.brief.approved);
     var trafficStr = p.existing_traffic > 0
       ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo'
@@ -506,6 +553,9 @@ function renderBriefs() {
       + '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="width:100%;background:var(--lime);border:none;padding:6px 0;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">'
       + (isBriefed ? '↺ Regenerate Brief' : '✦ Generate Brief')
       + '</button>'
+      + (isBriefed && (p.brief.drafts||[]).length > 0
+          ? '<button onclick="generateBriefV2('+pidx+')" style="width:100%;background:var(--white);border:1px solid var(--border);border-radius:4px;padding:5px 0;font-size:10px;font-weight:500;color:var(--n2);cursor:pointer;font-family:var(--font)">+ Run V'+(((p.brief.drafts||[]).length)+1)+'</button>'
+          : '')
       + (isBriefed
           ? (isApproved
               ? '<button onclick="briefToggleApprove('+pidx+')" style="width:100%;background:rgba(21,142,29,0.08);border:1px solid var(--green);border-radius:4px;padding:5px 0;font-size:11px;font-weight:600;color:var(--green);cursor:pointer;font-family:var(--font)">✓ Approved — Click to Unapprove</button>'
@@ -516,7 +566,8 @@ function renderBriefs() {
       + '</div>';
 
     var scoreHtml = '';
-    if (p.brief && p.brief.generated && p.brief.score) {
+    var _hasBriefText = p.brief && (p.brief.generated || p.brief.summary);
+    if (_hasBriefText && p.brief.score) {
       var sc = p.brief.score;
       var pct = Math.round((sc.passed / sc.total) * 100);
       var barClr = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--warn)' : '#e5534b';
@@ -533,9 +584,10 @@ function renderBriefs() {
           }).join('')
         + '<button onclick="scoreBrief('+pidx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>'
         + '</div>';
-    } else if (p.brief && p.brief.generated) {
+    } else if (_hasBriefText) {
       scoreHtml = '<div id="brief-score-'+pidx+'" style="border-bottom:1px solid var(--border);padding:6px 14px;background:rgba(0,0,0,0.02);display:flex;align-items:center;gap:8px">'
         + '<span style="font-size:9.5px;color:var(--n2)">Brief not yet evaluated</span>'
+        + _briefVersionPills(p, pidx)
         + '<button onclick="scoreBrief('+pidx+')" style="background:var(--lime);border:none;border-radius:3px;padding:3px 10px;font-size:9px;font-weight:600;cursor:pointer;font-family:var(--font)">✦ Evaluate Brief</button>'
         + '</div>';
     }
@@ -860,6 +912,21 @@ async function generatePageBrief(pageIdx) {
     p.brief.summary = briefText;
     p.brief.generatedAt = Date.now();
     p.brief.score = null; // reset score — will be evaluated after render
+    // Versioning — push to drafts array (mirrors copy versioning)
+    var _bDrafts = p.brief.drafts || [];
+    var _isNewVer = p.brief._requestNewVersion || false;
+    delete p.brief._requestNewVersion;
+    if (!_isNewVer && _bDrafts.length > 0) {
+      // Regenerate on same version — update current draft in place
+      var _activeIdx = p.brief.activeDraft || 0;
+      _bDrafts[_activeIdx] = { v: _bDrafts[_activeIdx].v, summary: briefText, score: null, generatedAt: Date.now() };
+    } else {
+      // New version — push fresh draft
+      var _bv = (_bDrafts.length > 0 ? _bDrafts[_bDrafts.length-1].v : 0) + 1;
+      _bDrafts.push({ v: _bv, summary: briefText, score: null, generatedAt: Date.now() });
+      p.brief.activeDraft = _bDrafts.length - 1;
+    }
+    p.brief.drafts = _bDrafts;
     scheduleSave();
     // Update content div directly without full re-render (preserve scroll position)
     if (streamEl) streamEl.style.display = 'none';
