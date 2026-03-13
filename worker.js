@@ -181,8 +181,44 @@ export default {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
 
-        const kwList = keywords.slice(0, 100);
         const cc = (country || 'ca').toLowerCase().slice(0, 2);
+        const glMap = { ca: 'ca', us: 'us', gb: 'gb', au: 'au', nz: 'nz', sg: 'sg', za: 'za' };
+        const gl = glMap[cc] || 'us';
+
+        // ── Google Suggest expansion ──
+        // Take seeds as head terms → expand with Suggest → get real searched phrases
+        const headTerms = [...new Set(keywords)].slice(0, 30); // cap at 30 head terms
+        const suggestExpanded = new Set(headTerms);
+
+        const modifiers = ['near me', 'services', 'company', 'cost', 'best', 'local', 'affordable', 'top'];
+
+        async function fetchSuggest(term) {
+          try {
+            const url = 'https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl;
+            const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!r.ok) return;
+            const data = await r.json();
+            const suggestions = data[1] || [];
+            suggestions.forEach(s => { if (s && s.length <= 60 && s.split(' ').length <= 7) suggestExpanded.add(s.toLowerCase()); });
+          } catch(e) {}
+        }
+
+        // Fire suggest requests: bare term + key modifiers (batched to avoid rate limits)
+        const suggestBatch = [];
+        for (const term of headTerms) {
+          suggestBatch.push(fetchSuggest(term));
+          suggestBatch.push(fetchSuggest(term + ' ' + gl));  // geo-specific
+          for (const mod of modifiers.slice(0, 4)) {
+            suggestBatch.push(fetchSuggest(term + ' ' + mod));
+          }
+        }
+        // Run in chunks of 20 to avoid hammering
+        for (let i = 0; i < suggestBatch.length; i += 20) {
+          await Promise.all(suggestBatch.slice(i, i + 20));
+        }
+
+        console.log('[kw-expand] seeds:', headTerms.length, '→ after suggest expansion:', suggestExpanded.size);
+        const kwList = [...suggestExpanded].filter(k => k.split(' ').length <= 10 && k.length <= 80).slice(0, 600);
 
         // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
         if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {

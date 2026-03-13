@@ -586,9 +586,9 @@ async function generateAISeeds() {
     ctx += '\nEXISTING TOP PAGES: ' + topPages.map(function(p) { return p.slug; }).join(', ') + '\n';
   }
 
-  var systemPrompt = 'You are an expert SEO strategist generating seed keywords for a service business website.\\n\\nGOAL: Surface keywords that a BUYER types into Google when they want to HIRE or PURCHASE a service. Not what a marketer writes about.\\n\\nPRIORITISE IN THIS ORDER:\\n1. Service + location: \"seo agency vancouver\", \"ppc company bc\", \"google ads agency vancouver\"\\n2. Bare service category: \"seo agency\", \"ppc agency\", \"web design agency\", \"social media agency\"\\n3. Transactional modifiers: \"best\", \"top\", \"local\", \"affordable\", \"hire\", \"near me\"\\n4. Service type variants: \"ecommerce seo\", \"local seo services\", \"technical seo audit\"\\n5. Comparison/pricing: \"marketing agency pricing\", \"seo agency vs freelancer\"\\n6. Problem-to-service: \"not ranking on google\", \"need more website leads\"\\n\\nNEVER INCLUDE (these are informational blog terms, not buyer searches):\\n- Strategic concepts: \"marketing transparency\", \"sales alignment\", \"go to market strategy\"\\n- Academic jargon: \"market segmentation\", \"value proposition\", \"performance driven marketing\"\\n- Internal terms: \"marketing differentiation\", \"cross device tracking\", \"predictive analytics\"\\n- Vague thought-leadership without service+location modifier: \"marketing strategy\", \"brand strategy\"\\n- Anything a consultant says in a deck but a client never Googles\\n\\nRules:\\n- Output ONLY a JSON array of strings, no markdown, no explanation\\n- Max 7 words per keyword, all lowercase\\n- Max 300 seeds total, no duplicates\\n- Include the primary city/region in location-specific terms\\n\\nGOOD seeds: [\"seo agency vancouver\",\"local seo agency\",\"ppc agency\",\"google ads agency\",\"web design company vancouver\",\"social media agency\",\"digital marketing agency vancouver\",\"best seo company vancouver\",\"ecommerce seo agency\",\"technical seo audit\"]\\nBAD seeds (NEVER output these): [\"marketing transparency\",\"sales alignment\",\"go to market strategy\",\"market segmentation\",\"performance driven marketing\",\"marketing strategy consulting\"]';
+  var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate the 20-30 most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
 
-  var userPrompt = 'Generate seed keywords for this client:\n\n' + ctx;
+  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. These will be expanded by Google Autocomplete — so output BROAD category terms, not specific long-tail phrases. Output ONLY a JSON array.\n\n' + ctx;
 
   try {
     var result = await callClaude(systemPrompt, userPrompt, null, 8000);
@@ -651,7 +651,7 @@ async function fetchKwVolumes() {
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : buildKwSeeds();
   var statusEl = document.getElementById('kw-seeds-status');
   if (!seeds.length) { if (statusEl) statusEl.textContent = 'No seeds found.'; return; }
-  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Looking up volumes for ' + seeds.length + ' seeds...';
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding ' + seeds.length + ' seeds via Google Suggest, then fetching volumes...';
   var r = S.research || {};
   var setup = S.setup || {};
   // Use manually selected country, or auto-detect from geo text
@@ -680,7 +680,7 @@ async function fetchKwVolumes() {
     S.kwResearch.fetchedAt = Date.now();
     S.kwResearch.selected = deduped.slice(0, 50).map(function(k) { return k.kw; });
     scheduleSave();
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + deduped.length + ' keywords found</span>';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + deduped.length + ' keywords found <span style="opacity:0.6;font-size:10px">(Google Suggest + DataForSEO)</span></span>';
     _kwTab = 'opps';
     renderKwTabContent();
   } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
