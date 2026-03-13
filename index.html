@@ -1759,9 +1759,11 @@ async function initAuth() {
       if (el) el.textContent = data.email.split('@')[0]; // show name part only
       var udName = document.getElementById('ud-name');
       var udEmail = document.getElementById('ud-email');
-      if (udName) udName.textContent = data.name || data.email.split('@')[0];
+      var displayName = data.name || data.email.split('@')[0];
+      if (udName) udName.textContent = displayName;
       if (udEmail) udEmail.textContent = data.email;
       S.currentRole = data.role || 'strategist';
+      S.currentUserName = displayName;
     }
   } catch(e) {
     console.warn('Auth check failed:', e);
@@ -1801,7 +1803,7 @@ async function loadAdminPage() {
   var myProjects = document.getElementById('admin-my-projects');
 
   var email = S.currentUser || '—';
-  var name = (document.getElementById('ud-name') || {}).textContent || email.split('@')[0];
+  var name = S.currentUserName || (document.getElementById('ud-name') || {}).textContent || email.split('@')[0];
   var role = S.currentRole || 'strategist';
 
   if (myName) myName.textContent = name;
@@ -1823,12 +1825,14 @@ async function loadAdminPage() {
       if (!allProjects || !allProjects.length) {
         myProjects.textContent = 'No projects yet.';
       } else {
-        myProjects.innerHTML = allProjects.map(function(p) {
-          return '<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer" onclick="loadAndOpen('' + esc(p.id) + '')">'
-            + '<i class="ti ti-folder" style="font-size:11px;color:var(--green)"></i>'
-            + esc(p.name || p.id)
-            + '</span>';
-        }).join('');
+        myProjects.innerHTML = '';
+        allProjects.forEach(function(p) {
+          var tag = document.createElement('span');
+          tag.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer';
+          tag.innerHTML = '<i class="ti ti-folder" style="font-size:11px;color:var(--green)"></i>' + esc(p.name || p.id);
+          tag.onclick = function() { showProjects(); setTimeout(function(){ resumeProject(p.id); }, 50); };
+          myProjects.appendChild(tag);
+        });
       }
     } catch(e) { myProjects.textContent = 'Could not load projects.'; }
   }
