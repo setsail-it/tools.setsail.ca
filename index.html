@@ -1498,8 +1498,9 @@ function toggleHelpPanel() {
 </div>
 
 
+
 <!-- HELP / WORKFLOW GUIDE PANEL -->
-<div id="help-panel" style="display:none;position:fixed;top:0;right:0;width:420px;height:100vh;background:var(--white);border-left:1px solid var(--border);z-index:1000;overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,0.08);font-family:var(--font)">
+<div id="help-panel" style="display:none;position:fixed;top:0;right:0;width:440px;height:100vh;background:var(--white);border-left:1px solid var(--border);z-index:1000;overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,0.08);font-family:var(--font)">
   <div style="position:sticky;top:0;background:var(--white);border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;z-index:1">
     <div style="display:flex;align-items:center;gap:8px">
       <i class="ti ti-book-2" style="color:var(--green);font-size:15px"></i>
@@ -1509,98 +1510,170 @@ function toggleHelpPanel() {
   </div>
   <div style="padding:18px;font-size:12px;color:var(--dark);line-height:1.7">
 
-    <!-- RECOMMENDED STAGE ORDER -->
+    <!-- PIPELINE OVERVIEW -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:10px">Pipeline Overview</div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client, services, location, USP</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain metrics, competitor intel</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — services, personas, content intel</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — seed → expand → volumes → opportunities</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client name, URL, geo, voice</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain authority, link metrics</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 130 fields</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — seeds → expand → volumes → opportunities</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture + keyword mapping</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S7</span><span>Copy — generate → audit → QC → approve</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — generate per page</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S9</span><span>Layout — assign components per page</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S10</span><span>Schema — FAQ + structured data</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S10</span><span>Schema — FAQ + structured data generation</span></div>
       </div>
     </div>
 
-    <!-- STAGE 4: KEYWORDS -->
+    <!-- S1: SETUP -->
     <div style="margin-bottom:24px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 4 — Keywords · Best Order</div>
-      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">
-        <li><strong>AI Generate Seeds</strong> — produces 20–30 tight head terms (2–4 words). Not long-tail guesses.</li>
-        <li><strong>Competitor Keywords</strong> (optional) — pre-fills from sitemap competitors. Pulls via DataForSEO Labs or Google Suggest fallback.</li>
-        <li><strong>Fetch Volumes</strong> — Google Suggest expands each head term to 400–600 real phrases, then DataForSEO volumes each one. This is your full keyword pool.</li>
-        <li><strong>Review Opportunities tab</strong> — keywords scored by vol + KD + intent. Threshold: vol ≥ 10. Sort by score desc.</li>
-        <li><strong>Proceed to Sitemap</strong> — keyword pool is now ready for page mapping.</li>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 1 — Setup</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Client name, website URL, geo, and voice</strong> — these feed into every prompt throughout the pipeline. Fill them carefully before proceeding.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Geo text drives country auto-detection</strong> for keyword volumes. If geo says "Vancouver, BC" the system targets Canada. If "Sydney" → Australia. You can override this manually in the Keywords stage.</span></div>
+      </div>
+    </div>
+
+    <!-- S2: SNAPSHOT -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 2 — Site Snapshot</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span>Runs DataForSEO domain metrics — Domain Rating, referring domains, organic traffic estimate, top pages.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Backlinks API is intentionally disabled</strong> (cost decision). DR and referring domain counts still pull correctly from the domain metrics endpoint.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span>The DR from this snapshot feeds into the <strong>Site DR field</strong> in the Keywords Opportunities tab for rankability scoring. Copy it across manually.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span>Snapshot data is stored in <code>S.snapshot</code> and saves with the project. Re-run only if domain metrics have changed significantly.</span></div>
+      </div>
+    </div>
+
+    <!-- S3: RESEARCH -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 3 — Research · Best Order</div>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Upload client documents</strong> — strategy doc, intake form, existing content, or anything with context. Claude extracts ~130 structured fields across 6 tabs.</li>
+        <li><strong>Review each tab</strong> — Business, Audience, Brand, Schema &amp; Local, Competitors, Keywords. Correct anything Claude got wrong.</li>
+        <li><strong>Re-Enrich if needed</strong> — the Re-enrich button bypasses the skip logic and forces Claude to overwrite all fields, even pre-filled ones.</li>
+        <li><strong>Competitor list</strong> is the most important output here — it feeds SERP Intel and the sitemap competitor keyword mining in Stage 4.</li>
       </ol>
       <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
-        ⚠ Run <strong>Fetch Volumes</strong> before Sitemap. Pages won't have volume data otherwise.
+        ⚠ Do not pre-fill default values in research fields before enrichment — the skip logic treats any non-empty string as "already filled" and won't overwrite it.
       </div>
     </div>
 
-    <!-- STAGE 5: SITEMAP -->
+    <!-- S4: KEYWORDS -->
     <div style="margin-bottom:24px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 5 — Sitemap · Best Order</div>
-      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">
-        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword opportunities using the pool from S4.</li>
-        <li><strong>Review + reorder pages</strong> — drag to set priority. P1 pages get briefs first.</li>
-        <li><strong>Run Keyword Mapping</strong> — assigns primary keywords to each page from the opportunity list.</li>
-        <li><strong>Proceed to Briefs</strong> when all P1/P2 pages have a primary keyword assigned.</li>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 4 — Keywords · Best Order</div>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Set Country</strong> — the dropdown left of Fetch Volumes auto-detects from your geo text (AU/CA/US/GB/NZ/SG/ZA). Override manually if wrong — it saves with the project. <em>Wrong country = wrong volumes.</em></li>
+        <li><strong>AI Generate Seeds</strong> — produces 20–30 tight head terms (2–4 words). These are for volume lookup, not long-tail guesses. Add competitor URLs in the Competitor Keywords section for additional seed mining.</li>
+        <li><strong>Copy seeds</strong> (📋 icon in Seeds table header) to paste into Ahrefs for cross-validation before fetching volumes.</li>
+        <li><strong>Fetch Volumes</strong> — Google Suggest expands each head term into 400–600 real phrases, then DataForSEO volumes each one. Top 300 by score are kept. This is your full keyword pool.</li>
+        <li><strong>Enter Site DR</strong> in the Opportunities tab top-right — this adjusts the rankability indicator per keyword. Use the DR from Stage 2 Snapshot.</li>
+        <li><strong>Review Opportunities tab</strong> — keywords scored by: <code>log(vol+1) × 100 / max(KD, 5)</code>. Minimum vol: 10. Keywords showing "—" have no DataForSEO data for that country — you can still manually select them.</li>
+        <li><strong>Select Top 50</strong> then manually add any low-volume but strategically important terms (e.g. high-CPC, direct buyer intent).</li>
+        <li><strong>Cluster Selected</strong> — groups keywords into topical clusters for sitemap page creation.</li>
+        <li><strong>Questions tab</strong> — PAA questions from your keywords. Use "Add all as seeds" to fold them into the pool, or let AI Assign distribute them in Stage 6.</li>
+      </ol>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
+        ⚠ Run Fetch Volumes before building the Sitemap. Pages won't have volume data otherwise and the sitemap generator won't be able to justify page creation thresholds.
+      </div>
+    </div>
+
+    <!-- S5: SITEMAP -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 5 — Sitemap · Page Rules</div>
+      <div style="font-size:11.5px;margin-bottom:8px">Two types of pages — Claude enforces volume thresholds for SEO pages:</div>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;margin-bottom:12px">
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(21,142,29,0.05);border-radius:5px"><span style="font-weight:600;min-width:80px">Structural</span><span>Homepage, /about, /contact, /case-studies — always built, vol:0 acceptable</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:80px">/services/</span><span>vol &gt; 0 required — any keyword cluster justifies creation</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:80px">/industries/</span><span>vol &gt; 100 required</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:80px">/locations/</span><span>vol &gt; 100 required</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:80px">/blog/</span><span>vol &gt; 50 required</span></div>
+      </div>
+      <div style="font-size:11.5px;margin-bottom:8px"><strong>Keyword intent rules (enforced in prompts):</strong></div>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;margin-bottom:12px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Homepage</strong> — brand/category only: "Vancouver marketing agency". NEVER specific service terms.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Service pages</strong> — service-specific only: "SEO services Vancouver", "PPC agency BC".</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Location pages</strong> — geo + category: "digital marketing Calgary", "marketing agency Toronto".</span></div>
+      </div>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters. Review the output carefully.</li>
+        <li><strong>Reorder pages</strong> — drag to set priority. P1 pages are processed first throughout the pipeline.</li>
+        <li><strong>Run Keyword Mapping</strong> — assigns primary + supporting keywords to each page from the opportunity pool.</li>
+        <li><strong>Approve Sitemap</strong> — locks the page architecture. Required before Briefs stage processes.</li>
       </ol>
     </div>
 
-    <!-- STAGE 6: BRIEFS -->
+    <!-- S6: BRIEFS -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 6 — Briefs · Best Order</div>
-      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">
-        <li><strong>Expand Niche Keywords</strong> — runs Google Suggest on each page's primary keyword with 10 modifiers. Merges niche variants (e.g. "lawyer marketing cost", "law firm SEO agency") into the keyword pool tagged by page.</li>
-        <li><strong>Generate Page Questions</strong> — Claude generates 8 targeted FAQs per page. Auto-assigned to each page. These become FAQ sections in copy.</li>
-        <li><strong>AI Assign Keywords + Questions</strong> — distributes remaining global PAA questions and keyword pool across pages. Skips already-assigned page questions. Shows niche keyword context per page.</li>
-        <li><strong>Run SERP Intel</strong> (per page) — fetches top 3 competitor pages, extracts word count target, H2 structure, KW density ceiling.</li>
-        <li><strong>Generate Brief</strong> — uses primary keyword + supporting keywords + assigned questions + SERP Intel + research context.</li>
-        <li><strong>Evaluate Brief</strong> — scores against 9–11 checks (reader profile, H1, CTA, objections, trust signals, etc.).</li>
-        <li><strong>Run V2 if score &lt; 80%</strong> — generates a new draft without overwriting V1. Each version tracks its own score. Last 2 versions kept.</li>
-        <li><strong>Approve Brief</strong> — locks it. Required before Copy stage processes that page.</li>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Expand Niche Keywords</strong> — runs Google Suggest on each page's primary keyword with 10 modifiers (services/agency/cost/how to/vs/near me etc.). Pulls niche variants (e.g. "lawyer marketing cost", "law firm SEO agency") and gets DataForSEO volumes. Tagged by page slug so AI Assign knows which keywords belong where.</li>
+        <li><strong>Generate Page Questions</strong> — one Claude call generates 8 targeted FAQs per page based on primary keyword + page type. Auto-assigned to each page's <code>assignedQuestions[]</code>. These become FAQ sections in the brief and eventually in copy.</li>
+        <li><strong>AI Assign Keywords + Questions</strong> — distributes remaining global PAA questions and keyword pool across pages. Skips already-assigned page questions (no duplicates). Sees niche keyword context per page for smarter assignment.</li>
+        <li><strong>SERP Intel</strong> (per page, or auto-runs at brief generation) — fetches top 3 organic results for the primary keyword, extracts: word count, H2 structure, KW density. Sets word count target at max competitor × 1.05. Some sites block crawlers — this is normal.</li>
+        <li><strong>Generate Brief</strong> — uses: primary keyword + supporting keywords + assigned questions + SERP Intel directives + research context + site voice. SERP Intel auto-runs silently if not already done.</li>
+        <li><strong>Evaluate Brief</strong> — AI scorecard: 9–11 checks including reader profile, H1, CTA presence, objections, trust signals, SERP word count target, H2 coverage.</li>
+        <li><strong>Run V2 if score &lt; 80%</strong> — generates a new draft without overwriting V1. Each version tracks its own score. Last 2 versions kept (V1 dropped when V3 is pushed).</li>
+        <li><strong>Approve Brief</strong> — locks it. Copy stage will not process a page without an approved brief.</li>
       </ol>
       <div style="margin-top:10px;padding:8px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15);font-size:11px;color:#0a5c10">
-        ✓ Run steps 1–3 before generating any briefs. It takes 3 minutes and dramatically improves brief quality.
+        ✓ Steps 1–3 take about 3 minutes total and dramatically improve brief specificity — especially for niche service/industry pages that previously got generic questions and thin keyword coverage.
       </div>
     </div>
 
-    <!-- STAGE 7: COPY -->
+    <!-- S7: COPY -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 7 — Copy · Best Order</div>
-      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px">
-        <li><strong>Brief must be approved</strong> before copy generates for that page.</li>
-        <li><strong>Generate Copy (Pass 1)</strong> — full page copy from brief. Stored as draft v1.</li>
-        <li><strong>Run Audit</strong> — checks keyword density, CTA presence, word count vs SERP target, readability.</li>
-        <li><strong>Human QC</strong> — check all QC items before approving. Blocks approval until complete.</li>
-        <li><strong>Pass 2 (optional)</strong> — Claude rewrites weak sections based on audit findings.</li>
-        <li><strong>Approve Copy</strong> — locks page for export. Last 2 copy drafts kept.</li>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Brief must be approved</strong> before copy generates for that page. The Generate button is locked otherwise.</li>
+        <li><strong>Generate Copy (Pass 1)</strong> — full page HTML from brief. Stored as draft v1. Copy HTML is saved to its own KV key (not the main project payload) so it survives page reload.</li>
+        <li><strong>Run Audit</strong> — deterministic checks first (keyword density 0.3–3.0%, SERP-calibrated ceiling if SERP Intel ran), then AI checks: H1 contains keyword, primary keyword in intro, intent match, no placeholders, word count vs target, Canadian spelling, no AI fluff. Page-type specific checks added on top.</li>
+        <li><strong>Pass 2</strong> — Claude surgically rewrites weak sections based on audit findings. Generates a new draft tab without replacing v1.</li>
+        <li><strong>Human QC</strong> — 7 items per page (6 universal + 1 page-type specific):
+          <ul style="margin:4px 0 0;padding-left:14px;display:flex;flex-direction:column;gap:2px">
+            <li>Stats &amp; numbers verified (every %, $, count confirmed against real source)</li>
+            <li>Client proof approved for use (named clients/logos have permission)</li>
+            <li>Offer &amp; pricing current (guarantees match current offering)</li>
+            <li>CTAs &amp; links work (no 404s or dead forms)</li>
+            <li>Brand voice on-point (sounds like us, not generic AI)</li>
+            <li>No stale content (no outdated team refs, discontinued services)</li>
+            <li>+ 1 page-type specific item</li>
+          </ul>
+        </li>
+        <li><strong>Approve Copy</strong> — locks the page for export and Schema generation. Last 2 copy drafts kept per page.</li>
       </ol>
-    </div>
-
-    <!-- KEY LIMITS & NOTES -->
-    <div style="margin-bottom:24px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Key Limits &amp; Notes</div>
-      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Keyword pool cap:</strong> top 600 keywords processed for volumes. Sort by score desc in Opportunities tab.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel:</strong> fetches top 3 organic results only. Some sites block crawlers — this is normal.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Brief versions:</strong> last 2 kept. V1 is dropped when V3 is generated.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Copy versions:</strong> last 2 drafts kept per page.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Save:</strong> auto-saves on every action. Green indicator top-right confirms save.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>KV storage:</strong> project data, copy HTML, and images are stored separately. Copy/images survive payload size limits.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Auth:</strong> Google login only. Any @setsail.ca account can access. Projects are scoped per user.</span></div>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
+        ⚠ Draft version tabs (v1/v2/v3) are in-memory only. Only the active draft persists across a page reload. Version history is lost on refresh — do not rely on it for long-term storage.
       </div>
     </div>
 
-    <div style="font-size:10px;color:var(--mid);text-align:center;padding-top:12px;border-top:1px solid var(--border)">SetSailOS · Internal tool · Setsail Marketing</div>
+    <!-- KEY LIMITS -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Key Limits &amp; Architecture Notes</div>
+      <div style="display:flex;flex-direction:column;gap:7px;font-size:11.5px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Keyword pool cap:</strong> top 300 scored, shown all in Opportunities. Vol "—" = no DataForSEO data for that country — still selectable manually.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Keyword scoring:</strong> <code>log(vol+1) × 100 / max(KD, 5)</code>. Threshold: vol ≥ 10 to score above 0. KD of 0 is treated as 5 to avoid divide-by-zero.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Country selector</strong> auto-detects from geo text but saves your manual selection with the project. Always verify before Fetch Volumes.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel:</strong> fetches top 3 organic results. Some sites block crawlers (fetch_ok: false) — this is normal. Directives still generated from whatever was fetched.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Brief versions:</strong> last 2 kept. V1 is dropped when V3 is generated. Regenerate Brief = update current draft in-place. Run V2 = push new draft.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Copy HTML</strong> is stored in separate KV keys per page (not in the main project payload) — survives reload. Main payload stores only audit results and approval state.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Images</strong> — base64 image data stripped from save payload (too large). Only prompt + status saved. Images must be regenerated on a new session.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Monthly keyword trends</strong> stripped from save payload — reconstructed from DataForSEO on next Fetch Volumes run.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel competitors</strong> stripped from save payload — only directives + metadata persists. SERP competitors visible in brief card only until next save.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>KV limit:</strong> 25MB max. Monitor console for [save] payload size warnings. Projects with 100+ pages and heavy research data approach this limit.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Save:</strong> auto-saves on every action (debounced). Green indicator top-right confirms saved. Red = failed — check console for payload size or network error.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Auth:</strong> Google SSO via Cloudflare Access. Any @setsail.ca email can log in. Projects are scoped per user (u:{email}:project:{id}).</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Canadian spelling:</strong> -ize endings are correct (optimize, organize, specialize). Only flag: color/honour/center/theatre and -yze → -yse (analyze → analyse).</span></div>
+      </div>
+    </div>
+
+    <div style="font-size:10px;color:var(--mid);text-align:center;padding-top:12px;border-top:1px solid var(--border)">SetSailOS · Internal tool · Setsail Marketing · tools.setsail.ca</div>
   </div>
 </div>
 <div id="help-overlay" onclick="toggleHelpPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:999"></div>
+
 
 </body>
 </html>
