@@ -255,9 +255,16 @@ var _kwTab = 'questions';
 
 function initKeywords() {
   if (!S.kwResearch) {
-    S.kwResearch = { seeds: buildKwSeeds(), keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
-  } else if (!S.kwResearch.seeds || !S.kwResearch.seeds.length) {
-    S.kwResearch.seeds = buildKwSeeds();
+    var mechSeeds = buildKwSeeds();
+    S.kwResearch = { seeds: mechSeeds, seedSources: { mechanical: mechSeeds.slice(), ai: [], competitor: [] }, activeSources: ['mechanical','ai','competitor'], keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
+  } else {
+    if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: (S.kwResearch.seeds || []).slice(), ai: [], competitor: [] };
+    if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical','ai','competitor'];
+    if (!S.kwResearch.seeds || !S.kwResearch.seeds.length) {
+      var mechSeeds2 = buildKwSeeds();
+      S.kwResearch.seedSources.mechanical = mechSeeds2.slice();
+      _rebuildSeeds();
+    }
   }
   if (S.kwResearch.keywords.length && (!S.kwResearch.selected || !S.kwResearch.selected.length)) {
     S.kwResearch.selected = S.kwResearch.keywords.slice(0, 50).map(function(k) { return k.kw; });
@@ -395,7 +402,7 @@ function openCompetitorSeeds() {
 
   // Pre-fill from research competitors
   var r = S.research || {};
-  var researchComps = (r.competitors || []).slice(0, 5).map(function(c) {
+  var researchComps = (r.competitors || []).map(function(c) {
     // Prefer URL → strip to bare domain; fall back to name
     var url = c.url || c.domain || '';
     if (url) {
@@ -408,7 +415,7 @@ function openCompetitorSeeds() {
   panel.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-building-store" style="margin-right:6px"></i>Competitor Keyword Mining</div>'
     + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 5 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
     + '<textarea id="comp-seeds-domains" placeholder="e.g. oceanicdental.au&#10;racedental.com.au&#10;scdlab.com&#10;pearlhealthcare.com.au&#10;adp.com.au" style="width:100%;box-sizing:border-box;height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);resize:vertical;font-family:inherit">'
-    + researchComps.slice(0,3).join('\n')
+    + researchComps.join('\n')
     + '</textarea>'
     + '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
     + '<button class="btn btn-primary sm" onclick="_runCompetitorSeeds()"><i class="ti ti-download"></i> Pull Keywords</button>'
@@ -454,16 +461,15 @@ async function _runCompetitorSeeds() {
       return;
     }
 
-    // Merge into existing seeds (no duplicates)
-    var existing = new Set((S.kwResearch.seeds || []).map(function(s) { return s.toLowerCase(); }));
-    var added = 0;
-    newSeeds.forEach(function(s) {
-      if (!existing.has(s) && s.length > 2) {
-        S.kwResearch.seeds.push(s);
-        existing.add(s);
-        added++;
-      }
-    });
+    // Write to competitor source bucket then rebuild
+    if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+    if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical','ai','competitor'];
+    // Merge new seeds into competitor bucket (additive)
+    var compSet = new Set((S.kwResearch.seedSources.competitor || []).map(function(s){ return s.toLowerCase(); }));
+    newSeeds.forEach(function(s) { if (s.length > 2 && !compSet.has(s)) { compSet.add(s); S.kwResearch.seedSources.competitor.push(s); } });
+    if (S.kwResearch.activeSources.indexOf('competitor') < 0) S.kwResearch.activeSources.push('competitor');
+    _rebuildSeeds();
+    var added = newSeeds.length;
 
     scheduleSave();
     var src = data.source === 'google-suggest' ? ' <span style="opacity:0.6">(via Google Suggest — dataforseo_labs not on plan)</span>' : ' <span style="opacity:0.6">(via DataForSEO)</span>';
@@ -498,6 +504,55 @@ function _setKwCountry(val) {
   scheduleSave();
 }
 
+
+function _rebuildSeeds() {
+  if (!S.kwResearch) return;
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+  var active = S.kwResearch.activeSources || ['mechanical', 'ai', 'competitor'];
+  var seen = new Set();
+  var result = [];
+  active.forEach(function(src) {
+    (S.kwResearch.seedSources[src] || []).forEach(function(s) {
+      var k = s.toLowerCase().trim();
+      if (k && !seen.has(k)) { seen.add(k); result.push(k); }
+    });
+  });
+  // Also preserve any manually pinned seeds not in any source bucket
+  var allBucket = new Set();
+  Object.values(S.kwResearch.seedSources).forEach(function(arr) { arr.forEach(function(s){ allBucket.add(s.toLowerCase().trim()); }); });
+  (S.kwResearch.seeds || []).forEach(function(s) {
+    var k = s.toLowerCase().trim();
+    if (!allBucket.has(k) && !seen.has(k)) { seen.add(k); result.push(k); }
+  });
+  S.kwResearch.seeds = result;
+}
+
+
+function _resetToMechanicalSeeds() {
+  if (!S.kwResearch) return;
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+  if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
+  S.kwResearch.seedSources.mechanical = buildKwSeeds();
+  if (S.kwResearch.activeSources.indexOf('mechanical') < 0) S.kwResearch.activeSources.push('mechanical');
+  _rebuildSeeds();
+  scheduleSave();
+  renderKwTabContent();
+}
+
+function _toggleSeedSource(src) {
+  if (!S.kwResearch) return;
+  if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
+  var idx = S.kwResearch.activeSources.indexOf(src);
+  if (idx >= 0) {
+    S.kwResearch.activeSources.splice(idx, 1);
+  } else {
+    S.kwResearch.activeSources.push(src);
+  }
+  _rebuildSeeds();
+  scheduleSave();
+  renderKwTabContent();
+}
+
 function _copySeedKeywords(btn) {
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
   if (!seeds.length) return;
@@ -525,7 +580,7 @@ function _renderKwSeedsTab() {
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
   html += '<button class="btn btn-ghost" onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
-  html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
+  html += '<button class="btn btn-ghost" onclick="_resetToMechanicalSeeds()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
@@ -564,9 +619,18 @@ function _renderKwSeedsTab() {
   html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3)">';
   html += '<span style="display:flex;align-items:center;gap:6px">Seed Keyword <button onclick="_copySeedKeywords(this)" title="Copy all seeds" style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;color:var(--n2);line-height:1;font-size:13px" onmouseenter="this.style.color=\'var(--dark)\'" onmouseleave="this.style.color=\'var(--n2)\'"><i class=\"ti ti-copy\"></i></button></span><span>Remove</span></div>';
   html += '<div style="max-height:360px;overflow-y:auto">';
+  // Build reverse lookup: seed → source
+  var seedSourceMap = {};
+  var srcsData = S.kwResearch && S.kwResearch.seedSources ? S.kwResearch.seedSources : {};
+  var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b' };
+  ['mechanical','ai','competitor'].forEach(function(src) {
+    (srcsData[src] || []).forEach(function(s) { if (!seedSourceMap[s.toLowerCase()]) seedSourceMap[s.toLowerCase()] = src; });
+  });
+
   seeds.forEach(function(seed, i) {
-    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
-      + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + '</span>'
+    var seedSrc = seedSourceMap[seed.toLowerCase()];
+    var badge = seedSrc ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:' + srcBadgeColors[seedSrc] + '20;color:' + srcBadgeColors[seedSrc] + ';margin-left:6px;font-weight:500">' + seedSrc.slice(0,4).toUpperCase() + '</span>' : '';
+    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;' + (i % 2 ? 'background:var(--bg)' : '') + '">'      + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + badge + '</span>'
       + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove">&times;</button>'
       + '</div>';
   });
@@ -729,7 +793,11 @@ async function generateAISeeds() {
     // Merge pinned seeds — always included regardless of AI output
     var pinnedKws = S.kwResearch.pinnedSeeds || [];
     pinnedKws.forEach(function(k) { if (cleaned.indexOf(k) < 0) cleaned.push(k); });
-    S.kwResearch.seeds = cleaned;
+    if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+    if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical','ai','competitor'];
+    S.kwResearch.seedSources.ai = cleaned;
+    if (S.kwResearch.activeSources.indexOf('ai') < 0) S.kwResearch.activeSources.push('ai');
+    _rebuildSeeds();
     S.kwResearch.aiSeedsGeneratedAt = Date.now();
     // Clear stale volume data since seeds changed
     S.kwResearch.keywords = [];
