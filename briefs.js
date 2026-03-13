@@ -15,7 +15,9 @@ function briefTogglePicker(pidx, type) {
     el.style.display = 'block';
     return;
   }
-  var html = '<div style="position:absolute;left:0;right:0;top:auto;z-index:999;border:1px solid var(--border);border-radius:4px;margin-top:4px;background:white;box-shadow:0 6px 20px rgba(0,0,0,0.15);max-height:240px;overflow-y:auto">';
+  // Position el directly — it's already position:absolute inside a position:relative wrapper
+  el.style.cssText = 'display:block;position:absolute;top:calc(100% + 3px);left:0;min-width:260px;max-width:380px;z-index:9999;border:1px solid var(--border);border-radius:6px;background:white;box-shadow:0 6px 20px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;overflow-x:hidden';
+  var html = '<div>';
   // Search input
   html += '<div style="padding:5px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:white;z-index:1">';
   html += '<input id="brief-'+type+'-search-'+pidx+'" data-pidx="'+pidx+'" data-type="'+type+'" placeholder="Filter…" class="brief-picker-search" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:3px 7px;font-family:var(--font);outline:none;box-sizing:border-box">';
@@ -38,7 +40,6 @@ function briefTogglePicker(pidx, type) {
   html += '</div>';
   html += '</div>';
   el.innerHTML = html;
-  el.style.display = 'block';
   // Auto-focus search
   setTimeout(function(){ var s = document.getElementById('brief-'+type+'-search-'+pidx); if(s) s.focus(); }, 50);
 }
@@ -782,9 +783,9 @@ function renderBriefs() {
                 + esc(k) + '<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1;margin-left:1px">×</span></span>';
             }).join('')
           : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
-      + '<div style="margin-top:5px">'
+      + '<div style="margin-top:5px;position:relative">'
       + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="kw" style="text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:3px 8px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">＋ Pick keywords…</button>'
-      + '<div id="brief-kw-picker-'+pidx+'" style="display:none"></div>'
+      + '<div id="brief-kw-picker-'+pidx+'" style="display:none;position:absolute"></div>'
       + '</div></div>';
 
     var qHtml = '<div style="flex:1;min-width:0">'
@@ -796,9 +797,9 @@ function renderBriefs() {
                 + '<span onclick="briefRemoveQ('+pidx+','+qi+')" style="cursor:pointer;color:var(--n1);font-size:11px;flex-shrink:0" title="Remove">×</span></div>';
             }).join('')
           : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned</span>')
-      + '<div style="margin-top:5px">'
+      + '<div style="margin-top:5px;position:relative">'
       + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="q" style="text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:3px 8px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">＋ Pick questions…</button>'
-      + '<div id="brief-q-picker-'+pidx+'" style="display:none"></div>'
+      + '<div id="brief-q-picker-'+pidx+'" style="display:none;position:absolute"></div>'
       + '</div></div>';
 
     var kwQRow = '<div style="display:flex;gap:16px;padding:10px 12px;border-bottom:1px solid var(--border)">' + kwHtml + qHtml + '</div>';

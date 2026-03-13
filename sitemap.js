@@ -664,6 +664,7 @@ function _renderSitemapResultsInner(approved) {
   html += '<div style="margin-bottom:18px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
   html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Page Performance Map</div>';
+  html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
   if (hasKwData) {
     html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
@@ -677,7 +678,7 @@ function _renderSitemapResultsInner(approved) {
   const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px 60px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px 60px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
-    + '<span>#</span><span>Page</span><span>Primary Keyword</span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span><span title="Existing monthly organic traffic">Traffic</span>'
+    + '<span>#</span><span>Page</span><span title="Cluster anchor keyword — sets page scope. Niche variants &amp; copy-level assignment happen in Stage 6 Briefs.">Cluster Anchor <span style="font-size:8px;font-weight:400;opacity:0.6;text-transform:none">↓ Stage 6</span></span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span><span title="Existing monthly organic traffic">Traffic</span>'
     + ''
     + '</div>';
 
