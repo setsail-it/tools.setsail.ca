@@ -383,6 +383,24 @@ function renderKwTabContent() {
   else if (_kwTab === 'questions') el.innerHTML = _renderKwQuestionsTab();
 }
 
+function _autoDetectKwCountry() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
+  if (geo.indexOf('australia') >= 0 || geo.indexOf('sydney') >= 0 || geo.indexOf('melbourne') >= 0 || geo.indexOf('brisbane') >= 0 || geo.indexOf('perth') >= 0) return 'au';
+  if (geo.indexOf('canada') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) return 'ca';
+  if (geo.indexOf('united kingdom') >= 0 || geo.indexOf('london') >= 0) return 'gb';
+  if (geo.indexOf('new zealand') >= 0) return 'nz';
+  if (geo.indexOf('singapore') >= 0) return 'sg';
+  return 'us';
+}
+
+function _setKwCountry(val) {
+  if (!S.kwResearch) S.kwResearch = {};
+  S.kwResearch.country = val;
+  scheduleSave();
+}
+
 function _copySeedKeywords(btn) {
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
   if (!seeds.length) return;
@@ -404,6 +422,9 @@ function _renderKwSeedsTab() {
     : '';
   html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Seed keywords sent to DataForSEO for volume lookup. Each seed = one lookup. Use <strong style=\"color:var(--dark)\">AI Generate Seeds</strong> to build an intelligent list from your client context first.</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
+  html += '<select onchange="_setKwCountry(this.value)" title="Search country" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);cursor:pointer" id="kw-country-sel"><option value="au">🇦🇺 Australia</option><option value="us">🇺🇸 United States</option><option value="ca">🇨🇦 Canada</option><option value="gb">🇬🇧 United Kingdom</option><option value="nz">🇳🇿 New Zealand</option><option value="sg">🇸🇬 Singapore</option><option value="za">🇿🇦 South Africa</option></select>';
+  // Set selected value after render via a deferred call
+  setTimeout(function(){var s=document.getElementById('kw-country-sel');if(s)s.value=(S.kwResearch&&S.kwResearch.country)||_autoDetectKwCountry();},0);
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
   html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
@@ -633,8 +654,14 @@ async function fetchKwVolumes() {
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Looking up volumes for ' + seeds.length + ' seeds...';
   var r = S.research || {};
   var setup = S.setup || {};
-  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
-  var country = (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) ? 'ca' : 'us';
+  // Use manually selected country, or auto-detect from geo text
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : (function() {
+    var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
+    if (geo.indexOf('australia') >= 0 || geo.indexOf(' au') >= 0 || geo.indexOf('sydney') >= 0 || geo.indexOf('melbourne') >= 0 || geo.indexOf('brisbane') >= 0 || geo.indexOf('perth') >= 0) return 'au';
+    if (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) return 'ca';
+    if (geo.indexOf('united kingdom') >= 0 || geo.indexOf(' uk') >= 0 || geo.indexOf('london') >= 0) return 'gb';
+    return 'us';
+  })();
   try {
     var res = await fetch('/api/kw-expand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seeds: seeds, country: country }) });
     var data = await res.json();

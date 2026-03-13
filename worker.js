@@ -187,7 +187,8 @@ export default {
         // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
         if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {
           const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-          const locationCode = cc === 'CA' ? 2124 : cc === 'US' ? 2840 : cc === 'GB' ? 2826 : 2124;
+          const locationCodes = { CA: 2124, US: 2840, GB: 2826, AU: 2036, NZ: 2554, SG: 2702, ZA: 2710 };
+          const locationCode = locationCodes[(cc||'').toUpperCase()] || 2840;
           const body = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
           let dfsRes, dfsData, dfsRaw;
           try {
