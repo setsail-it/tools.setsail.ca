@@ -413,7 +413,7 @@ function openCompetitorSeeds() {
   }).filter(Boolean);
 
   panel.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-building-store" style="margin-right:6px"></i>Competitor Keyword Mining</div>'
-    + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 5 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
+    + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste competitor domains (up to 10). We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
     + '<textarea id="comp-seeds-domains" placeholder="e.g. oceanicdental.au&#10;racedental.com.au&#10;scdlab.com&#10;pearlhealthcare.com.au&#10;adp.com.au" style="width:100%;box-sizing:border-box;height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);resize:vertical;font-family:inherit">'
     + researchComps.join('\n')
     + '</textarea>'
