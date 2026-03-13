@@ -921,9 +921,10 @@ async function generatePageBrief(pageIdx) {
       var _activeIdx = p.brief.activeDraft || 0;
       _bDrafts[_activeIdx] = { v: _bDrafts[_activeIdx].v, summary: briefText, score: null, generatedAt: Date.now() };
     } else {
-      // New version — push fresh draft
+      // New version — push fresh draft, keep last 2 only
       var _bv = (_bDrafts.length > 0 ? _bDrafts[_bDrafts.length-1].v : 0) + 1;
       _bDrafts.push({ v: _bv, summary: briefText, score: null, generatedAt: Date.now() });
+      if (_bDrafts.length > 2) _bDrafts = _bDrafts.slice(-2); // drop oldest
       p.brief.activeDraft = _bDrafts.length - 1;
     }
     p.brief.drafts = _bDrafts;
