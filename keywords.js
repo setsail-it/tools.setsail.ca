@@ -670,7 +670,9 @@ function _renderKwSeedsTab() {
 
   // Column header
   html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:5px 12px;border-bottom:1px solid var(--border);font-size:10px;font-weight:500;color:var(--n2);text-transform:uppercase;letter-spacing:.05em">';
-  html += '<span>Seed Keyword' + (_activeSrcFilter !== 'all' ? ' — <span style="color:' + srcBadgeColors[_activeSrcFilter] + ';text-transform:none;font-weight:400">' + srcLabels[_activeSrcFilter] + ' only (' + displaySeeds.length + ')</span>' : '') + '</span><span>Remove</span></div>';
+  var clearLabel = _activeSrcFilter === 'all' ? 'Clear all' : 'Clear ' + srcLabels[_activeSrcFilter];
+  html += '<span>Seed Keyword' + (_activeSrcFilter !== 'all' ? ' — <span style="color:' + srcBadgeColors[_activeSrcFilter] + ';text-transform:none;font-weight:400">' + srcLabels[_activeSrcFilter] + ' only (' + displaySeeds.length + ')</span>' : '') + '</span>';
+  html += '<button onclick="_clearSeedBucket(\'' + _activeSrcFilter + '\')" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--error);font-family:var(--font);padding:2px 4px;border-radius:4px;opacity:.7" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=.7">' + clearLabel + '</button></div>';
 
   html += '<div style="max-height:360px;overflow-y:auto">';
 
@@ -690,6 +692,27 @@ function _renderKwSeedsTab() {
   return html;
 }
 
+
+
+function _clearSeedBucket(src) {
+  if (!S.kwResearch) return;
+  var label = src === 'all' ? 'all seeds' : (src + ' seeds');
+  if (!confirm('Remove all ' + label + '? This cannot be undone.')) return;
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical:[], ai:[], competitor:[], questions:[] };
+  if (src === 'all') {
+    S.kwResearch.seeds = [];
+    S.kwResearch.seedSources = { mechanical:[], ai:[], competitor:[], questions:[] };
+    S.kwResearch.pinnedSeeds = [];
+  } else {
+    // Remove this bucket's seeds from both seedSources and the main seeds array
+    var toRemove = new Set((S.kwResearch.seedSources[src] || []).map(function(s){ return s.toLowerCase(); }));
+    S.kwResearch.seedSources[src] = [];
+    S.kwResearch.seeds = (S.kwResearch.seeds || []).filter(function(s){ return !toRemove.has(s.toLowerCase()); });
+  }
+  scheduleSave();
+  renderKwTabContent();
+  if (typeof aiBarNotify === 'function') aiBarNotify('✓ ' + (src === 'all' ? 'All seeds' : srcLabels[src] + ' seeds') + ' cleared', {duration:3000});
+}
 
 function _setSeedFilter(src) {
   if (!S.kwResearch) return;

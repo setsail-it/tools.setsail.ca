@@ -44,7 +44,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 .sb-projects-btn:hover{background:rgba(0,0,0,0.05);color:var(--dark)}
 
 /* AI PROGRESS BAR */
-#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;opacity:1;pointer-events:none}
+#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;opacity:1;pointer-events:none}#ai-bar-label{position:relative}#ai-tip-line{position:relative}
 #ai-bar.active #ai-bar-track{opacity:1}#ai-bar.active #ai-bar-label{color:var(--dark)}#ai-bar.active{pointer-events:auto}
 #ai-bar-label{font-size:11px;color:var(--n2);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:center;transition:color .2s}
 #ai-bar-track{width:100%;height:3px;background:var(--n1);border-radius:3px;overflow:hidden;opacity:0;transition:opacity .2s}
@@ -217,11 +217,11 @@ textarea.inp{resize:vertical}
   <!-- Centre: AI progress bar + contextual tips -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-      <span id="ai-bar-label" title="" style="cursor:default"></span>
+      <span id="ai-bar-label" style="cursor:default"></span>
       <span id="ai-bar-meta"></span>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
-    <div id="ai-tip-line" title="" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s;cursor:default"></div>
+    <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s;cursor:default"></div>
   </div>
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -1115,8 +1115,9 @@ function _showTip(text) {
   if (!el) return;
   el.style.opacity = '0';
   setTimeout(function() {
-    el.textContent = text ? ('💡 ' + text) : '';
-    el.title = text || '';
+    var full = text ? ('💡 ' + text) : '';
+    el.textContent = full;
+    el.setAttribute('data-tip', text || '');
     el.style.opacity = text ? '1' : '0';
   }, 200);
 }
@@ -1254,7 +1255,7 @@ function aiBarNotify(msg, opts) {
   var track = document.getElementById('ai-bar-track');
   if (!bar) return;
   if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
-  if (labelEl) { labelEl.textContent = msg; labelEl.title = msg; }
+  if (labelEl) { labelEl.textContent = msg; labelEl.setAttribute('data-tip', msg); }
   if (metaEl) metaEl.textContent = o.meta || '';
   if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '0%'; }
   if (track) track.style.opacity = '0'; // hide progress track for notifications
