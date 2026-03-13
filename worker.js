@@ -608,7 +608,8 @@ export default {
         if (!domains?.length) return new Response(JSON.stringify({ error: 'No domains' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
         const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
+        const locationCodes2 = { CA: 2124, US: 2840, GB: 2826, AU: 2036, NZ: 2554, SG: 2702, ZA: 2710 };
+        const locationCode = locationCodes2[(country || 'US').toUpperCase()] || 2840;
         const ownSet = new Set((ownKeywords || []).map(k => k.toLowerCase().trim()));
 
         // Fetch top keywords for each competitor domain

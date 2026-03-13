@@ -383,6 +383,94 @@ function renderKwTabContent() {
   else if (_kwTab === 'questions') el.innerHTML = _renderKwQuestionsTab();
 }
 
+
+function openCompetitorSeeds() {
+  // Show inline panel below button bar
+  var existing = document.getElementById('comp-seeds-panel');
+  if (existing) { existing.remove(); return; }
+
+  var panel = document.createElement('div');
+  panel.id = 'comp-seeds-panel';
+  panel.style.cssText = 'background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;';
+
+  // Pre-fill from research competitors
+  var r = S.research || {};
+  var researchComps = (r.competitors || []).slice(0, 5).map(function(c) { return c.domain || c.name || c; }).filter(Boolean);
+
+  panel.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-building-store" style="margin-right:6px"></i>Competitor Keyword Mining</div>'
+    + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 3 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
+    + '<textarea id="comp-seeds-domains" placeholder="e.g. dentallabnorth.com.au&#10;sydneydentallab.com.au&#10;precisiondentallab.com.au" style="width:100%;box-sizing:border-box;height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);resize:vertical;font-family:inherit">'
+    + researchComps.slice(0,3).join('\n')
+    + '</textarea>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
+    + '<button class="btn btn-primary sm" onclick="_runCompetitorSeeds()"><i class="ti ti-download"></i> Pull Keywords</button>'
+    + '<button class="btn btn-ghost sm" onclick="document.getElementById(\'comp-seeds-panel\').remove()">Cancel</button>'
+    + '<span id="comp-seeds-status" style="font-size:11px;color:var(--n2)"></span>'
+    + '</div>';
+
+  // Insert before the seed table
+  var tbl = document.querySelector('#kw-tab-content .tbl-row');
+  var parent = tbl ? tbl.parentElement : null;
+  if (parent) {
+    parent.insertBefore(panel, parent.firstChild);
+  } else {
+    var tabContent = document.getElementById('kw-tab-content');
+    if (tabContent) tabContent.insertBefore(panel, tabContent.firstChild);
+  }
+}
+
+async function _runCompetitorSeeds() {
+  var statusEl = document.getElementById('comp-seeds-status');
+  var btn = document.querySelector('#comp-seeds-panel .btn-primary');
+  var raw = (document.getElementById('comp-seeds-domains') || {}).value || '';
+  var domains = raw.split(/[\n,]+/).map(function(d) { return d.trim().replace(/^https?:\/\//, '').replace(/\/$/, ''); }).filter(Boolean);
+  if (!domains.length) { if (statusEl) statusEl.textContent = 'Enter at least one domain.'; return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching...'; }
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Pulling organic keywords from ' + domains.length + ' domains...';
+
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : _autoDetectKwCountry();
+
+  try {
+    var res = await fetch('/api/competitor-gap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains: domains, country: country, ownKeywords: [] })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    var newSeeds = (data.keywords || []).map(function(k) { return (k.keyword || k).toLowerCase().trim(); }).filter(Boolean);
+    if (!newSeeds.length) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">No keywords returned — check domains or plan access.</span>';
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Keywords'; }
+      return;
+    }
+
+    // Merge into existing seeds (no duplicates)
+    var existing = new Set((S.kwResearch.seeds || []).map(function(s) { return s.toLowerCase(); }));
+    var added = 0;
+    newSeeds.forEach(function(s) {
+      if (!existing.has(s) && s.length > 2) {
+        S.kwResearch.seeds.push(s);
+        existing.add(s);
+        added++;
+      }
+    });
+
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> Added ' + added + ' competitor keywords to seeds</span>';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Keywords'; }
+    setTimeout(function() {
+      var panel = document.getElementById('comp-seeds-panel');
+      if (panel) panel.remove();
+      renderKwTabContent();
+    }, 1800);
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + e.message + '</span>';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Keywords'; }
+  }
+}
+
 function _autoDetectKwCountry() {
   var r = S.research || {};
   var setup = S.setup || {};
@@ -420,13 +508,14 @@ function _renderKwSeedsTab() {
   var aiStatus = S.kwResearch && S.kwResearch.aiSeedsGeneratedAt
     ? '<span style="color:var(--green)"><i class="ti ti-sparkles" style="font-size:10px"></i> AI seeds generated ' + new Date(S.kwResearch.aiSeedsGeneratedAt).toLocaleTimeString('en-CA',{hour:'2-digit',minute:'2-digit'}) + '</span>'
     : '';
-  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Seed keywords sent to DataForSEO for volume lookup. Each seed = one lookup. Use <strong style=\"color:var(--dark)\">AI Generate Seeds</strong> to build an intelligent list from your client context first.</div>';
+  html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Seeds are expanded via Google Suggest, then looked up in DataForSEO. Use <strong style=\"color:var(--dark)\">AI Generate Seeds</strong> for head terms, or <strong style=\"color:var(--dark)\">Competitor Keywords</strong> to mine non-brand terms from competitor domains.</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<select onchange="_setKwCountry(this.value)" title="Search country" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);cursor:pointer" id="kw-country-sel"><option value="au">🇦🇺 Australia</option><option value="us">🇺🇸 United States</option><option value="ca">🇨🇦 Canada</option><option value="gb">🇬🇧 United Kingdom</option><option value="nz">🇳🇿 New Zealand</option><option value="sg">🇸🇬 Singapore</option><option value="za">🇿🇦 South Africa</option></select>';
   // Set selected value after render via a deferred call
   setTimeout(function(){var s=document.getElementById('kw-country-sel');if(s)s.value=(S.kwResearch&&S.kwResearch.country)||_autoDetectKwCountry();},0);
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
+  html += '<button class="btn btn-ghost" onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
   html += '<button class="btn btn-ghost" onclick="S.kwResearch.seeds=buildKwSeeds();renderKwTabContent()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
