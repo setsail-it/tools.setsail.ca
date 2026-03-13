@@ -581,6 +581,10 @@ function _renderKwSeedsTab() {
   html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
   html += '<button class="btn btn-ghost" onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
   html += '<button class="btn btn-ghost" onclick="_resetToMechanicalSeeds()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
+  var _hasQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0);
+  if (_hasQs) {
+    html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()" title="Convert all questions to seed keywords and add to this list"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
+  }
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
@@ -1284,6 +1288,7 @@ function _renderKwQuestionsTab() {
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
     html += '<button class="btn btn-primary" onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
     html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
+    html += '<button class="btn btn-ghost" onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
     html += '<button class="btn btn-ghost" onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
     html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
     if (isValidated) {
@@ -1523,6 +1528,80 @@ async function fetchPAAFromKeywords() {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
   }
 }
+async function generateMoreQuestions() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+  var services = (r.primary_services || []).slice(0, 6).join(', ');
+  var audience = (r.target_audience && r.target_audience.primary ? r.target_audience.primary : '') ||
+                 (r.buyer_personas && r.buyer_personas[0] ? r.buyer_personas[0].role || '' : '');
+  var industry = setup.industry || '';
+
+  // Get existing questions to avoid duplicates
+  var existingQs = _getQuestionsArray();
+
+  var btn = document.getElementById('more-questions-btn');
+  var statusEl = document.getElementById('kw-questions-fetch-status');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating...'; }
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating additional questions...';
+
+  var systemPrompt = 'You are an SEO strategist generating buyer-intent questions for a marketing agency website. Return ONLY a JSON array of question strings — no markdown, no explanation, no wrapper object.';
+
+  var userPrompt = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
+    'Location: ' + (geo || 'Vancouver, BC') + '\n' +
+    'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
+    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n' +
+    (industry ? 'Industry focus: ' + industry + '\n' : '') +
+    '\nExisting questions (DO NOT duplicate these):\n' + existingQs.slice(0, 30).map(function(q,i){return (i+1)+'. '+q;}).join('\n') +
+    '\n\nGenerate 20 NEW questions covering angles not yet represented above. Focus on these under-covered topic areas:\n' +
+    '- What the agency process/onboarding looks like step by step\n' +
+    '- Deliverables, reporting cadence, and what clients actually receive\n' +
+    '- Niche/industry-specific marketing questions (construction, professional services, hospitality, etc.)\n' +
+    '- Comparison questions: agency vs freelancer, in-house vs outsource, retainer vs project\n' +
+    '- Trust and risk questions: contracts, guarantees, what happens if results don\'t come, how to vet an agency\n' +
+    '- Timeline and expectation questions: how long until results, what to expect in month 1 vs month 6\n' +
+    '- Budget and ROI questions for specific services (SEO ROI, Google Ads ROAS, etc.)\n' +
+    'Make questions natural search queries — lowercase, conversational, specific to location and services where relevant. Return exactly 20 questions as a JSON array.';
+
+  try {
+    var res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1200,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+    var data = await res.json();
+    var raw = (data.content && data.content[0] && data.content[0].text) ? data.content[0].text.trim() : '';
+    raw = raw.replace(/```json|```/g, '').trim();
+    var newQs = JSON.parse(raw);
+    if (!Array.isArray(newQs) || !newQs.length) throw new Error('Invalid response from AI');
+
+    // Dedupe against existing
+    var existingSet = {};
+    existingQs.forEach(function(q){ existingSet[q.toLowerCase()] = true; });
+    var fresh = newQs.filter(function(q){ return !existingSet[q.toLowerCase()]; });
+
+    if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+    if (!S.contentIntel.paa) S.contentIntel.paa = { questions: [], fetchedAt: Date.now(), source: 'ai' };
+    // Append new questions to existing list
+    var existing = S.contentIntel.paa.questions || [];
+    S.contentIntel.paa.questions = existing.concat(fresh.map(function(q){ return { question: q }; }));
+    S.contentIntel.paa.fetchedAt = Date.now();
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> +' + fresh.length + ' questions added (' + (newQs.length - fresh.length) + ' dupes skipped)</span>';
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
+  } finally {
+    var btn2 = document.getElementById('more-questions-btn');
+    if (btn2) { btn2.disabled = false; btn2.innerHTML = '<i class="ti ti-plus"></i> More Questions'; }
+  }
+}
+
 async function generateBlogSeedsFromQuestions() {
   var qs = _getQuestionsArray();
   if (!qs.length) { alert('No questions found. Run Research enrichment first.'); return; }
