@@ -383,6 +383,17 @@ function renderKwTabContent() {
   else if (_kwTab === 'questions') el.innerHTML = _renderKwQuestionsTab();
 }
 
+function _copySeedKeywords(btn) {
+  var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
+  if (!seeds.length) return;
+  navigator.clipboard.writeText(seeds.join('\n')).then(function() {
+    var icon = btn.querySelector('i');
+    icon.className = 'ti ti-check';
+    btn.style.color = 'var(--green)';
+    setTimeout(function() { icon.className = 'ti ti-copy'; btn.style.color = 'var(--n2)'; }, 1800);
+  });
+}
+
 function _renderKwSeedsTab() {
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : [];
   var fetched = S.kwResearch && S.kwResearch.fetchedAt;
@@ -432,7 +443,7 @@ function _renderKwSeedsTab() {
   // Table layout
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3)">';
-  html += '<span>Seed Keyword</span><span>Remove</span></div>';
+  html += '<span style="display:flex;align-items:center;gap:6px">Seed Keyword <button onclick="_copySeedKeywords(this)" title="Copy all seeds" style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;color:var(--n2);line-height:1;font-size:13px" onmouseenter="this.style.color=\'var(--dark)\'" onmouseleave="this.style.color=\'var(--n2)\'"><i class=\"ti ti-copy\"></i></button></span><span>Remove</span></div>';
   html += '<div style="max-height:360px;overflow-y:auto">';
   seeds.forEach(function(seed, i) {
     html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
