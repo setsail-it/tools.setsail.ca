@@ -589,7 +589,7 @@ function initBriefs() {
     }, true);
     document.addEventListener('click', function(e) {
       var hdr = e.target.closest('.brief-row-header');
-      if (hdr && hdr.dataset.briefSlug) { toggleBriefOpen(hdr.dataset.briefSlug); return; }
+      if (hdr && hdr.dataset.briefSlug !== undefined) { toggleBriefOpen(hdr.dataset.briefSlug); return; }
       var t = e.target.closest('.brief-add-selected-btn');
       if (t) { briefAddSelected(parseInt(t.dataset.pidx), t.dataset.type); return; }
       var tog = e.target.closest('.brief-toggle-picker-btn');
