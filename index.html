@@ -288,9 +288,6 @@ textarea.inp{resize:vertical}
   <!-- SETUP -->
   <div class="screen" id="screen-setup">
     <div style="max-width:680px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-        <button class="btn btn-ghost sm" onclick="showProjects()"><i class="ti ti-arrow-left"></i> Projects</button>
-      </div>
       <div class="eyebrow">Stage 1 of 8</div>
       <h2 class="ph">New project</h2>
       <p class="psub">Fill in client details and paste the full strategy document.</p>
@@ -1704,10 +1701,7 @@ function closeProjSwitcher() {
   if (sw) sw.classList.remove('open');
 }
 
-document.addEventListener('click', function(e) {
-  var sw = document.getElementById('proj-switcher');
-  if (sw && !sw.contains(e.target)) closeProjSwitcher();
-});
+
 
 async function switchProject(id) {
   closeProjSwitcher();
@@ -1725,8 +1719,20 @@ function closeUserDropdown() {
   if (dd) dd.classList.remove('open');
 }
 document.addEventListener('click', function(e) {
+  // Close project switcher on outside click
+  var sw = document.getElementById('proj-switcher');
+  if (sw && !sw.contains(e.target)) closeProjSwitcher();
+  // Close user dropdown on outside click
   var pill = document.getElementById('user-pill');
   if (pill && !pill.contains(e.target)) closeUserDropdown();
+  // Close name modal on outside click (if clicking outside the modal box)
+  var nameModal = document.getElementById('name-modal');
+  var nameOverlay = document.getElementById('name-modal-overlay');
+  if (nameModal && nameModal.style.display !== 'none' && nameOverlay && e.target === nameOverlay) closeNameModal();
+  // Close user modal on outside click
+  var userModal = document.getElementById('user-modal');
+  var userOverlay = document.getElementById('user-modal-overlay');
+  if (userModal && userModal.style.display !== 'none' && userOverlay && e.target === userOverlay) closeUserModal();
 });
 function handleLogout() {
   // Cloudflare Access logout

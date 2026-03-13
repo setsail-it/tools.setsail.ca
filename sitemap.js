@@ -682,6 +682,25 @@ function _renderSitemapResultsInner(approved) {
     + ''
     + '</div>';
 
+  // Display sort: Core → Service/Industry/Product → Location → Blog → rest
+  // Within each type: P1 → P2 → P3, then score desc
+  const _typeOrder = { home:0, about:0, contact:0, utility:0, faq:0, team:0,
+    service:1, industry:1, product:1,
+    location:2,
+    blog:3, article:3, recipe:3, event:3, portfolio:3 };
+  const _pOrder = { P1:0, P2:1, P3:2 };
+  pages.sort(function(a, b) {
+    var ta = _typeOrder[( a.page_type||'').toLowerCase()];
+    var tb = _typeOrder[(b.page_type||'').toLowerCase()];
+    if (ta === undefined) ta = 4;
+    if (tb === undefined) tb = 4;
+    if (ta !== tb) return ta - tb;
+    var pa = _pOrder[a.priority] !== undefined ? _pOrder[a.priority] : 3;
+    var pb = _pOrder[b.priority] !== undefined ? _pOrder[b.priority] : 3;
+    if (pa !== pb) return pa - pb;
+    return (b.score || 0) - (a.score || 0);
+  });
+
   // Render pages split: Active (existing site) | Suggested (to build)
   const _activePgs = hasImport ? pages.filter(p => _existingSlugs.has(p.slug)) : [];
   const _suggestedPgs = hasImport ? pages.filter(p => !_existingSlugs.has(p.slug)) : pages;
