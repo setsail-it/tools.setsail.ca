@@ -181,7 +181,7 @@ textarea.inp{resize:vertical}
   <!-- Centre: AI progress bar -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-      <span id="ai-bar-label">Generating…</span>
+      <span id="ai-bar-label"></span>
       <span id="ai-bar-meta"></span>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
@@ -772,7 +772,7 @@ function showSaveIndicator(state) {
   }
 }
 
-async function loadProjects() {
+async async function loadProjects() {
   try {
     const res = await fetch('/api/projects');
     if (!res.ok) return [];
@@ -787,7 +787,7 @@ async function loadProject(id) {
 }
 
 // ── PROJECT PICKER ─────────────────────────────────────────────────
-async function showProjects() {
+async async function showProjects() {
   document.getElementById('projects-screen').style.display = 'block';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('stage-bar').innerHTML = '';
@@ -1648,7 +1648,7 @@ function goToAdmin() {
   document.body.classList.remove('in-project');
 }
 
-function initAuth() {
+async function initAuth() {
   try {
     const r = await fetch('/api/whoami');
     if (r.status === 401) {
