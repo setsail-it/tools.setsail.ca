@@ -600,7 +600,15 @@ async function saveProject() {
       pages: S.pages.map(function(p) {
         if (!p.serpIntel) return p;
         return Object.assign({}, p, {
-          serpIntel: { directives: p.serpIntel.directives, fetchedAt: p.serpIntel.fetchedAt, keyword: p.serpIntel.keyword }
+          serpIntel: {
+            keyword: p.serpIntel.keyword,
+            fetchedAt: p.serpIntel.fetchedAt,
+            directives: p.serpIntel.directives,
+            competitors: (p.serpIntel.competitors || []).map(function(c) {
+              return { url: c.url, fetch_ok: c.fetch_ok, word_count: c.word_count,
+                       h2s: c.h2s, kw_density: c.kw_density, status_code: c.status_code };
+            })
+          }
         });
       }),
       // copy HTML saved separately per slug via /api/copy/:projectId/:slug
