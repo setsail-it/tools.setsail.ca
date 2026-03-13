@@ -607,10 +607,13 @@ async function saveProject() {
           serpIntel: { directives: p.serpIntel.directives, fetchedAt: p.serpIntel.fetchedAt, keyword: p.serpIntel.keyword }
         });
       }),
+      // copy HTML saved separately per slug via /api/copy/:projectId/:slug
       copy: Object.fromEntries(Object.entries(S.copy || {}).map(([slug, c]) => [slug, {
-        ...c,
-        // Keep only active draft — strip history to reduce payload size
-        drafts: c.drafts ? [c.drafts[c.activeDraft || 0]].filter(Boolean) : []
+        approved: c.approved, approvedAt: c.approvedAt,
+        audit: c.audit, humanQC: c.humanQC,
+        writtenAt: c.writtenAt, activeDraft: c.activeDraft || 0,
+        page: c.page ? { slug: c.page.slug, page_type: c.page.page_type, primary_keyword: c.page.primary_keyword, meta_title: c.page.meta_title, meta_description: c.page.meta_description } : null,
+        error: c.error || null
       }])),
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
@@ -645,6 +648,38 @@ async function saveProject() {
   } catch(e) {
     showSaveIndicator('error');
   }
+}
+
+async function saveCopyHtml(slug) {
+  if (!S.projectId || !slug) return;
+  const c = S.copy[slug];
+  if (!c || !c.copy) return;
+  try {
+    await fetch('/api/copy/' + S.projectId + '/' + encodeURIComponent(slug), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ copy: c.copy, drafts: (c.drafts || []).map(d => ({ v: d.v, html: d.html, pass: d.pass, generatedAt: d.generatedAt })) })
+    });
+  } catch(e) { console.warn('[saveCopyHtml] failed for', slug, e.message); }
+}
+
+async function loadAllCopyHtml(projectId) {
+  try {
+    const listRes = await fetch('/api/copy/' + projectId);
+    if (!listRes.ok) return;
+    const { slugs } = await listRes.json();
+    await Promise.all((slugs || []).map(async function(slug) {
+      try {
+        const res = await fetch('/api/copy/' + projectId + '/' + encodeURIComponent(slug));
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && S.copy[slug]) {
+          S.copy[slug].copy = data.copy || '';
+          S.copy[slug].drafts = data.drafts || [];
+        }
+      } catch(e) {}
+    }));
+  } catch(e) { console.warn('[loadAllCopyHtml] failed', e.message); }
 }
 
 function showSaveIndicator(state) {
@@ -734,6 +769,10 @@ async function resumeProject(id) {
   S.research = data.research || null;
   S.pages = data.pages || [];
   S.copy = data.copy || {};
+  // Copy HTML is stored separately — restore async (non-blocking)
+  loadAllCopyHtml(id).then(function() {
+    if (S.stage === 'copy') renderCopyQueue();
+  });
   S.schema = data.schema || {};
   S.kwMetrics = data.kwMetrics || {};
   S.contentIntel = data.contentIntel || null;

@@ -359,6 +359,54 @@ export default {
       }
     }
 
+    // PUT /api/copy/:projectId/:slug — save page copy HTML
+    const copyPutMatch = url.pathname.match(/^\/api\/copy\/([^/]+)\/(.+)$/);
+    if (copyPutMatch && request.method === 'PUT') {
+      const [, projectId, slug] = copyPutMatch;
+      try {
+        const body = await request.text();
+        await env.SETSAIL_OS.put('copy:' + projectId + ':' + slug, body);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // GET /api/copy/:projectId/:slug — load page copy HTML
+    const copyGetMatch = url.pathname.match(/^\/api\/copy\/([^/]+)\/(.+)$/);
+    if (copyGetMatch && request.method === 'GET') {
+      const [, projectId, slug] = copyGetMatch;
+      try {
+        const val = await env.SETSAIL_OS.get('copy:' + projectId + ':' + slug);
+        if (!val) return new Response(JSON.stringify(null), { headers: { 'Content-Type': 'application/json', ...cors } });
+        return new Response(val, { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // GET /api/copy/:projectId — list slugs that have saved copy
+    const copyListMatch = url.pathname.match(/^\/api\/copy\/([^/]+)$/);
+    if (copyListMatch && request.method === 'GET') {
+      const [, projectId] = copyListMatch;
+      try {
+        const prefix = 'copy:' + projectId + ':';
+        const list = await env.SETSAIL_OS.list({ prefix });
+        const slugs = list.keys.map(k => k.name.slice(prefix.length));
+        return new Response(JSON.stringify({ slugs }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
 
 
 

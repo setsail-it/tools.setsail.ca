@@ -197,6 +197,7 @@ async function runCopyPage(slug) {
   } catch(e) {
     S.copy[slug] = {error: e.message, page};
   }
+  saveCopyHtml(slug);
   S.copyCurrentSlug = null;
   S.copyRunning = false;
   renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
@@ -590,7 +591,7 @@ async function runCopyPass2(slug) {
         S.copy[slug].activeDraft = drafts.length - 1;
         S.copy[slug].copy = result;
         S.copy[slug].audit = null;
-        scheduleSave();
+        saveCopyHtml(slug); scheduleSave();
       }
     }
   } catch(e) {
@@ -656,7 +657,7 @@ function toggleCopyEdit(slug) {
     S.copy[slug].copy = previewEl.innerHTML;
     // Also keep code view in sync
     if (codeEl) codeEl.textContent = previewEl.innerHTML;
-    scheduleSave();
+    saveCopyHtml(slug); scheduleSave();
     editBtn.innerHTML = '<i class="ti ti-edit"></i> Edit';
   } else {
     // ── Edit ── make preview directly editable
