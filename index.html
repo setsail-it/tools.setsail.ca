@@ -178,6 +178,13 @@ textarea.inp{resize:vertical}
 .psw-divider{height:1px;background:var(--border);margin:4px 0}
 .psw-all{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--n3);border:none;background:none;width:100%;font-family:var(--font);transition:background .1s}
 .psw-all:hover{background:var(--n1);color:var(--dark)}
+
+/* TOOLTIP */
+[data-tip]{position:relative}
+[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--dark);color:white;font-size:11px;font-family:var(--font);padding:5px 9px;border-radius:6px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:400;line-height:1.5;max-width:260px;white-space:normal;text-align:center}
+[data-tip]:hover::after{opacity:1;transition-delay:.3s}
+[data-tip]::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--dark);pointer-events:none;opacity:0;transition:opacity .15s;z-index:400}
+[data-tip]:hover::before{opacity:1;transition-delay:.3s}
 </style>
 </head>
 <body>

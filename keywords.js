@@ -577,13 +577,13 @@ function _renderKwSeedsTab() {
   html += '<select onchange="_setKwCountry(this.value)" title="Search country" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);cursor:pointer" id="kw-country-sel"><option value="au">🇦🇺 Australia</option><option value="us">🇺🇸 United States</option><option value="ca">🇨🇦 Canada</option><option value="gb">🇬🇧 United Kingdom</option><option value="nz">🇳🇿 New Zealand</option><option value="sg">🇸🇬 Singapore</option><option value="za">🇿🇦 South Africa</option></select>';
   // Set selected value after render via a deferred call
   setTimeout(function(){var s=document.getElementById('kw-country-sel');if(s)s.value=(S.kwResearch&&S.kwResearch.country)||_autoDetectKwCountry();},0);
-  html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
-  html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
-  html += '<button class="btn btn-ghost" onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
-  html += '<button class="btn btn-ghost" onclick="_resetToMechanicalSeeds()" title="Rebuild the mechanical seed list from client/service data and merge back into seeds"><i class="ti ti-refresh"></i> Refresh Seeds</button>';
+  html += '<button class="btn btn-primary" data-tip="Look up monthly search volume + keyword difficulty for all seeds via DataForSEO. Run after adding or changing seeds." onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
+  html += '<button class="btn btn-ghost" data-tip="Generate 20–30 tight head-term keywords (2–4 words) using AI based on client services, location, and audience. Merges into seeds without replacing existing ones." onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
+  html += '<button class="btn btn-ghost" data-tip="Paste competitor URLs to mine their top non-brand keywords via DataForSEO. Adds to the Competitor bucket without touching Mechanical or AI seeds." onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
+  html += '<button class="btn btn-ghost" data-tip="Rebuild Mechanical seeds from client name, services, and location data, then merge back in. AI and Competitor seeds are kept. Use after updating Setup." onclick="_resetToMechanicalSeeds()"><i class="ti ti-settings-2"></i> Mechanical Seeds</button>';
   var _hasQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0);
   if (_hasQs) {
-    html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()" title="Convert all questions to seed keywords and add to this list"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Extract core keyword phrases from the Questions tab and add them to Seeds. Strips question words so they return real volumes in DataForSEO." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
   }
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
@@ -928,8 +928,8 @@ function _renderKwOppsTab() {
   if (!kws.length) return '<div style="text-align:center;padding:40px 20px;color:var(--n2)"><i class="ti ti-chart-bar" style="font-size:32px;display:block;margin-bottom:8px"></i><div style="font-size:13px">No volumes yet \u2014 go to Seeds and click Fetch Volumes.</div></div>';
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
-  html += '<button class="btn btn-primary" onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
-  html += '<button class="btn btn-ghost sm" onclick="selectTopKws(50)">Select Top 50</button>';
+  html += '<button class="btn btn-primary" data-tip="Group selected keywords by intent and topic into clusters. Each cluster becomes one page in the sitemap. Select P1 and P2 keywords first." onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Auto-select the top 50 keywords by score (volume × intent weight ÷ KD). Good starting point before clustering." onclick="selectTopKws(50)">Select Top 50</button>';
   html += '<button class="btn btn-ghost sm" onclick="selectTopKws(0)">Clear</button>';
   html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
   // DR input for rankability indicator
@@ -1118,8 +1118,8 @@ function _renderKwClustersTab() {
   var flagCt = clusters.filter(function(c) { return c.qualifies === false; }).length;
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-  html += '<button class="btn btn-primary" onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
-  html += '<button id="recluster-btn" class="btn btn-ghost" onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
+  html += '<button class="btn btn-primary" data-tip="Convert clusters into a structured page sitemap. Each cluster becomes a page with a cluster anchor keyword. This is Gate 0 — review before proceeding." onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
+  html += '<button id="recluster-btn" class="btn btn-ghost" data-tip="Re-run clustering on the current selection. Use after adding more keywords to Opportunities or changing the selection." onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
   if (ts) html += '<span style="font-size:11px;color:var(--n2)">Clustered at ' + ts + '</span>';
   html += '</div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
@@ -1330,7 +1330,7 @@ function _renderKwQuestionsTab() {
     html += '<i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i>';
     html += '<div style="font-size:13px;margin-bottom:8px">No questions fetched yet.</div>';
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">AI-generates bottom-of-funnel questions real buyers ask when evaluating your services.</div>';
-    html += '<button class="btn btn-primary" onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
+    html += '<button class="btn btn-primary" data-tip="Generate 20 bottom-of-funnel buyer questions using AI — pricing, ROI, comparison, and vetting questions that prospects actually Google." onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Validate to get search volumes and page assignments — these flow into copy briefs and FAQ schema.</div>';
@@ -1338,11 +1338,11 @@ function _renderKwQuestionsTab() {
 
     // Action bar
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-    html += '<button class="btn btn-primary" onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
-    html += '<button class="btn btn-ghost" onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
-    html += '<button class="btn btn-ghost" onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
-    html += '<button class="btn btn-ghost" onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
-    html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
+    html += '<button class="btn btn-primary" data-tip="Run AI to assign each question to a page type (service page FAQ, new blog post, or sitewide FAQ) and check for intent alignment. Required before moving to Briefs." onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
+    html += '<button class="btn btn-ghost" data-tip="Regenerate the full question list. Replaces existing questions — pin important ones first if needed." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
+    html += '<button class="btn btn-ghost" data-tip="Generate 20 more questions and append — skips duplicates. Use to expand coverage without losing existing questions." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
+    html += '<button class="btn btn-ghost" data-tip="Convert informational questions into blog topic seed keywords and add them to the Seeds tab. Only extracts the keyword phrase, not the full question." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Extract keyword phrases from all questions and add to Seeds tab for volume lookup." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
     if (isValidated) {
       var withVol = normalised.filter(function(q) { return q.vol > 0; }).length;
       html += '<span style="font-size:11px;color:var(--green);display:inline-flex;align-items:center;gap:4px"><i class="ti ti-check"></i> ' + withVol + '/' + normalised.length + ' have search volume</span>';
