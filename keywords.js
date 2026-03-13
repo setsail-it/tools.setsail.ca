@@ -1528,6 +1528,24 @@ function _addQuestionAsSeed(i) {
   renderKwTabContent();
 }
 
+// Strips a question to its core keyword phrase for seed lookup.
+// "how much does dental marketing cost in Sydney" → "dental marketing cost Sydney"
+function _questionToSeedKeyword(q) {
+  var s = (q || '').trim().toLowerCase()
+    // Remove leading question words + connectors
+    .replace(/^(how much does|how much is|how do i|how to|how do|how can|what is|what are|what does|what's|who is|who are|why does|why is|when do|where can|where do|which is|which are|can i|do i need|is there|is it|should i|will|does|do)\s+/i, '')
+    // Remove filler at end
+    .replace(/\s+(work|work\?|\?|near me)$/i, '')
+    // Remove possessives and articles mid-phrase
+    .replace(/(a |an |the |my |your |our |their |this |that |for a |for an |for the )/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  // Keep only if 2-7 words (seeds should be tight head terms)
+  var words = s.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 7) return null;
+  return s;
+}
+
 function addAllQuestionsAsSeeds() {
   var qs = _getQuestionsArray();
   if (!qs.length) return;
@@ -1536,14 +1554,19 @@ function addAllQuestionsAsSeeds() {
   if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [], questions: [] };
   if (!S.kwResearch.seedSources.questions) S.kwResearch.seedSources.questions = [];
   var qSet = new Set(S.kwResearch.seedSources.questions.map(function(s){ return s.toLowerCase(); }));
-  var added = 0;
+  var seedSet = new Set(S.kwResearch.seeds.map(function(s){ return s.toLowerCase(); }));
+  var added = 0; var skipped = 0;
   qs.forEach(function(q) {
-    if (q && S.kwResearch.seeds.indexOf(q) === -1) { S.kwResearch.seeds.push(q); added++; }
-    if (q && !qSet.has(q.toLowerCase())) { qSet.add(q.toLowerCase()); S.kwResearch.seedSources.questions.push(q); }
+    var kw = _questionToSeedKeyword(q);
+    if (!kw) { skipped++; return; }
+    if (!seedSet.has(kw)) { S.kwResearch.seeds.push(kw); seedSet.add(kw); added++; }
+    if (!qSet.has(kw)) { S.kwResearch.seedSources.questions.push(kw); qSet.add(kw); }
   });
   scheduleSave();
   renderKwTabContent();
-  if (added) { if(typeof aiBarNotify==='function') aiBarNotify('✓ ' + added + ' questions added to Seeds', {meta:'Next: Fetch Volumes →', duration:5000}); }
+  var msg = '✓ ' + added + ' keyword' + (added!==1?'s':'') + ' extracted from ' + qs.length + ' questions';
+  if (skipped) msg += ' (' + skipped + ' too long, skipped)';
+  if (typeof aiBarNotify==='function') aiBarNotify(msg, {meta:'Next: Fetch Volumes →', duration:5000});
 }
 
 async function fetchPAAFromKeywords() {
