@@ -1677,17 +1677,18 @@ function _buildPswList() {
   }
   var currentId = S.currentProject || S.projectId || '';
   var STAGE_LABELS = {setup:'Setup',snapshot:'Snapshot',research:'Research',keywords:'Keywords',sitemap:'Sitemap',briefs:'Briefs',copy:'Copy',images:'Images',layout:'Layout',schema:'Schema',export:'Export'};
-  var html = _cachedProjects.map(function(p) {
+  el.innerHTML = '';
+  _cachedProjects.forEach(function(p) {
     var isCurrent = p.id === currentId;
     var name = p.name || p.id;
     var stage = STAGE_LABELS[p.stage] || (p.stage || '');
-    return '<button class="psw-item' + (isCurrent ? ' psw-active' : '') + '"'
-      + (isCurrent ? '' : ' onclick="switchProject('' + esc(p.id) + '');closeProjSwitcher()"') + '>'
-      + '<span class="psw-item-name">' + esc(name) + '</span>'
-      + (stage ? '<span class="psw-item-stage">' + esc(stage) + '</span>' : '')
-      + '</button>';
-  }).join('');
-  el.innerHTML = html;
+    var btn = document.createElement('button');
+    btn.className = 'psw-item' + (isCurrent ? ' psw-active' : '');
+    btn.innerHTML = '<span class="psw-item-name">' + esc(name) + '</span>'
+      + (stage ? '<span class="psw-item-stage">' + esc(stage) + '</span>' : '');
+    if (!isCurrent) btn.onclick = function() { switchProject(p.id); closeProjSwitcher(); };
+    el.appendChild(btn);
+  });
 }
 
 function toggleProjSwitcher(e) {
