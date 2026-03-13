@@ -327,7 +327,7 @@ export default {
               (task.result || []).forEach(r => {
                 if (r.keyword) {
                   kwMap[r.keyword] = {
-                    volume: r.search_volume || 0,
+                    volume: r.search_volume != null ? r.search_volume : null,
                     kd: r.competition_index || 0,
                     cpc: r.cpc || 0,
                     monthly: (r.monthly_searches || []).slice(0, 6).map(m => m.search_volume)

@@ -629,9 +629,12 @@ async function fetchKwVolumes() {
     var data = await res.json();
     if (!data.keywords || data.error) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(data.error || 'No data') + '</span>'; return; }
     console.log('[fetchKwVolumes] received:', data.keywords.length, 'kws, debug:', JSON.stringify(data.debug || {}));
-    var scored = data.keywords.filter(function(k) { return k.volume > 0; }).map(function(k) {
+    var scored = data.keywords.map(function(k) {
       var kd = k.difficulty > 0 ? k.difficulty : 30;
-      return { kw: k.keyword, vol: k.volume, kd: k.difficulty, cpc: k.cpc || 0, score: Math.round((Math.log(k.volume + 1) * 100) / kd * 10) / 10, monthly: k.monthly || [] };
+      var vol = (k.volume != null && k.volume > 0) ? k.volume : 0;
+      var noData = k.volume == null;
+      var score = vol >= 10 ? Math.round((Math.log(vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+      return { kw: k.keyword, vol: vol, kd: k.difficulty, cpc: k.cpc || 0, score: score, noData: noData, monthly: k.monthly || [] };
     }).sort(function(a, b) { return b.score - a.score; });
     var seen = new Set();
     var deduped = scored.filter(function(k) { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 300);
@@ -680,7 +683,7 @@ function _renderKwOppsTab() {
   // Always recalculate score at render time — ensures stale KV data gets updated formula
   kws = kws.map(function(k) {
     var kd = k.kd > 0 ? k.kd : 30;
-    var score = k.vol >= 50 ? Math.round((Math.log(k.vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+    var score = k.vol >= 10 ? Math.round((Math.log(k.vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
     return Object.assign({}, k, { score: score });
   });
   var sortedKws = kws.slice().sort(function(a, b) {
@@ -720,7 +723,7 @@ function _renderKwOppsTab() {
         kdClr = 'var(--error)'; kdLabel2 = ' ✗'; rankTip = 'Too competitive for current DR (' + siteDR + ')';
       }
     }
-    var volClr = k.vol >= 500 ? 'var(--green)' : k.vol >= 100 ? 'var(--n3)' : 'var(--n1)';
+    var volClr = k.noData ? 'var(--n1)' : k.vol >= 500 ? 'var(--green)' : k.vol >= 100 ? 'var(--n3)' : 'var(--n2)';
     var rowBg = isSel ? 'rgba(21,142,29,0.05)' : (i % 2 ? 'var(--bg)' : '');
     var spark = '';
     if (k.monthly && k.monthly.length >= 2) {
@@ -731,7 +734,7 @@ function _renderKwOppsTab() {
         html += '<div data-kw="' + esc(k.kw) + '" onclick="_toggleKwByAttr(this)" style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px">'
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
       + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
-      + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.vol || 0).toLocaleString() + '</span>'
+      + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.noData ? '—' : (k.vol || 0).toLocaleString()) + '</span>'
       + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + (typeof kdLabel2 !== 'undefined' ? kdLabel2 : '') + '</span>'
       + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
       + '<span style="font-size:11px">' + spark + '</span>'
