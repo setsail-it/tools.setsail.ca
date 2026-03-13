@@ -1094,6 +1094,33 @@ function aiBarEnd(label) {
 }
 
 // Queue mode: real progress bar (called by _pollQueueStatus)
+
+function aiBarNotify(msg, opts) {
+  // opts: { duration: ms, meta: string, isError: bool }
+  var o = opts || {};
+  var bar = document.getElementById('ai-bar');
+  var labelEl = document.getElementById('ai-bar-label');
+  var metaEl = document.getElementById('ai-bar-meta');
+  var fill = document.getElementById('ai-bar-fill');
+  var track = document.getElementById('ai-bar-track');
+  if (!bar) return;
+  if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
+  if (labelEl) labelEl.textContent = msg;
+  if (metaEl) metaEl.textContent = o.meta || '';
+  if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '0%'; }
+  if (track) track.style.opacity = '0'; // hide progress track for notifications
+  bar.classList.add('active');
+  if (labelEl) labelEl.style.color = o.isError ? 'var(--error)' : 'var(--dark)';
+  var dur = o.duration !== undefined ? o.duration : 4000;
+  if (dur > 0) {
+    setTimeout(function() {
+      bar.classList.remove('active');
+      if (labelEl) { labelEl.textContent = ''; labelEl.style.color = ''; }
+      if (metaEl) metaEl.textContent = '';
+      if (track) track.style.opacity = '';
+    }, dur);
+  }
+}
 function aiBarQueue(done, total, avgSeconds) {
   var bar = document.getElementById('ai-bar');
   var fill = document.getElementById('ai-bar-fill');

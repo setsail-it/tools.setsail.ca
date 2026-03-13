@@ -408,7 +408,7 @@ async function generateBriefV2(pageIdx) {
 
 async function briefPageNicheExpand(pidx) {
   var p = S.pages[pidx];
-  if (!p || !p.primary_keyword) { alert('No primary keyword on this page.'); return; }
+  if (!p || !p.primary_keyword) { if(typeof aiBarNotify==='function') aiBarNotify('No primary keyword on this page.', {isError:true,duration:3000}); return; }
   var btn = document.getElementById('brief-niche-btn-'+pidx);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Expanding...'; }
   try {
@@ -439,7 +439,7 @@ async function briefPageNicheExpand(pidx) {
   } catch(e) {
     console.error('[brief-niche-expand]', e);
     if (btn) { btn.disabled = false; btn.innerHTML = '⌖ Niche KW'; }
-    alert('Niche expand failed: '+e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Niche expand failed: '+e.message, {isError:true,duration:4000});
   }
 }
 
@@ -475,7 +475,7 @@ async function briefPageQuestions(pidx) {
   } catch(e) {
     console.error('[brief-page-questions]', e);
     if (btn) { btn.disabled = false; btn.innerHTML = '? Questions'; }
-    alert('Page questions failed: '+e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Page questions failed: '+e.message, {isError:true,duration:4000});
   }
 }
 
@@ -557,7 +557,7 @@ async function briefPageAssign(pidx) {
   } catch(e) {
     console.error('[brief-page-assign]', e);
     if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; }
-    alert('Assign failed: '+e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Assign failed: '+e.message, {isError:true,duration:4000});
   }
 }
 
@@ -1236,7 +1236,7 @@ async function queueAllBriefs() {
   var btn = document.getElementById('briefs-queue-btn');
   var statusEl = document.getElementById('briefs-queue-status');
   if (!S.pages || !S.pages.length) return;
-  if (!S.currentProject) { alert('No project loaded'); return; }
+  if (!S.currentProject) { if(typeof aiBarNotify==='function') aiBarNotify('No project loaded', {isError:true,duration:3000}); return; }
 
   var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
   var ungenerated = seoPages.filter(function(p){ return !p.brief || !p.brief.generated; });

@@ -231,7 +231,7 @@ function attemptSitemapParse() {
     scheduleSave();
     enrichSitemapWithLiveData();
   } else {
-    alert('Still could not parse — try Regenerate');
+    if(typeof aiBarNotify==='function') aiBarNotify('Could not parse sitemap — try Regenerate', {isError:true,duration:4000});
   }
 }
 

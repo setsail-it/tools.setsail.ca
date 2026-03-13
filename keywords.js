@@ -332,7 +332,7 @@ function buildKwSeeds() {
       if (s.length > 3) { seeds.add(s + ' ' + sg); seeds.add(s + ' agency ' + sg); }
     });
   });
-  // Always merge pinned seeds — they survive Reset to Mechanical
+  // Always merge pinned seeds — they survive Refresh Seeds
   var pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
   pinned.forEach(function(k) { seeds.add(k); });
   return Array.from(seeds).filter(function(k) { return k.length > 1 && k.split(' ').length <= 7; }).slice(0, 500);
@@ -580,7 +580,7 @@ function _renderKwSeedsTab() {
   html += '<button class="btn btn-primary" onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
   html += '<button class="btn btn-ghost" onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
   html += '<button class="btn btn-ghost" onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
-  html += '<button class="btn btn-ghost" onclick="_resetToMechanicalSeeds()"><i class="ti ti-refresh"></i> Reset to Mechanical</button>';
+  html += '<button class="btn btn-ghost" onclick="_resetToMechanicalSeeds()" title="Rebuild the mechanical seed list from client/service data and merge back into seeds"><i class="ti ti-refresh"></i> Refresh Seeds</button>';
   var _hasQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0);
   if (_hasQs) {
     html += '<button class="btn btn-ghost sm" onclick="addAllQuestionsAsSeeds()" title="Convert all questions to seed keywords and add to this list"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
@@ -988,7 +988,7 @@ function selectTopKws(n) {
 
 async function clusterSelectedKws() {
   var selected = S.kwResearch && S.kwResearch.selected ? S.kwResearch.selected : [];
-  if (selected.length < 5) { alert('Select at least 5 keywords first.'); return; }
+  if (selected.length < 5) { if(typeof aiBarNotify==='function') aiBarNotify('Select at least 5 keywords first.', {isError:true,duration:3000}); return; }
   var statusEl = document.getElementById('kw-cluster-status');
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Clustering...';
   var reclusterBtn = document.getElementById('recluster-btn');
@@ -1107,7 +1107,7 @@ function _renderKwClustersTab() {
 
 async function validateAndAssignQuestions() {
   var qs = _getQuestionsArray();
-  if (!qs.length) { alert('No questions to validate. Fetch questions first.'); return; }
+  if (!qs.length) { if(typeof aiBarNotify==='function') aiBarNotify('No questions yet — fetch questions first.', {isError:true,duration:3000}); return; }
 
   var statusEl = document.getElementById('kw-questions-fetch-status');
   var r = S.research || {};
@@ -1487,7 +1487,7 @@ function addAllQuestionsAsSeeds() {
   });
   scheduleSave();
   renderKwTabContent();
-  if (added) alert(added + ' questions added to seeds.');
+  if (added) { if(typeof aiBarNotify==='function') aiBarNotify('✓ ' + added + ' questions added to Seeds', {meta:'Next: Fetch Volumes →', duration:5000}); }
 }
 
 async function fetchPAAFromKeywords() {
@@ -1616,7 +1616,7 @@ async function generateMoreQuestions() {
 
 async function generateBlogSeedsFromQuestions() {
   var qs = _getQuestionsArray();
-  if (!qs.length) { alert('No questions found. Run Research enrichment first.'); return; }
+  if (!qs.length) { if(typeof aiBarNotify==='function') aiBarNotify('No questions found — run Research enrichment first.', {isError:true,duration:3000}); return; }
   var r = S.research || {};
   var setup = S.setup || {};
   var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
@@ -1640,11 +1640,11 @@ async function generateBlogSeedsFromQuestions() {
       }
     });
     scheduleSave();
-    alert(added + ' blog seeds added from questions. Go to Seeds tab to review, then Fetch Volumes.');
+    if(typeof aiBarNotify==='function') aiBarNotify('✓ ' + added + ' blog seeds added from Questions', {meta:'Go to Seeds → Fetch Volumes', duration:6000});
     _kwTab = 'seeds';
     renderKwTabContent();
   } catch(e) {
-    alert('Error generating blog seeds: ' + e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Blog seeds error: ' + e.message, {isError:true,duration:5000});
   }
 }
 
@@ -1663,7 +1663,7 @@ async function runNicheExpand() {
     var pages = (S.pages || []).filter(function(p) {
       return p.page_type !== 'utility' && p.primary_keyword;
     });
-    if (!pages.length) { alert('No pages with primary keywords. Build sitemap first.'); return; }
+    if (!pages.length) { if(typeof aiBarNotify==='function') aiBarNotify('No pages with keywords — build sitemap first.', {isError:true,duration:3000}); return; }
 
     var country = (S.kwResearch && S.kwResearch.country) || 'CA';
     var payload = {
@@ -1724,7 +1724,7 @@ async function runNicheExpand() {
     console.log('[niche-expand]', msg);
   } catch(e) {
     console.error('[niche-expand]', e);
-    alert('Niche expand failed: ' + e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Niche expand failed: ' + e.message, {isError:true,duration:5000});
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-antenna"></i> Expand Niche Keywords'; }
   }
 }
@@ -1741,7 +1741,7 @@ async function runPageQuestions() {
     var pages = (S.pages || []).filter(function(p) {
       return p.page_type !== 'utility' && p.primary_keyword;
     });
-    if (!pages.length) { alert('No pages with primary keywords found.'); return; }
+    if (!pages.length) { if(typeof aiBarNotify==='function') aiBarNotify('No pages yet — build sitemap first.', {isError:true,duration:3000}); return; }
 
     var siteContext = '';
     if (S.research) {
@@ -1802,7 +1802,7 @@ async function runPageQuestions() {
 
   } catch(e) {
     console.error('[page-questions]', e);
-    alert('Page questions failed: ' + e.message);
+    if(typeof aiBarNotify==='function') aiBarNotify('Page questions failed: ' + e.message, {isError:true,duration:5000});
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-message-question"></i> Generate Page Questions'; }
   }
 }
@@ -1815,7 +1815,7 @@ async function aiAssignKeywordsAndQuestions() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Assigning...'; }
 
   var pages = (S.pages||[]).filter(function(p){ return p.page_type !== 'utility'; });
-  if (!pages.length) { alert('No pages yet. Build sitemap first.'); if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-sparkles"></i> AI Assign Keywords + Questions';} return; }
+  if (!pages.length) { if(typeof aiBarNotify==='function') aiBarNotify('No pages yet — build sitemap first.', {isError:true,duration:3000}); if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-sparkles"></i> AI Assign Keywords + Questions';} return; }
 
   // All unassigned / underused keywords
   var usedPrimaries = new Set(pages.map(function(p){ return (p.primary_keyword||'').toLowerCase().trim(); }));
