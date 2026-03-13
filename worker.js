@@ -663,10 +663,45 @@ export default {
 
         // Debug info if nothing found
         let gapDebug = null;
+        // ── Fallback: Google Suggest using competitor brand names as seeds ──
+        // Fires when dataforseo_labs is not on plan or domains return no results
         if (!allKeywords.length) {
-          gapDebug = { domainsAttempted: domains.slice(0,3), ownKwCount: ownSet.size, note: 'check domain format and dataforseo_labs access' };
+          gapDebug = { domainsAttempted: domains.slice(0,3), note: 'dataforseo_labs returned 0 — using Google Suggest fallback' };
+          const suggestSet = new Set();
+          const glMap2 = { ca: 'ca', us: 'us', gb: 'gb', au: 'au', nz: 'nz', sg: 'sg', za: 'za' };
+          const gl2 = glMap2[(cc || 'us').toLowerCase()] || 'us';
+
+          async function fetchSuggestComp(term) {
+            try {
+              const url = 'https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl2;
+              const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+              if (!r.ok) return;
+              const data = await r.json();
+              (data[1] || []).forEach(s => { if (s && s.length <= 60 && s.split(' ').length <= 7) suggestSet.add(s.toLowerCase()); });
+            } catch(e) {}
+          }
+
+          // For each domain, use its bare name parts as seeds (e.g. oceanicdental → "oceanic dental lab")
+          const suggestBatch2 = [];
+          for (const domain of domains.slice(0, 3)) {
+            const bare = domain.replace(/\.com\.au$|\.com$|\.au$|\.co\.nz$/, '');
+            suggestBatch2.push(fetchSuggestComp(bare));
+            suggestBatch2.push(fetchSuggestComp(bare + ' services'));
+            suggestBatch2.push(fetchSuggestComp(bare + ' dental'));
+          }
+          // Also suggest around the niche directly
+          suggestBatch2.push(fetchSuggestComp('dental laboratory services'));
+          suggestBatch2.push(fetchSuggestComp('dental lab services'));
+          await Promise.all(suggestBatch2);
+
+          // Convert to keyword objects (no vol data — will be looked up later)
+          [...suggestSet].filter(s => !ownSet.has(s)).forEach(s => {
+            allKeywords.push({ keyword: s, volume: null, kd: null, source: 'suggest-fallback' });
+          });
+          gapDebug.suggestCount = allKeywords.length;
         }
-        return new Response(JSON.stringify({ keywords: allKeywords.slice(0, 120), debug: gapDebug, source: 'dataforseo-gap' }), {
+
+        return new Response(JSON.stringify({ keywords: allKeywords.slice(0, 200), debug: gapDebug, source: allKeywords[0]?.source === 'suggest-fallback' ? 'google-suggest' : 'dataforseo-gap' }), {
           status: 200, headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch(err) {

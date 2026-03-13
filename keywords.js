@@ -395,7 +395,15 @@ function openCompetitorSeeds() {
 
   // Pre-fill from research competitors
   var r = S.research || {};
-  var researchComps = (r.competitors || []).slice(0, 5).map(function(c) { return c.domain || c.name || c; }).filter(Boolean);
+  var researchComps = (r.competitors || []).slice(0, 5).map(function(c) {
+    // Prefer URL → strip to bare domain; fall back to name
+    var url = c.url || c.domain || '';
+    if (url) {
+      url = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').trim();
+      if (url) return url;
+    }
+    return c.name || c || '';
+  }).filter(Boolean);
 
   panel.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-building-store" style="margin-right:6px"></i>Competitor Keyword Mining</div>'
     + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 3 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
@@ -458,7 +466,8 @@ async function _runCompetitorSeeds() {
     });
 
     scheduleSave();
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> Added ' + added + ' competitor keywords to seeds</span>';
+    var src = data.source === 'google-suggest' ? ' <span style="opacity:0.6">(via Google Suggest — dataforseo_labs not on plan)</span>' : ' <span style="opacity:0.6">(via DataForSEO)</span>';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> Added ' + added + ' keywords to seeds</span>' + src;
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Keywords'; }
     setTimeout(function() {
       var panel = document.getElementById('comp-seeds-panel');
