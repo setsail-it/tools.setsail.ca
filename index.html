@@ -1690,9 +1690,10 @@ function _buildPswList() {
 
 function toggleProjSwitcher(e) {
   e.stopPropagation();
+  closeUserDropdown(); // close other dropdown first
   var sw = document.getElementById('proj-switcher');
   var isOpen = sw.classList.contains('open');
-  if (!isOpen) _buildPswList(); // refresh list on open
+  if (!isOpen) _buildPswList();
   sw.classList.toggle('open');
 }
 
@@ -1711,6 +1712,7 @@ async function switchProject(id) {
 // ── USER DROPDOWN ─────────────────────────────────────────────────────────────
 function toggleUserDropdown(e) {
   e.stopPropagation();
+  closeProjSwitcher(); // close other dropdown first
   var dd = document.getElementById('user-dropdown');
   if (dd) dd.classList.toggle('open');
 }
