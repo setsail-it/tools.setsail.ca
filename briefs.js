@@ -477,48 +477,74 @@ async function briefPageAssign(pidx) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Assigning...'; }
   try {
     var usedPrimaries = new Set((S.pages||[]).map(function(pg){ return (pg.primary_keyword||'').toLowerCase().trim(); }));
-    var alreadyAssigned = new Set((p.assignedQuestions||[]).concat(p.pageQuestions||[]));
-    var allKws = (S.kwResearch&&S.kwResearch.keywords||[])
+
+    // Current state — passed to Claude so it can keep, drop, or replace
+    var currentKws = (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?k.kw:k; }).filter(Boolean);
+    var currentQs  = (p.assignedQuestions||[]).filter(Boolean);
+
+    // Full keyword pool (include currently assigned so Claude can re-evaluate them too)
+    var poolKws = (S.kwResearch&&S.kwResearch.keywords||[])
       .filter(function(k){ return k.vol >= 10 && !usedPrimaries.has((k.kw||'').toLowerCase().trim()); })
       .sort(function(a,b){ return (b.score||0)-(a.score||0); })
-      .slice(0,80)
+      .slice(0,100)
       .map(function(k){ return k.kw+'|'+k.vol+'/mo|KD:'+k.kd; });
-    var allQs = [];
+
+    // Full question pool (include currently assigned so Claude can re-evaluate them too)
+    var poolQs = [];
     if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) {
-      S.contentIntel.paa.questions.forEach(function(q){ if (q.question && !alreadyAssigned.has(q.question)) allQs.push(q.question); });
+      S.contentIntel.paa.questions.forEach(function(q){ if (q.question) poolQs.push(q.question); });
     }
-    var nicheKws = (S.kwResearch&&S.kwResearch.keywords||[]).filter(function(k){ return (k.source||'').includes(p.slug); }).slice(0,10).map(function(k){ return k.kw; }).join(', ');
+    // Also include pageQuestions in pool so they survive the re-evaluation
+    (p.pageQuestions||[]).forEach(function(q){ if (!poolQs.includes(q)) poolQs.push(q); });
+
+    var nicheKws = (S.kwResearch&&S.kwResearch.keywords||[])
+      .filter(function(k){ return (k.source||'').includes(p.slug); })
+      .slice(0,10).map(function(k){ return k.kw; }).join(', ');
+
     var R2 = S.research || {};
     var prompt = '## PAGE\n/'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+(nicheKws?' | niche_kws: '+nicheKws:'')
-      + '\n\n## KEYWORDS (keyword|vol|KD)\n'+(allKws.join('\n')||'none')
-      + '\n\n## QUESTIONS (People Also Ask)\n'+(allQs.map(function(q,i){ return (i+1)+'. '+q; }).join('\n')||'none')
-      + '\n\n## TASK\nAssign for this single page:\n1. additional_keywords — 3-8 keywords from the list that match this page\'s intent\n2. assigned_questions — 3-6 questions from the PAQ list best suited for this page\n\nRules: match intent strictly. Return JSON only:\n[{"slug":"'+p.slug+'","additional_keywords":[...],"assigned_questions":[...]}]';
-    var sys = 'You are a senior SEO strategist. Assign keywords and questions to a single page based on strict intent match. Client: '+(R2.client_name||'')+' | Industry: '+(R2.industry||'')+'. Return raw JSON array only — no markdown.';
-    var result = await callClaude(sys, prompt, null, 1500);
+      + '\n\n## CURRENTLY ASSIGNED KEYWORDS\n'+(currentKws.length ? currentKws.join('\n') : 'none')
+      + '\n\n## CURRENTLY ASSIGNED QUESTIONS\n'+(currentQs.length ? currentQs.map(function(q,i){ return (i+1)+'. '+q; }).join('\n') : 'none')
+      + '\n\n## KEYWORD POOL (keyword|vol|KD)\n'+(poolKws.join('\n')||'none')
+      + '\n\n## QUESTION POOL (People Also Ask + page questions)\n'+(poolQs.map(function(q,i){ return (i+1)+'. '+q; }).join('\n')||'none')
+      + '\n\n## TASK\nReturn the complete final set for this page — not just additions.\n'
+      + 'For keywords: review what is currently assigned. Keep keywords that genuinely match this page\'s search intent. Drop any that are off-topic, too broad, or better suited to another page type. Replace dropped ones with better fits from the pool. Final list: 3-8 keywords.\n'
+      + 'For questions: review what is currently assigned. Keep questions a visitor to THIS page would actually ask. Drop any that are generic, irrelevant, or better answered elsewhere. Replace with better fits from the pool. Final list: 4-8 questions.\n'
+      + '\nReturn JSON only — the full final lists, not a diff:\n'
+      + '[{"slug":"'+p.slug+'","final_keywords":["kw1","kw2",...],"final_questions":["Q1?","Q2?",...],"removed_keywords":["dropped1",...],"removed_questions":["dropped Q?",...]}]';
+
+    var sys = 'You are a senior SEO strategist. Your job is to curate the keyword and question set for a single page — not just add to it. Be ruthless about intent match: a keyword or question that doesn\'t belong on this specific page type hurts the brief. Client: '+(R2.client_name||'')+' | Industry: '+(R2.industry||'')+' | Services: '+((R2.primary_services||[]).join(', ')||'')+'. Return raw JSON array only — no markdown, no preamble.';
+
+    var result = await callClaude(sys, prompt, null, 2000);
     function fixT(s){ return s.replace(/,\s*([\]\}])/g,'$1'); }
     var parsed = null;
     try { parsed = JSON.parse(fixT(result.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim())); } catch(e){}
-    if (!parsed) { var s=result.indexOf('['),e=result.lastIndexOf(']'); if(s>=0&&e>s) try{parsed=JSON.parse(fixT(result.slice(s,e+1)));}catch(e2){} }
+    if (!parsed) { var s=result.indexOf('['),en=result.lastIndexOf(']'); if(s>=0&&en>s) try{parsed=JSON.parse(fixT(result.slice(s,en+1)));}catch(e2){} }
     if (!parsed || !Array.isArray(parsed) || !parsed[0]) throw new Error('Parse error — check console');
     var asgn = parsed[0];
-    if (asgn.additional_keywords && asgn.additional_keywords.length) {
-      if (!p.supporting_keywords) p.supporting_keywords = [];
-      var existingKwStrs = new Set((p.supporting_keywords||[]).map(function(k){ return (typeof k==='object'?k.kw:k).toLowerCase(); }));
-      asgn.additional_keywords.forEach(function(kw) {
-        if (!existingKwStrs.has(kw.toLowerCase())) {
-          var kwObj = (S.kwResearch&&S.kwResearch.keywords||[]).find(function(k){ return (k.kw||'').toLowerCase()===kw.toLowerCase(); });
-          p.supporting_keywords.push(kwObj ? { kw: kwObj.kw, vol: kwObj.vol, kd: kwObj.kd } : { kw: kw, vol: 0, kd: 0 });
-        }
+
+    // Replace (not merge) — this is a full curation pass
+    if (asgn.final_keywords && Array.isArray(asgn.final_keywords)) {
+      p.supporting_keywords = asgn.final_keywords.map(function(kw) {
+        var kwObj = (S.kwResearch&&S.kwResearch.keywords||[]).find(function(k){ return (k.kw||'').toLowerCase()===kw.toLowerCase(); });
+        return kwObj ? { kw: kwObj.kw, vol: kwObj.vol, kd: kwObj.kd } : { kw: kw, vol: 0, kd: 0 };
       });
     }
-    if (asgn.assigned_questions && asgn.assigned_questions.length) {
-      if (!p.assignedQuestions) p.assignedQuestions = [];
-      asgn.assigned_questions.forEach(function(q){ if (!p.assignedQuestions.includes(q)) p.assignedQuestions.push(q); });
+    if (asgn.final_questions && Array.isArray(asgn.final_questions)) {
+      p.assignedQuestions = asgn.final_questions;
     }
+
+    // Log removals to console for visibility
+    if ((asgn.removed_keywords||[]).length || (asgn.removed_questions||[]).length) {
+      console.log('[brief-assign] Removed keywords:', asgn.removed_keywords||[]);
+      console.log('[brief-assign] Removed questions:', asgn.removed_questions||[]);
+    }
+
     scheduleSave();
     renderBriefs();
-    if (btn) { btn.disabled = false; btn.innerHTML = '✓ Assigned'; }
-    setTimeout(function(){ if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; } }, 3000);
+    var removedCount = (asgn.removed_keywords||[]).length + (asgn.removed_questions||[]).length;
+    if (btn) { btn.disabled = false; btn.innerHTML = '✓ Curated' + (removedCount ? ' ('+removedCount+' removed)' : ''); }
+    setTimeout(function(){ if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; } }, 4000);
   } catch(e) {
     console.error('[brief-page-assign]', e);
     if (btn) { btn.disabled = false; btn.innerHTML = '✦ Assign'; }
