@@ -664,60 +664,10 @@ function renderBriefs() {
     var trafficStr = p.existing_traffic > 0
       ? (p.existing_traffic >= 1000 ? (p.existing_traffic/1000).toFixed(1)+'k' : p.existing_traffic)+'/mo'
       : '';
-    var paqCount = (p.assignedQuestions||[]).length;
-    var actionBadge = p.action === 'improve_existing'
-      ? '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500">IMPROVE</span>'
-      : '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);font-weight:500">BUILD NEW</span>';
-    var priBadge = '<span style="background:rgba(0,0,0,0.05);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">'+(p.priority||'P3')+'</span>';
 
-    // Normalise supporting_keywords — may be objects {kw,vol,kd} or plain strings
+    // Normalise supporting_keywords
     var addlKws = (p.supporting_keywords||[]).map(function(k){ return typeof k==='object'?(k.kw||''):String(k); }).filter(Boolean);
     var assignedQs = (p.assignedQuestions||[]);
-
-    var leftCol = '<div style="padding:12px 14px;border-right:1px solid var(--border);min-width:0;display:flex;flex-direction:column;gap:8px;position:relative">'
-      // Header
-      + '<div>'
-      + '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px">'+esc(p.page_name)+'</div>'
-      + '<div style="font-size:10.5px;color:var(--n2);margin-bottom:5px">/'+(p.slug||'')+'</div>'
-      + '<div style="display:flex;gap:4px;flex-wrap:wrap">'+actionBadge+priBadge+'</div>'
-      + '</div>'
-      // Primary keyword
-      + '<div style="border-top:1px solid var(--border);padding-top:8px">'
-      + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Primary Keyword</div>'
-      + '<div style="font-size:11.5px;color:var(--dark);font-weight:600">'+(p.primary_keyword||'—')+'</div>'
-      + '<div style="font-size:10px;color:var(--n2);margin-top:1px">'+(p.primary_vol?p.primary_vol.toLocaleString()+'/mo':'')+' '+(p.primary_kd?'· KD:'+p.primary_kd:'')+'</div>'
-      + '</div>'
-      // Keywords — chips + editable input
-      + '<div style="border-top:1px solid var(--border);padding-top:8px">'
-      + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Keywords ('+addlKws.length+')</div>'
-      + (addlKws.length
-          ? addlKws.map(function(k,ki){ return '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9.5px;padding:1px 5px;margin:1px 2px 1px 0;color:var(--n3)">'
-              +esc(k)+'<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1" title="Remove">×</span></span>'; }).join('')
-          : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
-      + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="kw" style="width:100%;text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);margin-top:2px">＋ Pick from researched keywords…</button>'
-      + '<div id="brief-kw-picker-'+pidx+'" style="display:none"></div>'
-      + '</div>'
-      + '</div>'
-      // Questions — list + editable
-      + '<div style="border-top:1px solid var(--border);padding-top:8px">'
-      + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Questions ('+assignedQs.length+')</div>'
-      + (assignedQs.length
-          ? assignedQs.map(function(q,qi){ return '<div style="display:flex;align-items:flex-start;gap:4px;padding:3px 0;border-bottom:1px dashed rgba(0,0,0,0.06)">'
-              +'<span style="font-size:9.5px;color:var(--n3);line-height:1.4;flex:1">'+esc(q)+'</span>'
-              +'<span onclick="briefRemoveQ('+pidx+','+qi+')" style="cursor:pointer;color:var(--n1);font-size:11px;flex-shrink:0;margin-top:1px" title="Remove">×</span>'
-              +'</div>'; }).join('')
-          : '<div style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned — run AI Assign or add manually</div>')
-      + '<div style="display:flex;gap:4px;margin-top:5px">'
-      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="q" style="width:100%;text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);margin-top:2px">＋ Pick from researched questions…</button>'
-      + '<div id="brief-q-picker-'+pidx+'" style="display:none"></div>'
-      + '</div>'
-      + '</div>'
-      // Traffic
-      + (trafficStr ? '<div style="border-top:1px solid var(--border);padding-top:6px">'
-        + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Existing Traffic</div>'
-        + '<div style="font-size:11px;color:var(--green);font-weight:500">'+trafficStr+'</div></div>' : '')
-      + '</div>';
 
     var scoreHtml = '';
     var _hasBriefText = p.brief && (p.brief.generated || p.brief.summary);
@@ -785,45 +735,86 @@ function renderBriefs() {
       }
     }
 
-    // ── RIGHT COL ACTION BAR ─────────────────────────────────────────────────
+    // ── ACTION BAR ───────────────────────────────────────────────────────────
     var _nextV = (p.brief && p.brief.drafts && p.brief.drafts.length > 0)
-      ? p.brief.drafts[p.brief.drafts.length-1].v + 1
-      : 1;
+      ? p.brief.drafts[p.brief.drafts.length-1].v + 1 : 1;
+    var _btnBase = 'border-radius:4px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n3)';
+    var _btnSm   = 'border-radius:4px;padding:3px 8px;font-size:9.5px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n2)';
     var _approveBtn = isBriefed
       ? (isApproved
-          ? '<button onclick="briefToggleApprove('+pidx+')" style="background:rgba(21,142,29,0.08);border:1px solid var(--green);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;color:var(--green);cursor:pointer;font-family:var(--font);white-space:nowrap">✓ Approved</button>'
-          : '<button onclick="briefToggleApprove('+pidx+')" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:500;color:var(--n3);cursor:pointer;font-family:var(--font);white-space:nowrap">Approve Brief</button>'
-        )
-      : '';
+          ? '<button onclick="briefToggleApprove('+pidx+')" style="border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;background:rgba(21,142,29,0.08);border:1px solid var(--green);color:var(--green)">✓ Approved</button>'
+          : '<button onclick="briefToggleApprove('+pidx+')" style="'+_btnBase+';font-weight:500">Approve</button>'
+        ) : '';
     var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
-      + (isBriefed ? '↺ Regenerate' : '✦ Generate Brief')
-      + '</button>';
+      + (isBriefed ? '↺ Regen' : '✦ Generate') + '</button>';
     var _runV2Btn = (isBriefed && (p.brief.drafts||[]).length > 0)
-      ? '<button onclick="generateBriefV2('+pidx+')" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;font-weight:500;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">+ V'+_nextV+'</button>'
-      : '';
-    var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')"  id="brief-niche-btn-'+pidx+'"  title="Expand niche keywords for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">⌖ Niche KW</button>';
-    var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"    id="brief-quest-btn-'+pidx+'"  title="Generate FAQ questions for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">? Questions</button>';
-    var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"       id="brief-assign-btn-'+pidx+'" title="AI assign keywords + questions for this page" style="background:var(--white);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:9.5px;color:var(--n2);cursor:pointer;font-family:var(--font);white-space:nowrap">✦ Assign</button>';
-    var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.01)">'
+      ? '<button onclick="generateBriefV2('+pidx+')" style="'+_btnSm+'">+ V'+_nextV+'</button>' : '';
+    var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')" id="brief-niche-btn-'+pidx+'" title="Expand niche keywords" style="'+_btnSm+'">⌖ Niche KW</button>';
+    var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" title="Generate FAQ questions" style="'+_btnSm+'">? Questions</button>';
+    var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" title="AI assign + curate keywords & questions" style="'+_btnSm+'">✦ Assign</button>';
+
+    var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">'
       + _nicheBtn + _questBtn + _assignBtn
       + '<span style="flex:1"></span>'
       + _runV2Btn + _regenBtn + _approveBtn
       + '</div>';
 
-    var rightContent = isBriefed
-      ? scoreHtml + siStripHtml + taHtml
-      : '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:center;color:var(--n1);font-size:11px;height:100%">No brief yet — click Generate Brief</div>';
-
-    var rightCol = '<div style="min-width:0;display:flex;flex-direction:column">'
-      + actionBar
-      + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px 14px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;min-height:200px;overflow-y:auto"></div>'
-      + '<div id="brief-content-'+pidx+'" style="flex:1">'+rightContent+'</div>'
+    // ── INFO STRIP ────────────────────────────────────────────────────────────
+    var _actionLabel = p.action === 'improve_existing'
+      ? '<span style="font-size:9px;font-weight:500;color:#3b82f6;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;padding:1px 5px">IMPROVE</span>'
+      : '<span style="font-size:9px;font-weight:500;color:var(--green);background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 5px">BUILD NEW</span>';
+    var infoStrip = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.01);font-size:10px;color:var(--n2)">'
+      + _actionLabel
+      + (p.primary_keyword ? '<span style="color:var(--dark);font-weight:600">'+esc(p.primary_keyword)+'</span>' : '')
+      + (p.primary_vol ? '<span>'+p.primary_vol.toLocaleString()+'/mo</span>' : '')
+      + (p.primary_kd  ? '<span>KD: '+p.primary_kd+'</span>' : '')
+      + (p.search_intent ? '<span>· '+esc(p.search_intent)+'</span>' : '')
+      + (p.word_count_target ? '<span>· '+p.word_count_target+' words</span>' : '')
+      + (trafficStr ? '<span style="color:var(--green)">· '+trafficStr+' existing</span>' : '')
       + '</div>';
 
-    var cardBorder = isApproved ? '2px solid var(--green)' : '1px solid var(--border)';
-    var cardBg = isApproved ? 'rgba(21,142,29,0.02)' : 'var(--white)';
-    return '<div class="tbl-row" style="display:grid;grid-template-columns:200px 1fr;border:'+cardBorder+';border-radius:6px;margin-bottom:8px;background:'+cardBg+';position:relative;align-items:stretch">'
-      + leftCol + rightCol + '</div>';
+    // ── KEYWORDS + QUESTIONS (two-col within single layout) ───────────────────
+    var kwHtml = '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Keywords ('+addlKws.length+')</div>'
+      + (addlKws.length
+          ? addlKws.map(function(k,ki){
+              return '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9.5px;padding:1px 6px;margin:0 3px 3px 0;color:var(--n3)">'
+                + esc(k) + '<span onclick="briefRemoveKw('+pidx+','+ki+')" style="cursor:pointer;color:var(--n1);font-size:10px;line-height:1;margin-left:1px">×</span></span>';
+            }).join('')
+          : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None yet</span>')
+      + '<div style="margin-top:5px">'
+      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="kw" style="text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:3px 8px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">＋ Pick keywords…</button>'
+      + '<div id="brief-kw-picker-'+pidx+'" style="display:none"></div>'
+      + '</div></div>';
+
+    var qHtml = '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:9px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Questions ('+assignedQs.length+')</div>'
+      + (assignedQs.length
+          ? assignedQs.map(function(q,qi){
+              return '<div style="display:flex;align-items:flex-start;gap:4px;padding:2px 0;border-bottom:1px dashed rgba(0,0,0,0.05)">'
+                + '<span style="font-size:9.5px;color:var(--n3);line-height:1.4;flex:1">'+esc(q)+'</span>'
+                + '<span onclick="briefRemoveQ('+pidx+','+qi+')" style="cursor:pointer;color:var(--n1);font-size:11px;flex-shrink:0" title="Remove">×</span></div>';
+            }).join('')
+          : '<span style="font-size:9.5px;color:var(--n1);font-style:italic">None assigned</span>')
+      + '<div style="margin-top:5px">'
+      + '<button class="brief-toggle-picker-btn" data-pidx="'+pidx+'" data-type="q" style="text-align:left;background:rgba(0,0,0,0.03);border:1px dashed var(--border);border-radius:3px;padding:3px 8px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">＋ Pick questions…</button>'
+      + '<div id="brief-q-picker-'+pidx+'" style="display:none"></div>'
+      + '</div></div>';
+
+    var kwQRow = '<div style="display:flex;gap:16px;padding:10px 12px;border-bottom:1px solid var(--border)">' + kwHtml + qHtml + '</div>';
+
+    // ── BRIEF CONTENT ─────────────────────────────────────────────────────────
+    var briefContent = isBriefed
+      ? scoreHtml + siStripHtml + taHtml
+      : '<div style="padding:20px 12px;color:var(--n1);font-size:11px;text-align:center">No brief yet — click <strong>✦ Generate</strong> to write it.</div>';
+
+    return '<div style="display:flex;flex-direction:column">'
+      + actionBar
+      + infoStrip
+      + kwQRow
+      + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:220px;overflow-y:auto"></div>'
+      + '<div id="brief-content-'+pidx+'">' + briefContent + '</div>'
+      + '</div>';
   }
 
   // ── GROUP + ACCORDION RENDER ────────────────────────────────────────────────
