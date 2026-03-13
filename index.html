@@ -207,13 +207,14 @@ textarea.inp{resize:vertical}
       </div>
     </div>
   </div>
-  <!-- Centre: AI progress bar -->
+  <!-- Centre: AI progress bar + contextual tips -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
       <span id="ai-bar-label"></span>
       <span id="ai-bar-meta"></span>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
+    <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s"></div>
   </div>
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -824,6 +825,7 @@ async function showProjects() {
   document.getElementById('client-name-nav').textContent = '';
   document.getElementById('nav-meta-wrap').style.display = 'none';
   document.getElementById('nav-div2').style.display = 'none';
+  stopStageTips(true);
   document.getElementById('save-indicator').style.opacity = '0';
   S.projectId = null;
 
@@ -982,6 +984,7 @@ function goTo(stage) {
   var navDiv = document.getElementById('nav-div2');
   if (navDiv) navDiv.style.display = '';
   renderStageBar(stage);
+  startStageTips(stage);
   window.scrollTo(0,0);
   if (stage === 'setup' && S.setup) prefillSetup();
   if (stage === 'briefs') initBriefs();
@@ -998,6 +1001,140 @@ function goTo(stage) {
 function renderStageBar(current) {
   renderSidebar(current);
 }
+
+
+// ── CONTEXTUAL TIP SYSTEM ─────────────────────────────────────────────────────
+// Stage-specific tips drawn from the workflow guide.
+// Rotates every 7s when idle. Pauses during AI generation.
+var STAGE_TIPS = {
+  setup: [
+    "Geo text drives country auto-detection — 'Vancouver, BC' targets Canada, 'Sydney' targets Australia.",
+    "Brand voice and value proposition feed into every AI prompt — write them carefully.",
+    "Client name and URL are used in all downstream copy and SEO output.",
+    "Tick 'Existing site' if the client has a live website — enables Snapshot and gap analysis.",
+  ],
+  snapshot: [
+    "Snapshot pulls domain authority, backlink count, and top organic pages from DataForSEO.",
+    "Top organic pages are auto-imported into the Sitemap stage as 'Active Pages'.",
+    "Check DA vs competitors before starting — it sets realistic ranking expectations.",
+    "Low DA (< 20) means prioritise long-tail, low-KD keywords in Stage 4.",
+  ],
+  research: [
+    "Upload strategy docs, proposals, or intake notes — AI enriches 130 fields across 6 tabs.",
+    "Run all 6 tabs: Client, Audience, Competitors, Services, Positioning, Market.",
+    "Competitors tab feeds the SEO Competitor Keywords tool in Stage 4.",
+    "Pain points and objections in Research feed directly into copy briefs in Stage 6.",
+    "Re-run individual tabs anytime — it merges, not replaces.",
+  ],
+  keywords: [
+    "Set country before Fetch Volumes — wrong country = wrong volumes. Check the dropdown.",
+    "AI Generate Seeds produces tight head terms (2–4 words) for volume lookup, not long-tail.",
+    "Add competitor URLs in Competitor Keywords to mine non-brand terms from their domains.",
+    "Opportunities tab: P1 = must-target, P2 = worth it, P3 = low-priority or informational.",
+    "Validate Questions before pulling to Seeds — removes duplicates and checks search intent.",
+    "BOF questions (pricing, ROI, vs competitors) belong on service pages as FAQ schema.",
+    "Run Fetch Volumes after every major seed addition — volumes expire with the session.",
+    "Clusters group keywords by intent — each cluster becomes one page in the sitemap.",
+  ],
+  sitemap: [
+    "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
+    "Cluster Anchor keyword sets the page's SEO scope — niche keywords are assigned in Briefs.",
+    "P1 pages have high volume + commercial intent. These are your ROI pages — prioritise them.",
+    "Use Edit mode to adjust page types, priorities, or slugs before moving to Briefs.",
+    "Gate 1: approve the sitemap before generating briefs. Changes here affect all downstream work.",
+    "137 zero-vol pages = cluster anchors with no keyword data yet. Run Niche Expand in Briefs.",
+  ],
+  briefs: [
+    "Run Niche Expand first — pulls Google Suggest variants per page and gets DataForSEO volumes.",
+    "Generate Page Questions before AI Assign — they become FAQ H3s in the brief.",
+    "AI Assign Keywords + Questions maps the right keywords and FAQs to each page in one pass.",
+    "SERP Intel fetches top 3 competitor pages — H2 structure and word count appear in the brief.",
+    "Brief Evaluator scores 8 quality checks — fix reds before approving.",
+    "Queue All generates all briefs server-side — safe to close the tab while it runs.",
+    "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
+  ],
+  copy: [
+    "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
+    "Copy Audit checks word count, FAQ section, Canadian spelling, CTA presence, and more.",
+    "Human QC gate: verify brand voice, facts, and offers before approving.",
+    "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
+    "Copy is generated at 6,000 tokens — long pages may need a Pass 2 to complete thin sections.",
+  ],
+  images: [
+    "Images are generated per page based on the approved brief and copy.",
+    "Review and swap images before Layout — Layout uses whatever is approved here.",
+  ],
+  layout: [
+    "Layout assigns components to each page section based on content type.",
+    "Component assignments feed the Webflow build in Export.",
+  ],
+  schema: [
+    "Schema generates FAQPage + LocalBusiness + Service JSON-LD from approved copy.",
+    "FAQ schema feeds Google's AEO (AI Overview) eligibility — prioritise BOF questions.",
+    "Run Schema after Copy is approved — it uses the final copy for accurate Q&A extraction.",
+  ],
+  export: [
+    "Export packages all approved copy, images, schema, and layout for Webflow handoff.",
+    "Review the export checklist — all pages should be approved before exporting.",
+  ],
+};
+
+var _tipTimer = null;
+var _tipIdx = {};
+var _tipsActive = false;
+
+function startStageTips(stage) {
+  _tipsActive = true;
+  stopStageTips(false); // clear existing
+  var tips = STAGE_TIPS[stage];
+  if (!tips || !tips.length) return;
+  if (!_tipIdx[stage]) _tipIdx[stage] = 0;
+  _showTip(tips[_tipIdx[stage]]);
+  _tipTimer = setInterval(function() {
+    if (!_tipsActive) return;
+    _tipIdx[stage] = (_tipIdx[stage] + 1) % tips.length;
+    _showTip(tips[_tipIdx[stage]]);
+  }, 7000);
+}
+
+function stopStageTips(hide) {
+  _tipsActive = false;
+  if (_tipTimer) { clearInterval(_tipTimer); _tipTimer = null; }
+  if (hide !== false) _showTip('');
+}
+
+function _showTip(text) {
+  var el = document.getElementById('ai-tip-line');
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(function() {
+    el.textContent = text ? ('💡 ' + text) : '';
+    el.style.opacity = text ? '1' : '0';
+  }, 200);
+}
+
+// Pause tips during AI generation, resume after
+var _origAiBarStart = null;
+(function patchAiBar() {
+  // Patch after DOM ready
+  setTimeout(function() {
+    var _orig = window.aiBarStart;
+    if (!_orig) return;
+    window.aiBarStart = function(label) {
+      stopStageTips(false); // hide tip line during generation
+      _showTip('');
+      _orig(label);
+    };
+    var _origEnd = window.aiBarEnd;
+    window.aiBarEnd = function(label) {
+      _origEnd(label);
+      // Resume tips after 3s (after done message fades)
+      setTimeout(function() {
+        if (S && S.stage) startStageTips(S.stage);
+      }, 3000);
+    };
+  }, 500);
+})();
 
 function renderSidebar(current) {
   const el = document.getElementById('sidebar-stages');
@@ -1056,6 +1193,8 @@ var _aiBarActive = false;
 
 function aiBarStart(label) {
   _aiBarActive = true;
+  stopStageTips(false); // pause tips during generation
+  _showTip('');
   _aiBarStart = Date.now();
   var bar = document.getElementById('ai-bar');
   var labelEl = document.getElementById('ai-bar-label');
@@ -1089,6 +1228,8 @@ function aiBarEnd(label) {
     if (!_aiBarActive) {
       bar.classList.remove('active');
       if (fill) fill.style.width = '0%';
+      // Resume stage tips after generation completes
+      if (S && S.stage) startStageTips(S.stage);
     }
   }, 2000);
 }
