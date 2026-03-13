@@ -1109,6 +1109,7 @@ function _showTip(text) {
   el.style.opacity = '0';
   setTimeout(function() {
     el.textContent = text ? ('💡 ' + text) : '';
+    el.title = text || '';
     el.style.opacity = text ? '1' : '0';
   }, 200);
 }
@@ -1246,7 +1247,7 @@ function aiBarNotify(msg, opts) {
   var track = document.getElementById('ai-bar-track');
   if (!bar) return;
   if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
-  if (labelEl) labelEl.textContent = msg;
+  if (labelEl) { labelEl.textContent = msg; labelEl.title = msg; }
   if (metaEl) metaEl.textContent = o.meta || '';
   if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '0%'; }
   if (track) track.style.opacity = '0'; // hide progress track for notifications
