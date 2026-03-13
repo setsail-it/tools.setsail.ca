@@ -406,8 +406,8 @@ function openCompetitorSeeds() {
   }).filter(Boolean);
 
   panel.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-building-store" style="margin-right:6px"></i>Competitor Keyword Mining</div>'
-    + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 3 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
-    + '<textarea id="comp-seeds-domains" placeholder="e.g. dentallabnorth.com.au&#10;sydneydentallab.com.au&#10;precisiondentallab.com.au" style="width:100%;box-sizing:border-box;height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);resize:vertical;font-family:inherit">'
+    + '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">Paste up to 5 competitor domains. We\'ll pull their top organic keywords and add non-brand terms to your seeds.</div>'
+    + '<textarea id="comp-seeds-domains" placeholder="e.g. oceanicdental.au&#10;racedental.com.au&#10;scdlab.com&#10;pearlhealthcare.com.au&#10;adp.com.au" style="width:100%;box-sizing:border-box;height:80px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);resize:vertical;font-family:inherit">'
     + researchComps.slice(0,3).join('\n')
     + '</textarea>'
     + '<div style="display:flex;gap:8px;margin-top:10px;align-items:center">'
@@ -447,7 +447,7 @@ async function _runCompetitorSeeds() {
     var data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    var newSeeds = (data.keywords || []).map(function(k) { return (k.keyword || k).toLowerCase().trim(); }).filter(Boolean);
+    var newSeeds = (data.keywords || []).map(function(k) { var s = (typeof k === 'string') ? k : (k.keyword || k.kw || ''); return s.toLowerCase().trim(); }).filter(Boolean);
     if (!newSeeds.length) {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">No keywords returned — check domains or plan access.</span>';
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Keywords'; }

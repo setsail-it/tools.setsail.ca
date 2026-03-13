@@ -616,7 +616,7 @@ export default {
         const allKeywords = [];
         const seen = new Set();
 
-        for (const domain of domains.slice(0, 3)) {
+        for (const domain of domains.slice(0, 5)) {
           const body = [{ target: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''), location_code: locationCode, language_code: 'en', limit: 100 }];
           const res = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/keywords_for_site/live', {
             method: 'POST',
@@ -683,7 +683,7 @@ export default {
 
           // For each domain, use its bare name parts as seeds (e.g. oceanicdental → "oceanic dental lab")
           const suggestBatch2 = [];
-          for (const domain of domains.slice(0, 3)) {
+          for (const domain of domains.slice(0, 5)) {
             const bare = domain.replace(/\.com\.au$|\.com$|\.au$|\.co\.nz$/, '');
             suggestBatch2.push(fetchSuggestComp(bare));
             suggestBatch2.push(fetchSuggestComp(bare + ' services'));
