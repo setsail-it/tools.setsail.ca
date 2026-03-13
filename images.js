@@ -132,7 +132,7 @@ let imageExpandedSlug = null;
 function renderImageQueue() {
   const el = document.getElementById('image-queue');
   if (!el) return;
-  const pages = S.pages || [];
+  const pages = (typeof orderedPages === 'function' ? orderedPages() : S.pages) || [];
   if (!pages.length) { el.innerHTML = '<p style="color:var(--n2);font-size:13px">No pages yet — complete Stage 3 first.</p>'; return; }
 
   const groups = [

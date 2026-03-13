@@ -221,12 +221,20 @@ function briefRemoveQ(pageIdx, qIdx) {
 
 
 // ── BRIEF QUALITY SCORECARD ───────────────────────────────────────
+function toggleBriefOpen(slug) {
+  if (!window._briefOpen) window._briefOpen = new Set();
+  if (window._briefOpen.has(slug)) window._briefOpen.delete(slug);
+  else window._briefOpen.add(slug);
+  renderBriefs();
+}
+
 function briefToggleApprove(pidx) {
   var p = S.pages[pidx];
   if (!p || !p.brief || !p.brief.generated) return;
   p.brief.approved = !p.brief.approved;
   if (p.brief.approved) p.brief.approvedAt = Date.now();
   else delete p.brief.approvedAt;
+  p.updatedAt = Date.now();
   scheduleSave();
   renderBriefs();
 }
@@ -580,6 +588,8 @@ function initBriefs() {
       }
     }, true);
     document.addEventListener('click', function(e) {
+      var hdr = e.target.closest('.brief-row-header');
+      if (hdr && hdr.dataset.briefSlug) { toggleBriefOpen(hdr.dataset.briefSlug); return; }
       var t = e.target.closest('.brief-add-selected-btn');
       if (t) { briefAddSelected(parseInt(t.dataset.pidx), t.dataset.type); return; }
       var tog = e.target.closest('.brief-toggle-picker-btn');
@@ -816,18 +826,115 @@ function renderBriefs() {
       + leftCol + rightCol + '</div>';
   }
 
-  var buildNew = seoPages.filter(function(p){ return (p.action||'build_new') !== 'improve_existing'; });
-  var improve  = seoPages.filter(function(p){ return (p.action||'') === 'improve_existing'; });
+  // ── GROUP + ACCORDION RENDER ────────────────────────────────────────────────
+  // Use orderedPages() order: recent-pinned → core → service → industry → location → blog → other
+  // pageCard() only fires for expanded rows (accordion collapsed by default)
+  if (!window._briefOpen) window._briefOpen = new Set();
+
+  var TYPE_GROUPS = [
+    { key:'recent',   label:'Recently Edited',      types:null,                              recentOnly:true },
+    { key:'core',     label:'Core',                  types:['home','about','contact','utility'] },
+    { key:'service',  label:'Services',              types:['service'] },
+    { key:'industry', label:'Industry',              types:['industry'] },
+    { key:'location', label:'Locations',             types:['location'] },
+    { key:'blog',     label:'Blog',                  types:['blog'] },
+    { key:'other',    label:'Other',                 types:null }
+  ];
+
+  // Build ordered list respecting orderedPages() sort
+  var _ordered = orderedPages().filter(function(p){ return p && p.page_type !== 'utility' || false; });
+  // Re-filter to seoPages set (exclude utility)
+  _ordered = orderedPages().filter(function(p){ return p && p.page_type !== 'utility'; });
+
+  // Identify recent slugs (top 3 by updatedAt)
+  var _recentSlugs = new Set(
+    [...seoPages].filter(function(p){ return p.updatedAt; })
+      .sort(function(a,b){ return b.updatedAt - a.updatedAt; })
+      .slice(0,3).map(function(p){ return p.slug; })
+  );
+
+  // Group pages — recent group only if any exist
+  var _grouped = {};
+  TYPE_GROUPS.forEach(function(g){ _grouped[g.key] = []; });
+
+  _ordered.forEach(function(p) {
+    if (_recentSlugs.has(p.slug)) { _grouped['recent'].push(p); return; }
+    var matched = TYPE_GROUPS.find(function(g){
+      return !g.recentOnly && g.types && g.types.includes(p.page_type);
+    });
+    if (matched) _grouped[matched.key].push(p);
+    else _grouped['other'].push(p);
+  });
 
   try {
-    if (buildNew.length) {
-      html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:4px">Build New ('+buildNew.length+')</div>';
-      buildNew.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
-    }
-    if (improve.length) {
-      html += '<div style="font-size:11px;font-weight:600;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;margin-top:16px">Improve Existing ('+improve.length+')</div>';
-      improve.forEach(function(p){ html += pageCard(p, S.pages.indexOf(p)); });
-    }
+    var _firstGroup = true;
+    TYPE_GROUPS.forEach(function(group) {
+      var gPages = _grouped[group.key];
+      if (!gPages.length) return;
+
+      var gBriefed  = gPages.filter(function(p){ return p.brief && p.brief.generated; }).length;
+      var gApproved = gPages.filter(function(p){ return p.brief && p.brief.approved; }).length;
+
+      // Section header
+      html += '<div style="display:flex;align-items:center;gap:7px;margin-top:'+(  _firstGroup?'0':'14px')+';margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)">';
+      html += '<span style="font-size:10.5px;font-weight:600;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">'+group.label+'</span>';
+      html += '<span style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border-radius:10px;padding:0 6px">'+gPages.length+'</span>';
+      html += '<span style="font-size:9.5px;color:'+(gApproved===gPages.length&&gPages.length>0?'var(--green)':'var(--n2)')+'">'+(gBriefed)+' briefed · '+gApproved+' approved</span>';
+      html += '</div>';
+      _firstGroup = false;
+
+      gPages.forEach(function(p) {
+        var pidx = S.pages.indexOf(p);
+        var isBriefed  = !!(p.brief && (p.brief.generated || p.brief.summary));
+        var isApproved = !!(p.brief && p.brief.approved);
+        var isOpen     = window._briefOpen.has(p.slug);
+        var sc         = isBriefed && p.brief.score;
+        var pct        = sc ? Math.round((sc.passed/sc.total)*100) : null;
+        var barClr     = pct===null ? 'var(--n1)' : pct>=80 ? 'var(--green)' : pct>=55 ? 'var(--warn)' : '#e5534b';
+        var pColor     = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
+        var kwCount    = (p.supporting_keywords||[]).length;
+        var qCount     = (p.assignedQuestions||[]).length;
+
+        // Status badge
+        var statusBadge = isApproved
+          ? '<span style="font-size:9px;font-weight:600;color:var(--green);background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 6px">✓ Approved</span>'
+          : isBriefed
+            ? (pct!==null
+                ? '<span style="font-size:9px;color:'+barClr+';background:rgba(0,0,0,0.04);border:1px solid '+barClr+';border-radius:3px;padding:1px 6px;font-weight:600">'+pct+'%</span>'
+                : '<span style="font-size:9px;color:var(--n2);background:rgba(0,0,0,0.04);border-radius:3px;padding:1px 6px">Briefed</span>')
+            : '<span style="font-size:9px;color:var(--n1);background:rgba(0,0,0,0.03);border-radius:3px;padding:1px 6px">No brief</span>';
+
+        var rowBg    = isApproved ? 'rgba(21,142,29,0.02)' : 'var(--white)';
+        var rowBorder = isApproved ? '2px solid var(--green)' : isOpen ? '1px solid var(--dark)' : '1px solid var(--border)';
+
+        html += '<div style="border:'+rowBorder+';border-radius:6px;margin-bottom:4px;background:'+rowBg+';overflow:hidden">';
+
+        // Collapsed header — always visible
+        html += '<div data-brief-slug="'+esc(p.slug)+'" class="brief-row-header" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;user-select:none">';
+        html += '<i class="ti ti-'+(p.page_type==='home'?'home':p.page_type==='service'?'briefcase':p.page_type==='location'?'map-pin':p.page_type==='industry'?'building-factory':p.page_type==='blog'?'article':'file')+'" style="font-size:12px;color:'+(isBriefed?'var(--green)':'var(--n2)')+';flex-shrink:0"></i>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">';
+        html += '<span style="font-size:12.5px;font-weight:'+(isApproved?'600':'400')+';color:'+(isApproved||isOpen?'var(--dark)':'var(--n3)')+'">'+esc(p.page_name)+'</span>';
+        html += '<span style="font-size:10px;color:'+pColor+';background:rgba(0,0,0,0.04);border-radius:3px;padding:0 5px;flex-shrink:0">'+esc(p.priority||'')+'</span>';
+        html += statusBadge;
+        if (kwCount) html += '<span style="font-size:9.5px;color:var(--n2)">'+kwCount+' kw</span>';
+        if (qCount)  html += '<span style="font-size:9.5px;color:var(--n2)">'+qCount+' q</span>';
+        html += '</div>';
+        if (p.primary_keyword) html += '<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace">'+esc(p.primary_keyword)+' · /'+esc(p.slug||'')+'</div>';
+        html += '</div>';
+        html += '<i class="ti ti-chevron-'+(isOpen?'up':'down')+'" style="font-size:11px;color:var(--n2);flex-shrink:0"></i>';
+        html += '</div>';
+
+        // Expanded body — full pageCard
+        if (isOpen) {
+          html += '<div style="border-top:1px solid var(--border)">';
+          try { html += pageCard(p, pidx); } catch(cardErr) { html += '<div style="padding:10px;color:#e5534b;font-size:11px">Card error: '+cardErr.message+'</div>'; }
+          html += '</div>';
+        }
+
+        html += '</div>';
+      });
+    });
   } catch(renderErr) {
     html += '<div style="padding:20px;color:#e5534b;font-size:12px;font-family:monospace">Render error: '+renderErr.message+'</div>';
   }
@@ -1092,6 +1199,7 @@ async function generatePageBrief(pageIdx) {
     p.brief.summary = briefText;
     p.brief.generatedAt = Date.now();
     p.brief.score = null; // reset score — will be evaluated after render
+    p.updatedAt = Date.now();
     // Versioning — push to drafts array (mirrors copy versioning)
     var _bDrafts = p.brief.drafts || [];
     var _isNewVer = p.brief._requestNewVersion || false;

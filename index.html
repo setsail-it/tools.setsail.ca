@@ -1351,7 +1351,35 @@ let _enriching = false;
 const _enrichDone = new Set();
 
 function orderedPages() {
-  return [...S.pages].sort((a,b) => ({P1:0,P2:1,P3:2}[a.priority]||3)-({P1:0,P2:1,P3:2}[b.priority]||3));
+  // Order: 3 recently-edited pages pinned top, then
+  // core (home first) → service → industry → location → blog → other
+  // within each group: P1 → P2 → P3
+  const TYPE_ORDER = { home:0, service:1, industry:2, location:3, blog:4, about:5, contact:6, utility:7 };
+  const PRI_ORDER  = { P1:0, P2:1, P3:2 };
+  const pages = [...S.pages];
+
+  // Pin 3 most recently touched pages
+  const withTime = pages.filter(p => p.updatedAt).sort((a,b) => b.updatedAt - a.updatedAt);
+  const recentSlugs = new Set(withTime.slice(0,3).map(p => p.slug));
+
+  const recent = [...recentSlugs].map(s => pages.find(p => p.slug === s)).filter(Boolean);
+  const rest   = pages.filter(p => !recentSlugs.has(p.slug));
+
+  rest.sort((a, b) => {
+    const ta = TYPE_ORDER[a.page_type] ?? 8;
+    const tb = TYPE_ORDER[b.page_type] ?? 8;
+    if (ta !== tb) return ta - tb;
+    // Within home type: root slug first
+    if (a.page_type === 'home' && b.page_type === 'home') {
+      const aRoot = !a.slug || a.slug === 'home' || a.slug === '';
+      const bRoot = !b.slug || b.slug === 'home' || b.slug === '';
+      if (aRoot && !bRoot) return -1;
+      if (!aRoot && bRoot) return 1;
+    }
+    return (PRI_ORDER[a.priority] ?? 3) - (PRI_ORDER[b.priority] ?? 3);
+  });
+
+  return [...recent, ...rest];
 }
 
 // Current slug being worked on
@@ -1550,6 +1578,7 @@ function toggleHelpPanel() {
     <!-- S3: RESEARCH -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 3 — Research · Best Order</div>
+      <p style="font-size:11.5px;margin:0 0 8px">Pages are grouped and ordered: <strong>Recently Edited</strong> (top 3) → Core → Services → Industry → Locations → Blog → Other. Within each group: P1 → P2 → P3. This order is consistent across Briefs, Copy, Images, and Layout. Editing or approving a brief moves the page into the Recently Edited group.</p>
       <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
         <li><strong>Upload client documents</strong> — strategy doc, intake form, existing content, or anything with context. Claude extracts ~130 structured fields across 6 tabs.</li>
         <li><strong>Review each tab</strong> — Business, Audience, Brand, Schema &amp; Local, Competitors, Keywords. Correct anything Claude got wrong.</li>
@@ -1613,7 +1642,7 @@ function toggleHelpPanel() {
         <li><strong>Generate Page Questions</strong> — one Claude call generates 8 targeted FAQs per page based on primary keyword + page type. Auto-assigned to each page's <code>assignedQuestions[]</code>. Run globally or per-page via the <em>? Questions</em> button on each brief card.</li>
         <li><strong>AI Assign Keywords + Questions</strong> — distributes remaining global PAA questions and keyword pool across pages. Skips already-assigned page questions (no duplicates). Run globally from the toolbar. The per-page <em>✦ Assign</em> button on each brief card runs a full <strong>curation pass</strong>: Claude reviews what's currently assigned, keeps what matches the page's intent, drops what doesn't, and replaces it with better fits from the pool. The button shows a removal count (e.g. <em>✓ Curated (3 removed)</em>) when items were dropped.</li>
         <li><strong>SERP Intel</strong> (per page, or auto-runs at brief generation) — fetches top 3 organic results for the primary keyword, extracts: word count, H2 structure, KW density. Sets word count target at max competitor × 1.05. Some sites block crawlers — this is normal.</li>
-        <li><strong>Generate / Regenerate Brief</strong> — uses: primary keyword + supporting keywords + assigned questions + SERP Intel directives + research context + site voice. Button is in the top-right action bar of each brief card. SERP Intel auto-runs silently if not already done.</li>
+        <li><strong>Generate / Regenerate Brief</strong> — click any page row to expand it (accordion). Once open, use the top-right action bar to generate, regenerate, or run a new version. SERP Intel auto-runs silently if not already done.</li>
         <li><strong>Evaluate Brief</strong> — AI scorecard: 9–11 checks including reader profile, H1, CTA presence, objections, trust signals, SERP word count target, H2 coverage.</li>
         <li><strong>Version pills (V1 / V2…)</strong> — appear in the score bar once more than one draft exists. Click to switch between versions. Last 2 kept — V1 is dropped when V3 is pushed. Run V2 via <em>+ V2</em> button in the action bar.</li>
         <li><strong>Approve Brief</strong> — button in the top-right action bar of each card. Locks the brief. Copy stage will not process a page without an approved brief.</li>
