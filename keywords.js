@@ -620,12 +620,13 @@ function _renderKwSeedsTab() {
 
   // Table layout
   var srcsData = S.kwResearch && S.kwResearch.seedSources ? S.kwResearch.seedSources : {};
-  var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b' };
-  var srcLabels = { mechanical: 'Mechanical', ai: 'AI', competitor: 'Competitor' };
+  var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b', questions: '#8b5cf6' };
+  var srcLabels = { mechanical: 'Mechanical', ai: 'AI', competitor: 'Competitor', questions: 'Questions' };
   var srcCounts = {
     mechanical: (srcsData.mechanical || []).length,
     ai: (srcsData.ai || []).length,
     competitor: (srcsData.competitor || []).length,
+    questions: (srcsData.questions || []).length,
   };
   // Active source filter (persisted on S)
   var _activeSrcFilter = (S.kwResearch && S.kwResearch._seedFilterSource) || 'all';
@@ -633,7 +634,7 @@ function _renderKwSeedsTab() {
   // Filter seeds by source if filter active
   // Build reverse lookup: seed → source
   var seedSourceMap = {};
-  ['mechanical','ai','competitor'].forEach(function(src) {
+  ['mechanical','ai','competitor','questions'].forEach(function(src) {
     (srcsData[src] || []).forEach(function(s) { if (!seedSourceMap[s.toLowerCase()]) seedSourceMap[s.toLowerCase()] = src; });
   });
   var displaySeeds = _activeSrcFilter === 'all' ? seeds : seeds.filter(function(s) {
@@ -648,11 +649,11 @@ function _renderKwSeedsTab() {
   var allActive = _activeSrcFilter === 'all';
   html += '<button onclick="_setSeedFilter(\'all\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-right:1px solid var(--border);background:' + (allActive ? 'var(--dark)' : 'transparent') + ';color:' + (allActive ? 'white' : 'var(--n3)') + ';font-size:11px;font-family:var(--font);cursor:pointer;font-weight:' + (allActive ? '500' : '400') + '">'
     + '<i class="ti ti-list" style="font-size:11px"></i> All <span style="font-size:10px;opacity:.7">' + seeds.length + '</span></button>';
-  ['mechanical','ai','competitor'].forEach(function(src) {
+  ['mechanical','ai','competitor','questions'].forEach(function(src) {
     var count = srcCounts[src];
     var isActive = _activeSrcFilter === src;
     var col = srcBadgeColors[src];
-    var icon = src === 'mechanical' ? 'ti-settings-2' : src === 'ai' ? 'ti-sparkles' : 'ti-building';
+    var icon = src === 'mechanical' ? 'ti-settings-2' : src === 'ai' ? 'ti-sparkles' : src === 'questions' ? 'ti-help-circle' : 'ti-building';
     var done = count > 0;
     html += '<button onclick="_setSeedFilter(\'' + src + '\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-right:1px solid var(--border);background:' + (isActive ? 'var(--dark)' : 'transparent') + ';color:' + (isActive ? 'white' : (done ? 'var(--dark)' : 'var(--n2)')) + ';font-size:11px;font-family:var(--font);cursor:pointer;font-weight:' + (isActive ? '500' : '400') + '">'
       + '<i class="ti ' + icon + '" style="font-size:11px;color:' + (isActive ? 'white' : (done ? col : 'var(--n2)')) + '"></i>'
@@ -1532,9 +1533,13 @@ function addAllQuestionsAsSeeds() {
   if (!qs.length) return;
   if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
   if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [], questions: [] };
+  if (!S.kwResearch.seedSources.questions) S.kwResearch.seedSources.questions = [];
+  var qSet = new Set(S.kwResearch.seedSources.questions.map(function(s){ return s.toLowerCase(); }));
   var added = 0;
   qs.forEach(function(q) {
     if (q && S.kwResearch.seeds.indexOf(q) === -1) { S.kwResearch.seeds.push(q); added++; }
+    if (q && !qSet.has(q.toLowerCase())) { qSet.add(q.toLowerCase()); S.kwResearch.seedSources.questions.push(q); }
   });
   scheduleSave();
   renderKwTabContent();
