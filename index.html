@@ -159,6 +159,25 @@ textarea.inp{resize:vertical}
 .ud-item:hover{background:var(--n1);color:var(--dark)}
 .ud-item.ud-danger{color:var(--error)}
 .ud-item.ud-danger:hover{background:rgba(229,57,53,.08)}
+
+/* PROJECT SWITCHER DROPDOWN */
+#proj-switcher{position:relative;display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:3px 8px 3px 4px;border-radius:7px;transition:background .12s;user-select:none}
+#proj-switcher:hover{background:var(--n1)}
+#proj-switcher-name{font-size:13px;font-weight:500;color:var(--dark);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#proj-switcher-chevron{font-size:10px;color:var(--n2);transition:transform .15s;flex-shrink:0}
+#proj-switcher.open #proj-switcher-chevron{transform:rotate(180deg)}
+#proj-switcher-dd{display:none;position:absolute;top:calc(100% + 6px);left:0;background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:220px;max-width:300px;z-index:300;padding:6px;max-height:320px;overflow-y:auto}
+#proj-switcher.open #proj-switcher-dd{display:block}
+.psw-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;cursor:pointer;transition:background .1s;border:none;background:none;width:100%;font-family:var(--font);text-align:left}
+.psw-item:hover{background:var(--n1)}
+.psw-item.psw-active{background:var(--dark);pointer-events:none}
+.psw-item-name{font-size:12.5px;font-weight:500;color:var(--dark);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.psw-item.psw-active .psw-item-name{color:white}
+.psw-item-stage{font-size:10px;color:var(--n2);flex-shrink:0}
+.psw-item.psw-active .psw-item-stage{color:rgba(255,255,255,.6)}
+.psw-divider{height:1px;background:var(--border);margin:4px 0}
+.psw-all{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--n3);border:none;background:none;width:100%;font-family:var(--font);transition:background .1s}
+.psw-all:hover{background:var(--n1);color:var(--dark)}
 </style>
 </head>
 <body>
@@ -173,9 +192,19 @@ textarea.inp{resize:vertical}
       </div>
       <span style="white-space:nowrap">Setsail<em style="font-style:normal;color:var(--green)"> OS</em></span>
     </div>
-    <div class="nav-meta">
-      <div class="nav-divider" id="nav-div2" style="display:none"></div>
-      <span id="client-name-nav" style="color:var(--dark);font-weight:500"></span>
+    <div class="nav-meta" id="nav-meta-wrap" style="display:none">
+      <div class="nav-divider" id="nav-div2"></div>
+      <div id="proj-switcher" onclick="toggleProjSwitcher(event)">
+        <span id="client-name-nav" id="proj-switcher-name"></span>
+        <i class="ti ti-chevron-down" id="proj-switcher-chevron"></i>
+        <div id="proj-switcher-dd">
+          <div id="psw-list"></div>
+          <div class="psw-divider"></div>
+          <button class="psw-all" onclick="showProjects();closeProjSwitcher()">
+            <i class="ti ti-layout-grid" style="font-size:12px"></i> All projects
+          </button>
+        </div>
+      </div>
     </div>
   </div>
   <!-- Centre: AI progress bar -->
@@ -796,6 +825,7 @@ async function showProjects() {
   if (_sb) { _sb.classList.remove('visible'); _sb.style.display = ''; }
   document.body.classList.remove('in-project');
   document.getElementById('client-name-nav').textContent = '';
+  document.getElementById('nav-meta-wrap').style.display = 'none';
   document.getElementById('nav-div2').style.display = 'none';
   document.getElementById('save-indicator').style.opacity = '0';
   S.projectId = null;
@@ -870,7 +900,8 @@ async function resumeProject(id) {
 
   if (S.setup?.client) {
     document.getElementById('client-name-nav').textContent = S.setup.client;
-    document.getElementById('nav-div2').style.display = '';
+    document.getElementById('nav-meta-wrap').style.display = '';
+    renderProjSwitcher();
   }
 
   // Pre-fill setup form if returning there
@@ -1281,7 +1312,8 @@ function setupNext() {
     docs: (S.setup && S.setup.docs) ? S.setup.docs : [],
   };
   document.getElementById('client-name-nav').textContent = client;
-  document.getElementById('nav-div2').style.display = '';
+  document.getElementById('nav-meta-wrap').style.display = '';
+  renderProjSwitcher();
   scheduleSave();
   goTo(isExistingSite ? 'snapshot' : 'research');
 }
@@ -1623,6 +1655,64 @@ document.addEventListener('mouseout', function(e) {
 
 // ── USER IDENTITY ────────────────────────────────────────────
 async 
+
+// ── PROJECT SWITCHER ──────────────────────────────────────────────────────────
+var _cachedProjects = [];
+
+async function renderProjSwitcher() {
+  // Refresh project list in background
+  try {
+    var raw = await loadProjects();
+    _cachedProjects = Array.isArray(raw) ? raw : [];
+  } catch(e) { _cachedProjects = []; }
+  _buildPswList();
+}
+
+function _buildPswList() {
+  var el = document.getElementById('psw-list');
+  if (!el) return;
+  if (!_cachedProjects.length) {
+    el.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--n2)">No other projects</div>';
+    return;
+  }
+  var currentId = S.currentProject || S.projectId || '';
+  var STAGE_LABELS = {setup:'Setup',snapshot:'Snapshot',research:'Research',keywords:'Keywords',sitemap:'Sitemap',briefs:'Briefs',copy:'Copy',images:'Images',layout:'Layout',schema:'Schema',export:'Export'};
+  var html = _cachedProjects.map(function(p) {
+    var isCurrent = p.id === currentId;
+    var name = p.name || p.id;
+    var stage = STAGE_LABELS[p.stage] || (p.stage || '');
+    return '<button class="psw-item' + (isCurrent ? ' psw-active' : '') + '"'
+      + (isCurrent ? '' : ' onclick="switchProject('' + esc(p.id) + '');closeProjSwitcher()"') + '>'
+      + '<span class="psw-item-name">' + esc(name) + '</span>'
+      + (stage ? '<span class="psw-item-stage">' + esc(stage) + '</span>' : '')
+      + '</button>';
+  }).join('');
+  el.innerHTML = html;
+}
+
+function toggleProjSwitcher(e) {
+  e.stopPropagation();
+  var sw = document.getElementById('proj-switcher');
+  var isOpen = sw.classList.contains('open');
+  if (!isOpen) _buildPswList(); // refresh list on open
+  sw.classList.toggle('open');
+}
+
+function closeProjSwitcher() {
+  var sw = document.getElementById('proj-switcher');
+  if (sw) sw.classList.remove('open');
+}
+
+document.addEventListener('click', function(e) {
+  var sw = document.getElementById('proj-switcher');
+  if (sw && !sw.contains(e.target)) closeProjSwitcher();
+});
+
+async function switchProject(id) {
+  closeProjSwitcher();
+  await resumeProject(id);
+}
+
 // ── USER DROPDOWN ─────────────────────────────────────────────────────────────
 function toggleUserDropdown(e) {
   e.stopPropagation();
