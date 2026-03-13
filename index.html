@@ -607,7 +607,11 @@ async function saveProject() {
           serpIntel: { directives: p.serpIntel.directives, fetchedAt: p.serpIntel.fetchedAt, keyword: p.serpIntel.keyword }
         });
       }),
-      copy: S.copy,
+      copy: Object.fromEntries(Object.entries(S.copy || {}).map(([slug, c]) => [slug, {
+        ...c,
+        // Keep only active draft — strip history to reduce payload size
+        drafts: c.drafts ? [c.drafts[c.activeDraft || 0]].filter(Boolean) : []
+      }])),
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
       // Strip monthly trend arrays from keywords before saving — reconstructed from DataForSEO on next fetch
