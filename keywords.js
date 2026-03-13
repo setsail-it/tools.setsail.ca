@@ -619,23 +619,67 @@ function _renderKwSeedsTab() {
   html += '</div>';
 
   // Table layout
-  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-  html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;color:var(--n3)">';
-  html += '<span style="display:flex;align-items:center;gap:6px">Seed Keyword <button onclick="_copySeedKeywords(this)" title="Copy all seeds" style="background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:4px;color:var(--n2);line-height:1;font-size:13px" onmouseenter="this.style.color=\'var(--dark)\'" onmouseleave="this.style.color=\'var(--n2)\'"><i class=\"ti ti-copy\"></i></button></span><span>Remove</span></div>';
-  html += '<div style="max-height:360px;overflow-y:auto">';
-  // Build reverse lookup: seed → source
-  var seedSourceMap = {};
   var srcsData = S.kwResearch && S.kwResearch.seedSources ? S.kwResearch.seedSources : {};
   var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b' };
+  var srcLabels = { mechanical: 'Mechanical', ai: 'AI', competitor: 'Competitor' };
+  var srcCounts = {
+    mechanical: (srcsData.mechanical || []).length,
+    ai: (srcsData.ai || []).length,
+    competitor: (srcsData.competitor || []).length,
+  };
+  // Active source filter (persisted on S)
+  var _activeSrcFilter = (S.kwResearch && S.kwResearch._seedFilterSource) || 'all';
+
+  // Filter seeds by source if filter active
+  // Build reverse lookup: seed → source
+  var seedSourceMap = {};
   ['mechanical','ai','competitor'].forEach(function(src) {
     (srcsData[src] || []).forEach(function(s) { if (!seedSourceMap[s.toLowerCase()]) seedSourceMap[s.toLowerCase()] = src; });
   });
+  var displaySeeds = _activeSrcFilter === 'all' ? seeds : seeds.filter(function(s) {
+    return (seedSourceMap[s.toLowerCase()] || 'mechanical') === _activeSrcFilter;
+  });
 
-  seeds.forEach(function(seed, i) {
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+
+  // ── Bucket status bar ──────────────────────────────────────────────────────
+  html += '<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--panel)">';
+  // Source filter buttons
+  var allActive = _activeSrcFilter === 'all';
+  html += '<button onclick="_setSeedFilter(\'all\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-right:1px solid var(--border);background:' + (allActive ? 'var(--dark)' : 'transparent') + ';color:' + (allActive ? 'white' : 'var(--n3)') + ';font-size:11px;font-family:var(--font);cursor:pointer;font-weight:' + (allActive ? '500' : '400') + '">'
+    + '<i class="ti ti-list" style="font-size:11px"></i> All <span style="font-size:10px;opacity:.7">' + seeds.length + '</span></button>';
+  ['mechanical','ai','competitor'].forEach(function(src) {
+    var count = srcCounts[src];
+    var isActive = _activeSrcFilter === src;
+    var col = srcBadgeColors[src];
+    var icon = src === 'mechanical' ? 'ti-settings-2' : src === 'ai' ? 'ti-sparkles' : 'ti-building';
+    var done = count > 0;
+    html += '<button onclick="_setSeedFilter(\'' + src + '\')" style="display:flex;align-items:center;gap:6px;padding:7px 14px;border:none;border-right:1px solid var(--border);background:' + (isActive ? 'var(--dark)' : 'transparent') + ';color:' + (isActive ? 'white' : (done ? 'var(--dark)' : 'var(--n2)')) + ';font-size:11px;font-family:var(--font);cursor:pointer;font-weight:' + (isActive ? '500' : '400') + '">'
+      + '<i class="ti ' + icon + '" style="font-size:11px;color:' + (isActive ? 'white' : (done ? col : 'var(--n2)')) + '"></i>'
+      + srcLabels[src]
+      + (done
+          ? ' <span style="font-size:10px;padding:1px 5px;border-radius:8px;background:' + (isActive ? 'rgba(255,255,255,.2)' : col + '20') + ';color:' + (isActive ? 'white' : col) + ';font-weight:500">' + count + '</span>'
+          : ' <span style="font-size:10px;opacity:.45">—</span>')
+      + '</button>';
+  });
+  // Copy button right-aligned
+  html += '<span style="flex:1"></span>';
+  html += '<button onclick="_copySeedKeywords(this)" title="Copy all seeds" style="background:none;border:none;cursor:pointer;padding:7px 14px;color:var(--n2);font-size:13px;line-height:1" onmouseenter="this.style.color=\'var(--dark)\'" onmouseleave="this.style.color=\'var(--n2)\'"><i class="ti ti-copy"></i></button>';
+  html += '</div>';
+
+  // Column header
+  html += '<div style="display:grid;grid-template-columns:1fr auto;background:var(--panel);padding:5px 12px;border-bottom:1px solid var(--border);font-size:10px;font-weight:500;color:var(--n2);text-transform:uppercase;letter-spacing:.05em">';
+  html += '<span>Seed Keyword' + (_activeSrcFilter !== 'all' ? ' — <span style="color:' + srcBadgeColors[_activeSrcFilter] + ';text-transform:none;font-weight:400">' + srcLabels[_activeSrcFilter] + ' only (' + displaySeeds.length + ')</span>' : '') + '</span><span>Remove</span></div>';
+
+  html += '<div style="max-height:360px;overflow-y:auto">';
+
+  displaySeeds.forEach(function(seed, i) {
     var seedSrc = seedSourceMap[seed.toLowerCase()];
-    var badge = seedSrc ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:' + srcBadgeColors[seedSrc] + '20;color:' + srcBadgeColors[seedSrc] + ';margin-left:6px;font-weight:500">' + seedSrc.slice(0,4).toUpperCase() + '</span>' : '';
-    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;' + (i % 2 ? 'background:var(--bg)' : '') + '">'      + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + badge + '</span>'
-      + '<button onclick="_removeKwSeed(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove">&times;</button>'
+    var globalIdx = seeds.indexOf(seed);
+    var badge = seedSrc && _activeSrcFilter === 'all' ? '<span style="font-size:9px;padding:1px 5px;border-radius:8px;background:' + srcBadgeColors[seedSrc] + '20;color:' + srcBadgeColors[seedSrc] + ';margin-left:6px;font-weight:500">' + srcLabels[seedSrc].slice(0,4).toUpperCase() + '</span>' : '';
+    html += '<div class="tbl-row" style="display:grid;grid-template-columns:1fr auto;padding:5px 12px;border-bottom:1px solid var(--border);align-items:center;' + (i % 2 ? 'background:var(--bg)' : '') + '">'
+      + '<span style="font-size:12px;color:var(--dark)">' + esc(seed) + badge + '</span>'
+      + '<button onclick="_removeKwSeed(' + globalIdx + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove">&times;</button>'
       + '</div>';
   });
   if (!seeds.length) {
@@ -643,6 +687,13 @@ function _renderKwSeedsTab() {
   }
   html += '</div></div></div>';
   return html;
+}
+
+
+function _setSeedFilter(src) {
+  if (!S.kwResearch) return;
+  S.kwResearch._seedFilterSource = src;
+  renderKwTabContent();
 }
 
 function _setKwDR(val) {
