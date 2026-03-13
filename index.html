@@ -181,7 +181,7 @@ textarea.inp{resize:vertical}
 
 /* TOOLTIP */
 [data-tip]{position:relative}
-[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--dark);color:white;font-size:11px;font-family:var(--font);padding:5px 9px;border-radius:6px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:400;line-height:1.5;max-width:260px;white-space:normal;text-align:center}
+[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--dark);color:white;font-size:11px;font-family:var(--font);padding:5px 10px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:400;line-height:1.6;width:max-content;max-width:340px;white-space:normal;text-align:left}
 [data-tip]:hover::after{opacity:1;transition-delay:.3s}
 [data-tip]::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--dark);pointer-events:none;opacity:0;transition:opacity .15s;z-index:400}
 [data-tip]:hover::before{opacity:1;transition-delay:.3s}
@@ -217,11 +217,11 @@ textarea.inp{resize:vertical}
   <!-- Centre: AI progress bar + contextual tips -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-      <span id="ai-bar-label"></span>
+      <span id="ai-bar-label" title="" style="cursor:default"></span>
       <span id="ai-bar-meta"></span>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
-    <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s"></div>
+    <div id="ai-tip-line" title="" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s;cursor:default"></div>
   </div>
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
