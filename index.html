@@ -1794,57 +1794,72 @@ function toggleHelpPanel() {
 <script src="copy.js"></script>
 <script src="images.js">
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
+var _adminAllProjects = [];
+
 async function loadAdminPage() {
-  // ── My profile card ───────────────────────────────────────────────────────
-  var myName = document.getElementById('admin-my-name');
-  var myEmail = document.getElementById('admin-my-email');
-  var myRoleLabel = document.getElementById('admin-my-role-label');
-  var myRoleBadge = document.getElementById('admin-my-role-badge');
-  var myProjects = document.getElementById('admin-my-projects');
+  // Always fetch fresh from whoami — no reliance on S timing
+  try {
+    var r = await fetch('/api/whoami');
+    var data = r.ok ? await r.json() : {};
+    var email = data.email || S.currentUser || '—';
+    var name = data.name || S.currentUserName || email.split('@')[0];
+    var role = data.role || S.currentRole || 'strategist';
 
-  var email = S.currentUser || '—';
-  var name = S.currentUserName || (document.getElementById('ud-name') || {}).textContent || email.split('@')[0];
-  var role = S.currentRole || 'strategist';
+    var ROLE_LABELS = { admin:'Super Admin', strategist:'Strategist', viewer:'Viewer' };
+    var ROLE_STYLES = {
+      admin: 'background:var(--dg);color:white',
+      strategist: 'background:rgba(21,142,29,.12);color:var(--green)',
+      viewer: 'background:var(--n1);color:var(--n3)'
+    };
+    var nameEl = document.getElementById('admin-my-name');
+    var emailEl = document.getElementById('admin-my-email');
+    var roleLabel = document.getElementById('admin-my-role-label');
+    var roleBadge = document.getElementById('admin-my-role-badge');
+    if (nameEl) nameEl.textContent = name;
+    if (emailEl) emailEl.textContent = email;
+    if (roleLabel) roleLabel.textContent = ROLE_LABELS[role] || 'Strategist';
+    if (roleBadge) roleBadge.style.cssText += ';' + (ROLE_STYLES[role] || ROLE_STYLES.strategist);
 
-  if (myName) myName.textContent = name;
-  if (myEmail) myEmail.textContent = email;
-
-  var ROLE_LABELS = { admin: 'Super Admin', strategist: 'Strategist', viewer: 'Viewer' };
-  var ROLE_STYLES = {
-    admin: 'background:var(--dg);color:white',
-    strategist: 'background:rgba(21,142,29,.12);color:var(--green)',
-    viewer: 'background:var(--n1);color:var(--n3)'
-  };
-  if (myRoleLabel) myRoleLabel.textContent = ROLE_LABELS[role] || 'Strategist';
-  if (myRoleBadge) myRoleBadge.style.cssText += ';' + (ROLE_STYLES[role] || ROLE_STYLES.strategist);
+    // Store on S for name modal
+    S.currentUserName = name;
+    S.currentUser = email;
+    S.currentRole = role;
+  } catch(e) { console.warn('whoami failed', e); }
 
   // Load assigned projects
-  if (myProjects) {
-    try {
-      var allProjects = await loadProjects();
-      if (!allProjects || !allProjects.length) {
-        myProjects.textContent = 'No projects yet.';
-      } else {
-        myProjects.innerHTML = '';
-        allProjects.forEach(function(p) {
+  var projEl = document.getElementById('admin-my-projects');
+  try {
+    var raw = await loadProjects();
+    _adminAllProjects = Array.isArray(raw) ? raw : [];
+    if (!_adminAllProjects.length) {
+      if (projEl) projEl.textContent = 'No projects yet.';
+    } else {
+      if (projEl) {
+        projEl.innerHTML = '';
+        _adminAllProjects.forEach(function(p) {
           var tag = document.createElement('span');
-          tag.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer';
+          tag.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer;transition:background .1s';
           tag.innerHTML = '<i class="ti ti-folder" style="font-size:11px;color:var(--green)"></i>' + esc(p.name || p.id);
+          tag.onmouseover = function(){ tag.style.background='var(--n1)'; };
+          tag.onmouseout = function(){ tag.style.background=''; };
           tag.onclick = function() { showProjects(); setTimeout(function(){ resumeProject(p.id); }, 50); };
-          myProjects.appendChild(tag);
+          projEl.appendChild(tag);
         });
       }
-    } catch(e) { myProjects.textContent = 'Could not load projects.'; }
-  }
+    }
+  } catch(e) { if (projEl) projEl.textContent = 'Could not load projects.'; }
 
-  // ── Users table (admins only) ─────────────────────────────────────────────
+  // Load users table (admins only)
+  await loadAdminUsers();
+}
+
+async function loadAdminUsers() {
   var wrap = document.getElementById('admin-users-wrap');
   var el = document.getElementById('admin-users-list');
   if (!wrap || !el) return;
-
   try {
     var res = await fetch('/api/admin/users');
-    if (res.status === 403) { if (wrap) wrap.style.display = 'none'; return; }
+    if (res.status === 403) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
     var data = await res.json();
     var users = data.users || [];
@@ -1852,87 +1867,150 @@ async function loadAdminPage() {
       el.innerHTML = '<div style="padding:20px;color:var(--n2);font-size:13px">No team members yet — add the first one.</div>';
       return;
     }
-    var ROLE_BADGE = { admin: 'background:var(--dg);color:white', strategist: 'background:rgba(21,142,29,.12);color:var(--green)', viewer: 'background:var(--n1);color:var(--n3)' };
-    var ROLE_LABELS2 = { admin: 'Super Admin', strategist: 'Strategist', viewer: 'Viewer' };
-    var rows = users.map(function(u) {
-      var badge = ROLE_BADGE[u.role] || ROLE_BADGE.viewer;
-      var projects = u.projects ? u.projects.split(',').filter(Boolean).length : 0;
-      return '<div style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border)">'
-        + '<div style="flex:1;min-width:0">'
+    var ROLE_BADGE = { admin:'background:var(--dg);color:white', strategist:'background:rgba(21,142,29,.12);color:var(--green)', viewer:'background:var(--n1);color:var(--n3)' };
+    var ROLE_LABELS = { admin:'Super Admin', strategist:'Strategist', viewer:'Viewer' };
+    el.innerHTML = '';
+    users.forEach(function(u) {
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border)';
+      var projectCount = u.projects ? u.projects.split(',').filter(Boolean).length : 0;
+      var projectsLabel = u.projects ? (projectCount + ' project' + (projectCount!==1?'s':'')) : 'All projects';
+      row.innerHTML = '<div style="flex:1;min-width:0">'
         + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(u.name || u.email.split('@')[0]) + '</div>'
         + '<div style="font-size:11px;color:var(--n2)">' + esc(u.email) + '</div>'
         + '</div>'
-        + '<span style="font-size:11px;padding:3px 10px;border-radius:20px;' + badge + '">' + (ROLE_LABELS2[u.role]||'Viewer') + '</span>'
-        + '<span style="font-size:11px;color:var(--n2)">' + (u.projects ? projects + ' project'+(projects!==1?'s':'') : 'All projects') + '</span>'
-        + '<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="openUserModal(' + JSON.stringify(JSON.stringify(u)) + ')"><i class="ti ti-pencil" style="font-size:11px"></i> Edit</button>'
-        + '</div>';
+        + '<span style="font-size:10px;padding:3px 8px;border-radius:20px;flex-shrink:0;' + (ROLE_BADGE[u.role]||ROLE_BADGE.viewer) + '">' + (ROLE_LABELS[u.role]||'Viewer') + '</span>'
+        + '<span style="font-size:11px;color:var(--n2);flex-shrink:0;min-width:70px;text-align:right">' + esc(projectsLabel) + '</span>';
+      var editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-ghost';
+      editBtn.style.cssText = 'padding:4px 10px;font-size:11px;flex-shrink:0';
+      editBtn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
+      editBtn.onclick = function() { openUserModal(u); };
+      row.appendChild(editBtn);
+      el.appendChild(row);
     });
-    el.innerHTML = rows.join('');
   } catch(e) {
     if (el) el.innerHTML = '<div style="padding:20px;color:var(--error);font-size:13px">Error: ' + esc(e.message) + '</div>';
   }
 }
 
-// kept for compat
-async function loadAdminUsers() { return loadAdminPage(); }
+// ── Edit my name ──────────────────────────────────────────────────────────────
+function editMyName() {
+  var input = document.getElementById('name-modal-input');
+  if (input) input.value = S.currentUserName || '';
+  document.getElementById('name-modal-overlay').style.display = '';
+  document.getElementById('name-modal').style.display = '';
+  setTimeout(function(){ if(input) input.focus(); input.select(); }, 50);
+}
+function closeNameModal() {
+  document.getElementById('name-modal-overlay').style.display = 'none';
+  document.getElementById('name-modal').style.display = 'none';
+}
+async function saveMyName() {
+  var input = document.getElementById('name-modal-input');
+  var errEl = document.getElementById('name-modal-err');
+  var newName = (input ? input.value.trim() : '');
+  if (!newName) { errEl.textContent = 'Name cannot be empty.'; errEl.style.display=''; return; }
+  errEl.style.display = 'none';
+  try {
+    var res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email: S.currentUser, name: newName, role: S.currentRole, projects: '' })
+    });
+    var d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Save failed');
+    S.currentUserName = newName;
+    // Update all display locations
+    var nameEl = document.getElementById('admin-my-name');
+    if (nameEl) nameEl.textContent = newName;
+    var udName = document.getElementById('ud-name');
+    if (udName) udName.textContent = newName;
+    var navName = document.getElementById('user-email-nav');
+    if (navName) navName.textContent = newName;
+    closeNameModal();
+  } catch(e) { errEl.textContent = e.message; errEl.style.display=''; }
+}
 
-function openUserModal(userJson) {
-  var u = userJson ? JSON.parse(userJson) : null;
+// ── User add/edit modal ───────────────────────────────────────────────────────
+function openUserModal(u) {
   document.getElementById('user-modal-title').textContent = u ? 'Edit user' : 'Add user';
   document.getElementById('um-id').value = u ? (u.id || u.email) : '';
   document.getElementById('um-name').value = u ? (u.name || '') : '';
   document.getElementById('um-email').value = u ? (u.email || '') : '';
   document.getElementById('um-role').value = u ? (u.role || 'viewer') : 'strategist';
-  document.getElementById('um-projects').value = u ? (u.projects || '') : '';
   document.getElementById('um-delete-btn').style.display = u ? '' : 'none';
   document.getElementById('um-error').style.display = 'none';
-  if (u) document.getElementById('um-email').setAttribute('readonly','readonly');
-  else document.getElementById('um-email').removeAttribute('readonly');
+  var emailInput = document.getElementById('um-email');
+  if (u) emailInput.setAttribute('readonly','readonly');
+  else emailInput.removeAttribute('readonly');
+
+  // Build project checkboxes
+  var listEl = document.getElementById('um-projects-list');
+  var assignedIds = u && u.projects ? u.projects.split(',').filter(Boolean) : [];
+  listEl.innerHTML = '';
+  if (!_adminAllProjects.length) {
+    listEl.innerHTML = '<div style="font-size:12px;color:var(--n2)">No projects loaded</div>';
+  } else {
+    _adminAllProjects.forEach(function(p) {
+      var checked = assignedIds.includes(p.id);
+      var row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 2px;font-size:12.5px;color:var(--dark)';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = p.id; cb.checked = checked;
+      cb.style.cssText = 'width:14px;height:14px;accent-color:var(--green);cursor:pointer;flex-shrink:0';
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(p.name || p.id));
+      listEl.appendChild(row);
+    });
+  }
+
   document.getElementById('user-modal-overlay').style.display = '';
   document.getElementById('user-modal').style.display = '';
   setTimeout(function(){ document.getElementById('um-name').focus(); }, 50);
 }
-
 function closeUserModal() {
   document.getElementById('user-modal-overlay').style.display = 'none';
   document.getElementById('user-modal').style.display = 'none';
 }
-
 async function saveAdminUser() {
   var errEl = document.getElementById('um-error');
   errEl.style.display = 'none';
+  var checkboxes = document.querySelectorAll('#um-projects-list input[type=checkbox]:checked');
+  var projects = Array.from(checkboxes).map(function(cb){ return cb.value; }).join(',');
   var payload = {
     id: document.getElementById('um-id').value || document.getElementById('um-email').value,
     name: document.getElementById('um-name').value.trim(),
     email: document.getElementById('um-email').value.trim().toLowerCase(),
     role: document.getElementById('um-role').value,
-    projects: document.getElementById('um-projects').value.split(',').map(s=>s.trim()).filter(Boolean).join(','),
+    projects: projects,
   };
-  if (!payload.email) { errEl.textContent = 'Email is required.'; errEl.style.display = ''; return; }
-  if (!payload.name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
+  if (!payload.email) { errEl.textContent='Email is required.'; errEl.style.display=''; return; }
+  if (!payload.name) { errEl.textContent='Name is required.'; errEl.style.display=''; return; }
   try {
-    var res = await fetch('/api/admin/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-    var data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Save failed');
+    var res = await fetch('/api/admin/users', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    var d = await res.json();
+    if (!d.ok) throw new Error(d.error||'Save failed');
     closeUserModal();
     loadAdminUsers();
-  } catch(e) { errEl.textContent = e.message; errEl.style.display = ''; }
+  } catch(e) { errEl.textContent=e.message; errEl.style.display=''; }
 }
-
 async function deleteAdminUser() {
   var email = document.getElementById('um-email').value;
   if (!confirm('Delete user ' + email + '?')) return;
   try {
-    var res = await fetch('/api/admin/users/' + encodeURIComponent(email), { method: 'DELETE' });
-    var data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    var res = await fetch('/api/admin/users/'+encodeURIComponent(email), { method:'DELETE' });
+    var d = await res.json();
+    if (!d.ok) throw new Error(d.error||'Delete failed');
     closeUserModal();
     loadAdminUsers();
   } catch(e) {
     var errEl = document.getElementById('um-error');
-    errEl.textContent = e.message; errEl.style.display = '';
+    errEl.textContent=e.message; errEl.style.display='';
   }
 }
+
+
 </script>
 
 <!-- Image Picker Modal -->
@@ -2145,14 +2223,15 @@ async function deleteAdminUser() {
         <i class="ti ti-user" style="font-size:18px;color:white"></i>
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:600;color:var(--dark)" id="admin-my-name">—</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:15px;font-weight:600;color:var(--dark)" id="admin-my-name">—</span>
+          <button onclick="editMyName()" style="background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:5px;color:var(--n2);font-size:11px;display:flex;align-items:center;gap:3px" title="Edit name"><i class="ti ti-pencil" style="font-size:11px"></i> Edit</button>
+        </div>
         <div style="font-size:12px;color:var(--n2)" id="admin-my-email">—</div>
       </div>
-      <div style="text-align:right">
-        <div id="admin-my-role-badge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:var(--dg);color:white;font-size:12px;font-weight:500">
-          <i class="ti ti-shield-check" style="font-size:12px"></i>
-          <span id="admin-my-role-label">Super Admin</span>
-        </div>
+      <div id="admin-my-role-badge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500">
+        <i class="ti ti-shield-check" style="font-size:12px"></i>
+        <span id="admin-my-role-label">—</span>
       </div>
     </div>
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
@@ -2164,41 +2243,56 @@ async function deleteAdminUser() {
   <!-- Users table (admin only) -->
   <div id="admin-users-wrap" style="display:none;background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
-      <span style="font-size:13px;font-weight:500">Team members</span>
+      <span style="font-size:13px;font-weight:500">Team</span>
       <button class="btn btn-ghost" style="font-size:12px" onclick="openUserModal(null)"><i class="ti ti-plus"></i> Add user</button>
     </div>
-    <div id="admin-users-list" style="min-height:60px"></div>
+    <div id="admin-users-list"></div>
   </div>
+</div>
+
+<!-- EDIT NAME MODAL -->
+<div id="name-modal-overlay" onclick="closeNameModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500"></div>
+<div id="name-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:360px;background:white;border-radius:14px;box-shadow:0 12px 48px rgba(0,0,0,0.15);z-index:501;padding:24px">
+  <div style="font-size:14px;font-weight:600;margin-bottom:16px">Edit your name</div>
+  <input id="name-modal-input" type="text" placeholder="Your name" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);margin-bottom:14px">
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn btn-ghost" onclick="closeNameModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveMyName()"><i class="ti ti-check"></i> Save</button>
+  </div>
+  <div id="name-modal-err" style="font-size:12px;color:var(--error);margin-top:8px;display:none"></div>
 </div>
 
 <!-- USER EDIT MODAL -->
 <div id="user-modal-overlay" onclick="closeUserModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500"></div>
-<div id="user-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:440px;max-width:calc(100vw - 32px);background:white;border-radius:14px;box-shadow:0 12px 48px rgba(0,0,0,0.15);z-index:501;padding:24px">
+<div id="user-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:480px;max-width:calc(100vw - 32px);background:white;border-radius:14px;box-shadow:0 12px 48px rgba(0,0,0,0.15);z-index:501;padding:24px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
     <span id="user-modal-title" style="font-size:14px;font-weight:600">Edit user</span>
     <button onclick="closeUserModal()" style="background:none;border:none;cursor:pointer;padding:4px"><i class="ti ti-x" style="font-size:15px;color:var(--n2)"></i></button>
   </div>
   <div style="display:flex;flex-direction:column;gap:14px">
     <input type="hidden" id="um-id">
-    <div>
-      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Name</label>
-      <input id="um-name" type="text" placeholder="Jane Smith" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Name</label>
+        <input id="um-name" type="text" placeholder="Jane Smith" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Role</label>
+        <select id="um-role" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:white">
+          <option value="admin">Admin</option>
+          <option value="strategist">Strategist</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
     </div>
     <div>
       <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Email</label>
       <input id="um-email" type="email" placeholder="jane@company.com" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
     </div>
     <div>
-      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Role</label>
-      <select id="um-role" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:white">
-        <option value="admin">Admin</option>
-        <option value="strategist">Strategist</option>
-        <option value="viewer">Viewer</option>
-      </select>
-    </div>
-    <div>
-      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Assigned projects <span style="color:var(--n2);font-weight:400">(comma-separated project IDs or leave blank for all)</span></label>
-      <input id="um-projects" type="text" placeholder="proj_abc, proj_xyz" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font)">
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Project access</label>
+      <div id="um-projects-list" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px"></div>
+      <div style="font-size:11px;color:var(--n2);margin-top:5px">Leave all unchecked = access to all projects</div>
     </div>
   </div>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
@@ -2208,8 +2302,6 @@ async function deleteAdminUser() {
   </div>
   <div id="um-error" style="font-size:12px;color:var(--error);margin-top:8px;display:none"></div>
 </div>
-
-
 
 </body>
 </html>
