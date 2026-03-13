@@ -649,6 +649,9 @@ function _setKwDR(val) {
   renderKwTabContent();
 }
 
+function _kwSeedKeydown(e, el) { if (e.key === 'Enter') { _addKwSeed(el.value); el.value = ''; } }
+function _kwSeedAddBtn() { var el = document.getElementById('kw-seed-add-input'); if (el) { _addKwSeed(el.value); el.value = ''; } }
+
 function _kwPinKeydown(e, el) { if (e.key === 'Enter') { _kwPinAdd(el.value); el.value = ''; } }
 function _kwPinAddBtn() { var el = document.getElementById('kw-pin-input'); if (el) { _kwPinAdd(el.value); el.value = ''; } }
 function _kwPinAdd(val) {
