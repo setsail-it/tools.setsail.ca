@@ -271,7 +271,9 @@ textarea.inp{resize:vertical}
   </div>
   <div id="mobile-stage-list"></div>
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="initAuth().then(() => showProjects());closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="initAuth().then(() => showProjects());
+_wireAiFloatTip('ai-bar-label');
+_wireAiFloatTip('ai-tip-line');closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
   </div>
 </div>
 
@@ -1120,9 +1122,39 @@ function _showTip(text) {
   setTimeout(function() {
     var full = text ? ('💡 ' + text) : '';
     el.textContent = full;
-    el.setAttribute('data-tip', text || '');
+    el._tipText = text || '';
     el.style.opacity = text ? '1' : '0';
   }, 200);
+}
+
+function _showAiFloat(el, text) {
+  if (!text) return;
+  var tip = document.getElementById('ai-float-tip');
+  if (!tip) return;
+  var rect = el.getBoundingClientRect();
+  tip.textContent = text;
+  tip.style.display = 'block';
+  // Position below the element (nav is at top, so tooltip goes down)
+  tip.style.top = (rect.bottom + 6) + 'px';
+  tip.style.left = Math.max(8, rect.left + rect.width/2 - tip.offsetWidth/2) + 'px';
+}
+function _hideAiFloat() {
+  var tip = document.getElementById('ai-float-tip');
+  if (tip) tip.style.display = 'none';
+}
+function _wireAiFloatTip(elId) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var timer = null;
+  el.addEventListener('mouseenter', function() {
+    timer = setTimeout(function() {
+      _showAiFloat(el, el._tipText || el.getAttribute('data-tip') || '');
+    }, 300);
+  });
+  el.addEventListener('mouseleave', function() {
+    clearTimeout(timer);
+    _hideAiFloat();
+  });
 }
 
 // Pause tips during AI generation, resume after
@@ -1258,7 +1290,7 @@ function aiBarNotify(msg, opts) {
   var track = document.getElementById('ai-bar-track');
   if (!bar) return;
   if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
-  if (labelEl) { labelEl.textContent = msg; labelEl.setAttribute('data-tip', msg); }
+  if (labelEl) { labelEl.textContent = msg; labelEl._tipText = msg; labelEl.setAttribute('data-tip', msg); }
   if (metaEl) metaEl.textContent = o.meta || '';
   if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '0%'; }
   if (track) track.style.opacity = '0'; // hide progress track for notifications
@@ -1908,6 +1940,13 @@ document.addEventListener('mousedown', function(e) {
   if (pill && !pill.contains(e.target)) closeUserDropdown();
 });
 document.addEventListener('click', function(e) {
+  // Close project switcher
+  var sw = document.getElementById('proj-switcher');
+  if (sw && !sw.contains(e.target)) closeProjSwitcher();
+  // Close user dropdown
+  var pill = document.getElementById('user-pill');
+  if (pill && !pill.contains(e.target)) closeUserDropdown();
+  // Close modals via overlay click
   var nameOverlay = document.getElementById('name-modal-overlay');
   if (nameOverlay && e.target === nameOverlay) closeNameModal();
   var userOverlay = document.getElementById('user-modal-overlay');
@@ -2509,6 +2548,8 @@ async function deleteAdminUser() {
   </div>
   <div id="um-error" style="font-size:12px;color:var(--error);margin-top:8px;display:none"></div>
 </div>
+
+<div id="ai-float-tip" style="display:none;position:fixed;background:var(--dark);color:white;font-size:11px;font-family:var(--font);padding:5px 10px;border-radius:6px;z-index:9999;pointer-events:none;max-width:400px;line-height:1.6;white-space:normal"></div>
 
 </body>
 </html>

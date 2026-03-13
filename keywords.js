@@ -577,13 +577,13 @@ function _renderKwSeedsTab() {
   html += '<select onchange="_setKwCountry(this.value)" title="Search country" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);cursor:pointer" id="kw-country-sel"><option value="au">🇦🇺 Australia</option><option value="us">🇺🇸 United States</option><option value="ca">🇨🇦 Canada</option><option value="gb">🇬🇧 United Kingdom</option><option value="nz">🇳🇿 New Zealand</option><option value="sg">🇸🇬 Singapore</option><option value="za">🇿🇦 South Africa</option></select>';
   // Set selected value after render via a deferred call
   setTimeout(function(){var s=document.getElementById('kw-country-sel');if(s)s.value=(S.kwResearch&&S.kwResearch.country)||_autoDetectKwCountry();},0);
-  html += '<button class="btn btn-primary" data-tip="Look up monthly search volume + keyword difficulty for all seeds via DataForSEO. Run after adding or changing seeds." onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
-  html += '<button class="btn btn-ghost" data-tip="Generate 20–30 tight head-term keywords (2–4 words) using AI based on client services, location, and audience. Merges into seeds without replacing existing ones." onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
-  html += '<button class="btn btn-ghost" data-tip="Paste competitor URLs to mine their top non-brand keywords via DataForSEO. Adds to the Competitor bucket without touching Mechanical or AI seeds." onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
-  html += '<button class="btn btn-ghost" data-tip="Rebuild Mechanical seeds from client name, services, and location data, then merge back in. AI and Competitor seeds are kept. Use after updating Setup." onclick="_resetToMechanicalSeeds()"><i class="ti ti-settings-2"></i> Mechanical Seeds</button>';
+  html += '<button class="btn btn-primary" data-tip="Fetch Volumes sends every seed through Google Suggest to expand it into 400-600 real search phrases, then gets monthly volume + KD for each via DataForSEO. Run this after adding seeds from any source. The top 300 by score land in the Opportunities tab." onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
+  html += '<button class="btn btn-ghost" data-tip="AI Generate Seeds produces 20-30 commercial head terms (2-4 words) built from client services, location, and audience data. These are volume-lookup terms, not long-tail guesses. They go into the AI bucket — run Fetch Volumes after to expand them into real phrases." onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
+  html += '<button class="btn btn-ghost" data-tip="Competitor Keywords takes competitor URLs you paste in and pulls their top organic non-brand search terms from DataForSEO. Results go into the Competitor bucket. Run after AI Generate Seeds to fill gaps the AI missed. Then run Fetch Volumes." onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
+  html += '<button class="btn btn-ghost" data-tip="Mechanical Seeds are auto-built from the client name, services list, and location in Setup — combining them into [service] + [city] + [modifier] patterns. This button rebuilds that bucket and merges it back in. Run after changing anything in Setup. AI and Competitor seeds are untouched." onclick="_resetToMechanicalSeeds()"><i class="ti ti-settings-2"></i> Mechanical Seeds</button>';
   var _hasQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0);
   if (_hasQs) {
-    html += '<button class="btn btn-ghost sm" data-tip="Extract core keyword phrases from the Questions tab and add them to Seeds. Strips question words so they return real volumes in DataForSEO." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Pull from Questions extracts the intent keyword from each question — stripping the question framing so it becomes a phrase DataForSEO can look up. Example: ‘how much does dental marketing cost’ becomes ‘dental marketing cost’. Results go into the Questions bucket. Run Fetch Volumes after." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
   }
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
@@ -951,8 +951,8 @@ function _renderKwOppsTab() {
   if (!kws.length) return '<div style="text-align:center;padding:40px 20px;color:var(--n2)"><i class="ti ti-chart-bar" style="font-size:32px;display:block;margin-bottom:8px"></i><div style="font-size:13px">No volumes yet \u2014 go to Seeds and click Fetch Volumes.</div></div>';
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
-  html += '<button class="btn btn-primary" data-tip="Group selected keywords by intent and topic into clusters. Each cluster becomes one page in the sitemap. Select P1 and P2 keywords first." onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
-  html += '<button class="btn btn-ghost sm" data-tip="Auto-select the top 50 keywords by score (volume × intent weight ÷ KD). Good starting point before clustering." onclick="selectTopKws(50)">Select Top 50</button>';
+  html += '<button class="btn btn-primary" data-tip="Cluster Selected groups your checked keywords by search intent and topic, using AI to name each cluster and identify the anchor keyword. Each cluster becomes one page in the sitemap. Select P1 and P2 keywords first — P3 can be added to existing clusters later." onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Select Top 50 auto-checks the 50 highest-scoring keywords by rankability score (log volume ÷ max KD). Use as a starting point, then manually add strategic low-volume terms — high CPC, direct buyer intent, or named services — before clustering." onclick="selectTopKws(50)">Select Top 50</button>';
   html += '<button class="btn btn-ghost sm" onclick="selectTopKws(0)">Clear</button>';
   html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
   // DR input for rankability indicator
@@ -1079,7 +1079,7 @@ async function clusterSelectedKws() {
     }
     return entry;
   }).filter(Boolean);
-  // Always inject structural pages — these exist on every site but never have SEO traffic so they won't appear in topPages
+  // Always inject structural pages — these exist on every site but never have SEO traffic so they will not appear in topPages
   var structuralSlugs = ['/about', '/about-us', '/contact', '/contact-us', '/'];
   structuralSlugs.forEach(function(slug) {
     var alreadyIn = existingPages.some(function(p) { return p.startsWith(slug + ' ') || p === slug; });
@@ -1141,8 +1141,8 @@ function _renderKwClustersTab() {
   var flagCt = clusters.filter(function(c) { return c.qualifies === false; }).length;
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-  html += '<button class="btn btn-primary" data-tip="Convert clusters into a structured page sitemap. Each cluster becomes a page with a cluster anchor keyword. This is Gate 0 — review before proceeding." onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
-  html += '<button id="recluster-btn" class="btn btn-ghost" data-tip="Re-run clustering on the current selection. Use after adding more keywords to Opportunities or changing the selection." onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
+  html += '<button class="btn btn-primary" data-tip="Build Sitemap converts each keyword cluster into a page entry with a type (service, location, blog, core), slug, and cluster anchor keyword. This hands off to Stage 5. Review cluster names and anchors carefully before clicking — the sitemap drives all downstream brief and copy generation." onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
+  html += '<button id="recluster-btn" class="btn btn-ghost" data-tip="Re-cluster re-runs the grouping AI on your current keyword selection. Use after adding more keywords from Opportunities or refining your picks. Existing cluster names are discarded and rebuilt from scratch — export or note any cluster names you want to keep." onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
   if (ts) html += '<span style="font-size:11px;color:var(--n2)">Clustered at ' + ts + '</span>';
   html += '</div>';
   html += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
@@ -1353,7 +1353,7 @@ function _renderKwQuestionsTab() {
     html += '<i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i>';
     html += '<div style="font-size:13px;margin-bottom:8px">No questions fetched yet.</div>';
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">AI-generates bottom-of-funnel questions real buyers ask when evaluating your services.</div>';
-    html += '<button class="btn btn-primary" data-tip="Generate 20 bottom-of-funnel buyer questions using AI — pricing, ROI, comparison, and vetting questions that prospects actually Google." onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
+    html += '<button class="btn btn-primary" data-tip="Fetch Questions generates 20 bottom-of-funnel questions — the things a business owner types when they have decided they need help and are now comparing agencies. Think pricing, ROI proof, red flags, comparisons. These feed FAQ schema and copy briefs. Run after Research enrichment so AI has full context." onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Validate to get search volumes and page assignments — these flow into copy briefs and FAQ schema.</div>';
@@ -1361,11 +1361,11 @@ function _renderKwQuestionsTab() {
 
     // Action bar
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-    html += '<button class="btn btn-primary" data-tip="Run AI to assign each question to a page type (service page FAQ, new blog post, or sitewide FAQ) and check for intent alignment. Required before moving to Briefs." onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
-    html += '<button class="btn btn-ghost" data-tip="Regenerate the full question list. Replaces existing questions — pin important ones first if needed." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
-    html += '<button class="btn btn-ghost" data-tip="Generate 20 more questions and append — skips duplicates. Use to expand coverage without losing existing questions." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
-    html += '<button class="btn btn-ghost" data-tip="Convert informational questions into blog topic seed keywords and add them to the Seeds tab. Only extracts the keyword phrase, not the full question." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
-    html += '<button class="btn btn-ghost sm" data-tip="Extract keyword phrases from all questions and add to Seeds tab for volume lookup." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
+    html += '<button class="btn btn-primary" data-tip="Validate & Assign runs each question through AI to assign it a content type: service page FAQ (shown on the page), new blog post, or sitewide FAQ. It also checks DataForSEO volume as a signal. Required before Briefs — the assignment determines where each question appears in copy." onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-fetch discards all current questions and generates a fresh set of 20. Use if the first batch missed key buying intent angles. Pin any questions to keep before running — pinned questions survive the re-fetch." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
+    html += '<button class="btn btn-ghost" data-tip="More Questions generates a second batch of 20 BOF questions in the same intent categories (pricing, ROI, risk, comparison) and appends them to the list. Existing questions are passed to the AI so duplicates are skipped. Use when you need more question coverage before Validate & Assign." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
+    html += '<button class="btn btn-ghost" data-tip="Blog Seeds takes informational questions (how-to, what-is intent) and extracts their keyword phrase to use as blog content seeds. These go into the Seeds tab Questions bucket so they get volumes in the next Fetch Volumes run — giving you blog topics with real search demand." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Add All to Seeds extracts the intent keyword from every question and adds them to the Seeds tab. Same as Pull from Questions in the Seeds toolbar — use this shortcut when already on the Questions tab." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
     if (isValidated) {
       var withVol = normalised.filter(function(q) { return q.vol > 0; }).length;
       html += '<span style="font-size:11px;color:var(--green);display:inline-flex;align-items:center;gap:4px"><i class="ti ti-check"></i> ' + withVol + '/' + normalised.length + ' have search volume</span>';
@@ -1551,22 +1551,39 @@ function _addQuestionAsSeed(i) {
   renderKwTabContent();
 }
 
-// Strips a question to its core keyword phrase for seed lookup.
-// "how much does dental marketing cost in Sydney" → "dental marketing cost Sydney"
+// Extracts the core search-intent keyword from a question.
+// Produces a 2-7 word phrase someone would type into Google.
 function _questionToSeedKeyword(q) {
-  var s = (q || '').trim().toLowerCase();
-  // Strip leading question openers (multi-word first, then single)
-  s = s.replace(/^(how much does|how much is|how much|how do i|how to|how do|how can|what results can i expect from|what results|what is the|what are the|what is|what are|what does|who is the|who is|who are|why does|why is|when do|where can|where do|which is|which are|can i|do i need|is there an?|is it|should i|will i|does it|do i)/i, '');
-  // Strip trailing filler
-  s = s.replace(/[?]\s*$/i, '').replace(/\s+(near me|work|help me|for me|right now)\s*$/i, '');
-  s = s.replace(/^(before seeing|when hiring|when choosing|when working with|results from|long before|long does it take to|flags when|signs that)\s*/i, '');
-  // Strip filler words anywhere in the phrase
-  s = s.replace(/\b(a |an |the |my |your |our |their |this |that |for a |for an |for the |i |we |you )\b/g, ' ');
-  s = s.replace(/  +/g, ' ').trim();
-  var words = s.split(/\s+/).filter(Boolean);
-  if (words.length < 2 || words.length > 8) return null;
+  var s = (q || '').trim().toLowerCase().replace(/\?$/, '').trim();
+  var openers = [
+    'what results can i expect from','how long before seeing results from',
+    'how long does it take to see results from','how long does it take',
+    'how do i choose a','how do i know if','how do i choose',
+    'how much does it cost to','how much does','how much is','how much should i',
+    'how do i','how to','how do','how can','what is a','what are the',
+    'what is the','what is','what are','what does','who is','why does',
+    'why is','why should','when should i','should i','can i','do i need',
+    'is it worth hiring a','is it worth hiring','is it worth',
+    'is it','does it','do i','are there'
+  ];
+  for (var i=0;i<openers.length;i++){
+    var re=new RegExp('^'+openers[i].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s+','i');
+    var r=s.replace(re,'');if(r!==s){s=r;break;}
+  }
+  s=s.replace(/^(results from|before seeing|when hiring|when choosing|flags when|signs that|expect from|long before|hiring an?\s+)/i,'');
+  s=s.replace(/\s+vs\s+(doing\s+\w+\s+)?in.house/i,' vs in-house');
+  s=s.replace(/\b(for a |for an |for the |a |an |the |my |your |our |their |this |that )\b/gi,' ');
+  s=s.replace(/\s{2,}/g,' ').trim();
+  var words=s.split(/\s+/).filter(Boolean);
+  if (words.length > 6) {
+    var soft=new Set(['from','before','when','with','into','and','of','in','on','at','to','by','for','doing','hiring','services']);
+    words=words.filter(function(w){return !soft.has(w);});
+    while(words.length&&['in','at','for','of','to'].indexOf(words[words.length-1])>=0)words.pop();
+  }
+  if(words.length<2||words.length>7)return null;
   return words.join(' ');
 }
+
 
 function addAllQuestionsAsSeeds() {
   var qs = _getQuestionsArray();
@@ -2105,7 +2122,7 @@ async function openKwFinder(pageIdx) {
     const base = stripGeo(kw);
     if (base.length > 3) seedSet.add(base);
   });
-  // Only add page name as seed if it's not generic and has no primary keyword yet
+  // Only add page name as seed if it is not generic and has no primary keyword yet
   if (pageName.length > 3 && !_genericPageNames.has(pageName.toLowerCase()) && !currentPrimary) {
     seedSet.add(pageName);
     if (geoLower) seedSet.add(pageName + ' ' + geoLower);
@@ -2354,7 +2371,7 @@ async function addManualKeyword(pageIdx, rawKw) {
   const page = S.pages[pageIdx];
   if (!page) return;
 
-  // Check if it's already there
+  // Check if it is already there
   const existing = (page.supporting_keywords || []).map(sk => (typeof sk === 'object' ? sk.kw : sk).toLowerCase());
   if (existing.includes(kw) || (page.primary_keyword||'').toLowerCase() === kw) return;
 
