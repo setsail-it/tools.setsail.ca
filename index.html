@@ -145,6 +145,10 @@ textarea.inp{resize:vertical}
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <div id="save-indicator" style="opacity:0"></div>
+    <div id="user-pill" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--mid);cursor:default" title="Signed in via Cloudflare Access">
+      <i class="ti ti-user-circle" style="font-size:13px;color:var(--green)"></i>
+      <span id="user-email-nav">—</span>
+    </div>
     <div id="stage-bar"></div>
     <button id="mobile-menu-btn" onclick="toggleMobileNav()" style="display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--white);cursor:pointer;flex-shrink:0">
       <i class="ti ti-menu-2" style="font-size:14px;color:var(--dark)"></i>
@@ -161,7 +165,7 @@ textarea.inp{resize:vertical}
   </div>
   <div id="mobile-stage-list"></div>
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="showProjects();closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="initAuth().then(() => showProjects());closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
   </div>
 </div>
 
@@ -565,6 +569,7 @@ textarea.inp{resize:vertical}
 <script>
 // ── STATE ──────────────────────────────────────────────────────────
 const S = {
+  currentUser: null,
   projectId: null, stage: 'setup',
   setup: null, snapshot: null, research: null, pages: [], copy: {}, schema: {}, images: {},
   kwSort: { col: 'score', dir: 'desc' },
@@ -1403,7 +1408,7 @@ function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToCli
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
 
 // ── INIT ───────────────────────────────────────────────────────────
-showProjects();
+initAuth().then(() => showProjects());
 
 // ── TABLE ROW HOVER ─────────────────────────────────────────────────
 // Event delegation — handles dynamically rendered rows
@@ -1421,6 +1426,27 @@ document.addEventListener('mouseout', function(e) {
   if (related && row.contains(related)) return; // still inside row
   row.style.background = row.dataset.baseBg || '';
 });
+
+// ── USER IDENTITY ────────────────────────────────────────────
+async function initAuth() {
+  try {
+    const r = await fetch('/api/whoami');
+    if (r.status === 401) {
+      // Cloudflare Access will redirect to login automatically
+      // This only fires if somehow the page loads without auth
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Geist,sans-serif"><div style="text-align:center"><p style="color:var(--mid);font-size:14px">Authenticating…</p></div></div>';
+      return;
+    }
+    const data = await r.json();
+    if (data.email) {
+      S.currentUser = data.email;
+      const el = document.getElementById('user-email-nav');
+      if (el) el.textContent = data.email.split('@')[0]; // show name part only
+    }
+  } catch(e) {
+    console.warn('Auth check failed:', e);
+  }
+}
 </script>
 <script src="keywords.js"></script>
 <script src="briefs.js"></script>

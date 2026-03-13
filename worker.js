@@ -11,7 +11,32 @@ export default {
       return new Response(null, { headers: cors });
     }
 
-    // ── ANTHROPIC PROXY ──────────────────────────────────────────
+    // ── AUTH — Cloudflare Access ─────────────────────────────────
+    // CF-Access-Authenticated-User-Email is injected by Cloudflare Access
+    // after the user authenticates. On localhost / non-Access requests it's absent.
+    const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email') || null;
+    const userId = userEmail ? userEmail.toLowerCase().trim() : null;
+
+    // All /api/* routes require auth (except OPTIONS already handled above)
+    if (url.pathname.startsWith('/api/') && !userId) {
+      return new Response(JSON.stringify({ error: 'Unauthorized', code: 'NO_AUTH' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
+    // Helper: user-scoped KV prefix for project keys
+    // Keeps all data isolated per user. Migration path: swap userId source only.
+    const userPrefix = userId ? 'u:' + userId + ':' : '';
+
+    // ── WHOAMI — returns current user identity ──────────────────
+    if (url.pathname === '/api/whoami' && request.method === 'GET') {
+      return new Response(JSON.stringify({ email: userId, ok: true }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
+        // ── ANTHROPIC PROXY ──────────────────────────────────────────
     if (url.pathname === '/api/claude') {
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       try {
@@ -43,12 +68,12 @@ export default {
     // GET /api/projects — list all projects
     if (url.pathname === '/api/projects' && request.method === 'GET') {
       try {
-        const list = await env.SETSAIL_OS.list({ prefix: 'project:' });
+        const list = await env.SETSAIL_OS.list({ prefix: userPrefix + 'project:' });
         const projects = [];
         for (const key of list.keys) {
           const meta = key.metadata || {};
           projects.push({
-            id: key.name.replace('project:', ''),
+            id: key.name.replace(userPrefix + 'project:', ''),
             name: meta.name || key.name,
             stage: meta.stage || 'setup',
             updatedAt: meta.updatedAt || null,
@@ -78,7 +103,7 @@ export default {
         };
         const serialized = JSON.stringify(data);
         console.log('[worker save] payload size:', Math.round(serialized.length/1024) + 'KB');
-        await env.SETSAIL_OS.put('project:' + id, serialized, { metadata: meta });
+        await env.SETSAIL_OS.put(userPrefix + 'project:' + id, serialized, { metadata: meta });
         return new Response(JSON.stringify({ ok: true, id, sizeKB: Math.round(serialized.length/1024) }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
@@ -94,7 +119,7 @@ export default {
     if (loadMatch && request.method === 'GET') {
       const id = loadMatch[1];
       try {
-        const raw = await env.SETSAIL_OS.get('project:' + id);
+        const raw = await env.SETSAIL_OS.get(userPrefix + 'project:' + id);
         if (!raw) return new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404, headers: { 'Content-Type': 'application/json', ...cors }
         });
@@ -111,7 +136,7 @@ export default {
     if (delMatch && request.method === 'DELETE') {
       const id = delMatch[1];
       try {
-        await env.SETSAIL_OS.delete('project:' + id);
+        await env.SETSAIL_OS.delete(userPrefix + 'project:' + id);
         return new Response(JSON.stringify({ ok: true }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
@@ -129,7 +154,7 @@ export default {
       const [, projectId, slug] = imgPutMatch;
       try {
         const body = await request.text();
-        await env.SETSAIL_OS.put('img:' + projectId + ':' + slug, body);
+        await env.SETSAIL_OS.put(userPrefix + 'img:' + projectId + ':' + slug, body);
         return new Response(JSON.stringify({ ok: true }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
@@ -145,7 +170,7 @@ export default {
     if (imgGetMatch && request.method === 'GET') {
       const [, projectId, slug] = imgGetMatch;
       try {
-        const val = await env.SETSAIL_OS.get('img:' + projectId + ':' + slug);
+        const val = await env.SETSAIL_OS.get(userPrefix + 'img:' + projectId + ':' + slug);
         if (!val) return new Response(JSON.stringify(null), { headers: { 'Content-Type': 'application/json', ...cors } });
         return new Response(val, { headers: { 'Content-Type': 'application/json', ...cors } });
       } catch (err) {
@@ -160,7 +185,7 @@ export default {
     if (imgListMatch && request.method === 'GET') {
       const [, projectId] = imgListMatch;
       try {
-        const prefix = 'img:' + projectId + ':';
+        const prefix = userPrefix + 'img:' + projectId + ':';
         const list = await env.SETSAIL_OS.list({ prefix });
         const slugs = list.keys.map(k => k.name.slice(prefix.length));
         return new Response(JSON.stringify({ slugs }), { headers: { 'Content-Type': 'application/json', ...cors } });
@@ -402,7 +427,7 @@ export default {
       const [, projectId, slug] = copyPutMatch;
       try {
         const body = await request.text();
-        await env.SETSAIL_OS.put('copy:' + projectId + ':' + slug, body);
+        await env.SETSAIL_OS.put(userPrefix + 'copy:' + projectId + ':' + slug, body);
         return new Response(JSON.stringify({ ok: true }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
@@ -418,7 +443,7 @@ export default {
     if (copyGetMatch && request.method === 'GET') {
       const [, projectId, slug] = copyGetMatch;
       try {
-        const val = await env.SETSAIL_OS.get('copy:' + projectId + ':' + slug);
+        const val = await env.SETSAIL_OS.get(userPrefix + 'copy:' + projectId + ':' + slug);
         if (!val) return new Response(JSON.stringify(null), { headers: { 'Content-Type': 'application/json', ...cors } });
         return new Response(val, { headers: { 'Content-Type': 'application/json', ...cors } });
       } catch (err) {
@@ -433,7 +458,7 @@ export default {
     if (copyListMatch && request.method === 'GET') {
       const [, projectId] = copyListMatch;
       try {
-        const prefix = 'copy:' + projectId + ':';
+        const prefix = userPrefix + 'copy:' + projectId + ':';
         const list = await env.SETSAIL_OS.list({ prefix });
         const slugs = list.keys.map(k => k.name.slice(prefix.length));
         return new Response(JSON.stringify({ slugs }), { headers: { 'Content-Type': 'application/json', ...cors } });
