@@ -617,13 +617,13 @@ async function enrichRTab(tab, forceAll) {
       : sys;
     var result;
     try {
-      result = await callClaude(activeSys, prompts[tab], null);
+      result = await callClaude(activeSys, prompts[tab], null, 3500);
     } catch(rateErr) {
       if (rateErr.message && rateErr.message.toLowerCase().indexOf('rate') !== -1) {
         var _retryEl = document.getElementById('research-enrich-msg');
         if (_retryEl) _retryEl.textContent = 'Rate limit on ' + tab + ' - retrying in 8s...';
         await new Promise(function(res){ setTimeout(res, 8000); });
-        result = await callClaude(activeSys, prompts[tab], null);
+        result = await callClaude(activeSys, prompts[tab], null, 3500);
       } else { throw rateErr; }
     }
     console.error('ENRICH RAW ['+tab+']:', result.slice(0,600));

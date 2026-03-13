@@ -940,7 +940,7 @@ async function callClaude(system, user, onChunk, maxTokens) {
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:'claude-sonnet-4-20250514',
-      max_tokens: maxTokens || 2000,
+      max_tokens: maxTokens || 3000,
       stream:true,
       system,
       messages:[{role:'user',content:user}]

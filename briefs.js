@@ -320,7 +320,7 @@ async function scoreBrief(pageIdx) {
       'You are a strict content brief evaluator. Return raw JSON only, no markdown.',
       prompt,
       null,
-      800
+      1000
     );
     var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
     var parsed = JSON.parse(clean);
@@ -1185,7 +1185,7 @@ async function generatePageBrief(pageIdx) {
   var contentEl = document.getElementById('brief-content-'+pageIdx);
   if (contentEl) contentEl.style.display = 'none';
   try {
-    var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 2500);
+    var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 4000);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
     p.brief.summary = briefText;

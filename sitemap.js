@@ -1532,7 +1532,7 @@ async function runGapAnalysis() {
   const system = 'You are a senior SEO strategist. Analyse the gap between an existing website and an SEO-optimised sitemap. Output a concise, actionable gap analysis. Use markdown-style formatting with ### headers, bullet points, and clear priority labels (🟢 Quick Win, 🟡 Medium-term, 🔴 New Page Needed).';
 
   try {
-    const result = await callClaude(system, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; });
+    const result = await callClaude(system, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; }, 3000);
     wrap.style.display = 'none';
     resultsEl.innerHTML = '<div style="font-size:12.5px;color:var(--n3);line-height:1.75;white-space:pre-wrap;background:var(--bg);border-radius:6px;padding:14px;border:1px solid var(--border)">'+esc(result)+'</div>';
     resultsEl.style.display = 'block';

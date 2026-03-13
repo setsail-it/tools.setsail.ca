@@ -46,7 +46,7 @@ async function runSchemaPage(slug) {
   S.schemaExpandedSlug = slug;
   renderSchemaQueue();
   try {
-    const schema = await callClaude(P.schema, buildSchemaPrompt(page), null);
+    const schema = await callClaude(P.schema, buildSchemaPrompt(page), null, 4000);
     if (!schemaStopFlag) {
       S.schema[slug] = {schema, page};
       // Parse meta title + description from schema HTML comment
