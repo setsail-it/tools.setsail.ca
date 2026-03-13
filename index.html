@@ -426,6 +426,8 @@ textarea.inp{resize:vertical}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="goTo('sitemap')"><i class="ti ti-arrow-left"></i> Back to Sitemap</button>
           <button class="btn btn-ghost" id="briefs-run-btn" onclick="generateAllBriefs()" title="Write briefs for all pages sequentially"><i class="ti ti-pencil"></i> Write All Briefs</button>
+          <button class="btn btn-primary" id="briefs-queue-btn" onclick="queueAllBriefs()" title="Queue all ungenerated briefs — tab-close safe, auto-retries on rate limits"><i class="ti ti-stack-2"></i> Queue All</button>
+          <span id="briefs-queue-status" style="font-size:11px;color:var(--n3);display:none"></span>
           <button class="btn btn-ghost" id="niche-expand-btn" onclick="runNicheExpand()" title="Expand keyword pool using each page's primary keyword via Google Suggest"><i class="ti ti-antenna"></i> Expand Niche Keywords</button>
           <button class="btn btn-ghost" id="page-questions-btn" onclick="runPageQuestions()" title="Generate 6 targeted FAQs per page using Claude"><i class="ti ti-message-question"></i> Generate Page Questions</button>
           <button class="btn btn-primary" id="ai-assign-btn" onclick="aiAssignKeywordsAndQuestions()"><i class="ti ti-sparkles"></i> AI Assign Keywords + Questions</button>

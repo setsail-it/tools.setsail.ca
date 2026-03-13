@@ -7,5 +7,15 @@ compatibility_flags = ["nodejs_compat"]
 binding = "SETSAIL_OS"
 id = "c3439e54cebb4328b0fc5753a9292bc2"
 
+[[queues.producers]]
+binding = "SETSAIL_GEN_QUEUE"
+queue = "setsailos-gen-queue"
+
+[[queues.consumers]]
+queue = "setsailos-gen-queue"
+max_batch_size = 2
+max_batch_timeout = 1
+max_retries = 3
+
 [assets]
 directory = "."

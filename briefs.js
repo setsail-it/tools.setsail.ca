@@ -1224,6 +1224,122 @@ async function generatePageBrief(pageIdx) {
   }
 }
 
+// ── QUEUE-BASED BULK GENERATION ──────────────────────────────────────────────
+// Submits all un-generated briefs to the Cloudflare Queue.
+// Tab-close safe: the worker consumer generates server-side.
+// Poll /api/queue-status every 4s and reflect results into S.pages.
+
+var _queuePollTimer = null;
+
+async function queueAllBriefs() {
+  var btn = document.getElementById('briefs-queue-btn');
+  var statusEl = document.getElementById('briefs-queue-status');
+  if (!S.pages || !S.pages.length) return;
+  if (!S.currentProject) { alert('No project loaded'); return; }
+
+  var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
+  var ungenerated = seoPages.filter(function(p){ return !p.brief || !p.brief.generated; });
+
+  if (!ungenerated.length) {
+    if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = 'All briefs already generated.'; }
+    return;
+  }
+
+  var jobs = ungenerated.map(function(p){
+    return { type: 'brief', slug: p.slug, pageIdx: S.pages.indexOf(p) };
+  });
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:11px;height:11px"></span> Submitting...'; }
+  if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = 'Submitting ' + jobs.length + ' jobs...'; }
+
+  try {
+    var res = await fetch('/api/queue-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S.currentProject, jobs: jobs }),
+    });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Submit failed');
+    if (statusEl) statusEl.textContent = data.submitted.length + ' jobs queued — generating server-side...';
+    _startQueuePoll();
+  } catch(err) {
+    if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = 'Queue error: ' + err.message; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-stack-2"></i> Queue All'; }
+  }
+}
+
+function _startQueuePoll() {
+  if (_queuePollTimer) clearInterval(_queuePollTimer);
+  _queuePollTimer = setInterval(_pollQueueStatus, 4000);
+}
+
+async function _pollQueueStatus() {
+  if (!S.currentProject) return;
+  try {
+    var res = await fetch('/api/queue-status?projectId=' + encodeURIComponent(S.currentProject));
+    var data = await res.json();
+    var jobs = data.jobs || [];
+    if (!jobs.length) return;
+
+    var done = 0; var running = 0; var queued = 0; var failed = 0;
+    for (var i = 0; i < jobs.length; i++) {
+      var job = jobs[i];
+      if (job.status === 'done') {
+        done++;
+        // Reload project from KV so the brief shows up without a page refresh
+        var idx = job.pageIdx;
+        if (idx !== undefined && S.pages[idx] && (!S.pages[idx].brief || !S.pages[idx].brief.generated)) {
+          // Trigger a project reload to pick up brief written to KV by worker
+          _mergeQueuedBrief(job);
+        }
+      } else if (job.status === 'running') {
+        running++;
+      } else if (job.status === 'queued') {
+        queued++;
+      } else if (job.status === 'failed') {
+        failed++;
+      }
+    }
+
+    var total = jobs.length;
+    var statusEl = document.getElementById('briefs-queue-status');
+    var btn = document.getElementById('briefs-queue-btn');
+    var allSettled = (done + failed) >= total;
+
+    if (statusEl) {
+      if (allSettled) {
+        statusEl.textContent = '✓ ' + done + '/' + total + ' done' + (failed ? ' · ' + failed + ' failed' : '') + ' — reload to see all briefs';
+      } else {
+        statusEl.textContent = done + ' done · ' + running + ' running · ' + queued + ' queued' + (failed ? ' · ' + failed + ' failed' : '');
+      }
+    }
+
+    if (allSettled) {
+      clearInterval(_queuePollTimer);
+      _queuePollTimer = null;
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-stack-2"></i> Queue All'; }
+      // Reload project from server to get all worker-written briefs
+      if (typeof loadProject === 'function') await loadProject(S.currentProject);
+      renderBriefs();
+    }
+  } catch(err) {
+    console.warn('[queuePoll] error:', err.message);
+  }
+}
+
+async function _mergeQueuedBrief(job) {
+  // Lightweight merge: reload project once from KV and patch S.pages
+  try {
+    var res = await fetch('/api/projects/' + encodeURIComponent(S.currentProject));
+    if (!res.ok) return;
+    var data = await res.json();
+    if (data.pages) {
+      S.pages = data.pages;
+      renderBriefs();
+    }
+  } catch(e) { /* non-fatal */ }
+}
+
 async function generateAllBriefs() {
   var btn = document.getElementById('briefs-run-btn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...'; }

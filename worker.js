@@ -169,6 +169,53 @@ export default {
     }
 
         // ── ANTHROPIC PROXY ──────────────────────────────────────────
+    // ── GENERATION QUEUE — submit jobs + poll status ──────────────────────────
+    // POST /api/queue-submit  { projectId, jobs: [{type, slug, pageIdx}] }
+    if (url.pathname === '/api/queue-submit' && request.method === 'POST') {
+      try {
+        const { projectId, jobs } = await request.json();
+        if (!projectId || !jobs?.length) {
+          return new Response(JSON.stringify({ error: 'projectId and jobs required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const submitted = [];
+        for (const job of jobs) {
+          const jobId = `${job.type}:${job.slug}:${Date.now()}:${Math.random().toString(36).slice(2,7)}`;
+          const jobKey = userPrefix + 'job:' + projectId + ':' + jobId;
+          await env.SETSAIL_OS.put(jobKey, JSON.stringify({
+            jobId, projectId, userId,
+            type: job.type,      // 'brief' | 'copy'
+            slug: job.slug,
+            pageIdx: job.pageIdx,
+            status: 'queued',
+            createdAt: Date.now(),
+          }), { expirationTtl: 86400 }); // jobs expire after 24h
+          await env.SETSAIL_GEN_QUEUE.send({ jobId, jobKey, userId, userPrefix, projectId, type: job.type, slug: job.slug, pageIdx: job.pageIdx });
+          submitted.push(jobId);
+        }
+        return new Response(JSON.stringify({ ok: true, submitted }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // GET /api/queue-status?projectId=xxx
+    if (url.pathname === '/api/queue-status' && request.method === 'GET') {
+      try {
+        const projectId = url.searchParams.get('projectId');
+        if (!projectId) return new Response(JSON.stringify({ error: 'projectId required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const prefix = userPrefix + 'job:' + projectId + ':';
+        const list = await env.SETSAIL_OS.list({ prefix });
+        const jobs = [];
+        for (const key of list.keys) {
+          const raw = await env.SETSAIL_OS.get(key.name);
+          if (raw) jobs.push(JSON.parse(raw));
+        }
+        return new Response(JSON.stringify({ jobs }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     if (url.pathname === '/api/claude') {
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       try {
@@ -1451,5 +1498,159 @@ export default {
       return new Response(assetRes.body, { status: assetRes.status, headers });
     }
     return assetRes;
-  }
+  },
+
+  // ── QUEUE CONSUMER — processes brief/copy generation jobs ────────────────
+  async queue(batch, env) {
+    for (const msg of batch.messages) {
+      const job = msg.body;
+      const { jobId, jobKey, userId, userPrefix, projectId, type, slug, pageIdx } = job;
+
+      // ── helpers ─────────────────────────────────────────────────────────
+      async function setStatus(status, extra = {}) {
+        const existing = await env.SETSAIL_OS.get(jobKey);
+        const data = existing ? JSON.parse(existing) : { jobId, projectId, type, slug };
+        await env.SETSAIL_OS.put(jobKey, JSON.stringify({ ...data, status, updatedAt: Date.now(), ...extra }), { expirationTtl: 86400 });
+      }
+
+      async function claudeCall(system, user, maxTokens = 4000) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, stream: false, system, messages: [{ role: 'user', content: user }] }),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          const msg2 = e.error?.message || ('Anthropic error ' + res.status);
+          // 429 — retry via queue
+          if (res.status === 429) throw new RateLimitError(msg2);
+          throw new Error(msg2);
+        }
+        const data = await res.json();
+        return data.content?.[0]?.text || '';
+      }
+
+      class RateLimitError extends Error {}
+
+      try {
+        await setStatus('running');
+
+        // Load project data from KV
+        const projectRaw = await env.SETSAIL_OS.get(userPrefix + 'project:' + projectId);
+        if (!projectRaw) { await setStatus('failed', { error: 'Project not found' }); msg.ack(); continue; }
+        const S = JSON.parse(projectRaw);
+        const p = S.pages?.[pageIdx];
+        if (!p) { await setStatus('failed', { error: 'Page not found at index ' + pageIdx }); msg.ack(); continue; }
+
+        const R = S.research || {};
+        const setup = S.setup || {};
+
+        if (type === 'brief') {
+          // ── SERP Intel ──────────────────────────────────────────────────
+          if (p.primary_keyword && env.DATAFORSEO_LOGIN) {
+            try {
+              const geo = ((R.geography?.primary) || setup.geo || '').toLowerCase();
+              const country = /australia|sydney|melbourne/.test(geo) ? 'AU' : /canada|bc|vancouver/.test(geo) ? 'CA' : /united kingdom|uk|london/.test(geo) ? 'GB' : 'US';
+              const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+              const siRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+                method: 'POST', headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+                body: JSON.stringify([{ keyword: p.primary_keyword, location_code: country === 'CA' ? 2124 : country === 'AU' ? 2036 : country === 'GB' ? 2826 : 2840, language_code: 'en', depth: 10 }])
+              });
+              if (siRes.ok) {
+                const siData = await siRes.json();
+                const items = siData.tasks?.[0]?.result?.[0]?.items?.filter(i => i.type === 'organic') || [];
+                const competitors = [];
+                for (const item of items.slice(0, 3)) {
+                  try {
+                    const pageRes = await fetch(item.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+                    const html = pageRes.ok ? await pageRes.text() : '';
+                    const words = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(' ').length;
+                    const h2s = [...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/gi)].map(m => m[1].trim()).slice(0, 8);
+                    competitors.push({ position: item.rank_absolute, url: item.url, title: item.title, word_count: words, h2s, fetch_ok: true });
+                  } catch { competitors.push({ position: item.rank_absolute, url: item.url, title: item.title, fetch_ok: false }); }
+                }
+                S.pages[pageIdx].serpIntel = { competitors, fetchedAt: Date.now() };
+              }
+            } catch { /* SERP non-fatal */ }
+          }
+
+          // ── Build brief prompt (same logic as client generatePageBrief) ──
+          const addlKws = (p.supporting_keywords || []).map(k => typeof k === 'object' ? (k.kw || '') : String(k)).filter(Boolean);
+          const assignedQs = p.assignedQuestions || [];
+          const ctxBusiness = [
+            'Client: ' + (R.client_name || setup.client_name || 'Unknown'),
+            'Value proposition: ' + (R.value_proposition || ''),
+            'Key differentiators: ' + ((R.key_differentiators || []).join('; ') || 'none'),
+            'Proof points: ' + ((R.proof_points || []).join('; ') || 'none'),
+            'Brand voice: ' + (R.brand_voice_style || R.tone_and_voice || 'professional'),
+          ].filter(l => l.split(': ')[1]).join('\n');
+          const ctxAudience = [
+            'Primary audience: ' + (R.primary_audience_description || ''),
+            'Top pain points: ' + ((R.pain_points_top5 || []).slice(0, 3).join('; ') || ''),
+            'Top objections: ' + ((R.objections_top5 || []).slice(0, 3).join('; ') || ''),
+            'Geography: ' + ((R.geography?.primary) || R.target_geography || ''),
+          ].filter(l => l.split(': ')[1]).join('\n');
+          const ctxKeywords = '**Primary:** ' + (p.primary_keyword || 'none') + ' (' + (p.primary_vol || 0) + '/mo, KD:' + (p.primary_kd || 0) + ')\n' + (addlKws.length ? '**Supporting:** ' + addlKws.join(', ') : '');
+          const ctxQuestions = assignedQs.length ? assignedQs.map((q, i) => (i + 1) + '. ' + q).join('\n') : 'None assigned';
+
+          const pt = (p.page_type || 'service').toLowerCase();
+          const isService = /^(service|location|industry)$/.test(pt);
+          const isBlog = /^(blog|faq|resource)$/.test(pt);
+
+          const sysPrompt = isService
+            ? 'You are a senior CRO + SEO strategist. Write conversion-optimised page briefs for service businesses. CRO and SEO are equally important. Be specific, direct, no generic advice. Canadian spelling.'
+            : isBlog
+            ? 'You are a senior content strategist and SEO specialist. Write editorial briefs for blog posts. E-E-A-T, unique insight, and backlink potential are priorities. Canadian spelling.'
+            : 'You are a senior SEO strategist and brand strategist. Write page briefs for homepage, about, and utility pages. Canadian spelling.';
+
+          const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';
+
+          const briefText = await claudeCall(sysPrompt, prompt, 4000);
+
+          // Write brief back to project
+          if (!S.pages[pageIdx].brief) S.pages[pageIdx].brief = {};
+          S.pages[pageIdx].brief.generated = true;
+          S.pages[pageIdx].brief.summary = briefText;
+          S.pages[pageIdx].brief.generatedAt = Date.now();
+          S.pages[pageIdx].updatedAt = Date.now();
+
+          // Save updated project to KV
+          await env.SETSAIL_OS.put(userPrefix + 'project:' + projectId, JSON.stringify(S), {
+            metadata: { name: setup.businessName || projectId, stage: S.currentStage || 'briefs', updatedAt: new Date().toISOString() }
+          });
+          await setStatus('done', { completedAt: Date.now() });
+
+        } else if (type === 'copy') {
+          // Copy generation — load brief, call Claude, save to copy KV key
+          const brief = p.brief?.summary || '';
+          if (!brief) { await setStatus('failed', { error: 'No approved brief for ' + slug }); msg.ack(); continue; }
+
+          const copySystem = 'You are an expert SEO copywriter. Write complete, publish-ready page HTML from this brief. Every section in the brief must become real copy — no placeholders, no [INSERT X]. Canadian spelling.';
+          const copyPrompt = 'Brief:\n' + brief + '\n\nWrite the full page copy as clean HTML. Include all sections from the H2 skeleton, FAQ, and CTAs. Minimum word count as specified in the brief.';
+          const copyHtml = await claudeCall(copySystem, copyPrompt, 6000);
+
+          // Save copy to its own KV key (same pattern as client copy.js)
+          const copyKey = userPrefix + 'copy:' + projectId + ':' + slug;
+          const existing = await env.SETSAIL_OS.get(copyKey);
+          const existingData = existing ? JSON.parse(existing) : {};
+          const drafts = existingData.drafts || [];
+          drafts.push({ v: drafts.length + 1, html: copyHtml, pass: 1, generatedAt: Date.now() });
+          await env.SETSAIL_OS.put(copyKey, JSON.stringify({ ...existingData, copy: copyHtml, drafts, activeDraft: drafts.length - 1, writtenAt: Date.now(), page: p }));
+          await setStatus('done', { completedAt: Date.now() });
+        }
+
+        msg.ack();
+
+      } catch (err) {
+        if (err instanceof RateLimitError || err.message?.includes('rate') || err.message?.includes('529')) {
+          // Let queue retry automatically (don't ack)
+          await setStatus('queued', { retryReason: err.message });
+          msg.retry({ delaySeconds: 30 });
+        } else {
+          await setStatus('failed', { error: err.message });
+          msg.ack();
+        }
+      }
+    }
+  },
 };
