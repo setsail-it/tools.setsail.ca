@@ -1333,9 +1333,20 @@ function _renderKwQuestionsTab() {
       var typeClr = contentType === 'new_blog' ? 'var(--primary)' : contentType === 'sitewide_faq' ? 'var(--warn)' : 'var(--n3)';
       var typeIcon = contentType === 'new_blog' ? 'ti-file-plus' : contentType === 'sitewide_faq' ? 'ti-world' : 'ti-file-text';
 
-      var intent = q.match(/^(how|what|why|when|where|who|which|can|is|are|does|do|should)/i) ? 'informational' : 'commercial';
-      var intentClr = intent === 'informational' ? 'var(--green)' : 'var(--warn)';
-      var intentLabel = intent === 'informational' ? 'Blog / FAQ' : 'Service / Landing';
+      // Intent: use AI assignment type when available, else keyword-based signal
+      var intentLabel, intentClr;
+      if (contentType === 'new_blog') {
+        intentLabel = 'Blog / FAQ'; intentClr = 'var(--green)';
+      } else if (contentType === 'sitewide_faq') {
+        intentLabel = 'Sitewide FAQ'; intentClr = 'var(--n2)';
+      } else if (contentType === 'faq_on_page') {
+        intentLabel = 'Service / Landing'; intentClr = 'var(--warn)';
+      } else {
+        // Fallback: commercial signals win over question words
+        var isBOF = q.match(/cost|price|pricing|hire|worth|vs |versus|compare|best |top |near me|agency in|reviews|legit|guarantee|roas|roi|how much|affordable|cheap|budget/i);
+        intentLabel = isBOF ? 'Service / Landing' : 'Blog / FAQ';
+        intentClr = isBOF ? 'var(--warn)' : 'var(--green)';
+      }
 
       var rowBg = i % 2 ? 'background:var(--bg)' : '';
 
@@ -1545,23 +1556,24 @@ async function generateMoreQuestions() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating...'; }
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating additional questions...';
 
-  var systemPrompt = 'You are an SEO strategist generating buyer-intent questions for a marketing agency website. Return ONLY a JSON array of question strings — no markdown, no explanation, no wrapper object.';
+  var systemPrompt = 'You are an SEO strategist generating bottom-of-funnel buyer questions for a marketing agency website. These are questions a business owner types into Google when they are actively evaluating whether to hire an agency — not learning about marketing in general. Return ONLY a JSON array of question strings — no markdown, no explanation, no wrapper object.';
 
   var userPrompt = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
     'Location: ' + (geo || 'Vancouver, BC') + '\n' +
     'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
     'Target audience: ' + (audience || 'small to mid-size businesses') + '\n' +
     (industry ? 'Industry focus: ' + industry + '\n' : '') +
-    '\nExisting questions (DO NOT duplicate these):\n' + existingQs.slice(0, 30).map(function(q,i){return (i+1)+'. '+q;}).join('\n') +
-    '\n\nGenerate 20 NEW questions covering angles not yet represented above. Focus on these under-covered topic areas:\n' +
-    '- What the agency process/onboarding looks like step by step\n' +
-    '- Deliverables, reporting cadence, and what clients actually receive\n' +
-    '- Niche/industry-specific marketing questions (construction, professional services, hospitality, etc.)\n' +
-    '- Comparison questions: agency vs freelancer, in-house vs outsource, retainer vs project\n' +
-    '- Trust and risk questions: contracts, guarantees, what happens if results don\'t come, how to vet an agency\n' +
-    '- Timeline and expectation questions: how long until results, what to expect in month 1 vs month 6\n' +
-    '- Budget and ROI questions for specific services (SEO ROI, Google Ads ROAS, etc.)\n' +
-    'Make questions natural search queries — lowercase, conversational, specific to location and services where relevant. Return exactly 20 questions as a JSON array.';
+    '\nExisting questions (DO NOT duplicate these):\n' + existingQs.slice(0, 40).map(function(q,i){return (i+1)+'. '+q;}).join('\n') +
+    '\n\nGenerate 20 NEW bottom-of-funnel questions not yet covered above. These must be purchase-evaluation questions only — someone who has already decided they need marketing help and is now vetting agencies.\n\n' +
+    'BOF question types to generate more of:\n' +
+    '- Specific service pricing: "how much does seo cost for small business vancouver", "google ads management fees canada"\n' +
+    '- ROI and proof: "what roi should i expect from seo", "how long before seo pays off"\n' +
+    '- Risk and vetting: "how to know if a marketing agency is legit", "red flags when hiring seo company"\n' +
+    '- Direct comparison: "seo agency vs doing seo myself", "retainer vs project based marketing agency"\n' +
+    '- Local intent: "best ppc agency vancouver bc", "top rated marketing agencies vancouver"\n' +
+    '- Category-specific buying: "how to choose social media agency for restaurant", "seo agency for construction companies vancouver"\n\n' +
+    'NEVER generate: how marketing works, what is SEO, educational content, generic industry stats, anything a student would search.\n' +
+    'All questions must be lowercase, conversational, specific to services and location where relevant. Return exactly 20 questions as a JSON array.';
 
   try {
     var res = await fetch('/api/claude', {
