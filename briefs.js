@@ -1185,6 +1185,7 @@ async function generatePageBrief(pageIdx) {
   var contentEl = document.getElementById('brief-content-'+pageIdx);
   if (contentEl) contentEl.style.display = 'none';
   try {
+    window._aiBarLabel = 'Brief: ' + (p.page_name || p.slug);
     var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 4000);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
@@ -1270,7 +1271,9 @@ async function queueAllBriefs() {
 
 function _startQueuePoll() {
   if (_queuePollTimer) clearInterval(_queuePollTimer);
+  window._queueStartTime = Date.now();
   _queuePollTimer = setInterval(_pollQueueStatus, 4000);
+  if (typeof aiBarQueue === 'function') aiBarQueue(0, jobs.length, 12);
 }
 
 async function _pollQueueStatus() {
@@ -1305,6 +1308,10 @@ async function _pollQueueStatus() {
     var statusEl = document.getElementById('briefs-queue-status');
     var btn = document.getElementById('briefs-queue-btn');
     var allSettled = (done + failed) >= total;
+
+    // Update AI bar with real queue progress
+    var avgSec = done > 0 ? Math.round((Date.now() - (_queueStartTime||Date.now())) / done / 1000) : 12;
+    if (typeof aiBarQueue === 'function') aiBarQueue(done, total, avgSec);
 
     if (statusEl) {
       if (allSettled) {

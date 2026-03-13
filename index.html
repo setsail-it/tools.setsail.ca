@@ -18,18 +18,40 @@ body{font-family:var(--font);background:#ffffff;color:var(--dark);font-size:14px
 input,textarea,button,select{font-family:var(--font)!important}
 input::placeholder,textarea::placeholder{color:#bbb}
 
-/* NAV */
-#nav{display:flex;justify-content:space-between;align-items:center;padding:0 28px;height:52px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;background:rgba(240,239,233,0.95);backdrop-filter:blur(10px)}
+/* NAV / TOPBAR */
+#nav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 20px;height:48px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(240,239,233,0.97);backdrop-filter:blur(10px)}
 .nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
 .logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
 .nav-divider{width:1px;height:14px;background:var(--border)}
-#stage-bar{display:flex;align-items:center;gap:2px}
-.stage-pill{display:flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11.5px;border:1px solid var(--border);color:var(--n2);background:transparent;cursor:pointer;transition:all .15s;white-space:nowrap}
-.stage-pill:hover:not(.active){background:var(--n1)}
-.stage-pill.active{background:var(--dark);color:white;border-color:var(--dark)}
-.stage-pill.done{background:rgba(21,142,29,0.1);color:var(--green);border-color:rgba(21,142,29,0.25)}
-.stage-dot{width:6px;height:1px;background:var(--border)}.stage-dot.done{background:rgba(21,142,29,0.25)}
+#stage-bar{display:none}
+.stage-pill,.stage-dot{display:none}
+
+/* SIDEBAR */
+#sidebar{position:fixed;top:48px;left:0;bottom:0;width:188px;background:var(--panel);border-right:1px solid var(--border);z-index:150;display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#sidebar.visible{display:flex}
+.sb-section{padding:12px 10px 6px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--n2);font-weight:500}
+.sb-item{display:flex;align-items:center;gap:9px;padding:7px 12px;margin:1px 6px;border-radius:7px;font-size:12.5px;color:var(--n3);cursor:pointer;transition:all .12s;white-space:nowrap;user-select:none;border:none;background:none;width:calc(100% - 12px);text-align:left;font-family:var(--font)}
+.sb-item:hover:not(.sb-active):not(.sb-locked){background:rgba(0,0,0,0.05);color:var(--dark)}
+.sb-item.sb-active{background:var(--dark);color:white}
+.sb-item.sb-done{color:var(--dark)}
+.sb-item.sb-locked{opacity:.38;cursor:default}
+.sb-item .sb-icon{width:18px;text-align:center;font-size:13px;flex-shrink:0}
+.sb-item .sb-check{width:14px;height:14px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sb-item .sb-check i{font-size:9px;color:white}
+.sb-bottom{margin-top:auto;padding:10px 6px;border-top:1px solid var(--border)}
+.sb-projects-btn{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:7px;font-size:12px;color:var(--n3);cursor:pointer;width:100%;border:none;background:none;font-family:var(--font);transition:all .12s}
+.sb-projects-btn:hover{background:rgba(0,0,0,0.05);color:var(--dark)}
+
+/* AI PROGRESS BAR */
+#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:240px;max-width:360px;opacity:0;transition:opacity .2s;pointer-events:none}
+#ai-bar.active{opacity:1;pointer-events:auto}
+#ai-bar-label{font-size:11px;color:var(--n3);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+#ai-bar-track{width:100%;height:3px;background:var(--n1);border-radius:3px;overflow:hidden}
+#ai-bar-fill{height:100%;border-radius:3px;background:var(--green);width:0%;transition:width .4s ease}
+#ai-bar-fill.indeterminate{animation:aiPulse 1.6s ease-in-out infinite}
+@keyframes aiPulse{0%{width:0%;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0%;margin-left:100%}}
+#ai-bar-meta{font-size:10px;color:var(--n2)}
 
 /* SAVE INDICATOR */
 #save-indicator{font-size:11px;color:var(--n2);display:flex;align-items:center;gap:5px;transition:opacity .3s}
@@ -38,7 +60,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 #save-indicator.error{color:var(--error)}
 
 /* MAIN */
-#main{max-width:1020px;margin:0 auto;padding:32px 28px 80px}
+#main{padding:32px 32px 80px;margin-top:48px;margin-left:0;transition:margin-left .2s}body.in-project #main{margin-left:188px}
 .screen{animation:fadeIn .25s ease;display:none}.screen.active{display:block}
 
 /* TYPE */
@@ -129,30 +151,48 @@ textarea.inp{resize:vertical}
 </head>
 <body>
 
-<!-- NAV -->
+<!-- TOPBAR -->
 <div id="nav">
-  <div style="display:flex;align-items:center;gap:14px">
-    <div class="nav-logo" onclick="showProjects()" style="cursor:pointer" title="Back to all projects">
+  <!-- Left: logo + client -->
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="nav-logo" onclick="showProjects()" style="cursor:pointer" title="All projects">
       <div class="logo-mark">
         <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1 11L6 1L11 11" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <span style="white-space:nowrap">Setsail<em style="font-style:normal;color:var(--green)"> OS</em></span>
     </div>
     <div class="nav-meta">
-      <div class="nav-divider" id="nav-div2"></div>
+      <div class="nav-divider" id="nav-div2" style="display:none"></div>
       <span id="client-name-nav" style="color:var(--dark);font-weight:500"></span>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px">
+  <!-- Centre: AI progress bar -->
+  <div id="ai-bar">
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+      <span id="ai-bar-label">Generating…</span>
+      <span id="ai-bar-meta"></span>
+    </div>
+    <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
+  </div>
+  <!-- Right: save + guide + user -->
+  <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
-    <div id="user-pill" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--mid);cursor:default" title="Signed in via Cloudflare Access">
+    <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
+    <div id="user-pill" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:default" title="Signed in via Cloudflare Access">
       <i class="ti ti-user-circle" style="font-size:13px;color:var(--green)"></i>
       <span id="user-email-nav">—</span>
     </div>
-    <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide &amp; best practices" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--mid);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
-    <div id="stage-bar"></div>
-    <button id="mobile-menu-btn" onclick="toggleMobileNav()" style="display:none;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:var(--white);cursor:pointer;flex-shrink:0">
-      <i class="ti ti-menu-2" style="font-size:14px;color:var(--dark)"></i>
+  </div>
+  <!-- Hidden stage-bar kept for JS compat -->
+  <div id="stage-bar" style="display:none"></div>
+</div>
+
+<!-- LEFT SIDEBAR -->
+<div id="sidebar">
+  <div id="sidebar-stages"></div>
+  <div class="sb-bottom">
+    <button class="sb-projects-btn" onclick="showProjects()">
+      <i class="ti ti-layout-grid" style="font-size:13px"></i> All Projects
     </button>
   </div>
 </div>
@@ -726,6 +766,9 @@ async function showProjects() {
   document.getElementById('projects-screen').style.display = 'block';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('stage-bar').innerHTML = '';
+  document.getElementById('sidebar-stages').innerHTML = '';
+  document.getElementById('sidebar').classList.remove('visible');
+  document.body.classList.remove('in-project');
   document.getElementById('client-name-nav').textContent = '';
   document.getElementById('nav-div2').style.display = 'none';
   document.getElementById('save-indicator').style.opacity = '0';
@@ -879,6 +922,10 @@ function goTo(stage) {
   document.getElementById('projects-screen').style.display = 'none';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + stage).classList.add('active');
+  document.body.classList.add('in-project');
+  document.getElementById('sidebar').classList.add('visible');
+  var navDiv = document.getElementById('nav-div2');
+  if (navDiv) navDiv.style.display = '';
   renderStageBar(stage);
   window.scrollTo(0,0);
   if (stage === 'setup' && S.setup) prefillSetup();
@@ -894,18 +941,28 @@ function goTo(stage) {
 }
 
 function renderStageBar(current) {
+  renderSidebar(current);
+}
+
+function renderSidebar(current) {
+  const el = document.getElementById('sidebar-stages');
+  const sidebar = document.getElementById('sidebar');
+  if (!el || !sidebar) return;
   const idx = STAGES.findIndex(s => s.id === current);
-  let html = '';
+  let html = '<div class="sb-section">Pipeline</div>';
   STAGES.forEach((s, i) => {
-    const done = i < idx, active = i === idx;
-    const canClick = i < idx || (i > idx && S.pages.length > 0);
-    const cls = active ? 'stage-pill active' : done ? 'stage-pill done' : 'stage-pill';
-    const icon = done ? 'ti-check' : s.icon;
-    html += '<div class="' + cls + '"' + (canClick ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + ' style="' + (canClick && !active ? '' : 'cursor:default') + '">'
-      + '<i class="ti ' + icon + '" style="font-size:9px"></i>' + s.label + '</div>';
-    if (i < STAGES.length-1) html += '<div class="stage-dot' + (done?' done':'') + '"></div>';
+    const done = i < idx;
+    const active = i === idx;
+    const canClick = active || done || (i > idx && S.pages && S.pages.length > 0);
+    const cls = 'sb-item' + (active ? ' sb-active' : done ? ' sb-done' : !canClick ? ' sb-locked' : '');
+    const iconHtml = done
+      ? '<span class="sb-check"><i class="ti ti-check"></i></span>'
+      : '<span class="sb-icon"><i class="ti ' + s.icon + '"></i></span>';
+    const stepNum = '<span style="font-size:10px;opacity:.5;margin-left:auto">S' + (i+1) + '</span>';
+    html += '<button class="' + cls + '"' + (canClick && !active ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + '>'
+      + iconHtml + s.label + (active ? stepNum : '') + '</button>';
   });
-  document.getElementById('stage-bar').innerHTML = html;
+  el.innerHTML = html;
 }
 
 function navToStage(stage) {
@@ -936,7 +993,74 @@ function renderStageContent(stage) {
 }
 
 // ── API ────────────────────────────────────────────────────────────
-async function callClaude(system, user, onChunk, maxTokens) {
+
+// ── AI PROGRESS BAR ──────────────────────────────────────────────────────────
+var _aiBarTimer = null;
+var _aiBarStart = 0;
+var _aiBarActive = false;
+
+function aiBarStart(label) {
+  _aiBarActive = true;
+  _aiBarStart = Date.now();
+  var bar = document.getElementById('ai-bar');
+  var labelEl = document.getElementById('ai-bar-label');
+  var fill = document.getElementById('ai-bar-fill');
+  var meta = document.getElementById('ai-bar-meta');
+  if (!bar) return;
+  if (labelEl) labelEl.textContent = label || 'Generating…';
+  if (fill) { fill.style.width = '0%'; fill.classList.add('indeterminate'); }
+  if (meta) meta.textContent = '';
+  bar.classList.add('active');
+  if (_aiBarTimer) clearInterval(_aiBarTimer);
+  _aiBarTimer = setInterval(function() {
+    var sec = Math.round((Date.now() - _aiBarStart) / 1000);
+    if (meta) meta.textContent = sec + 's';
+  }, 1000);
+}
+
+function aiBarEnd(label) {
+  _aiBarActive = false;
+  if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
+  var bar = document.getElementById('ai-bar');
+  var fill = document.getElementById('ai-bar-fill');
+  var meta = document.getElementById('ai-bar-meta');
+  var labelEl = document.getElementById('ai-bar-label');
+  if (!bar) return;
+  if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '100%'; }
+  var sec = Math.round((Date.now() - _aiBarStart) / 1000);
+  if (meta) meta.textContent = 'Done in ' + sec + 's';
+  if (labelEl && label) labelEl.textContent = label;
+  setTimeout(function() {
+    if (!_aiBarActive) {
+      bar.classList.remove('active');
+      if (fill) fill.style.width = '0%';
+    }
+  }, 2000);
+}
+
+// Queue mode: real progress bar (called by _pollQueueStatus)
+function aiBarQueue(done, total, avgSeconds) {
+  var bar = document.getElementById('ai-bar');
+  var fill = document.getElementById('ai-bar-fill');
+  var meta = document.getElementById('ai-bar-meta');
+  var labelEl = document.getElementById('ai-bar-label');
+  if (!bar) return;
+  if (done >= total) { aiBarEnd('Queue complete'); return; }
+  bar.classList.add('active');
+  var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  if (fill) { fill.classList.remove('indeterminate'); fill.style.width = pct + '%'; }
+  if (labelEl) labelEl.textContent = 'Generating briefs (' + done + ' / ' + total + ')';
+  if (meta && avgSeconds && (total - done) > 0) {
+    var remaining = Math.round(((total - done) * avgSeconds) / 60);
+    meta.textContent = remaining <= 1 ? '< 1 min' : '~' + remaining + ' min remaining';
+  } else if (meta) {
+    meta.textContent = '';
+  }
+}
+
+async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
+  aiBarStart(_aiLabel || window._aiBarLabel || 'Generating…');
+  try {
   const res = await fetch('/api/claude', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
@@ -970,7 +1094,9 @@ async function callClaude(system, user, onChunk, maxTokens) {
       } catch(e2) { if(e2.message&&e2.message.indexOf('rate')!==-1) throw e2; }
     }
   }
+  aiBarEnd();
   return full;
+  } catch(ccErr) { aiBarEnd('Error'); throw ccErr; }
 }
 
 function safeParseJSON(text) {

@@ -617,6 +617,7 @@ async function enrichRTab(tab, forceAll) {
       : sys;
     var result;
     try {
+      window._aiBarLabel = 'Research: ' + tab;
       result = await callClaude(activeSys, prompts[tab], null, 3500);
     } catch(rateErr) {
       if (rateErr.message && rateErr.message.toLowerCase().indexOf('rate') !== -1) {
