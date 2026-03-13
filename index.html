@@ -2225,6 +2225,18 @@ async function deleteAdminUser() {
   </div>
   <div style="padding:18px;font-size:12px;color:var(--dark);line-height:1.7">
 
+    <!-- INTERFACE -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Interface</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+        <p><strong>Left sidebar</strong> — shows all 11 pipeline stages. Green checkmark = done. Active stage highlighted dark. Locked stages (grey) require completing earlier steps first. Click any accessible stage to jump directly.</p>
+        <p><strong>Top bar centre — AI bar</strong> — three modes: (1) <em>Generating</em>: indeterminate pulse + elapsed timer while a Claude call is running. (2) <em>Notification</em>: success or error message after an action (hover to see full text if truncated). (3) <em>Tips</em>: stage-specific workflow tips from this guide rotate every 7s when idle — pauses during generation, resumes after.</p>
+        <p><strong>Project switcher</strong> — click the project name in the top bar to switch between projects without going back to the projects screen.</p>
+        <p><strong>Admin panel</strong> — click your name (top right) → Admin. Manage team members: name, email, role (Admin / Strategist / Viewer), and project access (specific project IDs or blank = all). Edit your own name from the same panel. Log out via the same dropdown.</p>
+        <p><strong>Button tooltips</strong> — hover any action button for 0.3s to see a description of exactly what it does. Implemented across Keywords, Briefs, and Sitemap stages.</p>
+      </div>
+    </div>
+
     <!-- PIPELINE OVERVIEW -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:10px">Pipeline Overview</div>
@@ -2239,6 +2251,7 @@ async function deleteAdminUser() {
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — generate per page</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S9</span><span>Layout — assign components per page</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S10</span><span>Schema — FAQ + structured data generation</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S11</span><span>Export — package copy, images, schema + layout for handoff</span></div>
       </div>
     </div>
 
@@ -2284,6 +2297,9 @@ async function deleteAdminUser() {
         <li><strong>Set Country</strong> — the dropdown left of Fetch Volumes auto-detects from your geo text (AU/CA/US/GB/NZ/SG/ZA). Override manually if wrong — it saves with the project. <em>Wrong country = wrong volumes.</em></li>
         <li><strong>AI Generate Seeds</strong> — produces 20–30 tight head terms (2–4 words). These are for volume lookup, not long-tail guesses. Add competitor URLs in the Competitor Keywords section for additional seed mining.</li>
         <li><strong>Copy seeds</strong> (📋 icon in Seeds table header) to paste into Ahrefs for cross-validation before fetching volumes.</li>
+        <li><strong>Seed bucket filter bar</strong> — the Seeds table header shows four source buckets: <em>Mechanical</em> (built from client/service/geo data), <em>AI</em>, <em>Competitor</em>, and <em>Questions</em>. Each shows a count or — if empty. Click any bucket to filter the list to that source. Verify all relevant buckets are populated before Fetch Volumes.</li>
+        <li><strong>Mechanical Seeds</strong> button — rebuilds the Mechanical bucket from current Setup data (client name, services, location) and merges back in. Run after any Setup changes. Does not touch AI or Competitor seeds.</li>
+        <li><strong>Pull from Questions</strong> — extracts the core 2–7 word keyword phrase from each question (strips "how much does", "what is", etc.) and adds to Seeds. Full questions won't return DataForSEO volumes — only the extracted phrase will. The Questions bucket in the filter bar shows how many were extracted.</li>
         <li><strong>Fetch Volumes</strong> — Google Suggest expands each head term into 400–600 real phrases, then DataForSEO volumes each one. Top 300 by score are kept. This is your full keyword pool.</li>
         <li><strong>Enter Site DR</strong> in the Opportunities tab top-right — this adjusts the rankability indicator per keyword. Use the DR from Stage 2 Snapshot.</li>
         <li><strong>Review Opportunities tab</strong> — keywords scored by: <code>log(vol+1) × 100 / max(KD, 5)</code>. Minimum vol: 10. Keywords showing "—" have no DataForSEO data for that country — you can still manually select them.</li>
@@ -2316,7 +2332,9 @@ async function deleteAdminUser() {
       </div>
       <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
         <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters. Review the output carefully.</li>
-        <li><strong>Reorder pages</strong> — drag to set priority. P1 pages are processed first throughout the pipeline.</li>
+        <li><strong>Display order</strong> — pages are automatically sorted for review: Core (home, about, contact) → Services → Locations → Blog. Within each type: P1 → P2 → P3 → score. This is display-only — it does not change S.pages order or generation priority.</li>
+        <li><strong>Category tabs</strong> — filter by All, Services, Locations, Blog, or Core. Counts show live as pages are added or removed.</li>
+        <li><strong>Reorder pages</strong> — use edit mode to adjust page types, priorities, or slugs. P1 pages are processed first throughout the pipeline.</li>
         <li><strong>Run Keyword Mapping</strong> — assigns primary + supporting keywords to each page from the opportunity pool.</li>
         <li><strong>Approve Sitemap</strong> — locks the page architecture. Required before Briefs stage processes.</li>
       </ol>
@@ -2331,6 +2349,7 @@ async function deleteAdminUser() {
         <li><strong>AI Assign Keywords + Questions</strong> — distributes remaining global PAA questions and keyword pool across pages. Skips already-assigned page questions (no duplicates). Run globally from the toolbar. The per-page <em>✦ Assign</em> button on each brief card runs a full <strong>curation pass</strong>: Claude reviews what's currently assigned, keeps what matches the page's intent, drops what doesn't, and replaces it with better fits from the pool. The button shows a removal count (e.g. <em>✓ Curated (3 removed)</em>) when items were dropped.</li>
         <li><strong>SERP Intel</strong> (per page, or auto-runs at brief generation) — fetches top 3 organic results for the primary keyword, extracts: word count, H2 structure, KW density. Sets word count target at max competitor × 1.05. Some sites block crawlers — this is normal.</li>
         <li><strong>Generate / Regenerate Brief</strong> — click any page row to expand it (accordion). Once open, use the top-right action bar to generate, regenerate, or run a new version. SERP Intel auto-runs silently if not already done.</li>
+        <li><strong>Queue All</strong> — submits all un-generated briefs to the Cloudflare Queue for server-side generation. Tab-close safe — the worker generates briefs in the background even if you leave. Processes 2 concurrent, retries automatically on rate limits. Progress shows in the AI bar with estimated time remaining. Results merge back into the page when done.</li>
         <li><strong>Evaluate Brief</strong> — AI scorecard: 9–11 checks including reader profile, H1, CTA presence, objections, trust signals, SERP word count target, H2 coverage.</li>
         <li><strong>Version pills (V1 / V2…)</strong> — appear in the score bar once more than one draft exists. Click to switch between versions. Last 2 kept — V1 is dropped when V3 is pushed. Run V2 via <em>+ V2</em> button in the action bar.</li>
         <li><strong>Approve Brief</strong> — button in the top-right action bar of each card. Locks the brief. Copy stage will not process a page without an approved brief.</li>
@@ -2381,7 +2400,9 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel competitors</strong> stripped from save payload — only directives + metadata persists. SERP competitors visible in brief card only until next save.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>KV limit:</strong> 25MB max. Monitor console for [save] payload size warnings. Projects with 100+ pages and heavy research data approach this limit.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Save:</strong> auto-saves on every action (debounced). Green indicator top-right confirms saved. Red = failed — check console for payload size or network error.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Auth:</strong> Google SSO via Cloudflare Access. Any @setsail.ca email can log in. Projects are scoped per user (u:{email}:project:{id}).</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Auth:</strong> Cloudflare Access (Google SSO). Any @setsail.ca email can authenticate. Projects are user-scoped (<code>u:{email}:project:{id}</code>). Roles (Admin/Strategist/Viewer) and per-project access restrictions managed in Admin panel (top-right dropdown → Admin).</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Token limits:</strong> Default 3k. Briefs: 4k. Copy: 6k. Schema: 4k. Research: 3.5k. Gap analysis: 3k.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Bulk queue:</strong> Cloudflare Queues (setsailos-gen-queue). 2 concurrent, 3 retries, 30s delay on 429. Job status in KV, 24h TTL. Free tier handles ~10k ops/day — 40 briefs ≈ 120 ops.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Canadian spelling:</strong> -ize endings are correct (optimize, organize, specialize). Only flag: color/honour/center/theatre and -yze → -yse (analyze → analyse).</span></div>
       </div>
     </div>
