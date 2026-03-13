@@ -723,8 +723,17 @@ async function generatePageBrief(pageIdx) {
   var serpBriefBlock = '';
   if (p.primary_keyword) {
     try {
-      var geo2 = (R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '';
-      var country2 = /canada|bc|vancouver/i.test(geo2) ? 'CA' : 'US';
+      // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
+      var country2 = (S.kwResearch && S.kwResearch.country)
+        ? S.kwResearch.country.toUpperCase()
+        : (function() {
+            var geo2 = ((R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '').toLowerCase();
+            if (/australia|sydney|melbourne|brisbane|perth/.test(geo2)) return 'AU';
+            if (/canada|\bbc\b|vancouver|calgary|toronto/.test(geo2)) return 'CA';
+            if (/united kingdom|\buk\b|london/.test(geo2)) return 'GB';
+            if (/new zealand/.test(geo2)) return 'NZ';
+            return 'US';
+          })();
       if (streamEl) streamEl.textContent = 'Fetching SERP Intel for "' + p.primary_keyword + '"…';
       var siRes = await fetch('/api/serp-intel', {
         method: 'POST',

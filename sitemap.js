@@ -349,9 +349,17 @@ async function enrichSitemapWithLiveData() {
   if (enrichBadge) { enrichBadge.style.display = 'inline-flex'; enrichBadge.textContent = 'Fetching ' + kwList.length + ' keyword volumes…'; }
 
   try {
-    const geo = S.research?.geography?.primary || S.setup?.geo || '';
-    const geoLower = geo.toLowerCase();
-    const country = (geoLower.includes('canada')||geoLower.includes('bc')||geoLower.includes('vancouver')||geoLower.includes('calgary')) ? 'CA' : 'US';
+    // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
+    const country = (S.kwResearch && S.kwResearch.country)
+      ? S.kwResearch.country.toUpperCase()
+      : (function() {
+          const geoLower = (S.research?.geography?.primary || S.setup?.geo || '').toLowerCase();
+          if (/australia|sydney|melbourne|brisbane|perth/.test(geoLower)) return 'AU';
+          if (/canada|\bbc\b|vancouver|calgary|toronto/.test(geoLower)) return 'CA';
+          if (/united kingdom|\buk\b|london/.test(geoLower)) return 'GB';
+          if (/new zealand/.test(geoLower)) return 'NZ';
+          return 'US';
+        })();
 
     const res = await fetch('/api/ahrefs', {
       method: 'POST',

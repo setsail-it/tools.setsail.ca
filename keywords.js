@@ -1729,7 +1729,7 @@ async function aiAssignKeywordsAndQuestions() {
   // All unassigned / underused keywords
   var usedPrimaries = new Set(pages.map(function(p){ return (p.primary_keyword||'').toLowerCase().trim(); }));
   var allKws = (S.kwResearch&&S.kwResearch.keywords||[])
-    .filter(function(k){ return k.vol >= 50 && !usedPrimaries.has((k.kw||'').toLowerCase().trim()); })
+    .filter(function(k){ return k.vol >= 10 && !usedPrimaries.has((k.kw||'').toLowerCase().trim()); })
     .sort(function(a,b){ return (b.score||0)-(a.score||0); })
     .slice(0,120)
     .map(function(k){ return k.kw+'|'+k.vol+'/mo|KD:'+k.kd; });

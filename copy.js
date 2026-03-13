@@ -37,8 +37,17 @@ async function runSerpIntel(slug) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle;border:1.5px solid var(--n2);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite"></span>'; }
   if (status) status.textContent = 'Fetching top 3 competitors…';
 
-  const geo = (S.research && S.research.geography && S.research.geography.primary) || S.setup.geo || '';
-  const country = /canada|bc|vancouver/i.test(geo) ? 'CA' : 'US';
+  // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
+  const country = (S.kwResearch && S.kwResearch.country)
+    ? S.kwResearch.country.toUpperCase()
+    : (function() {
+        var geo = ((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '').toLowerCase();
+        if (/australia|sydney|melbourne|brisbane|perth/.test(geo)) return 'AU';
+        if (/canada|\bbc\b|vancouver|calgary|toronto/.test(geo)) return 'CA';
+        if (/united kingdom|\buk\b|london/.test(geo)) return 'GB';
+        if (/new zealand/.test(geo)) return 'NZ';
+        return 'US';
+      })();
 
   try {
     const res = await fetch('/api/serp-intel', {
@@ -149,6 +158,9 @@ function buildCopyPrompt(page) {
     + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
     + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
     + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
+    + (((r.pain_points_top5||[]).length) ? '\nAUDIENCE PAIN POINTS: ' + (r.pain_points_top5||[]).slice(0,3).join('; ') : '')
+    + (((r.objections_top5||[]).length) ? '\nBUYER OBJECTIONS: ' + (r.objections_top5||[]).slice(0,3).join('; ') : '')
+    + (((r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.proof_points||[]).slice(0,3).join('; ') : '')
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
     + '\n\n' + briefInstruction;
@@ -326,7 +338,8 @@ async function runCopyAudit(slug) {
 
   var c = S.copy[slug];
   if (!c || !c.copy || c.copy.length < 200) return;
-  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  // Always prefer live page state — c.page is a snapshot taken at write time and may be stale
+  var p = orderedPages().find(function(pp){ return pp.slug===slug; }) || c.page || {};
   // Ensure stripped text has real content
   var _auditText = (c.copy||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
   var _wordCount = _auditText.split(' ').filter(function(w){ return w.length > 0; }).length;
@@ -524,7 +537,8 @@ async function runCopyAudit(slug) {
 async function runCopyPass2(slug) {
   var c = S.copy[slug];
   if (!c || !c.copy || !c.audit) return;
-  var p = c.page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  // Always prefer live page state — c.page is a snapshot taken at write time and may be stale
+  var p = orderedPages().find(function(pp){ return pp.slug===slug; }) || c.page || {};
   if (S.copyRunning) return;
   S.copyRunning = true; copyStopFlag = false;
   S.copyCurrentSlug = slug;
@@ -560,7 +574,12 @@ async function runCopyPass2(slug) {
     + ' Only sections relevant to the failed checks should be meaningfully changed.'
     + ' Canadian spelling. Output clean semantic HTML only, no explanation.';
 
+  var assignedQsList = (p.assignedQuestions||[]).length
+    ? '\n\n## ASSIGNED FAQ QUESTIONS (must appear verbatim in FAQ section):\n' + (p.assignedQuestions||[]).map(function(q,i){ return (i+1)+'. '+q; }).join('\n')
+    : '';
+
   var prompt = '## PAGE CONTEXT\n' + pageCtx
+    + assignedQsList
     + '\n\n## CHECKS ALREADY PASSING (preserve these sections — do not rewrite):\n' + passList
     + '\n\n## FAILED CHECKS TO FIX (improve specifically for these):\n' + failList
     + '\n\n## EXISTING DRAFT (your base — output the full improved version of this):\n' + trimmedHtml
