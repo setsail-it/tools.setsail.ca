@@ -1559,6 +1559,163 @@ async function generateBlogSeedsFromQuestions() {
 
 
 
+
+// ── NICHE KEYWORD EXPANSION ───────────────────────────────────────────────────
+// Runs Google Suggest on each page's primary keyword → merges niche variants
+// into S.kwResearch.keywords before AI Assign runs
+
+async function runNicheExpand() {
+  var btn = document.getElementById('niche-expand-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Expanding...'; }
+
+  try {
+    var pages = (S.pages || []).filter(function(p) {
+      return p.page_type !== 'utility' && p.primary_keyword;
+    });
+    if (!pages.length) { alert('No pages with primary keywords. Build sitemap first.'); return; }
+
+    var country = (S.kwResearch && S.kwResearch.country) || 'CA';
+    var payload = {
+      pages: pages.map(function(p) {
+        return {
+          slug: p.slug,
+          primaryKeyword: p.primary_keyword,
+          supportingKws: (p.supporting_keywords || []).map(function(k) { return typeof k === 'object' ? k.kw : k; })
+        };
+      }),
+      country: country
+    };
+
+    if (btn) btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Fetching suggestions...';
+
+    var res = await fetch('/api/niche-expand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Expand failed');
+
+    // Merge results into keyword pool
+    if (!S.kwResearch) S.kwResearch = {};
+    if (!S.kwResearch.keywords) S.kwResearch.keywords = [];
+
+    var existingKws = new Set(S.kwResearch.keywords.map(function(k) { return (k.kw || '').toLowerCase(); }));
+    var added = 0;
+
+    data.results.forEach(function(pageResult) {
+      (pageResult.keywords || []).forEach(function(k) {
+        var kwLower = (k.kw || '').toLowerCase();
+        if (!kwLower || existingKws.has(kwLower)) return;
+        // Score: volume-based + niche source bonus
+        var score = (k.vol || 0) * 0.5 + 20; // niche bonus — these are page-specific
+        S.kwResearch.keywords.push({
+          kw: k.kw, vol: k.vol, kd: k.kd,
+          score: Math.round(score),
+          source: 'niche:' + pageResult.slug
+        });
+        existingKws.add(kwLower);
+        added++;
+      });
+    });
+
+    scheduleSave();
+
+    var msg = 'Added ' + added + ' niche keywords across ' + data.results.length + ' pages.';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-check" style="color:var(--green)"></i> ' + added + ' keywords added'; }
+    setTimeout(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-antenna"></i> Expand Niche Keywords'; }
+    }, 3000);
+
+    // Re-render keyword tab if visible
+    if (typeof renderKwTabContent === 'function') renderKwTabContent();
+
+    console.log('[niche-expand]', msg);
+  } catch(e) {
+    console.error('[niche-expand]', e);
+    alert('Niche expand failed: ' + e.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-antenna"></i> Expand Niche Keywords'; }
+  }
+}
+
+// ── PAGE QUESTION GENERATION ──────────────────────────────────────────────────
+// Claude generates 6 targeted FAQs per page → stored as p.pageQuestions[]
+// These feed into AI Assign and then into Brief generation
+
+async function runPageQuestions() {
+  var btn = document.getElementById('page-questions-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating questions...'; }
+
+  try {
+    var pages = (S.pages || []).filter(function(p) {
+      return p.page_type !== 'utility' && p.primary_keyword;
+    });
+    if (!pages.length) { alert('No pages with primary keywords found.'); return; }
+
+    var siteContext = '';
+    if (S.research) {
+      siteContext = (S.research.company_name || '') + ' — '
+        + (S.research.primary_services || []).join(', ')
+        + '. Location: ' + (S.research.location || '')
+        + '. USP: ' + (S.research.usp || '');
+    }
+
+    var payload = {
+      pages: pages.map(function(p) {
+        return {
+          slug: p.slug,
+          pageType: p.page_type,
+          primaryKeyword: p.primary_keyword,
+          supportingKws: (p.supporting_keywords || []).map(function(k) { return typeof k === 'object' ? k.kw : k; }).slice(0, 5)
+        };
+      }),
+      siteContext: siteContext
+    };
+
+    var res = await fetch('/api/page-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Page questions failed');
+
+    // Store questions on each page
+    var assigned = 0;
+    data.results.forEach(function(r) {
+      var pageIdx = (S.pages || []).findIndex(function(p) { return p.slug === r.slug; });
+      if (pageIdx < 0 || !r.questions || !r.questions.length) return;
+      S.pages[pageIdx].pageQuestions = r.questions;
+      // Also auto-assign to assignedQuestions if not already there
+      if (!S.pages[pageIdx].assignedQuestions) S.pages[pageIdx].assignedQuestions = [];
+      r.questions.forEach(function(q) {
+        if (!S.pages[pageIdx].assignedQuestions.includes(q)) {
+          S.pages[pageIdx].assignedQuestions.push(q);
+          assigned++;
+        }
+      });
+    });
+
+    scheduleSave();
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-check" style="color:var(--green)"></i> ' + assigned + ' questions assigned';
+    }
+    setTimeout(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-message-question"></i> Generate Page Questions'; }
+    }, 3000);
+
+    // Re-render briefs if visible
+    if (typeof renderBriefs === 'function') renderBriefs();
+
+  } catch(e) {
+    console.error('[page-questions]', e);
+    alert('Page questions failed: ' + e.message);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-message-question"></i> Generate Page Questions'; }
+  }
+}
+
 // ── STAGE 6: PAGE BRIEFS ────────────────────────────────────────────
 
 // ── AI KEYWORD + QUESTION ASSIGNMENT (Stage 6 enrichment) ──────────
@@ -1577,17 +1734,32 @@ async function aiAssignKeywordsAndQuestions() {
     .slice(0,120)
     .map(function(k){ return k.kw+'|'+k.vol+'/mo|KD:'+k.kd; });
 
-  // All PAQ questions
+  // All PAQ questions (global PAA + any already-generated page questions)
   var allQs = [];
   if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) {
     S.contentIntel.paa.questions.forEach(function(q){
       if (q.question) allQs.push(q.question);
     });
   }
+  // Collect pageQuestions already assigned — AI Assign will skip re-assigning these
+  var alreadyAssignedQs = new Set();
+  pages.forEach(function(p) {
+    (p.pageQuestions || []).forEach(function(q) { alreadyAssignedQs.add(q); });
+    (p.assignedQuestions || []).forEach(function(q) { alreadyAssignedQs.add(q); });
+  });
+  // Only include unassigned global PAA questions in the pool
+  allQs = allQs.filter(function(q) { return !alreadyAssignedQs.has(q); });
 
   // Page list for prompt
   var pageList = pages.map(function(p,i){
-    return (i+1)+'. /'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+' | '+(p.action||'build_new');
+    var pqLine = (p.pageQuestions && p.pageQuestions.length)
+      ? ' | page_questions_assigned:' + p.pageQuestions.length
+      : '';
+    var nicheKws = (S.kwResearch && S.kwResearch.keywords || [])
+      .filter(function(k){ return (k.source||'').includes(p.slug); })
+      .slice(0, 8).map(function(k){ return k.kw; }).join(', ');
+    var nicheLine = nicheKws ? ' | niche_kws:' + nicheKws : '';
+    return (i+1)+'. /'+p.slug+' | '+p.page_type+' | primary: '+(p.primary_keyword||'none')+' | '+(p.action||'build_new')+pqLine+nicheLine;
   }).join('\n');
 
   var prompt = '## PAGES\n'+pageList+'\n\n'

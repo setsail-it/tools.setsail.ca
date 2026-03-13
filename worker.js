@@ -29,6 +29,138 @@ export default {
     // Keeps all data isolated per user. Migration path: swap userId source only.
     const userPrefix = userId ? 'u:' + userId + ':' : '';
 
+        // ── NICHE EXPAND — Google Suggest on per-page primary keywords ─────────
+    // Takes array of {slug, primaryKeyword} → returns {slug, keywords:[]} per page
+    if (url.pathname === '/api/niche-expand' && request.method === 'POST') {
+      try {
+        const { pages, country } = await request.json();
+        if (!pages?.length) return new Response(JSON.stringify({ error: 'No pages' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const gl = (country || 'ca').toLowerCase().slice(0, 2);
+        const locationCode = gl === 'us' ? 2840 : gl === 'gb' ? 2826 : gl === 'au' ? 2036 : 2124;
+        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+
+        // Niche modifiers — commercial + informational intent mix
+        const nicheModifiers = ['services', 'company', 'agency', 'cost', 'best', 'for', 'how to', 'what is', 'vs', 'near me'];
+
+        async function fetchSuggestNiche(term) {
+          try {
+            const r = await fetch('https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            if (!r.ok) return [];
+            const data = await r.json();
+            return (data[1] || []).filter(s => s && s.length <= 70 && s.split(' ').length <= 8).map(s => s.toLowerCase());
+          } catch(e) { return []; }
+        }
+
+        const results = [];
+
+        // Process pages in batches of 5 to avoid rate limits
+        for (let pi = 0; pi < pages.length; pi += 5) {
+          const batch = pages.slice(pi, pi + 5);
+          await Promise.all(batch.map(async (pg) => {
+            const kw = (pg.primaryKeyword || '').trim().toLowerCase();
+            if (!kw) { results.push({ slug: pg.slug, keywords: [] }); return; }
+
+            const expanded = new Set([kw]);
+            const suggestCalls = [
+              fetchSuggestNiche(kw),
+              fetchSuggestNiche(kw + ' ' + gl),
+            ];
+            for (const mod of nicheModifiers) {
+              suggestCalls.push(fetchSuggestNiche(kw + ' ' + mod));
+            }
+            const allSuggestions = await Promise.all(suggestCalls);
+            allSuggestions.flat().forEach(s => expanded.add(s));
+
+            const kwList = [...expanded].filter(k => k.split(' ').length >= 2).slice(0, 100);
+
+            // Get volumes for expanded list
+            let withVolumes = [];
+            if (kwList.length && env.DATAFORSEO_LOGIN) {
+              try {
+                const volRes = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+                  body: JSON.stringify([{ keywords: kwList.slice(0, 100), location_code: locationCode, language_code: 'en' }])
+                });
+                const volData = await volRes.json();
+                const volItems = volData?.tasks?.[0]?.result || [];
+                withVolumes = volItems
+                  .filter(r => r.search_volume != null)
+                  .map(r => ({ kw: r.keyword, vol: r.search_volume || 0, kd: r.competition_index || 0 }))
+                  .sort((a, b) => b.vol - a.vol);
+              } catch(e) {
+                withVolumes = kwList.map(k => ({ kw: k, vol: null, kd: null }));
+              }
+            }
+
+            results.push({ slug: pg.slug, keywords: withVolumes });
+          }));
+
+          // Small delay between batches to respect rate limits
+          if (pi + 5 < pages.length) await new Promise(r => setTimeout(r, 300));
+        }
+
+        return new Response(JSON.stringify({ ok: true, results }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // ── PAGE QUESTIONS — Claude generates targeted FAQs per page ────────────
+    if (url.pathname === '/api/page-questions' && request.method === 'POST') {
+      try {
+        const { pages, siteContext } = await request.json();
+        if (!pages?.length) return new Response(JSON.stringify({ error: 'No pages' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        const pageList = pages.map((p, i) =>
+          (i+1) + '. slug:' + p.slug + ' | type:' + p.pageType + ' | primary_kw:"' + p.primaryKeyword + '" | supporting:' + (p.supportingKws || []).slice(0,5).join(', ')
+        ).join('\n');
+
+        const systemPrompt = 'You are an SEO strategist generating targeted FAQ questions for each page of a marketing agency website. Return ONLY valid JSON — no markdown, no explanation.';
+
+        const userPrompt = 'Generate 6 targeted FAQ questions for each page below. Questions must:\n'
+          + '- Be specific to that page\'s niche and primary keyword\n'
+          + '- Match real search intent (things prospects actually ask)\n'
+          + '- Include a mix of: what/how/why/cost/compare/best questions\n'
+          + '- Be 8-15 words each\n'
+          + '- NOT be generic marketing questions\n\n'
+          + 'SITE CONTEXT: ' + (siteContext || 'Full-service marketing agency') + '\n\n'
+          + 'PAGES:\n' + pageList + '\n\n'
+          + 'Return JSON array: [{"slug":"...","questions":["q1","q2","q3","q4","q5","q6"]}, ...]\n'
+          + 'Return ONLY the JSON array. No markdown.';
+
+        const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 4000,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
+          })
+        });
+
+        const aiData = await aiRes.json();
+        const raw = aiData?.content?.[0]?.text || '[]';
+        let parsed = [];
+        try {
+          const clean = raw.replace(/^```json\s*/,'').replace(/```\s*$/,'').trim();
+          parsed = JSON.parse(clean);
+        } catch(e) {
+          return new Response(JSON.stringify({ error: 'Parse failed', raw }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        return new Response(JSON.stringify({ ok: true, results: parsed }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
         // ── WHOAMI — returns current user identity ──────────────────
     if (url.pathname === '/api/whoami' && request.method === 'GET') {
       return new Response(JSON.stringify({ email: userId, ok: true }), {
