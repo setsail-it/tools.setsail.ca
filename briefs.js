@@ -450,6 +450,59 @@ function switchBriefDraft(pidx, draftIdx) {
   renderBriefs();
 }
 
+
+async function improveBrief(pageIdx) {
+  var p = S.pages[pageIdx];
+  if (!p || !p.brief || !p.brief.summary) return;
+  var btn = document.getElementById('brief-improve-btn-'+pageIdx);
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:10px;height:10px"></span> Improving...'; }
+
+  // Collect failed checks
+  var failures = [];
+  if (p.brief.score && p.brief.score.checks) {
+    failures = p.brief.score.checks.filter(function(c){ return !c.pass; }).map(function(c){ return '- '+c.label+(c.note?' (note: '+c.note+')':''); });
+  }
+  if (!failures.length) {
+    if(typeof aiBarNotify==='function') aiBarNotify('No failures to fix — brief already passing all checks', {duration:3000});
+    if (btn) { btn.disabled=false; btn.innerHTML='↑ Improve'; }
+    return;
+  }
+
+  var sysPrompt = 'You are a senior SEO and CRO strategist improving a content brief. You will receive an existing brief and a list of failed quality checks. Rewrite ONLY the sections that address those failures — leave all other sections exactly as they are. Output the full revised brief. Canadian spelling.';
+  var prompt = '## EXISTING BRIEF\n' + (p.brief.summary||'') + '\n\n## FAILED CHECKS (fix these only)\n' + failures.join('\n') + '\n\n## TASK\nRewrite only the sections that address the failed checks above. Keep all passing sections unchanged. Output the complete revised brief.';
+
+  var streamEl = document.getElementById('brief-stream-'+pageIdx);
+  try {
+    window._aiBarLabel = '↑ Improving brief: ' + (p.page_name||p.slug);
+    if(typeof storePrompt==='function') storePrompt('brief-'+pageIdx, sysPrompt, prompt, '↑ Improve: '+p.page_name, failures.length+' fixes');
+    var improved = await callClaude(sysPrompt, prompt, function(t){ if(streamEl){ streamEl.style.display='block'; streamEl.textContent=t; streamEl.scrollTop=streamEl.scrollHeight; } }, 4000);
+    // Push as new version
+    p.brief._requestNewVersion = true;
+    var _bDrafts = p.brief.drafts || [];
+    var _bv = (_bDrafts.length > 0 ? _bDrafts[_bDrafts.length-1].v : 0) + 1;
+    _bDrafts.push({ v: _bv, summary: improved, score: null, generatedAt: Date.now() });
+    if (_bDrafts.length > 2) _bDrafts = _bDrafts.slice(-2);
+    p.brief.drafts = _bDrafts;
+    p.brief.activeDraft = _bDrafts.length - 1;
+    p.brief.summary = improved;
+    p.brief.score = null;
+    delete p.brief._requestNewVersion;
+    scheduleSave();
+    if (streamEl) streamEl.style.display='none';
+    var contentEl = document.getElementById('brief-content-'+pageIdx);
+    if (contentEl) {
+      contentEl.style.display='flex';
+      contentEl.innerHTML = '<textarea class="brief-ta" data-pidx="'+pageIdx+'" style="width:100%;min-height:200px;padding:14px;font-size:12px;font-family:var(--font);line-height:1.7;border:none;resize:vertical;background:transparent;color:var(--dark);outline:none">'+esc(improved)+'</textarea>';
+    }
+    setTimeout(function(){ scoreBrief(pageIdx); }, 300);
+    if(typeof aiBarNotify==='function') aiBarNotify('✓ Brief improved — re-evaluating', {duration:3000});
+  } catch(e) {
+    if (streamEl) { streamEl.style.display='block'; streamEl.textContent='Improve failed: '+e.message; }
+    if(typeof aiBarNotify==='function') aiBarNotify('Improve failed: '+e.message, {isError:true,duration:4000});
+  }
+  if (btn) { btn.disabled=false; btn.innerHTML='↑ Improve'; }
+}
+
 async function generateBriefV2(pageIdx) {
   var p = S.pages[pageIdx];
   if (!p || !p.brief || !p.brief.summary) return;
@@ -850,6 +903,10 @@ function renderBriefs() {
       : 'Generate the brief for this page. Runs SERP Intel, then calls Claude with all assigned keywords and questions.';
     var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" data-tip="'+_regenTip+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
       + (isBriefed ? '↺ Regen' : '✦ Generate') + '</button>';
+    var _hasFailures = isBriefed && p.brief.score && p.brief.score.checks && p.brief.score.checks.some(function(c){ return !c.pass; });
+    var _improveBtn = _hasFailures
+      ? '<button onclick="improveBrief('+pidx+')" id="brief-improve-btn-'+pidx+'" data-tip="Improve reads the failed checks and asks Claude to fix only those specific sections — leaving passing sections untouched. Pushes as a new version. Use instead of full Regen when the brief is mostly good but a few checks failed." style="background:rgba(21,142,29,0.1);border:1px solid rgba(21,142,29,0.3);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;color:var(--green)">↑ Improve</button>'
+      : '';
     var _v2Tip = '+ V'+_nextV+' generates a new version alongside the current drafts. Only the last 2 drafts are kept — the oldest is dropped. Use when you want a fresh attempt without losing the current active draft. Warning: if V2=92% and V3=85% are both showing, clicking +V4 will drop V2.';
     var _runV2Btn = (isBriefed && (p.brief.drafts||[]).length > 0)
       ? '<button onclick="generateBriefV2('+pidx+')" data-tip="'+_v2Tip+'" style="'+_btnSm+'">+ V'+_nextV+'</button>' : '';
@@ -861,7 +918,7 @@ function renderBriefs() {
     var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">'
       + _nicheBtn + _questBtn + _assignBtn
       + '<span style="flex:1"></span>'
-      + _promptBtn + _runV2Btn + _regenBtn + _approveBtn
+      + _promptBtn + _improveBtn + _runV2Btn + _regenBtn + _approveBtn
       + '</div>';
 
     // ── INFO STRIP ────────────────────────────────────────────────────────────

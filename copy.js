@@ -279,11 +279,29 @@ function copyToggleQC(slug, key) {
 
 function copyApprove(slug) {
   if (!S.copy[slug]) return;
+  // If approving (not un-approving), check QC is complete
+  if (!S.copy[slug].approved) {
+    var _qc = S.copy[slug].humanQC || {};
+    var page = S.copy[slug].page || {};
+    var _pageType = (page.page_type || 'service').toLowerCase();
+    var _qcItems = getQCItems(_pageType);
+    var _unchecked = _qcItems.filter(function(item){ return !_qc[item.key]; });
+    if (_unchecked.length > 0) {
+      var labels = _unchecked.map(function(i){ return '• '+i.label; }).join('\n');
+      if (!confirm('Human QC not complete. These items are unchecked:\n\n' + labels + '\n\nApprove anyway?')) return;
+    }
+  }
   S.copy[slug].approved = !S.copy[slug].approved;
   if (S.copy[slug].approved) S.copy[slug].approvedAt = Date.now();
   else delete S.copy[slug].approvedAt;
   scheduleSave();
   renderCopyQueue();
+}
+
+function getQCItems(pageType) {
+  var universal = (QC_MAP._universal || []);
+  var specific = (QC_MAP[pageType] || QC_MAP.service || []);
+  return universal.concat(specific);
 }
 
 // ── HUMAN QC: items only a human can verify ─────────────────────────────────
