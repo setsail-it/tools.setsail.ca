@@ -257,7 +257,10 @@ async function runSitemap(withRevisions) {
   prompt += 'Primary geo: ' + (r.geography?.primary || S.setup.geo || 'N/A') + '\n';
   prompt += 'Secondary geos: ' + ((r.geography?.secondary || []).join(', ') || 'none') + '\n';
   prompt += 'Services: ' + ((r.primary_services || []).join(', ') || 'N/A') + '\n';
-  prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n\n';
+  prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n';
+  var _ws = (S.setup&&S.setup.webStrategy||'').trim();
+  if (_ws) prompt += '\n## WEBSITE STRATEGY (use this to derive page_goal for each page)\n' + _ws.slice(0, 3000) + '\n\n';
+  else prompt += '\n';
 
   // Use pre-clustered data if available (preferred), fall back to raw keywords
   if (S.kwResearch?.clusters?.length) {
@@ -443,11 +446,55 @@ function addNewPage() {
     primary_vol: 0, primary_kd: 0, score: 0,
     supporting_keywords: [], search_intent: 'commercial',
     word_count_target: 1500, notes: '', meta_title: '', meta_description: '',
-    targetGeo: ''
+    targetGeo: '', page_goal: ''
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
   setTimeout(() => { const inp = document.querySelector('.page-name-edit:last-of-type'); if(inp) inp.focus(); }, 60);
+}
+
+async function generatePageGoal(idx) {
+  var p = S.pages[idx];
+  if (!p) return;
+  var btn = document.getElementById('goal-ai-btn-'+idx);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>'; }
+  var R = S.research || {};
+  var ws = (S.setup&&S.setup.webStrategy||'').trim();
+  var sys = 'You are a senior CRO + SEO strategist. Write a 1-2 sentence page goal — the strategic purpose this page must achieve. Be specific: name the audience segment, the desired action, and the proof required. No generic goals. Canadian spelling.';
+  var user = 'Client: '+(R.client_name||S.setup.client||'')+'\n'
+    + 'Page: '+p.page_name+' (/'+p.slug+')\n'
+    + 'Type: '+(p.page_type||'')+'\n'
+    + 'Primary keyword: '+(p.primary_keyword||'none')+' ('+( p.primary_vol||0)+'/mo)\n'
+    + 'Intent: '+(p.search_intent||'')+'\n'
+    + 'Geo: '+(getPageGeo(p)||'')+'\n'
+    + (ws ? '\nWebsite strategy:\n'+ws.slice(0,2000)+'\n' : '')
+    + (R.value_proposition ? '\nValue prop: '+R.value_proposition+'\n' : '')
+    + (R.primary_audience_description ? '\nAudience: '+R.primary_audience_description+'\n' : '')
+    + '\nOutput ONLY the 1-2 sentence goal. No labels, no bullets, no preamble.';
+  try {
+    var result = await callClaude(sys, user, null, 300);
+    var goal = result.replace(/^["'\s]+|["'\s]+$/g,'').trim();
+    S.pages[idx].page_goal = goal;
+    var ta = document.getElementById('goal-ta-'+idx);
+    if (ta) ta.value = goal;
+    scheduleSave();
+  } catch(e) { if(typeof aiBarNotify==='function') aiBarNotify('Goal generation failed: '+e.message, {duration:4000}); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i>'; }
+}
+
+async function generateAllPageGoals() {
+  var pages = S.pages || [];
+  var empty = pages.filter(function(p){ return !p.page_goal || !p.page_goal.trim(); });
+  if (!empty.length) { if(typeof aiBarNotify==='function') aiBarNotify('All pages already have goals', {duration:3000}); return; }
+  if(typeof aiBarStart==='function') aiBarStart('Generating page goals');
+  for (var i = 0; i < pages.length; i++) {
+    if (pages[i].page_goal && pages[i].page_goal.trim()) continue;
+    if(typeof aiBarNotify==='function') aiBarNotify('Goal '+(i+1)+'/'+pages.length+': '+pages[i].page_name, {duration:2000});
+    await generatePageGoal(i);
+  }
+  renderSitemapResults(S.sitemapApproved);
+  if(typeof aiBarEnd==='function') aiBarEnd();
+  if(typeof aiBarNotify==='function') aiBarNotify('Page goals generated for '+empty.length+' pages', {duration:4000});
 }
 
 function updatePageField(idx, field, val) {
@@ -664,17 +711,18 @@ function _renderSitemapResultsInner(approved) {
 
   // Keyword opportunities table
   html += '<div style="margin-bottom:18px">';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">';
-  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">Page Performance Map</div>';
-  html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
-  html += '<div style="display:flex;align-items:center;gap:8px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">';
+  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">Page Performance Map</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">';
   if (hasKwData) {
     html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
     html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market. Use after making keyword or market edits." style="font-size:11px;padding:2px 8px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
   }
+  html += '<button class="btn btn-ghost sm" data-tip="AI-generates a strategic page goal for every page that does not have one yet. Uses the website strategy, page type, keyword intent, and CRO context." style="font-size:11px;padding:2px 8px" onclick="generateAllPageGoals()"><i class="ti ti-sparkles"></i> Goals</button>';
   html += '<button class="btn btn-ghost sm" data-tip="Generates a visual hierarchy diagram of the sitemap — shows parent/child page relationships. Useful for client presentations and IA review." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
+  html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Intent | Priority | Market | Traffic
   const gcols = sitemapEditMode ? '22px 1.4fr 1.1fr 54px 42px 48px 62px 48px 76px 54px' : '22px 1.4fr 1.1fr 54px 42px 48px 62px 52px 76px 54px';
@@ -751,7 +799,12 @@ function _renderSitemapResultsInner(approved) {
       html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
       html += `<button onclick="movePage(${i},1)" ${i===pages.length-1?'disabled':''} title="Move down" style="${btnS};opacity:${i===pages.length-1?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↓</button>`;
       html += `<button onclick="deletePage(${i})" title="Delete" style="background:transparent;border:1px solid rgba(220,50,47,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--error);line-height:1.5;opacity:0.55" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.55'">✕</button>`;
-      html += '</div></div>';
+      html += '</div>';
+      html += '<div style="display:flex;gap:3px;align-items:start">';
+      html += '<textarea id="goal-ta-'+i+'" placeholder="Page goal — what must this page achieve?" onblur="updatePageField('+i+',\'page_goal\',this.value)" style="font-size:10px;color:#6b21a8;background:rgba(107,33,168,0.04);border:1px solid rgba(107,33,168,0.2);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;flex:1;resize:vertical;min-height:28px;line-height:1.4" rows="1">'+(p.page_goal?esc(p.page_goal):'')+'</textarea>';
+      html += '<button id="goal-ai-btn-'+i+'" onclick="generatePageGoal('+i+')" title="AI-generate page goal from strategy" style="background:rgba(107,33,168,0.08);border:1px solid rgba(107,33,168,0.25);border-radius:4px;padding:3px 6px;cursor:pointer;color:#6b21a8;font-size:10px;line-height:1;flex-shrink:0"><i class="ti ti-sparkles" style="font-size:9px"></i></button>';
+      html += '</div>';
+      html += '</div>';
 
       // ── Edit mode: Keyword cell — input + AI + Find More inline ──
       html += '<div style="display:flex;flex-direction:column;gap:4px">';
@@ -775,6 +828,7 @@ function _renderSitemapResultsInner(approved) {
       }
       html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
+      if (p.page_goal) html += '<div style="font-size:10px;color:#6b21a8;margin-top:2px" title="Page goal: '+esc(p.page_goal)+'"><i class="ti ti-target" style="font-size:10px;margin-right:2px"></i>'+esc(p.page_goal.length>80?p.page_goal.slice(0,80)+'…':p.page_goal)+'</div>';
       html += '</div>';
       const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
       var _kwDisplay = p.primary_keyword

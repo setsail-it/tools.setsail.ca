@@ -1145,6 +1145,7 @@ async function generatePageBrief(pageIdx) {
   ].filter(function(l){ return l.split(': ')[1]; }).join('\n');
   var _webStrategy = (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
   var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
+  var _pageGoal = (p.page_goal&&p.page_goal.trim()) || '';
   var ctxWebStrategy = _webStrategy ? '\n\n## WEBSITE STRATEGY (follow this strictly)\n'+_webStrategy : '';
 
   var ctxAudience = [
@@ -1219,6 +1220,7 @@ async function generatePageBrief(pageIdx) {
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
       + (_webStrategy ? '\n\n## WEBSITE STRATEGY\n'+_webStrategy : '')
       + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
+      + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n'+_pageGoal : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
@@ -1273,6 +1275,7 @@ async function generatePageBrief(pageIdx) {
       + 'URL: /'+p.slug+'\n'
       + 'Type: blog/resource | Action: '+(p.action||'build_new')+'\n'
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
@@ -1328,6 +1331,7 @@ async function generatePageBrief(pageIdx) {
       + 'URL: /'+p.slug+'\n'
       + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions

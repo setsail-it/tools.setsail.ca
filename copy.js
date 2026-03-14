@@ -138,6 +138,7 @@ function buildCopyPrompt(page) {
       + questionsBlock + briefBlock + serpBlock
       + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
+      + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -160,6 +161,7 @@ function buildCopyPrompt(page) {
     + questionsBlock + briefBlock + serpBlock
     + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
     + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
+    + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
     + '\n\n' + briefInstruction;
 }
 

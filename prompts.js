@@ -56,6 +56,14 @@ sitemap:`You are a senior SEO architect. Build a performance-first sitemap by ma
 5. Do not assign the globally highest-scoring keyword to the wrong page type
 6. Structural pages (/about, /contact) must ALWAYS have a primary_keyword — never output an empty string. Use the closest match from the list even at vol:0.
 
+## PAGE GOAL
+Every page must have a page_goal — a 1-2 sentence strategic directive explaining what this page must accomplish. Derive it from the client strategy, page type, keyword intent, and CRO context. Be specific: name the audience segment, the desired action, and the proof required. Generic goals like "inform visitors" are useless — every goal must be actionable enough that a copywriter, designer, and CRO strategist can all execute against it independently.
+
+Examples:
+- Homepage: "Establish [client] as the dominant [service category] in [geo] within 5 seconds. Route high-intent visitors to service pages, low-intent to case studies. Primary CTA: discovery call."
+- Service page: "Convince [audience] already comparing [service] providers that [client] delivers measurable [outcome]. Overcome price objection with ROI proof. Primary CTA: book a call."
+- Blog post: "Rank for [keyword] and build topical authority. Educate [audience] on [topic], link to [service page] as the logical next step."
+
 ## OUTPUT
 JSON array, each object:
 {
@@ -69,7 +77,8 @@ JSON array, each object:
   "primary_kd": 0,
   "score": 0,
   "supporting_keywords": ["exact string"],
-  "search_intent": "commercial|transactional|informational|navigational"
+  "search_intent": "commercial|transactional|informational|navigational",
+  "page_goal": "1-2 sentence strategic purpose derived from strategy + intent + CRO context"
 }
 
 Keep output minimal: omit rationale, notes, keyword_cluster, word_count_target. Every extra field = fewer pages fit in context.
