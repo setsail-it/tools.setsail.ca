@@ -167,6 +167,58 @@ function getBriefQPool(pageIdx) {
 }
 
 // ── BRIEF CARD EDITING HELPERS ──────────────────────────────────────
+
+async function briefContextUpload(pidx, input) {
+  var file = input.files[0];
+  if (!file || !S.pages[pidx]) return;
+  if (!S.pages[pidx].pageFiles) S.pages[pidx].pageFiles = [];
+  var isImage = file.type.startsWith('image/');
+  if (isImage) {
+    // Store image reference (not base64 — too large for KV)
+    // Read as base64 for display and prompt injection
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      S.pages[pidx].pageFiles.push({ name: file.name, type: 'image', dataUrl: e.target.result.slice(0,500)+'...' });
+      // Append note to pageContext
+      var ctx = S.pages[pidx].pageContext || '';
+      S.pages[pidx].pageContext = (ctx ? ctx+'\n' : '') + '[Image available: '+file.name+' — reference this image in the copy where relevant]';
+      var ta = document.getElementById('brief-ctx-'+pidx);
+      if (ta) ta.value = S.pages[pidx].pageContext;
+      scheduleSave(); renderBriefs();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    // Read text
+    var reader2 = new FileReader();
+    reader2.onload = function(e) {
+      var text = e.target.result.slice(0, 8000);
+      S.pages[pidx].pageFiles.push({ name: file.name, type: 'text' });
+      var ctx = S.pages[pidx].pageContext || '';
+      S.pages[pidx].pageContext = (ctx ? ctx+'\n\n' : '') + '--- ' + file.name + ' ---\n' + text;
+      var ta = document.getElementById('brief-ctx-'+pidx);
+      if (ta) ta.value = S.pages[pidx].pageContext;
+      scheduleSave(); renderBriefs();
+      if(typeof aiBarNotify==='function') aiBarNotify('✓ '+file.name+' added to page context', {duration:3000});
+    };
+    reader2.readAsText(file);
+  }
+  input.value = '';
+}
+
+function briefContextRemoveFile(pidx, fileIdx) {
+  if (!S.pages[pidx] || !S.pages[pidx].pageFiles) return;
+  var fname = S.pages[pidx].pageFiles[fileIdx].name;
+  S.pages[pidx].pageFiles.splice(fileIdx, 1);
+  // Remove the file's appended text from context
+  var ctx = S.pages[pidx].pageContext || '';
+  ctx = ctx.replace('\n\n--- ' + fname + ' ---\n', '\n').replace('--- ' + fname + ' ---\n', '');
+  ctx = ctx.replace('[Image available: ' + fname + ' — reference this image in the copy where relevant]', '').trim();
+  S.pages[pidx].pageContext = ctx;
+  var ta = document.getElementById('brief-ctx-'+pidx);
+  if (ta) ta.value = ctx;
+  scheduleSave(); renderBriefs();
+}
+
 function briefSaveText(pageIdx, val) {
   var p = S.pages[pageIdx];
   if (!p || !p.brief) return;
@@ -805,7 +857,7 @@ function renderBriefs() {
     var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" title="Generate FAQ questions" style="'+_btnSm+'">? Questions</button>';
     var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" title="AI assign + curate keywords & questions" style="'+_btnSm+'">✦ Assign</button>';
 
-    var _promptBtn = isBriefed ? '<button onclick="showPromptModal(\'brief-'+pidx+'\'" title="View the last prompt sent for this brief" style="'+_btnSm+';font-family:monospace;font-size:10px"></></button>' : '';
+    var _promptBtn = isBriefed ? '<button onclick="showPromptModal(\'brief-'+pidx+'\'" data-tip="View the exact prompt sent to Claude for this brief — system instructions, context, keywords, and task." style="'+_btnSm+'"><i class="ti ti-code" style="font-size:11px"></i></button>' : '';
     var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">'
       + _nicheBtn + _questBtn + _assignBtn
       + '<span style="flex:1"></span>'
@@ -872,11 +924,18 @@ function renderBriefs() {
       + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:220px;overflow-y:auto"></div>'
       + '<div id="brief-content-'+pidx+'">' + briefContent + '</div>'
       + '<div style="padding:10px 12px;border-top:1px solid var(--border);background:rgba(0,0,0,0.01)">'
-      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px">'
+      + '<div style="display:flex;align-items:center;gap:6px">'
       + '<span style="font-size:10px;font-weight:500;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Page Context</span>'
-      + '<span style="font-size:10px;color:var(--n2)">— paste case study data, stats, specific claims, or custom instructions. Injected verbatim into brief + copy generation.</span>'
+      + '<span style="font-size:10px;color:var(--n2)">— paste case study data, stats, claims, or instructions. Injected verbatim into brief + copy.</span>'
+      + '</div>'
+      + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--n2);cursor:pointer;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:white" data-tip="Upload a text file or image. Text files are extracted and appended to Page Context. Images are noted as available for the copy prompt.">'
+      + '<i class="ti ti-upload" style="font-size:11px"></i> Upload file'
+      + '<input type="file" accept=".txt,.md,.pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="briefContextUpload('+pidx+',this)">'
+      + '</label>'
       + '</div>'
       + '<textarea id="brief-ctx-'+pidx+'" data-pidx="'+pidx+'" class="brief-ctx-ta" placeholder="e.g. Case study: reduced CAC by 43% in 90 days. Client: Meridian Health. Lead with this in intro. Never mention competitor X by name." style="width:100%;min-height:52px;font-size:11px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);line-height:1.5;resize:vertical;background:white;color:var(--dark);box-sizing:border-box">' + esc(p.pageContext||'') + '</textarea>'
+      + (p.pageFiles && p.pageFiles.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.pageFiles.map(function(f,fi){ return '<span style="font-size:10px;padding:2px 8px;background:var(--n1);border-radius:4px;display:flex;align-items:center;gap:4px"><i class="ti '+(f.type==='image'?'ti-photo':'ti-file-text')+'" style="font-size:10px"></i>'+esc(f.name)+'<button onclick="briefContextRemoveFile('+pidx+','+fi+')" style="background:none;border:none;cursor:pointer;color:var(--n2);padding:0;line-height:1;font-size:11px">&times;</button></span>'; }).join('') + '</div>' : '')
       + '</div>'
       + '</div>';
   }

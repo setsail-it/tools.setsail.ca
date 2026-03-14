@@ -1098,6 +1098,10 @@ var STAGE_TIPS = {
     "Brief Evaluator scores 8 quality checks — fix reds before approving.",
     "Queue All generates all briefs server-side — safe to close the tab while it runs.",
     "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
+    "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy. Upload text files or images too.",
+    "Web Strategy (in Setup) — synthesise a 300-word site brief from your strategy doc. It flows into every brief and copy generation call — always more specific than generic research fields.",
+    "The code icon on each brief card shows the exact prompt sent to Claude — use it to diagnose unexpected outputs.",
+    "The blue badge in the info strip shows the recommended lead gen tool for that page type (Insites audit, email capture, discovery call, etc.).",
   ],
   copy: [
     "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
@@ -2494,6 +2498,19 @@ async function deleteAdminUser() {
     </div>
 
     <!-- KEY LIMITS -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Recent Features (March 2026)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+        <p><strong>Web Strategy Brief (Setup)</strong> — New textarea + "Synthesise from strategy" button. Reads your full strategy doc and produces a focused 5-section 300-word website brief: what the site must convince visitors of, competitive frame, page type rules, proof requirements, hard rules. Injected verbatim (not summarised) into every brief and copy generation call. Edit it manually if the AI synthesis misses key details.</p>
+        <p><strong>Per-page context (Briefs)</strong> — "Page Context" field at the bottom of every brief card. Paste case study data, stats, claims, or custom copy instructions. Upload text files (appended to context) or images (noted for reference). Saves on blur, injected as <code>## PAGE-SPECIFIC CONTEXT</code> in briefs and copy.</p>
+        <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve. Fix via Edit mode or re-run AI Assign Keywords in Briefs.</p>
+        <p><strong>Question delete (Keywords)</strong> — Each question row now has a × delete button. "Clear All" button in the action bar wipes all questions with confirmation. Use before Re-fetch to start clean.</p>
+        <p><strong>Prompt viewer (Briefs)</strong> — The <i class="ti ti-code"></i> icon in each brief card action bar shows the exact system + user prompt sent to Claude for that brief. Run at least one generation first. Useful for diagnosing unexpected outputs or training staff.</p>
+        <p><strong>Insites tool matching (Briefs)</strong> — Blue badge in each brief info strip showing the recommended lead gen tool based on page type + search intent. Hover for placement recommendation. Map: service/location + commercial → Insites Audit Widget; blog → email capture; about → discovery call; faq/contact → live chat.</p>
+        <p><strong>AI bar coverage</strong> — All major generation actions (Fetch Volumes, Generate Seeds, Fetch Questions, Validate &amp; Assign, Page Questions, Brief generation, Copy generation) now show progress in the topbar AI bar with elapsed time. All <code>alert()</code> calls replaced with AI bar notifications.</p>
+      </div>
+    </div>
+
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Key Limits &amp; Architecture Notes</div>
       <div style="display:flex;flex-direction:column;gap:7px;font-size:11.5px">

@@ -143,6 +143,8 @@ function buildCopyPrompt(page) {
       + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
+      + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
+      + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -163,6 +165,8 @@ function buildCopyPrompt(page) {
     + (((r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.proof_points||[]).slice(0,3).join('; ') : '')
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
+    + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
+    + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
     + '\n\n' + briefInstruction;
 }
 

@@ -773,6 +773,7 @@ function _removeKwSeed(idx) {
 }
 
 async function generateAISeeds() {
+  if(typeof aiBarStart==='function') aiBarStart('Generating AI seeds…');
   var btn = document.getElementById('ai-seeds-btn');
   var statusEl = document.getElementById('kw-seeds-status');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block"></span> Generating...'; }
@@ -896,6 +897,7 @@ async function generateAISeeds() {
 }
 
 async function fetchKwVolumes() {
+  if(typeof aiBarStart==='function') aiBarStart('Fetching keyword volumes…');
   var seeds = S.kwResearch && S.kwResearch.seeds ? S.kwResearch.seeds : buildKwSeeds();
   var statusEl = document.getElementById('kw-seeds-status');
   if (!seeds.length) { if (statusEl) statusEl.textContent = 'No seeds found.'; return; }
@@ -1181,6 +1183,7 @@ function _renderKwClustersTab() {
 }
 
 async function validateAndAssignQuestions() {
+  if(typeof aiBarStart==='function') aiBarStart('Validating & assigning questions…');
   var qs = _getQuestionsArray();
   if (!qs.length) { if(typeof aiBarNotify==='function') aiBarNotify('No questions yet — fetch questions first.', {isError:true,duration:3000}); return; }
 
@@ -1632,6 +1635,7 @@ function addAllQuestionsAsSeeds() {
 }
 
 async function fetchPAAFromKeywords() {
+  if(typeof aiBarStart==='function') aiBarStart('Generating questions…');
   var r = S.research || {};
   var setup = S.setup || {};
   var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
@@ -1877,12 +1881,16 @@ async function runNicheExpand() {
 async function runPageQuestions() {
   var btn = document.getElementById('page-questions-btn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating questions...'; }
+  if(typeof aiBarStart==='function') aiBarStart('Generating page questions…');
 
   try {
     var pages = (S.pages || []).filter(function(p) {
       return p.page_type !== 'utility' && p.primary_keyword;
     });
-    if (!pages.length) { if(typeof aiBarNotify==='function') aiBarNotify('No pages yet — build sitemap first.', {isError:true,duration:3000}); return; }
+    if (!pages.length) {
+      if(typeof aiBarEnd==='function') aiBarEnd();
+      if(typeof aiBarNotify==='function') aiBarNotify('No pages yet — build sitemap first.', {isError:true,duration:3000}); return;
+    }
 
     var siteContext = '';
     if (S.research) {
@@ -1930,6 +1938,7 @@ async function runPageQuestions() {
     });
 
     scheduleSave();
+    if(typeof aiBarEnd==='function') aiBarEnd('✓ Page questions generated');
 
     if (btn) {
       btn.disabled = false;
