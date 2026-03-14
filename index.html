@@ -194,6 +194,8 @@ textarea.inp{resize:vertical}
 
 <!-- PROJ SWITCHER BACKDROP -->
 <div id="psw-backdrop" onclick="closeProjSwitcher()" style="display:none;position:fixed;inset:0;z-index:299"></div>
+<!-- USER DROPDOWN BACKDROP -->
+<div id="user-backdrop" onclick="closeUserDropdown()" style="display:none;position:fixed;inset:0;z-index:299"></div>
 
 <!-- TOPBAR -->
 <div id="nav">
@@ -1933,14 +1935,18 @@ function toggleUserDropdown(e) {
   e.stopPropagation();
   closeProjSwitcher();
   var dd = document.getElementById('user-dropdown');
+  var bd = document.getElementById('user-backdrop');
   if (!dd) return;
   var isOpen = dd.classList.contains('open');
-  if (isOpen) { dd.classList.remove('open'); return; }
+  if (isOpen) { dd.classList.remove('open'); if(bd) bd.style.display='none'; return; }
   dd.classList.add('open');
+  if(bd) bd.style.display='block';
 }
 function closeUserDropdown() {
   var dd = document.getElementById('user-dropdown');
   if (dd) dd.classList.remove('open');
+  var bd = document.getElementById('user-backdrop');
+  if (bd) bd.style.display='none';
 }
 // Use mousedown so it fires before any child stopPropagation handlers
 document.addEventListener('mousedown', function(e) {
