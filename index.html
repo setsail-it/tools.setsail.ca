@@ -1149,10 +1149,10 @@ function storePrompt(key, system, user, title, subtitle) {
 // Rotates every 7s when idle. Pauses during AI generation.
 var STAGE_TIPS = {
   setup: [
-    "Geo text drives country auto-detection — 'Vancouver, BC' targets Canada, 'Sydney' targets Australia.",
-    "Brand voice and value proposition feed into every AI prompt — write them carefully.",
+    "Primary Market drives country auto-detection for keyword volumes — 'Vancouver, BC' targets Canada, 'Sydney' targets Australia.",
     "Client name and URL are used in all downstream copy and SEO output.",
-    "Tick 'Existing site' if the client has a live website — enables Snapshot and gap analysis.",
+    "Upload strategy docs, then click Synthesise — creates a 600-800 word website strategy brief that feeds into every brief and copy prompt.",
+    "Primary Market is the default geo for all pages — override per page in the Sitemap Market column.",
   ],
   snapshot: [
     "Snapshot pulls domain authority, backlink count, and top organic pages from DataForSEO.",
@@ -1179,11 +1179,13 @@ var STAGE_TIPS = {
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
-    "Cluster Anchor keyword sets the page's SEO scope — niche keywords are assigned in Briefs.",
-    "P1 pages have high volume + commercial intent. These are your ROI pages — prioritise them.",
-    "Use Edit mode to adjust page types, priorities, or slugs before moving to Briefs.",
+    "Cluster Anchor keyword sets the page SEO scope — niche keywords are assigned in Briefs.",
+    "Intent column shows search intent (commercial, transactional, informational, navigational) — editable in Edit mode.",
+    "Market column shows per-page target geo — leave blank to inherit Primary Market, or override for multi-market pages.",
+    "Page Goal (purple text under page name) is the strategic purpose — click the sparkle button to AI-generate, or use the Goals toolbar button to generate all.",
+    "Page goals flow into briefs and copy prompts — every section of downstream output is written to serve the stated goal.",
+    "Refresh button fetches keyword volumes grouped by each page target market — multi-country projects get separate API calls per geo.",
     "Gate 1: approve the sitemap before generating briefs. Changes here affect all downstream work.",
-    "137 zero-vol pages = cluster anchors with no keyword data yet. Run Niche Expand in Briefs.",
   ],
   briefs: [
     "Run Niche Expand first — pulls Google Suggest variants per page and gets DataForSEO volumes.",
@@ -1194,7 +1196,8 @@ var STAGE_TIPS = {
     "Queue All generates all briefs server-side — safe to close the tab while it runs.",
     "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
     "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy. Upload text files or images too.",
-    "Web Strategy (in Setup) — synthesise a 300-word site brief from your strategy doc. It flows into every brief and copy generation call — always more specific than generic research fields.",
+    "Web Strategy (in Setup) — synthesise a 600-800 word site brief from your strategy doc. It flows into every brief, copy, and sitemap generation call.",
+    "Page Goal from the Sitemap stage is injected into the brief prompt — the AI writes every section to serve that strategic purpose.",
     "The code icon on each brief card shows the exact prompt sent to Claude — use it to diagnose unexpected outputs.",
     "The blue badge in the info strip shows the recommended lead gen tool for that page type (Insites audit, email capture, discovery call, etc.).",
   ],
@@ -2461,11 +2464,11 @@ async function deleteAdminUser() {
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:10px">Pipeline Overview</div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client name, URL, geo, voice</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client name, URL, primary market, strategy doc</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain authority, link metrics</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 130 fields</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — seeds → expand → volumes → opportunities</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture + keyword mapping</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S7</span><span>Copy — generate → audit → QC → approve</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — generate per page</span></div>
@@ -2479,8 +2482,10 @@ async function deleteAdminUser() {
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 1 — Setup</div>
       <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Client name, website URL, geo, and voice</strong> — these feed into every prompt throughout the pipeline. Fill them carefully before proceeding.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Geo text drives country auto-detection</strong> for keyword volumes. If geo says "Vancouver, BC" the system targets Canada. If "Sydney" → Australia. You can override this manually in the Keywords stage.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Client name + website URL</strong> — used in all downstream copy, SEO output, and domain lookups. Fill carefully.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Primary Market</strong> — the default geo for all pages. Drives country auto-detection for keyword volumes ("Vancouver, BC" → Canada, "Sydney" → Australia). Override per page in the Sitemap Market column for multi-market projects.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Strategy document upload</strong> — paste or upload your client strategy doc. Click <em>Synthesise from strategy</em> to generate a 600-800 word website strategy brief covering: what the site must convince, competitive frame, page type rules, proof requirements, and hard rules. This brief is injected verbatim into every brief, copy, and sitemap prompt.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Fields like voice, competitors, pricing, and image style</strong> are derived automatically in Research (Stage 3) — they are not entered here. Setup is intentionally minimal.</span></div>
       </div>
     </div>
 
@@ -2551,11 +2556,14 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Location pages</strong> — geo + category: "digital marketing Calgary", "marketing agency Toronto".</span></div>
       </div>
       <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters. Review the output carefully.</li>
-        <li><strong>Display order</strong> — pages are automatically sorted for review: Core (home, about, contact) → Services → Locations → Blog. Within each type: P1 → P2 → P3 → score. This is display-only — it does not change S.pages order or generation priority.</li>
-        <li><strong>Category tabs</strong> — filter by All, Services, Locations, Blog, or Core. Counts show live as pages are added or removed.</li>
-        <li><strong>Reorder pages</strong> — use edit mode to adjust page types, priorities, or slugs. P1 pages are processed first throughout the pipeline.</li>
-        <li><strong>Run Keyword Mapping</strong> — assigns primary + supporting keywords to each page from the opportunity pool.</li>
+        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters and assigns a <strong>page goal</strong> (strategic purpose) to each page based on the website strategy. Review the output carefully.</li>
+        <li><strong>Display order</strong> — pages are automatically sorted: Core (home, about, contact) → Services → Locations → Blog. Within each type: P1 → P2 → P3 → score. Display-only — does not change generation priority.</li>
+        <li><strong>Category tabs</strong> — filter by All, Services, Locations, Blog, or Core. Counts update live.</li>
+        <li><strong>Grid columns</strong> — #, Page, Cluster Anchor, Vol, KD, Score, Intent, Priority, Market, Traffic. Intent and Market are editable in Edit mode.</li>
+        <li><strong>Page Goal</strong> (purple text under page name) — the strategic purpose of the page. AI-generated from strategy + page type + keyword intent. Click the sparkle button per page or use <em>Goals</em> toolbar button to bulk-generate for all pages without one. Editable in Edit mode. Flows into brief and copy prompts.</li>
+        <li><strong>Market column</strong> — per-page target geo. Leave blank to inherit Primary Market from Setup. Override for multi-market pages (e.g. US landing pages on a Canadian project). Keyword volume Refresh groups lookups by target market.</li>
+        <li><strong>Intent column</strong> — search intent classification (commercial, transactional, informational, navigational). Colour-coded. Editable dropdown in Edit mode.</li>
+        <li><strong>Refresh</strong> — re-fetches keyword volumes from DataForSEO, grouped by each page target market. Multi-country projects get separate API calls per geo.</li>
         <li><strong>Approve Sitemap</strong> — locks the page architecture. Required before Briefs stage processes.</li>
       </ol>
     </div>
@@ -2609,13 +2617,15 @@ async function deleteAdminUser() {
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Recent Features (March 2026)</div>
       <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-        <p><strong>Web Strategy Brief (Setup)</strong> — New textarea + "Synthesise from strategy" button. Reads your full strategy doc and produces a focused 5-section 300-word website brief: what the site must convince visitors of, competitive frame, page type rules, proof requirements, hard rules. Injected verbatim (not summarised) into every brief and copy generation call. Edit it manually if the AI synthesis misses key details.</p>
+        <p><strong>Page Goal (Sitemap)</strong> — AI-generated strategic purpose per page. Derived from website strategy, page type, keyword intent, and CRO context. Shows as purple text under the page name. Per-page sparkle button or bulk <em>Goals</em> toolbar button. Editable in Edit mode. Injected into brief and copy prompts as <code>## PAGE GOAL</code> — every section of downstream output is written to serve this goal.</p>
+        <p><strong>Per-page geo / Market column (Sitemap)</strong> — Each page inherits the Primary Market from Setup by default. Override per page in the Market column for multi-market projects (e.g. US landing pages on a Canadian project). Keyword volume Refresh groups lookups by target market — separate DataForSEO API calls per country. Briefs and copy prompts use per-page geo for SERP Intel and geography context.</p>
+        <p><strong>Intent column (Sitemap)</strong> — Search intent classification (commercial, transactional, informational, navigational) visible in the grid. Colour-coded: orange = transactional, blue = commercial, green = informational, grey = navigational. Editable dropdown in Edit mode.</p>
+        <p><strong>Setup simplified</strong> — Stripped to essentials: client name, URL, primary market, strategy doc. Voice, competitors, pricing, image style, and site type are derived downstream in Research or later stages. Old field values preserved for backward compatibility.</p>
+        <p><strong>Web Strategy Brief (Setup)</strong> — "Synthesise from strategy" reads your full strategy doc and produces a focused 5-section 600-800 word website brief: what the site must convince visitors of, competitive frame, page type rules, proof requirements, hard rules. Injected verbatim into every brief, copy, and sitemap generation call.</p>
         <p><strong>Per-page context (Briefs)</strong> — "Page Context" field at the bottom of every brief card. Paste case study data, stats, claims, or custom copy instructions. Upload text files (appended to context) or images (noted for reference). Saves on blur, injected as <code>## PAGE-SPECIFIC CONTEXT</code> in briefs and copy.</p>
-        <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve. Fix via Edit mode or re-run AI Assign Keywords in Briefs.</p>
-        <p><strong>Question delete (Keywords)</strong> — Each question row now has a × delete button. "Clear All" button in the action bar wipes all questions with confirmation. Use before Re-fetch to start clean.</p>
-        <p><strong>Prompt viewer (Briefs)</strong> — The <i class="ti ti-code"></i> icon in each brief card action bar shows the exact system + user prompt sent to Claude for that brief. Run at least one generation first. Useful for diagnosing unexpected outputs or training staff.</p>
-        <p><strong>Insites tool matching (Briefs)</strong> — Blue badge in each brief info strip showing the recommended lead gen tool based on page type + search intent. Hover for placement recommendation. Map: service/location + commercial → Insites Audit Widget; blog → email capture; about → discovery call; faq/contact → live chat.</p>
-        <p><strong>AI bar coverage</strong> — All major generation actions (Fetch Volumes, Generate Seeds, Fetch Questions, Validate &amp; Assign, Page Questions, Brief generation, Copy generation) now show progress in the topbar AI bar with elapsed time. All <code>alert()</code> calls replaced with AI bar notifications.</p>
+        <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve.</p>
+        <p><strong>Prompt viewer (Briefs)</strong> — The <i class="ti ti-code"></i> icon in each brief card action bar shows the exact system + user prompt sent to Claude for that brief. Useful for diagnosing unexpected outputs or training staff.</p>
+        <p><strong>AI bar coverage</strong> — All major generation actions show progress in the topbar AI bar with elapsed time. All <code>alert()</code> calls replaced with AI bar notifications.</p>
       </div>
     </div>
 
