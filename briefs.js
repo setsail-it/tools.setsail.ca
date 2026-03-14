@@ -591,6 +591,13 @@ function initBriefs() {
       if (t.classList.contains('brief-ta')) {
         briefSaveText(parseInt(t.dataset.pidx), t.value);
       }
+      if (t.classList.contains('brief-ctx-ta')) {
+        var _pi = parseInt(t.dataset.pidx);
+        if (!isNaN(_pi) && S.pages[_pi]) {
+          S.pages[_pi].pageContext = t.value;
+          scheduleSave();
+        }
+      }
     }, true);
     document.addEventListener('click', function(e) {
       var hdr = e.target.closest('.brief-row-header');
@@ -823,6 +830,13 @@ function renderBriefs() {
       + kwQRow
       + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:220px;overflow-y:auto"></div>'
       + '<div id="brief-content-'+pidx+'">' + briefContent + '</div>'
+      + '<div style="padding:10px 12px;border-top:1px solid var(--border);background:rgba(0,0,0,0.01)">'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
+      + '<span style="font-size:10px;font-weight:500;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Page Context</span>'
+      + '<span style="font-size:10px;color:var(--n2)">— paste case study data, stats, specific claims, or custom instructions. Injected verbatim into brief + copy generation.</span>'
+      + '</div>'
+      + '<textarea id="brief-ctx-'+pidx+'" data-pidx="'+pidx+'" class="brief-ctx-ta" placeholder="e.g. Case study: reduced CAC by 43% in 90 days. Client: Meridian Health. Lead with this in intro. Never mention competitor X by name." style="width:100%;min-height:52px;font-size:11px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);line-height:1.5;resize:vertical;background:white;color:var(--dark);box-sizing:border-box">' + esc(p.pageContext||'') + '</textarea>'
+      + '</div>'
       + '</div>';
   }
 
@@ -972,6 +986,9 @@ async function generatePageBrief(pageIdx) {
     'Proof points: '+((R.proof_points||[]).join('; ')||'none provided'),
     'Brand voice: '+(R.brand_voice_style||R.tone_and_voice||'professional'),
   ].filter(function(l){ return l.split(': ')[1]; }).join('\n');
+  var _webStrategy = (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
+  var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
+  var ctxWebStrategy = _webStrategy ? '\n\n## WEBSITE STRATEGY (follow this strictly)\n'+_webStrategy : '';
 
   var ctxAudience = [
     'Primary audience: '+(R.primary_audience_description||((R.target_audience||[])[0])||''),
@@ -1050,6 +1067,8 @@ async function generatePageBrief(pageIdx) {
       + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
       + (p.existing_traffic ? 'Existing traffic: '+p.existing_traffic+'/mo\n' : '')
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + (_webStrategy ? '\n\n## WEBSITE STRATEGY\n'+_webStrategy : '')
+      + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions

@@ -325,6 +325,13 @@ textarea.inp{resize:vertical}
           <label style="font-size:12px;display:block;margin-bottom:5px">Strategy Document * <span style="color:var(--n2)">— paste discovery notes, brief, questionnaire</span></label>
           <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Services, audience, geography, competitors, pricing, tone — everything."></textarea>
         </div>
+        <div style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <label style="font-size:12px">Website Strategy Brief <span style="color:var(--n2)">— 300-word synthesis used verbatim in every brief + copy prompt</span></label>
+            <button id="synth-btn" onclick="synthesiseWebStrategy()" class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-tip="Reads the full strategy document above and synthesises a focused 300-word website brief: what the site must convince visitors of, the competitive frame, one rule per page type, and any hard content rules. Injected verbatim — not summarised — into every brief and copy generation call."><i class="ti ti-sparkles"></i> Synthesise from strategy</button>
+          </div>
+          <textarea class="inp" id="f-web-strategy" rows="5" placeholder="AI will synthesise this from your strategy doc, or write it manually. This goes verbatim into every brief and copy generation call — keep it tight and specific."></textarea>
+        </div>
         <label style="font-size:12px;display:block;margin-bottom:5px">Brand Voice Notes</label>
         <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. Canadian spelling."></textarea>
       </div>
@@ -961,6 +968,7 @@ function prefillSetup() {
   document.getElementById('f-geo').value = s.geo || '';
   document.getElementById('f-pricing').value = s.pricing || '';
   document.getElementById('f-strategy').value = s.strategy || '';
+  const fws = document.getElementById('f-web-strategy'); if(fws) fws.value = s.webStrategy || '';
   document.getElementById('f-voice').value = s.voice || '';
   document.getElementById('f-competitors').value = s.competitors || '';
   const imgStyleEl = document.getElementById('f-image-style');
@@ -1516,7 +1524,7 @@ function setupNext() {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
     pricing: document.getElementById('f-pricing').value.trim(),
-    strategy, voice: document.getElementById('f-voice').value.trim(),
+    strategy, webStrategy: (document.getElementById('f-web-strategy')?.value||'').trim(), voice: document.getElementById('f-voice').value.trim(),
     competitors: document.getElementById('f-competitors').value.trim(),
     imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
     cms: (document.getElementById('f-cms')?.value || '').trim(),
@@ -1529,6 +1537,27 @@ function setupNext() {
   scheduleSave();
   goTo(isExistingSite ? 'snapshot' : 'research');
 }
+
+async function synthesiseWebStrategy() {
+  var btn = document.getElementById('synth-btn');
+  var strategyDoc = (document.getElementById('f-strategy')?.value||'').trim();
+  var docsText = (S.setup&&S.setup.docs||[]).map(function(d){return d.name+':\n'+d.content;}).join('\n\n');
+  var fullDoc = [strategyDoc, docsText].filter(Boolean).join('\n\n');
+  if (fullDoc.length < 80) { if(typeof aiBarNotify==='function') aiBarNotify('Paste your strategy document first', {isError:true,duration:3000}); return; }
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:10px;height:10px"></span> Synthesising...'; }
+  window._aiBarLabel = 'Synthesising web strategy...';
+  try {
+    var sys = 'You are a senior brand strategist. Read the full client strategy document and extract a focused 300-word website-specific strategy brief. Output exactly these 5 sections:\n1. WHAT THE SITE MUST CONVINCE: The single core belief the visitor must leave with\n2. COMPETITIVE FRAME: Why this company vs the obvious alternatives (be specific)\n3. PAGE TYPE RULES: One sentence per page type (service/location/blog/home) on what it must communicate\n4. PROOF REQUIREMENTS: What specific evidence, stats, or social proof must appear\n5. HARD RULES: Anything the copy must never do (tone, claims, topics)\n\nBe specific and direct. No generic marketing language. Use the client name throughout.';
+    var result = await callClaude(sys, 'Strategy document:\n\n' + fullDoc.slice(0, 12000), null, 1500);
+    var el = document.getElementById('f-web-strategy');
+    if (el) el.value = result;
+    if (typeof aiBarNotify==='function') aiBarNotify('✓ Web strategy synthesised — review and edit before continuing', {duration:5000});
+  } catch(e) {
+    if(typeof aiBarNotify==='function') aiBarNotify('Synthesis failed: '+e.message, {isError:true,duration:4000});
+  }
+  if (btn) { btn.disabled=false; btn.innerHTML='<i class="ti ti-sparkles"></i> Synthesise from strategy'; }
+}
+
 function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}
 function hideSetupErr(){document.getElementById('setup-error').style.display='none';}
 
