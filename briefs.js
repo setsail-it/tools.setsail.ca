@@ -371,13 +371,17 @@ function _briefVersionPills(p, pidx) {
   var activeDraft = p.brief.activeDraft || 0;
   var pills = drafts.map(function(d, i) {
     var isActive = i === activeDraft;
+    var _pScore = d.score ? Math.round(d.score.pct || 0)+'% quality' : 'not yet evaluated';
+    var _pillTip = isActive
+      ? 'V'+d.v+' is the active draft ('+_pScore+'). Regen will overwrite this version in place.'
+      : 'Switch to V'+d.v+' ('+_pScore+'). This becomes the active draft. Regen and Approve will then act on this version.';
     var hasPassed = d.score && d.score.passed != null;
     var pct = hasPassed ? Math.round((d.score.passed / d.score.total) * 100) : null;
     var label = 'V' + d.v + (pct !== null ? ' · ' + pct + '%' : '');
     var bg = isActive ? 'var(--dark)' : 'transparent';
     var clr = isActive ? 'var(--white)' : 'var(--n2)';
     var border = isActive ? 'var(--dark)' : 'var(--border)';
-    return '<button onclick="switchBriefDraft(' + pidx + ',' + i + ')" style="font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid ' + border + ';background:' + bg + ';color:' + clr + ';cursor:pointer;font-family:var(--font);font-weight:' + (isActive?'600':'400') + '">' + label + '</button>';
+    return '<button onclick="switchBriefDraft(' + pidx + ',' + i + ')" title="' + _pillTip + '" style="font-size:9px;padding:2px 7px;border-radius:3px;border:1px solid ' + border + ';background:' + bg + ';color:' + clr + ';cursor:pointer;font-family:var(--font);font-weight:' + (isActive?'600':'400') + '">' + label + '</button>';
   }).join('');
   return '<div style="display:flex;gap:4px;align-items:center;margin-left:8px">' + pills + '</div>';
 }
@@ -743,13 +747,17 @@ function renderBriefs() {
     var _btnSm   = 'border-radius:4px;padding:3px 8px;font-size:9.5px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n2)';
     var _approveBtn = isBriefed
       ? (isApproved
-          ? '<button onclick="briefToggleApprove('+pidx+')" style="border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;background:rgba(21,142,29,0.08);border:1px solid var(--green);color:var(--green)">✓ Approved</button>'
-          : '<button onclick="briefToggleApprove('+pidx+')" style="'+_btnBase+';font-weight:500">Approve</button>'
+          ? '<button onclick="briefToggleApprove('+pidx+')" data-tip="Brief is approved and locked for copy generation. Click to un-approve if you need to edit or regenerate." style="border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;background:rgba(21,142,29,0.08);border:1px solid var(--green);color:var(--green)">✓ Approved</button>'
+          : '<button onclick="briefToggleApprove('+pidx+')" data-tip="Approve the currently active draft. Copy generation is locked until a brief is approved. Make sure you are on the version you want before approving." style="'+_btnBase+';font-weight:500">Approve</button>'
         ) : '';
-    var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
+    var _regenTip = isBriefed
+      ? 'Regen overwrites the currently active draft in place — same version number, fresh content. Switch to the version you want to replace first. Use when the active draft needs a full redo.'
+      : 'Generate the brief for this page. Runs SERP Intel, then calls Claude with all assigned keywords and questions.';
+    var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" data-tip="'+_regenTip+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
       + (isBriefed ? '↺ Regen' : '✦ Generate') + '</button>';
+    var _v2Tip = '+ V'+_nextV+' generates a new version alongside the current drafts. Only the last 2 drafts are kept — the oldest is dropped. Use when you want a fresh attempt without losing the current active draft. Warning: if V2=92% and V3=85% are both showing, clicking +V4 will drop V2.';
     var _runV2Btn = (isBriefed && (p.brief.drafts||[]).length > 0)
-      ? '<button onclick="generateBriefV2('+pidx+')" style="'+_btnSm+'">+ V'+_nextV+'</button>' : '';
+      ? '<button onclick="generateBriefV2('+pidx+')" data-tip="'+_v2Tip+'" style="'+_btnSm+'">+ V'+_nextV+'</button>' : '';
     var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')" id="brief-niche-btn-'+pidx+'" title="Expand niche keywords" style="'+_btnSm+'">⌖ Niche KW</button>';
     var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" title="Generate FAQ questions" style="'+_btnSm+'">? Questions</button>';
     var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" title="AI assign + curate keywords & questions" style="'+_btnSm+'">✦ Assign</button>';
