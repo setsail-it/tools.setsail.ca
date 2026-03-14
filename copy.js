@@ -177,6 +177,7 @@ async function runCopyPage(slug) {
   const streamEl = document.getElementById('copy-stream-'+slug);
   if (streamEl) streamEl.textContent = '';
   try {
+    if(typeof storePrompt==='function') storePrompt('copy-'+slug, P.copy, buildCopyPrompt(page), 'Copy: '+(page.page_name||slug), slug);
     const copy = await callClaude(P.copy, buildCopyPrompt(page), t => {
       if (copyStopFlag) return;
       const el = document.getElementById('copy-stream-'+slug);

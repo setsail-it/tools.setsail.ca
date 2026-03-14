@@ -406,6 +406,42 @@ async function generateBriefV2(pageIdx) {
   await generatePageBrief(pageIdx);
 }
 
+
+// ── INSITES INTENT MATCHING ───────────────────────────────────────────────────
+// Maps page type + search intent to the right lead gen tool + placement.
+// Insites embed types: audit_widget, chat, form, calendar, exit_intent, scroll_cta
+var _TOOL_MAP = [
+  // Commercial service/location pages → Insites audit (high-intent, wants proof)
+  { types:['service','industry','product','location'], intents:['commercial','transactional'],
+    tool:'Insites Audit Widget', placement:'Below hero — "Get your free website audit"', icon:'ti-chart-bar' },
+  // Home page → light qualifier (not audit, too early)
+  { types:['home'],
+    tool:'Insites Audit Widget', placement:'Mid-page — after social proof section', icon:'ti-chart-bar' },
+  // Blog/informational → email capture + content upgrade
+  { types:['blog','article','resource','event'],
+    tool:'Email capture form', placement:'After intro paragraph + exit intent', icon:'ti-mail' },
+  // About/team → calendar / discovery call
+  { types:['about','team'],
+    tool:'Discovery call CTA', placement:'End of page — "Book a 20-min call"', icon:'ti-calendar' },
+  // FAQ/utility → chat widget
+  { types:['faq','utility','contact'],
+    tool:'Live chat / Intercom', placement:'Bottom-right persistent', icon:'ti-message-chatbot' },
+];
+
+function getInsitosTool(pageType, searchIntent) {
+  var pt = (pageType||'').toLowerCase();
+  var si = (searchIntent||'').toLowerCase();
+  for (var i=0; i<_TOOL_MAP.length; i++) {
+    var rule = _TOOL_MAP[i];
+    var typeMatch = rule.types.includes(pt);
+    var intentMatch = !rule.intents || rule.intents.includes(si);
+    if (typeMatch && intentMatch) return rule;
+  }
+  // Fallback for unmapped commercial types
+  if (['commercial','transactional'].includes(si)) return _TOOL_MAP[0];
+  return null;
+}
+
 // ── PER-PAGE ENRICHMENT ACTIONS ──────────────────────────────────────────────
 // These call the same endpoints as the global buttons in the toolbar but scoped
 // to a single page. Buttons live in the per-card action bar (rightCol top).
@@ -769,10 +805,11 @@ function renderBriefs() {
     var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" title="Generate FAQ questions" style="'+_btnSm+'">? Questions</button>';
     var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" title="AI assign + curate keywords & questions" style="'+_btnSm+'">✦ Assign</button>';
 
+    var _promptBtn = isBriefed ? '<button onclick="showPromptModal(\'brief-'+pidx+'\'" title="View the last prompt sent for this brief" style="'+_btnSm+';font-family:monospace;font-size:10px"></></button>' : '';
     var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">'
       + _nicheBtn + _questBtn + _assignBtn
       + '<span style="flex:1"></span>'
-      + _runV2Btn + _regenBtn + _approveBtn
+      + _promptBtn + _runV2Btn + _regenBtn + _approveBtn
       + '</div>';
 
     // ── INFO STRIP ────────────────────────────────────────────────────────────
@@ -787,6 +824,10 @@ function renderBriefs() {
       + (p.search_intent ? '<span>· '+esc(p.search_intent)+'</span>' : '')
       + (p.word_count_target ? '<span>· '+p.word_count_target+' words</span>' : '')
       + (trafficStr ? '<span style="color:var(--green)">· '+trafficStr+' existing</span>' : '')
+      + (function(){
+          var _tool = getInsitosTool(p.page_type, p.search_intent);
+          return _tool ? '<span style="background:rgba(59,130,246,0.08);color:#2563eb;border:1px solid rgba(59,130,246,0.2);border-radius:3px;font-size:9px;padding:1px 6px;margin-left:4px" title="'+_tool.tool+': '+_tool.placement+'"><i class="ti '+_tool.icon+'" style="font-size:9px"></i> '+_tool.tool+'</span>' : '';
+        })()
       + '</div>';
 
     // ── KEYWORDS + QUESTIONS (two-col within single layout) ───────────────────
@@ -1215,6 +1256,7 @@ async function generatePageBrief(pageIdx) {
   if (contentEl) contentEl.style.display = 'none';
   try {
     window._aiBarLabel = 'Brief: ' + (p.page_name || p.slug);
+    if(typeof storePrompt==='function') storePrompt('brief-'+pageIdx, sysPrompt, prompt, 'Brief: '+p.page_name, p.slug+' · '+p.page_type+(p.primary_keyword?' · '+p.primary_keyword:''));
     var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 4000);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;

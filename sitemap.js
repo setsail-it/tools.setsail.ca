@@ -775,7 +775,10 @@ function _renderSitemapResultsInner(approved) {
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       html += '</div>';
       const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
-      html += '<div style="display:flex;align-items:center;gap:5px;padding-top:1px"><span style="color:var(--n3);font-size:12px">'+esc(p.primary_keyword||'–')+'</span>'+(p.primary_keyword?intentBadge(p.primary_keyword,_geo1):'')+'</div>';
+      var _kwDisplay = p.primary_keyword
+      ? '<span style="color:var(--n3);font-size:12px">'+esc(p.primary_keyword)+'</span>'+(intentBadge(p.primary_keyword,_geo1)||'')
+      : (isStructural ? '<span style="color:var(--n2);font-size:11px">navigational</span>' : '<span style="color:var(--warn);font-size:11px;font-weight:500">⚠ none</span>');
+    html += '<div style="display:flex;align-items:center;gap:5px;padding-top:1px">'+_kwDisplay+'</div>';
     }
 
     html += volHtml;
@@ -995,6 +998,12 @@ function _renderSitemapResultsInner(approved) {
     html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.45);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
     html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+    var _missingKw = S.pages ? S.pages.filter(function(p){
+      return !p.is_structural && !['home','about','contact','utility','team'].includes((p.page_type||'').toLowerCase()) && !p.primary_keyword;
+    }).length : 0;
+    if (_missingKw > 0) {
+      html += '<div style="padding:8px 14px;background:rgba(192,112,0,0.08);border:1px solid rgba(192,112,0,0.25);border-radius:6px;font-size:12px;color:var(--warn);margin-bottom:12px"><strong>'+_missingKw+' pages missing a primary keyword</strong> — assign keywords before generating briefs. Use Edit mode → click a row → type in the keyword field, or run Keyword Mapping from Stage 4.</div>';
+    }
     html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
     html += '<button class="btn btn-primary" onclick="approveSitemap();goTo(\'briefs\')" style="background:var(--lime);color:var(--dark)"><i class="ti ti-file-description"></i> Approve &amp; Build Briefs</button>';
     html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';

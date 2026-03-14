@@ -1881,6 +1881,7 @@ async function runPageQuestions() {
       siteContext: siteContext
     };
 
+    if(typeof storePrompt==='function') storePrompt('page-questions', 'Server-side: /api/page-questions worker endpoint', JSON.stringify(payload,null,2), 'Generate Page Questions', pages.length+' pages');
     var res = await fetch('/api/page-questions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
