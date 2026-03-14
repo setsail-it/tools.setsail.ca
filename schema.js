@@ -23,7 +23,17 @@ function buildSchemaPrompt(page) {
   const cms = S.setup?.cms || '';
   const isCmsPage = cms && CMS_PAGE_TYPES.includes(page.page_type);
   const vars = isCmsPage ? CMS_VARS[cms] : null;
+  const r = S.research || {};
   let prompt = 'CLIENT: '+S.setup.client+'\nBASE URL: '+base+'\nPAGE: '+page.page_name+'\nURL: '+base+'/'+page.slug+'\nTYPE: '+page.page_type+'\nPRIMARY KW: '+page.primary_keyword+'\nSUPPORTING: '+(page.supporting_keywords||[]).join(', ')+'\nBREADCRUMB: Home > '+page.page_name;
+  // Inject schema research fields
+  if (r.schema_business_type) prompt += '\nBUSINESS TYPE: '+r.schema_business_type;
+  if (r.schema_primary_category) prompt += '\nCATEGORY: '+r.schema_primary_category;
+  if (r.schema_price_range) prompt += '\nPRICE RANGE: '+r.schema_price_range;
+  if (r.schema_street_address) prompt += '\nADDRESS: '+r.schema_street_address+', '+(r.schema_city||'')+', '+(r.schema_region||'')+' '+(r.schema_postal_code||'')+', '+(r.schema_country||'');
+  if ((r.social_profiles||[]).length) prompt += '\nSOCIAL: '+(r.social_profiles||[]).map(function(sp){ return (sp.platform||'')+': '+(sp.url||''); }).join(', ');
+  if ((r.schema_payment_methods||[]).length) prompt += '\nPAYMENT: '+r.schema_payment_methods.join(', ');
+  if ((r.faqs||[]).length && page.page_type !== 'blog') prompt += '\nFAQs AVAILABLE: '+(r.faqs||[]).slice(0,6).map(function(f){ return f.question; }).join(' | ');
+  if ((r.reviews||[]).length) prompt += '\nREVIEWS: '+(r.reviews||[]).slice(0,3).map(function(rv){ return (rv.author_name||'')+'('+( rv.rating_value||'5')+'/5)'; }).join(', ');
   if (vars) {
     prompt += '\nCMS PLATFORM: '+cms.charAt(0).toUpperCase()+cms.slice(1);
     prompt += '\nCMS VARIABLES: This is a CMS template page. Use these platform variables in schema values instead of hardcoded text:';

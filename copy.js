@@ -125,6 +125,20 @@ function buildCopyPrompt(page) {
 
   var serpBlock = buildSerpIntelBlock(page);
 
+  // Build proof/E-E-A-T + CTA blocks for copy context
+  var _cpProof = [];
+  if ((r.case_studies||[]).length) _cpProof.push('Case studies: '+(r.case_studies||[]).slice(0,4).map(function(cs){ return (cs.client||'Client')+' — '+(cs.result||'result')+(cs.timeframe?' ('+cs.timeframe+')':''); }).join('; '));
+  if ((r.notable_clients||[]).length) _cpProof.push('Notable clients: '+r.notable_clients.slice(0,6).join(', '));
+  if ((r.awards_certifications||[]).length) _cpProof.push('Awards/certs: '+r.awards_certifications.slice(0,4).join(', '));
+  if (r.team_credentials) _cpProof.push('Team credentials: '+r.team_credentials);
+  if (r.founder_bio) _cpProof.push('Founder: '+r.founder_bio);
+  var cpProofBlock = _cpProof.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n'+_cpProof.join('\n') : '';
+  var _cpCta = [];
+  if (r.primary_cta) _cpCta.push('Primary CTA: '+r.primary_cta);
+  if (r.secondary_cta) _cpCta.push('Secondary CTA: '+r.secondary_cta);
+  if (r.low_commitment_cta) _cpCta.push('Low-commitment CTA: '+r.low_commitment_cta);
+  var cpCtaBlock = _cpCta.length ? '\n\n## CTA ARCHITECTURE\n'+_cpCta.join('\n') : '';
+
   if (page.page_type === 'blog') {
     return 'CLIENT: ' + s.client
       + '\nBLOG POST TITLE: ' + page.page_name
@@ -134,8 +148,11 @@ function buildCopyPrompt(page) {
       + '\nBUSINESS OVERVIEW: ' + (r.business_overview||'')
       + '\nGEOGRAPHY: ' + getPageGeo(page)
       + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
+      + ((r.slogan_or_tagline) ? '\nSLOGAN: '+r.slogan_or_tagline : '')
+      + ((r.words_to_avoid||[]).length ? '\nWORDS TO AVOID: '+r.words_to_avoid.join(', ') : '')
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
+      + cpProofBlock + cpCtaBlock
       + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
@@ -154,11 +171,16 @@ function buildCopyPrompt(page) {
     + '\nGEOGRAPHY: ' + getPageGeo(page)
     + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
     + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
+    + ((r.slogan_or_tagline) ? '\nSLOGAN: '+r.slogan_or_tagline : '')
+    + ((r.words_to_avoid||[]).length ? '\nWORDS TO AVOID: '+r.words_to_avoid.join(', ') : '')
+    + ((r.words_to_use||[]).length ? '\nWORDS TO USE: '+r.words_to_use.join(', ') : '')
     + (((r.pain_points_top5||[]).length) ? '\nAUDIENCE PAIN POINTS: ' + (r.pain_points_top5||[]).slice(0,3).join('; ') : '')
     + (((r.objections_top5||[]).length) ? '\nBUYER OBJECTIONS: ' + (r.objections_top5||[]).slice(0,3).join('; ') : '')
     + (((r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.proof_points||[]).slice(0,3).join('; ') : '')
+    + ((r.booking_flow_description) ? '\nBOOKING FLOW: '+r.booking_flow_description : '')
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
+    + cpProofBlock + cpCtaBlock
     + ((S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+S.setup.webStrategy : '')
     + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
     + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
@@ -567,10 +589,10 @@ async function runCopyPass3(slug) {
   var r = S.research || {}, s = S.setup;
   // Build E-E-A-T material from research
   var proofPoints = (r.proof_points || []).slice(0,6).join('\n- ');
-  var caseStudies = (r.case_studies || r.client_results || []).slice(0,3).map(function(cs){ return typeof cs==='object'?(cs.result||cs.title||JSON.stringify(cs)):cs; }).join('\n- ');
-  var teamCreds = (r.team_credentials || r.founder_bio || r.team_bios || '');
-  var awards = (r.awards || r.accreditations || []).join(', ');
-  var clientLogos = (r.client_logos || r.notable_clients || []).join(', ');
+  var caseStudies = (r.case_studies || []).slice(0,4).map(function(cs){ return typeof cs==='object'?((cs.client||'Client')+' — '+(cs.result||'result')+(cs.timeframe?' ('+cs.timeframe+')':'')):cs; }).join('\n- ');
+  var teamCreds = r.team_credentials || r.founder_bio || '';
+  var awards = (r.awards_certifications || []).join(', ');
+  var clientLogos = (r.notable_clients || []).join(', ');
   var pageCtx = (p.pageContext || '').trim();
 
   var pass3System = 'You are a senior E-E-A-T specialist and conversion copywriter. You receive existing page HTML and add Experience, Expertise, Authoritativeness, and Trust signals throughout the copy without changing its structure. Make signals specific and credible — never generic. Canadian spelling.';

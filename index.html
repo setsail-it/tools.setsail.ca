@@ -1161,11 +1161,14 @@ var STAGE_TIPS = {
     "Low DA (< 20) means prioritise long-tail, low-KD keywords in Stage 4.",
   ],
   research: [
-    "Upload strategy docs, proposals, or intake notes — AI enriches 130 fields across 6 tabs.",
-    "Run all 6 tabs: Client, Audience, Competitors, Services, Positioning, Market.",
-    "Competitors tab feeds the SEO Competitor Keywords tool in Stage 4.",
-    "Pain points and objections in Research feed directly into copy briefs in Stage 6.",
-    "Re-run individual tabs anytime — it merges, not replaces.",
+    "Upload strategy docs, proposals, or intake notes — AI enriches 150+ fields across 5 tabs.",
+    "Run all 5 tabs: Business, Audience, Brand, Schema and Local, Competitors.",
+    "Proof and E-E-A-T section (Brand tab): case studies, notable clients, awards, team credentials, founder bio — these feed directly into copy Pass 3 and brief prompts.",
+    "CTA Architecture (Audience tab): primary, secondary, and low-commitment CTAs — injected into every brief and copy prompt.",
+    "Services Detail (Business tab): structured service descriptions with target audience and differentiators — feeds briefs and copy context.",
+    "Competitors tab now includes Weaknesses and What We Do Better columns — feeds competitor context in briefs.",
+    "Re-run individual tabs anytime — it merges, not replaces. Re-enrich overwrites all fields.",
+    "Strategy doc truncation is now 12,000 chars (up from 4,000) — longer docs are fully parsed.",
   ],
   keywords: [
     "Set country before Fetch Volumes — wrong country = wrong volumes. Check the dropdown.",
@@ -1204,6 +1207,8 @@ var STAGE_TIPS = {
   copy: [
     "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
     "Copy Audit checks word count, FAQ section, Canadian spelling, CTA presence, and more.",
+    "Pass 3 (E-E-A-T) injects case studies, team credentials, awards, and notable clients from Research into existing copy — run after audit passes.",
+    "Proof, CTA architecture, slogan, words to avoid, and booking flow from Research are all injected into the copy prompt automatically.",
     "Human QC gate: verify brand voice, facts, and offers before approving.",
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
     "Copy is generated at 6,000 tokens — long pages may need a Pass 2 to complete thin sections.",
@@ -1220,6 +1225,7 @@ var STAGE_TIPS = {
     "Schema generates FAQPage + LocalBusiness + Service JSON-LD from approved copy.",
     "FAQ schema feeds Google's AEO (AI Overview) eligibility — prioritise BOF questions.",
     "Run Schema after Copy is approved — it uses the final copy for accurate Q&A extraction.",
+    "Schema now reads business type, address, social profiles, payment methods, FAQs, and reviews from Research — fill these in Stage 3 for accurate JSON-LD.",
   ],
   export: [
     "Export packages all approved copy, images, schema, and layout for Webflow handoff.",
@@ -1632,12 +1638,12 @@ function buildEnrichCtx() {
   if (s.pricing)     ctx += '\nPRICING: '+s.pricing;
   if (s.voice)       ctx += '\nBRAND VOICE: '+s.voice;
   if (s.competitors) ctx += '\nKNOWN COMPETITORS:\n'+s.competitors;
-  if (s.strategy)    ctx += '\n\nSTRATEGY DOCUMENT:\n'+s.strategy.slice(0, 4000);
+  if (s.strategy)    ctx += '\n\nSTRATEGY DOCUMENT:\n'+s.strategy.slice(0, 12000);
   const docs = s.docs || [];
   if (docs.length) {
     ctx += '\n\nREFERENCE DOCUMENTS:';
     docs.forEach(function(d) {
-      ctx += '\n\n--- '+d.name+' ---\n'+d.content.slice(0, 6000);
+      ctx += '\n\n--- '+d.name+' ---\n'+d.content.slice(0, 10000);
     });
   }
   return ctx;
@@ -2466,7 +2472,7 @@ async function deleteAdminUser() {
       <div style="display:flex;flex-direction:column;gap:4px">
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client name, URL, primary market, strategy doc</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain authority, link metrics</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 130 fields</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 150+ fields (proof, CTAs, services detail, competitors)</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — seeds → expand → volumes → opportunities</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
@@ -2503,15 +2509,19 @@ async function deleteAdminUser() {
     <!-- S3: RESEARCH -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 3 — Research · Best Order</div>
-      <p style="font-size:11.5px;margin:0 0 8px">Pages are grouped and ordered: <strong>Recently Edited</strong> (top 3) → Core → Services → Industry → Locations → Blog → Other. Within each group: P1 → P2 → P3. This order is consistent across Briefs, Copy, Images, and Layout. Editing or approving a brief moves the page into the Recently Edited group.</p>
+      <p style="font-size:11.5px;margin:0 0 8px">AI extracts 150+ structured fields from your strategy docs across 5 tabs. Every field feeds downstream — briefs, copy, schema, and layout all pull from Research.</p>
       <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <li><strong>Upload client documents</strong> — strategy doc, intake form, existing content, or anything with context. Claude extracts ~130 structured fields across 6 tabs.</li>
-        <li><strong>Review each tab</strong> — Business, Audience, Brand, Schema &amp; Local, Competitors, Keywords. Correct anything Claude got wrong.</li>
-        <li><strong>Re-Enrich if needed</strong> — the Re-enrich button bypasses the skip logic and forces Claude to overwrite all fields, even pre-filled ones.</li>
-        <li><strong>Competitor list</strong> is the most important output here — it feeds SERP Intel and the sitemap competitor keyword mining in Stage 4.</li>
+        <li><strong>Upload client documents</strong> — strategy doc, intake form, existing content, or anything with context. Strategy docs up to 12,000 chars are fully parsed (reference docs up to 10,000 chars each).</li>
+        <li><strong>Enrich each tab</strong> — Business, Audience, Brand, Schema &amp; Local, Competitors. Or use "Enrich with AI" to run all 5 sequentially.</li>
+        <li><strong>Business tab</strong> — core identity, services, pricing. The <em>Services (Detailed)</em> repeater captures per-service descriptions, target audiences, and differentiators — these feed brief and copy context.</li>
+        <li><strong>Audience tab</strong> — buyer profile, pain points, objections, sales process. <em>CTA Architecture</em> section defines primary, secondary, and low-commitment CTAs — injected into every brief and copy prompt.</li>
+        <li><strong>Brand tab</strong> — voice, differentiators, visual assets, and the <em>Proof &amp; E-E-A-T</em> section: case studies, notable clients, awards/certifications, team credentials, founder bio, publications. These feed copy Pass 3 (E-E-A-T injection) and are included in all brief prompts.</li>
+        <li><strong>Schema &amp; Local tab</strong> — business type, address, social profiles, FAQs, reviews. All injected into the Schema stage prompt for accurate JSON-LD generation.</li>
+        <li><strong>Competitors tab</strong> — name, URL, strengths, <em>weaknesses</em>, and <em>what we do better</em>. Competitor weaknesses appear in brief context so copy can address competitive gaps.</li>
+        <li><strong>Re-Enrich</strong> — the Re-enrich button bypasses skip logic and overwrites all fields, even pre-filled ones.</li>
       </ol>
       <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
-        ⚠ Do not pre-fill default values in research fields before enrichment — the skip logic treats any non-empty string as "already filled" and won't overwrite it.
+        ⚠ Do not pre-fill default values in research fields before enrichment — the skip logic treats any non-empty string as "already filled" and will not overwrite it.
       </div>
     </div>
 
@@ -2626,6 +2636,13 @@ async function deleteAdminUser() {
         <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve.</p>
         <p><strong>Prompt viewer (Briefs)</strong> — The <i class="ti ti-code"></i> icon in each brief card action bar shows the exact system + user prompt sent to Claude for that brief. Useful for diagnosing unexpected outputs or training staff.</p>
         <p><strong>AI bar coverage</strong> — All major generation actions show progress in the topbar AI bar with elapsed time. All <code>alert()</code> calls replaced with AI bar notifications.</p>
+        <p><strong>Research: Proof &amp; E-E-A-T (Brand tab)</strong> — New section with case studies (client/result/timeframe repeater), notable clients, awards &amp; certifications, team credentials, founder bio, and publications/media mentions. All fields are AI-enriched from strategy docs and wired into brief prompts, copy prompts, and the E-E-A-T Pass 3 injection.</p>
+        <p><strong>Research: CTA Architecture (Audience tab)</strong> — Primary CTA, secondary CTA, and low-commitment CTA fields. AI-enriched. Injected into every brief and copy prompt so all downstream output uses consistent CTAs.</p>
+        <p><strong>Research: Services Detail (Business tab)</strong> — Structured repeater with service name, description, target audience, and key differentiator per service. Feeds brief and copy context for richer service page output.</p>
+        <p><strong>Research: Expanded Competitors</strong> — Competitor table now includes Weaknesses and What We Do Better columns alongside the existing Strengths. Competitor weaknesses appear in brief context.</p>
+        <p><strong>Research: Strategy doc parsing</strong> — Strategy doc truncation increased from 4,000 to 12,000 chars. Reference docs from 6,000 to 10,000 chars each. Longer strategy docs are now fully parsed during enrichment.</p>
+        <p><strong>Schema: Research fields wired</strong> — Schema stage now reads business type, address, social profiles, payment methods, FAQs, and reviews from Research — no more guessing.</p>
+        <p><strong>Copy: Full field wiring</strong> — Slogan, words to avoid/use, booking flow, buyer roles, and all proof/CTA fields now appear in copy prompts. E-E-A-T Pass 3 uses correct field names for case studies, awards, and notable clients.</p>
       </div>
     </div>
 

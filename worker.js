@@ -1863,9 +1863,27 @@ export default {
             'Key differentiators: ' + ((R.key_differentiators || []).join('; ') || 'none'),
             'Proof points: ' + ((R.proof_points || []).join('; ') || 'none'),
             'Brand voice: ' + (R.brand_voice_style || R.tone_and_voice || 'professional'),
-          ].filter(l => l.split(': ')[1]).join('\n');
+            (R.slogan_or_tagline ? 'Slogan: ' + R.slogan_or_tagline : ''),
+            (R.words_to_avoid && R.words_to_avoid.length ? 'Words to avoid: ' + R.words_to_avoid.join(', ') : ''),
+            (R.booking_flow_description ? 'Booking flow: ' + R.booking_flow_description : ''),
+          ].filter(l => l && l.split(': ')[1]).join('\n');
+          // Proof & E-E-A-T context
+          const _proofLines = [];
+          if ((R.case_studies || []).length) _proofLines.push('Case studies: ' + R.case_studies.slice(0, 4).map(cs => (cs.client || 'Client') + ' — ' + (cs.result || 'result') + (cs.timeframe ? ' (' + cs.timeframe + ')' : '')).join('; '));
+          if ((R.notable_clients || []).length) _proofLines.push('Notable clients: ' + R.notable_clients.slice(0, 6).join(', '));
+          if ((R.awards_certifications || []).length) _proofLines.push('Awards/certs: ' + R.awards_certifications.slice(0, 4).join(', '));
+          if (R.team_credentials) _proofLines.push('Team credentials: ' + R.team_credentials);
+          if (R.founder_bio) _proofLines.push('Founder: ' + R.founder_bio);
+          const ctxProof = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS\n' + _proofLines.join('\n') : '';
+          // CTA architecture
+          const _ctaLines = [];
+          if (R.primary_cta) _ctaLines.push('Primary CTA: ' + R.primary_cta);
+          if (R.secondary_cta) _ctaLines.push('Secondary CTA: ' + R.secondary_cta);
+          if (R.low_commitment_cta) _ctaLines.push('Low-commitment CTA: ' + R.low_commitment_cta);
+          const ctxCTA = _ctaLines.length ? '\n\n## CTA ARCHITECTURE\n' + _ctaLines.join('\n') : '';
           const ctxAudience = [
             'Primary audience: ' + (R.primary_audience_description || ''),
+            'Buyer roles: ' + ((R.buyer_roles_titles || []).join(', ') || ''),
             'Top pain points: ' + ((R.pain_points_top5 || []).slice(0, 3).join('; ') || ''),
             'Top objections: ' + ((R.objections_top5 || []).slice(0, 3).join('; ') || ''),
             'Geography: ' + ((R.geography?.primary) || R.target_geography || ''),
@@ -1886,7 +1904,7 @@ export default {
           const _webStrat = (setup.webStrategy||'').trim();
           const _pageCtx = (p.pageContext||'').trim();
           const _pageGoal = (p.page_goal||'').trim();
-          const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + (_webStrat?'\n\n## WEBSITE STRATEGY\n'+_webStrat:'') + (_pageGoal?'\n\n## PAGE GOAL (every section must serve this strategic purpose)\n'+_pageGoal:'') + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + (_pageCtx?'\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx:'') + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';
+          const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + (_webStrat?'\n\n## WEBSITE STRATEGY\n'+_webStrat:'') + (_pageGoal?'\n\n## PAGE GOAL (every section must serve this strategic purpose)\n'+_pageGoal:'') + ctxProof + ctxCTA + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + (_pageCtx?'\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx:'') + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';
 
           const briefText = await claudeCall(sysPrompt, prompt, 4000);
 

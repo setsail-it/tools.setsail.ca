@@ -12,7 +12,7 @@ function researchDefaults() {
     client_name:'', business_overview:'', value_proposition:'',
     industry:'', sub_industry:'', business_model:'',
     years_in_business:'', team_size:'', locations_count:'',
-    primary_services:[], top_offers:[],
+    primary_services:[], top_offers:[], services_detail:[],
     pricing_notes:'', pricing_model:'',
     capacity_constraints:'', seasonality_notes:'',
     strategic_recommendations:[],
@@ -25,6 +25,8 @@ function researchDefaults() {
     top_reasons_leads_dont_close:'', booking_flow_description:'',
     primary_goal:'', secondary_goals:[], target_audience:[],
     geography:{ primary:'', secondary:[] },
+    // CTA Architecture
+    primary_cta:'', secondary_cta:'', low_commitment_cta:'',
     // Brand
     brand_name:'', slogan_or_tagline:'', brand_voice_style:'',
     tone_and_voice:'', words_to_use:[], words_to_avoid:[],
@@ -34,6 +36,9 @@ function researchDefaults() {
     photo_library_link:'', video_library_link:'',
     existing_ad_creatives_link:'', do_not_use_assets_notes:'',
     reference_brands:[],
+    // Proof & E-E-A-T
+    case_studies:[], notable_clients:[], awards_certifications:[],
+    team_credentials:'', founder_bio:'', publications_media:[],
     // Schema
     schema_business_type:'', schema_primary_category:'',
     schema_price_range:'', schema_payment_methods:[],
@@ -223,6 +228,10 @@ function renderRBusiness(r) {
   html += rSec('Strategic Recommendations',
     rField('strategic_recommendations','Recommendations (one per line)', r.strategic_recommendations, 'textarea-array', {rows:5})
   );
+  html += rRepGroup('services_detail','Services (Detailed)',
+    [{key:'name',label:'Service Name',width:'160px'},{key:'description',label:'Description'},{key:'target_audience',label:'Target Audience',width:'140px'},{key:'key_differentiator',label:'Differentiator',width:'140px'}],
+    '+ Add Service Detail'
+  );
   html += rRepGroup('top_offers','Top Offers',
     [{key:'offer_name',label:'Offer Name'},{key:'priority',label:'Priority',width:'80px'},{key:'notes',label:'Notes'}],
     '+ Add Offer'
@@ -254,6 +263,11 @@ function renderRAudience(r) {
     rField('top_reasons_leads_dont_close','Top Reasons Leads Don\'t Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
     rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
   );
+  html += rSec('CTA Architecture',
+    rField('primary_cta','Primary CTA (e.g. Book a Discovery Call)', r.primary_cta) +
+    rField('secondary_cta','Secondary CTA (e.g. Download Free Guide)', r.secondary_cta) +
+    rField('low_commitment_cta','Low-Commitment CTA (e.g. Free Audit)', r.low_commitment_cta)
+  );
   return html;
 }
 
@@ -280,6 +294,17 @@ function renderRBrand(r) {
     rField('video_library_link','Video Library Link', r.video_library_link) +
     rField('existing_ad_creatives_link','Existing Ad Creatives Link', r.existing_ad_creatives_link) +
     rField('do_not_use_assets_notes','Do Not Use (assets/phrases)', r.do_not_use_assets_notes, 'textarea', {rows:2})
+  );
+  html += rSec('Proof & E-E-A-T',
+    rField('team_credentials','Team Credentials / Expertise', r.team_credentials, 'textarea', {rows:3}) +
+    rField('founder_bio','Founder Bio', r.founder_bio, 'textarea', {rows:3}) +
+    rField('awards_certifications','Awards & Certifications (one per line)', r.awards_certifications, 'textarea-array', {rows:4}) +
+    rField('notable_clients','Notable Clients (one per line)', r.notable_clients, 'textarea-array', {rows:4}) +
+    rField('publications_media','Publications & Media Mentions (one per line)', r.publications_media, 'textarea-array', {rows:3})
+  );
+  html += rRepGroup('case_studies','Case Studies',
+    [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'}],
+    '+ Add Case Study'
   );
   html += rRepGroup('reference_brands','Reference Brands',
     [{key:'url',label:'URL'},{key:'what_you_like',label:'What You Like'}],
@@ -380,7 +405,7 @@ function renderRSchema(r) {
 function renderRCompetitors(r) {
   let html = rTabActions('competitors');
   html += rRepGroup('competitors','Competitor Analysis',
-    [{key:'name',label:'Competitor',width:'160px'},{key:'url',label:'URL',width:'200px'},{key:'why_they_win',label:'Why They Win / Strengths'}],
+    [{key:'name',label:'Competitor',width:'130px'},{key:'url',label:'URL',width:'160px'},{key:'why_they_win',label:'Strengths'},{key:'weaknesses',label:'Weaknesses'},{key:'what_we_do_better',label:'What We Do Better'}],
     '+ Add Competitor'
   );
   html += '<div id="research-kw-status" style="font-size:11px;color:var(--n2);margin-top:8px;display:flex;align-items:center;gap:6px"></div>';
@@ -513,6 +538,7 @@ async function enrichRTab(tab, forceAll) {
       + b + '"pricing_notes": "how pricing works",\n'
       + b + '"pricing_model": "one of: quote_based fixed_menu subscription",\n'
       + b + '"top_offers": [{"offer_name": "specific offer name", "priority": "1", "notes": "why this is a top offer"}],\n'
+      + b + '"services_detail": [{"name": "service name", "description": "1-2 sentence description of this service", "target_audience": "who buys this service", "key_differentiator": "what makes this service unique"}],\n'
       + b + '"strategic_recommendations": ["specific rec 1", "specific rec 2", "specific rec 3"]\n}',
 
     audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values:\n{\n'
@@ -530,7 +556,10 @@ async function enrichRTab(tab, forceAll) {
       + b + '"booking_flow_description": "how a prospect becomes a client - steps in the intake process",\n'
       + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
-      + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
+      + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}],\n'
+      + b + '"primary_cta": "the main conversion action e.g. Book a Discovery Call",\n'
+      + b + '"secondary_cta": "secondary conversion action e.g. Download Free Guide",\n'
+      + b + '"low_commitment_cta": "low-friction entry point e.g. Free Website Audit"\n}',
 
     brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object. For brand_colours/fonts: only include values explicitly in reference docs, use [] if not found. Do NOT invent values.\nFor tone, differentiators, voice: extract specifically from strategy and brand docs.\nReturn ONLY valid JSON, no preamble.\n{\n'
       + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
@@ -542,7 +571,13 @@ async function enrichRTab(tab, forceAll) {
       + b + '"key_differentiators": ["real differentiator from the docs"],\n'
       + b + '"proof_points": ["real cert/award/stat from docs, or []"],\n'
       + b + '"brand_colours": ["hex from brand guide only, or []"],\n'
-      + b + '"fonts": ["font from brand guide only, or []"]\n}',
+      + b + '"fonts": ["font from brand guide only, or []"],\n'
+      + b + '"case_studies": [{"client": "client name", "result": "specific measurable outcome", "timeframe": "e.g. 90 days"}],\n'
+      + b + '"notable_clients": ["real client name from docs"],\n'
+      + b + '"awards_certifications": ["real award or certification from docs"],\n'
+      + b + '"team_credentials": "founder/team qualifications, years of experience, specialisations",\n'
+      + b + '"founder_bio": "founder background and expertise from docs",\n'
+      + b + '"publications_media": ["media mention or publication from docs"]\n}',
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
       + b + '"schema_business_type": "LocalBusiness or Organization",\n'
@@ -579,7 +614,7 @@ async function enrichRTab(tab, forceAll) {
       + 'job boards, news sites, social platforms, or any site that is not a direct service competitor.\n'
       + 'For each: actual business name, full URL with https://, 1-2 sentence specific competitive strength.\n'
       + 'Return ONLY valid JSON, no preamble.\n{\n'
-      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength"}]\n}'
+      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength", "weaknesses": "specific weakness or gap", "what_we_do_better": "how our client beats them"}]\n}'
   };
 
   if (!prompts[tab]) return;
