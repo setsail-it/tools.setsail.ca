@@ -1366,6 +1366,7 @@ function _renderKwQuestionsTab() {
     html += '<button class="btn btn-ghost" data-tip="More Questions generates a second batch of 20 BOF questions in the same intent categories (pricing, ROI, risk, comparison) and appends them to the list. Existing questions are passed to the AI so duplicates are skipped. Use when you need more question coverage before Validate & Assign." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
     html += '<button class="btn btn-ghost" data-tip="Blog Seeds takes informational questions (how-to, what-is intent) and extracts their keyword phrase to use as blog content seeds. These go into the Seeds tab Questions bucket so they get volumes in the next Fetch Volumes run — giving you blog topics with real search demand." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
     html += '<button class="btn btn-ghost sm" data-tip="Add All to Seeds extracts the intent keyword from every question and adds them to the Seeds tab. Same as Pull from Questions in the Seeds toolbar — use this shortcut when already on the Questions tab." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Clear all questions and start fresh. Run before Re-fetch if you want a completely new set." onclick="_clearAllQuestions()" style="color:var(--error)"><i class="ti ti-trash" style="font-size:11px"></i> Clear All</button>';
     if (isValidated) {
       var withVol = normalised.filter(function(q) { return q.vol > 0; }).length;
       html += '<span style="font-size:11px;color:var(--green);display:inline-flex;align-items:center;gap:4px"><i class="ti ti-check"></i> ' + withVol + '/' + normalised.length + ' have search volume</span>';
@@ -1440,7 +1441,7 @@ function _renderKwQuestionsTab() {
         isGap = !isCovered;
       }
 
-      html += '<div style="display:grid;grid-template-columns:' + cols + ';padding:8px 12px;border-bottom:1px solid var(--border);' + rowBg + ';gap:8px;align-items:center">';
+      html += '<div style="display:grid;grid-template-columns:' + cols + ' auto;padding:8px 12px;border-bottom:1px solid var(--border);' + rowBg + ';gap:8px;align-items:center">';
 
       // Question text
       html += '<div style="font-size:12px;color:var(--dark)">' + esc(q) + '</div>';
@@ -1485,6 +1486,8 @@ function _renderKwQuestionsTab() {
       html += '<span style="font-size:10px;color:' + intentClr + '">' + intentLabel + '</span>';
       html += '</div>';
 
+      // Delete button
+      html += '<button onclick="_deleteQuestion(' + origIdx + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:13px;padding:2px 6px;border-radius:4px;line-height:1" title="Remove this question">&times;</button>';
       html += '</div>';
     });
     html += '</div>';
@@ -1522,6 +1525,26 @@ function _renderKwQuestionsTab() {
 }
 
 var _paaQuestionCache = null;
+
+function _deleteQuestion(idx) {
+  var qs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) ? S.contentIntel.paa.questions : [];
+  if (idx < 0 || idx >= qs.length) return;
+  qs.splice(idx, 1);
+  scheduleSave();
+  renderKwTabContent();
+}
+
+function _clearAllQuestions() {
+  if (!confirm('Delete all questions? This cannot be undone.')) return;
+  if (S.contentIntel && S.contentIntel.paa) {
+    S.contentIntel.paa.questions = [];
+    S.contentIntel.paa.validatedAt = null;
+    scheduleSave();
+    renderKwTabContent();
+    if(typeof aiBarNotify==='function') aiBarNotify('Questions cleared', {duration:2500});
+  }
+}
+
 function _getQuestionsArray() {
   // Primary: contentIntel PAA (from Research stage)
   if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length) {
