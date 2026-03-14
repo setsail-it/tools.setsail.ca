@@ -687,7 +687,107 @@ textarea.inp{resize:vertical}
 </div>
 
 <script>
+// ── TYPE DEFINITIONS ──────────────────────────────────────────────
+/**
+ * @typedef {Object} SetupData
+ * @property {string} client - Business name
+ * @property {string} url - Website URL
+ * @property {string} geo - Primary geography (e.g. "Vancouver, BC, Canada")
+ * @property {string} pricing - Pricing tier/model
+ * @property {string} strategy - Full strategy document text
+ * @property {string} webStrategy - 300-word synthesised website strategy brief
+ * @property {string} voice - Brand voice description
+ * @property {string[]} competitors - Competitor URLs
+ * @property {string} imageStyle - Preferred image style for Gemini
+ * @property {string} cms - Target CMS (wordpress, webflow, etc.)
+ * @property {boolean} isExistingSite - Whether site already exists
+ * @property {{name:string, content:string}[]} docs - Uploaded reference documents
+ */
+
+/**
+ * @typedef {Object} PageObject
+ * @property {string} page_name - Display name
+ * @property {string} slug - URL slug (e.g. "seo-services")
+ * @property {string} page_type - "service"|"location"|"industry"|"blog"|"home"|"about"|"contact"|"faq"|"utility"|"team"
+ * @property {string} priority - "P1"|"P2"|"P3"
+ * @property {string} action - "build_new"|"optimise"|"keep"
+ * @property {string} primary_keyword - Assigned primary keyword
+ * @property {number} primary_vol - Monthly search volume
+ * @property {number} primary_kd - Keyword difficulty (0-100)
+ * @property {number} score - Computed opportunity score
+ * @property {string[]} supporting_keywords - Supporting keyword list
+ * @property {string} search_intent - "commercial"|"informational"|"navigational"|"transactional"
+ * @property {number} word_count_target - Target word count
+ * @property {string[]} assignedQuestions - FAQ questions assigned from PAA/AI
+ * @property {string[]} pageQuestions - Per-page generated questions
+ * @property {string} pageContext - Freetext context + uploaded file content
+ * @property {{name:string, type:string}[]} pageFiles - Uploaded file references
+ * @property {Object} serpIntel - SERP competitor analysis data
+ * @property {BriefData} brief - Brief generation state
+ */
+
+/**
+ * @typedef {Object} BriefData
+ * @property {string} summary - Generated brief text
+ * @property {boolean} generated - Whether brief has been generated
+ * @property {boolean} approved - Whether brief is approved
+ * @property {number} score - Brief quality score
+ * @property {{v:number, text:string}[]} drafts - Version history
+ * @property {number} activeDraft - Index of active draft
+ */
+
+/**
+ * @typedef {Object} CopyData
+ * @property {string} copy - Generated HTML copy
+ * @property {{v:number, html:string, pass:number, generatedAt:number}[]} drafts - Version history
+ * @property {number} activeDraft - Index of active draft
+ * @property {Object} audit - Audit results {score, checks[]}
+ * @property {Object} humanQC - Human QC checklist state
+ * @property {boolean} approved - Whether copy is approved
+ * @property {number} approvedAt - Approval timestamp
+ * @property {PageObject} page - Reference to source page
+ */
+
+/**
+ * @typedef {Object} KwResearch
+ * @property {string[]} seeds - Seed keywords
+ * @property {{mechanical:string[], ai:string[], competitor:string[], questions:string[]}} seedSources - Seeds by source bucket
+ * @property {string[]} activeSources - Currently active seed filter
+ * @property {string} _seedFilterSource - Current filter: "all"|"mechanical"|"ai"|"competitor"|"questions"
+ * @property {{kw:string, vol:number, kd:number, cpc:number, score:number}[]} keywords - Fetched keyword data
+ * @property {string[]} selected - User-selected keywords
+ * @property {Object[]} clusters - AI-generated keyword clusters
+ * @property {{question:string, source:string}[]} paaQuestions - People Also Ask data
+ * @property {string} country - 2-letter country code (lowercase)
+ * @property {number} siteDR - Domain Rating from snapshot
+ * @property {number} fetchedAt - Last volume fetch timestamp
+ * @property {number} clusteredAt - Last clustering timestamp
+ */
+
+/**
+ * @typedef {Object} AppState
+ * @property {string} currentUser - Authenticated user email
+ * @property {string} currentUserName - Display name
+ * @property {string} currentRole - "admin"|"editor"|"viewer"
+ * @property {string} projectId - Current project ID
+ * @property {number} _version - Optimistic locking version counter
+ * @property {string} stage - Current pipeline stage ID
+ * @property {SetupData} setup - Client setup data
+ * @property {Object} snapshot - DataForSEO domain metrics
+ * @property {Object} research - AI-enriched research (~130 fields)
+ * @property {PageObject[]} pages - Sitemap pages
+ * @property {Object<string, CopyData>} copy - Per-slug copy data
+ * @property {Object<string, Object>} schema - Per-slug JSON-LD schema
+ * @property {Object<string, Object>} layout - Per-slug wireframe data
+ * @property {Object<string, Object>} images - Per-slug image data
+ * @property {KwResearch} kwResearch - Keyword research state
+ * @property {Object} kwMetrics - Cached keyword volume/difficulty
+ * @property {Object} contentIntel - Content intelligence (PAA validated data)
+ * @property {boolean} sitemapApproved - Whether sitemap is locked
+ */
+
 // ── STATE ──────────────────────────────────────────────────────────
+/** @type {AppState} */
 const S = {
   currentUser: null,
   projectId: null, stage: 'setup',
