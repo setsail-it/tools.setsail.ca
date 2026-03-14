@@ -774,7 +774,7 @@ function renderBriefs() {
       : '<span style="font-size:9px;font-weight:500;color:var(--green);background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 5px">BUILD NEW</span>';
     var infoStrip = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.01);font-size:10px;color:var(--n2)">'
       + _actionLabel
-      + (p.primary_keyword ? '<span style="color:var(--dark);font-weight:600">'+esc(p.primary_keyword)+'</span>' : '')
+      + (p.primary_keyword ? '<span style="color:var(--dark);font-weight:600">'+esc(p.primary_keyword)+'</span>' : '<span style="color:var(--warn);font-size:10px">⚠ No keyword — use Pick keywords... or Regen uses brand context</span>')
       + (p.primary_vol ? '<span>'+p.primary_vol.toLocaleString()+'/mo</span>' : '')
       + (p.primary_kd  ? '<span>KD: '+p.primary_kd+'</span>' : '')
       + (p.search_intent ? '<span>· '+esc(p.search_intent)+'</span>' : '')
@@ -985,7 +985,9 @@ async function generatePageBrief(pageIdx) {
     return '- '+(c.name||c.url||c);
   }).join('\n') || 'None identified';
 
-  var ctxKeywords = '**Primary:** '+(p.primary_keyword||'none')+' ('+( p.primary_vol||0)+'/mo, KD:'+(p.primary_kd||0)+')\n'
+  var _impliedKw = (!p.primary_keyword && ['home','about','contact','utility','team'].includes((p.page_type||'').toLowerCase()))
+    ? (((S.research&&S.research.client_name)||(S.setup&&S.setup.client)||'') + ' ' + p.page_name).trim() : '';
+  var ctxKeywords = '**Primary:** '+(p.primary_keyword||(_impliedKw?_impliedKw+' (navigational)':'none'))+' ('+( p.primary_vol||0)+'/mo, KD:'+(p.primary_kd||0)+')\n'
     + (addlKws.length ? '**Supporting:** '+addlKws.join(', ') : '')
     + (existingRkws.length ? '\n**Currently ranking for:** '+existingRkws.join(', ') : '');
 
