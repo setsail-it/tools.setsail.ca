@@ -166,7 +166,7 @@ textarea.inp{resize:vertical}
 #proj-switcher-name{font-size:13px;font-weight:500;color:var(--dark);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #proj-switcher-chevron{font-size:10px;color:var(--n2);transition:transform .15s;flex-shrink:0}
 #proj-switcher.open #proj-switcher-chevron{transform:rotate(180deg)}
-#psw-backdrop{display:none;position:fixed;inset:0;z-index:299}#proj-switcher-dd{display:none;position:absolute;top:calc(100% + 6px);left:0;background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:220px;max-width:300px;z-index:300;padding:6px;max-height:320px;overflow-y:auto}
+#proj-switcher-dd{display:none;position:absolute;top:calc(100% + 6px);left:0;background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:220px;max-width:300px;z-index:300;padding:6px;max-height:320px;overflow-y:auto}
 #proj-switcher.open #proj-switcher-dd{display:block}
 .psw-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;cursor:pointer;transition:background .1s;border:none;background:none;width:100%;font-family:var(--font);text-align:left}
 .psw-item:hover{background:var(--n1)}
@@ -192,6 +192,9 @@ textarea.inp{resize:vertical}
 </head>
 <body>
 
+<!-- PROJ SWITCHER BACKDROP -->
+<div id="psw-backdrop" onclick="closeProjSwitcher()" style="display:none;position:fixed;inset:0;z-index:299"></div>
+
 <!-- TOPBAR -->
 <div id="nav">
   <!-- Left: logo + client -->
@@ -204,7 +207,6 @@ textarea.inp{resize:vertical}
     </div>
     <div class="nav-meta" id="nav-meta-wrap" style="display:none">
       <div class="nav-divider" id="nav-div2"></div>
-      <div id="psw-backdrop" onclick="closeProjSwitcher()"></div>
       <div id="proj-switcher" onclick="toggleProjSwitcher(event)">
         <span id="client-name-nav" id="proj-switcher-name"></span>
         <i class="ti ti-chevron-down" id="proj-switcher-chevron"></i>
