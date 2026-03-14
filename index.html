@@ -19,7 +19,7 @@ input,textarea,button,select{font-family:var(--font)!important}
 input::placeholder,textarea::placeholder{color:#bbb}
 
 /* NAV / TOPBAR */
-#nav{display:grid;grid-template-columns:1fr 320px 1fr;align-items:center;padding:0 20px;height:48px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:200;background:#ffffff;backdrop-filter:blur(10px)}
+#nav{display:grid;grid-template-columns:1fr 320px 1fr;align-items:center;padding:0 20px;height:56px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:200;background:#ffffff;backdrop-filter:blur(10px)}
 .nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
 .logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
@@ -28,7 +28,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 .stage-pill,.stage-dot{display:none}
 
 /* SIDEBAR */
-#sidebar{position:fixed;top:48px;left:0;bottom:0;width:188px;background:#FAF9F7;border-right:1px solid var(--border);z-index:150;display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#sidebar{position:fixed;top:56px;left:0;bottom:0;width:188px;background:#FAF9F7;border-right:1px solid var(--border);z-index:150;display:none;flex-direction:column;overflow-y:auto;overflow-x:hidden}
 #sidebar.visible{display:flex}
 .sb-section{padding:12px 10px 6px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--n2);font-weight:500}
 .sb-item{display:flex;align-items:center;gap:9px;padding:7px 12px;margin:1px 6px;border-radius:7px;font-size:12.5px;color:var(--n3);cursor:pointer;transition:all .12s;white-space:nowrap;user-select:none;border:none;background:none;width:calc(100% - 12px);text-align:left;font-family:var(--font)}
@@ -44,7 +44,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 .sb-projects-btn:hover{background:rgba(0,0,0,0.05);color:var(--dark)}
 
 /* AI PROGRESS BAR */
-#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:100%;opacity:1;pointer-events:none}#ai-bar-label{position:relative}#ai-tip-line{position:relative}
+#ai-bar{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:100%;opacity:1;pointer-events:auto}#ai-bar-label{position:relative}#ai-tip-line{position:relative}
 #ai-bar.active #ai-bar-track{opacity:1}#ai-bar.active #ai-bar-label{color:var(--dark)}#ai-bar.active{pointer-events:auto}
 #ai-bar-label{font-size:11px;color:var(--n2);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:center;transition:color .2s}
 #ai-bar-track{width:100%;height:3px;background:var(--n1);border-radius:3px;overflow:hidden;opacity:0;transition:opacity .2s}
@@ -60,7 +60,7 @@ input::placeholder,textarea::placeholder{color:#bbb}
 #save-indicator.error{color:var(--error)}
 
 /* MAIN */
-#main{padding:32px 32px 80px;margin-top:48px;margin-left:0;transition:margin-left .2s}body.in-project #main{margin-left:188px}
+#main{padding:32px 32px 80px;margin-top:56px;margin-left:0;transition:margin-left .2s}body.in-project #main{margin-left:188px}
 .screen{animation:fadeIn .25s ease;display:none}.screen.active{display:block}
 
 /* TYPE */
@@ -224,7 +224,7 @@ textarea.inp{resize:vertical}
       <span id="ai-bar-meta"></span>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
-    <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10.5px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;min-height:14px;transition:opacity .4s;cursor:default"></div>
+    <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;min-height:12px;transition:opacity .4s;cursor:default"></div>
   </div>
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
@@ -271,9 +271,7 @@ textarea.inp{resize:vertical}
   </div>
   <div id="mobile-stage-list"></div>
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="initAuth().then(() => showProjects());
-_wireAiFloatTip('ai-bar-label');
-_wireAiFloatTip('ai-tip-line');closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="initAuth().then(() => showProjects());closeMobileNav()"><i class="ti ti-arrow-left"></i> All Projects</button>
   </div>
 </div>
 
@@ -1843,7 +1841,7 @@ function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToCli
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
 
 // ── INIT ───────────────────────────────────────────────────────────
-initAuth().then(() => showProjects());
+initAuth().then(function() { showProjects(); _wireAiFloatTip('ai-bar-label'); _wireAiFloatTip('ai-tip-line'); });
 
 // ── TABLE ROW HOVER ─────────────────────────────────────────────────
 // Event delegation — handles dynamically rendered rows
@@ -1902,11 +1900,13 @@ function _buildPswList() {
 
 function toggleProjSwitcher(e) {
   e.stopPropagation();
-  closeUserDropdown(); // close other dropdown first
+  closeUserDropdown();
   var sw = document.getElementById('proj-switcher');
+  if (!sw) return;
   var isOpen = sw.classList.contains('open');
-  if (!isOpen) _buildPswList();
-  sw.classList.toggle('open');
+  if (isOpen) { sw.classList.remove('open'); return; }
+  _buildPswList();
+  sw.classList.add('open');
 }
 
 function closeProjSwitcher() {
@@ -1924,9 +1924,12 @@ async function switchProject(id) {
 // ── USER DROPDOWN ─────────────────────────────────────────────────────────────
 function toggleUserDropdown(e) {
   e.stopPropagation();
-  closeProjSwitcher(); // close other dropdown first
+  closeProjSwitcher();
   var dd = document.getElementById('user-dropdown');
-  if (dd) dd.classList.toggle('open');
+  if (!dd) return;
+  var isOpen = dd.classList.contains('open');
+  if (isOpen) { dd.classList.remove('open'); return; }
+  dd.classList.add('open');
 }
 function closeUserDropdown() {
   var dd = document.getElementById('user-dropdown');
