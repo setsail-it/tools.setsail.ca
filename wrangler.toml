@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[kv_namespaces]]
 binding = "SETSAIL_OS"
 id = "c3439e54cebb4328b0fc5753a9292bc2"
+remote = true
 
 [[queues.producers]]
 binding = "SETSAIL_GEN_QUEUE"

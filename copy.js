@@ -37,9 +37,9 @@ async function runSerpIntel(slug) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:8px;height:8px;display:inline-block;vertical-align:middle;border:1.5px solid var(--n2);border-top-color:var(--dark);border-radius:50%;animation:spin .7s linear infinite"></span>'; }
   if (status) status.textContent = 'Fetching top 3 competitors…';
 
-  // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
-  const country = (S.kwResearch && S.kwResearch.country)
-    ? S.kwResearch.country.toUpperCase()
+  // Per-page geo override → saved country selection → auto-detect from project geo
+  const country = page.targetGeo ? detectCountry(page.targetGeo)
+    : (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country.toUpperCase()
     : detectCountry((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '');
 
   try {
@@ -132,7 +132,7 @@ function buildCopyPrompt(page) {
       + '\nSUPPORTING KEYWORDS: ' + kws
       + '\nTARGET WORD COUNT: ' + (page.word_count_target || 1200)
       + '\nBUSINESS OVERVIEW: ' + (r.business_overview||'')
-      + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
+      + '\nGEOGRAPHY: ' + getPageGeo(page)
       + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
@@ -150,7 +150,7 @@ function buildCopyPrompt(page) {
     + '\nOVERVIEW: ' + (r.business_overview||'')
     + '\nVALUE PROP: ' + (r.value_proposition||'')
     + '\nDIFFERENTIATORS: ' + (r.key_differentiators||[]).join('. ')
-    + '\nGEOGRAPHY: ' + (r.geography&&r.geography.primary||s.geo||'')
+    + '\nGEOGRAPHY: ' + getPageGeo(page)
     + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
     + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
     + (((r.pain_points_top5||[]).length) ? '\nAUDIENCE PAIN POINTS: ' + (r.pain_points_top5||[]).slice(0,3).join('; ') : '')
@@ -643,7 +643,7 @@ async function runCopyPass2(slug) {
     + '\nSupporting keywords: ' + kws
     + '\nWord count target: ' + (p.word_count_target||1500)
     + '\nClient: ' + (s&&s.client||'')
-    + '\nGeo: ' + ((r.geography&&r.geography.primary)||(s&&s.geo)||'')
+    + '\nGeo: ' + getPageGeo(p)
     + '\nVoice: ' + ((r.tone_and_voice)||(s&&s.voice)||'Confident, direct. Canadian spelling.');
 
   // Trim HTML for input — strip inline styles and class attrs to save tokens

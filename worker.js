@@ -183,6 +183,11 @@ export default {
         }
       }
 
+      // Local dev bypass: if no CF Access is configured, fall back to ADMIN_EMAIL
+      if (!userId && !teamDomain && env.ADMIN_EMAIL) {
+        userId = env.ADMIN_EMAIL.toLowerCase().trim();
+      }
+
       if (!userId) {
         return new Response(JSON.stringify({ error: 'Unauthorized', code: 'NO_AUTH' }), {
           status: 401, headers: { 'Content-Type': 'application/json', ...cors }
@@ -1758,6 +1763,9 @@ export default {
 
     // Everything else → static assets
     // Force no-cache on HTML so deploys take effect immediately
+    if (!env.ASSETS) {
+      return new Response('Not found', { status: 404, headers: cors });
+    }
     const assetRes = await env.ASSETS.fetch(request);
     const ct = assetRes.headers.get('Content-Type') || '';
     if (ct.includes('text/html')) {

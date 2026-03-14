@@ -327,80 +327,89 @@ function enrichSitemapWithKwData() {
   });
 }
 
-async function enrichSitemapWithLiveData() {
-  // Async pass: directly lookup any keyword that's still missing vol data
+async function enrichSitemapWithLiveData(forceAll) {
+  // Async pass: lookup keywords grouped by page target geo
   if (!S.pages?.length) return;
 
-  // Collect all unique keywords across all pages that need data
-  const needed = new Set();
-  S.pages.forEach(p => {
-    if (!p.primary_vol || p.primary_vol === 0) needed.add((p.primary_keyword || '').trim());
-    (p.supporting_keywords || []).forEach(sk => {
-      const kw = typeof sk === 'object' ? sk.kw : sk;
-      if (kw && (!sk.vol || sk.vol === 0)) needed.add(kw.trim());
+  // Group keywords by country (from page targetGeo)
+  var geoGroups = {}; // { country: { kws: Set, pageIdxs: [] } }
+  S.pages.forEach(function(p, idx) {
+    var country = getPageCountry(p);
+    if (!geoGroups[country]) geoGroups[country] = { kws: new Set(), pageIdxs: [] };
+    geoGroups[country].pageIdxs.push(idx);
+    var pk = (p.primary_keyword || '').trim();
+    if (pk.length > 2 && (forceAll || !p.primary_vol || p.primary_vol === 0)) geoGroups[country].kws.add(pk);
+    (p.supporting_keywords || []).forEach(function(sk) {
+      var kw = typeof sk === 'object' ? sk.kw : sk;
+      if (kw && kw.length > 2 && (forceAll || !sk.vol || sk.vol === 0)) geoGroups[country].kws.add(kw.trim());
     });
   });
-  const kwList = [...needed].filter(k => k.length > 2);
-  if (!kwList.length) return;
 
-  // Show enriching indicator
-  const statusEls = document.querySelectorAll('[id^="sitemap-enrich-status"]');
-  const enrichBadge = document.getElementById('sitemap-enrich-badge');
-  if (enrichBadge) { enrichBadge.style.display = 'inline-flex'; enrichBadge.textContent = 'Fetching ' + kwList.length + ' keyword volumes…'; }
+  var totalKws = Object.values(geoGroups).reduce(function(sum, g) { return sum + g.kws.size; }, 0);
+  if (!totalKws) return;
 
+  var enrichBadge = document.getElementById('sitemap-enrich-badge');
+  var enrichText = document.getElementById('sitemap-enrich-text');
+  if (enrichBadge) { enrichBadge.style.display = 'inline-flex'; }
+  if (enrichText) enrichText.textContent = 'Fetching ' + totalKws + ' keyword volumes…';
+
+  var countries = Object.keys(geoGroups);
   try {
-    // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
-    const country = (S.kwResearch && S.kwResearch.country)
-      ? S.kwResearch.country.toUpperCase()
-      : detectCountry(S.research?.geography?.primary || S.setup?.geo || '');
+    for (var ci = 0; ci < countries.length; ci++) {
+      var country = countries[ci];
+      var kwList = [...geoGroups[country].kws];
+      if (!kwList.length) continue;
+      if (enrichText && countries.length > 1) enrichText.textContent = 'Fetching ' + kwList.length + ' keywords (' + country + ')…';
 
-    const res = await fetch('/api/ahrefs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: kwList, country })
-    });
-    const data = await res.json();
-    if (!data.keywords) throw new Error(data.error || 'No data');
+      var res = await fetch('/api/ahrefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: kwList, country: country })
+      });
+      var data = await res.json();
+      if (!data.keywords) continue;
 
-    // Build lookup from fresh data
-    const fresh = {};
-    data.keywords.forEach(k => { fresh[k.keyword.toLowerCase().trim()] = k; });
+      // Build lookup from fresh data
+      var fresh = {};
+      data.keywords.forEach(function(k) { fresh[k.keyword.toLowerCase().trim()] = k; });
 
-    // Also add to kwResearch cache for future use
-    if (!S.kwResearch) S.kwResearch = { keywords: [], fetchedAt: Date.now(), source: 'dataforseo' };
-    const existingKws = new Set(S.kwResearch.keywords.map(k => k.kw.toLowerCase()));
-    data.keywords.filter(k => k.volume > 0 && !existingKws.has(k.keyword.toLowerCase())).forEach(k => {
-      const kd = k.difficulty > 0 ? k.difficulty : 50;
-      S.kwResearch.keywords.push({ kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10 });
-    });
+      // Also add to kwResearch cache
+      if (!S.kwResearch) S.kwResearch = { keywords: [], fetchedAt: Date.now(), source: 'dataforseo' };
+      var existingKws = new Set(S.kwResearch.keywords.map(function(k) { return k.kw.toLowerCase(); }));
+      data.keywords.filter(function(k) { return k.volume > 0 && !existingKws.has(k.keyword.toLowerCase()); }).forEach(function(k) {
+        var kd = k.difficulty > 0 ? k.difficulty : 50;
+        S.kwResearch.keywords.push({ kw: k.keyword, vol: k.volume, kd: k.difficulty, score: Math.round((Math.log(k.volume+1)*100/kd)*10)/10, country: country });
+      });
 
-    // Apply fresh data to pages
-    S.pages = S.pages.map(p => {
-      const pk = (p.primary_keyword || '').toLowerCase().trim();
-      const hit = fresh[pk];
-      if (hit && hit.volume > 0) {
-        p.primary_vol = hit.volume;
-        p.primary_kd = hit.difficulty || 0;
-        const kd2 = hit.difficulty > 0 ? hit.difficulty : 50;
-        p.score = hit.volume >= 50 ? Math.round((Math.log(hit.volume+1)*100/Math.max(kd2,5))*10)/10 : 0;
-      }
-      if (p.supporting_keywords?.length) {
-        p.supporting_keywords = p.supporting_keywords.map(sk => {
-          const raw = typeof sk === 'object' ? sk.kw : String(sk);
-          const h = fresh[raw.toLowerCase().trim()];
-          return h && h.volume > 0 ? { kw: raw, vol: h.volume, kd: h.difficulty || 0 } : (typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 });
-        });
-      }
-      return p;
-    });
+      // Apply fresh data to pages in this geo group
+      geoGroups[country].pageIdxs.forEach(function(idx) {
+        var p = S.pages[idx];
+        var pk = (p.primary_keyword || '').toLowerCase().trim();
+        var hit = fresh[pk];
+        if (hit && hit.volume > 0) {
+          p.primary_vol = hit.volume;
+          p.primary_kd = hit.difficulty || 0;
+          var kd2 = hit.difficulty > 0 ? hit.difficulty : 50;
+          p.score = hit.volume >= 50 ? Math.round((Math.log(hit.volume+1)*100/Math.max(kd2,5))*10)/10 : 0;
+        }
+        if (p.supporting_keywords && p.supporting_keywords.length) {
+          p.supporting_keywords = p.supporting_keywords.map(function(sk) {
+            var raw = typeof sk === 'object' ? sk.kw : String(sk);
+            var h = fresh[raw.toLowerCase().trim()];
+            return h && h.volume > 0 ? { kw: raw, vol: h.volume, kd: h.difficulty || 0 } : (typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 });
+          });
+        }
+      });
+    }
 
     scheduleSave();
     renderSitemapResults(S.sitemapApproved);
     if (enrichBadge) enrichBadge.style.display = 'none';
 
   } catch(e) {
-    if (enrichBadge) { enrichBadge.style.display = 'none'; }
+    if (enrichBadge) enrichBadge.style.display = 'none';
     console.warn('Live enrich failed:', e.message);
+    if (typeof aiBarNotify === 'function') aiBarNotify('Volume fetch failed: ' + e.message, {duration:4000});
   }
 }
 
@@ -433,7 +442,8 @@ function addNewPage() {
     is_structural: false, priority: 'P2', primary_keyword: '',
     primary_vol: 0, primary_kd: 0, score: 0,
     supporting_keywords: [], search_intent: 'commercial',
-    word_count_target: 1500, notes: '', meta_title: '', meta_description: ''
+    word_count_target: 1500, notes: '', meta_title: '', meta_description: '',
+    targetGeo: ''
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -466,9 +476,8 @@ async function updatePrimaryKw(idx, rawKw) {
     S.pages[idx].score = cached.score || (cached.vol>=50&&cached.kd>0 ? Math.round((Math.log(cached.vol+1)*100/Math.max(cached.kd,5))*10)/10 : 0);
     scheduleSave(); renderSitemapResults(S.sitemapApproved); return;
   }
-  // Live DataForSEO lookup
-  const geo = S.research?.geography?.primary || S.setup?.geo || '';
-  const country = detectCountry(geo);
+  // Live DataForSEO lookup — use page-level geo if set
+  const country = getPageCountry(S.pages[idx]);
   try {
     const res = await fetch('/api/ahrefs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keywords:[kw],country})});
     const data = await res.json();
@@ -661,17 +670,17 @@ function _renderSitemapResultsInner(approved) {
   html += '<div style="display:flex;align-items:center;gap:8px">';
   if (hasKwData) {
     html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
-    html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap. Use after making keyword edits in Edit mode." style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market. Use after making keyword or market edits." style="font-size:11px;padding:2px 8px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
   }
   html += '<button class="btn btn-ghost sm" data-tip="Generates a visual hierarchy diagram of the sitemap — shows parent/child page relationships. Useful for client presentations and IA review." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
 
-  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]
-  const gcols = sitemapEditMode ? '22px 1.5fr 1.3fr 58px 46px 54px 52px 60px' : '22px 1.5fr 1.3fr 58px 46px 54px 58px 60px';
+  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Intent | Priority | Market | Traffic
+  const gcols = sitemapEditMode ? '22px 1.4fr 1.1fr 54px 42px 48px 62px 48px 76px 54px' : '22px 1.4fr 1.1fr 54px 42px 48px 62px 52px 76px 54px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
-    + '<span>#</span><span>Page</span><span title="Cluster anchor keyword — sets page scope. Niche variants &amp; copy-level assignment happen in Stage 6 Briefs.">Cluster Anchor <span style="font-size:8px;font-weight:400;opacity:0.6;text-transform:none">↓ Stage 6</span></span><span>Vol/mo</span><span>KD</span><span>Score</span><span>Priority</span><span title="Existing monthly organic traffic">Traffic</span>'
+    + '<span>#</span><span>Page</span><span title="Cluster anchor keyword — sets page scope. Niche variants &amp; copy-level assignment happen in Stage 6 Briefs.">Cluster Anchor <span style="font-size:8px;font-weight:400;opacity:0.6;text-transform:none">↓ Stage 6</span></span><span>Vol/mo</span><span>KD</span><span>Score</span><span title="Search intent of the page">Intent</span><span>Priority</span><span title="Target market — inherits primary market unless overridden">Market</span><span title="Existing monthly organic traffic">Traffic</span>'
     + ''
     + '</div>';
 
@@ -777,12 +786,33 @@ function _renderSitemapResultsInner(approved) {
     html += volHtml;
     html += '<span style="color:'+kdColor+';font-size:12px;font-weight:500">'+(kd||'?')+'</span>';
     html += '<span style="color:var(--n3);font-size:11px">'+score+'</span>';
+    // Intent column
+    var _intent = (p.search_intent||'').toLowerCase();
+    var _intentColor = _intent==='transactional'?'#e65100':_intent==='commercial'?'#1565c0':_intent==='informational'?'#2e7d32':_intent==='navigational'?'var(--n2)':'var(--n2)';
+    var _intentLabel = _intent==='transactional'?'trans':_intent==='commercial'?'comm':_intent==='informational'?'info':_intent==='navigational'?'nav':(_intent||'–');
+    if (sitemapEditMode) {
+      html += `<select onchange="updatePageField(${i},'search_intent',this.value);renderSitemapResults(S.sitemapApproved)" style="font-size:10px;color:${_intentColor};background:var(--n1);border:1px solid var(--border);border-radius:4px;padding:2px 3px;font-family:var(--font);outline:none">`;
+      [{v:'commercial',l:'Comm'},{v:'transactional',l:'Trans'},{v:'informational',l:'Info'},{v:'navigational',l:'Nav'}].forEach(function(o){ html += '<option value="'+o.v+'"'+(_intent===o.v?' selected':'')+'>'+o.l+'</option>'; });
+      html += '</select>';
+    } else {
+      html += '<span style="color:'+_intentColor+';font-size:10px;font-weight:500">'+_intentLabel+'</span>';
+    }
     if (sitemapEditMode) {
       html += `<select onchange="updatePageField(${i},'priority',this.value);renderSitemapResults(S.sitemapApproved)" style="font-size:11px;color:${pColor};font-weight:500;background:var(--n1);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-family:var(--font);outline:none">`;
       ['P1','P2','P3'].forEach(pv => { html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`; });
       html += '</select>';
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
+    }
+    // Market column
+    var _defaultGeoLabel = (S.research&&S.research.geography&&S.research.geography.primary)||(S.setup&&S.setup.geo)||'';
+    var _pageGeoVal = p.targetGeo || '';
+    if (sitemapEditMode) {
+      html += '<input value="'+esc(_pageGeoVal)+'" placeholder="'+esc(_defaultGeoLabel||'—')+'" onblur="updatePageField('+i+',\'targetGeo\',this.value.trim());renderSitemapResults(S.sitemapApproved)" style="font-size:10px;color:'+(_pageGeoVal?'var(--dark)':'var(--n2)')+';background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none;width:100%" title="Target market — leave empty to use primary market"/>';
+    } else {
+      var _geoDisplay = _pageGeoVal || _defaultGeoLabel;
+      var _geoColor = _pageGeoVal ? '#3b82f6' : 'var(--n2)';
+      html += '<span style="color:'+_geoColor+';font-size:10px" title="'+esc(_pageGeoVal?'Override: '+_pageGeoVal:'Inherited: '+_defaultGeoLabel)+'">'+esc(_geoDisplay.replace(/,.*$/,'').trim()||'—')+'</span>';
     }
     // Traffic column
     var _traffic = p.existing_traffic || 0;
@@ -818,6 +848,7 @@ function _renderSitemapResultsInner(approved) {
         } else {
           html += '<span></span>';
         }
+        html += '<span></span><span></span><span></span>'; // Intent + Market + Traffic spacers
         html += '</div>';
       });
     }

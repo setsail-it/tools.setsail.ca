@@ -1152,7 +1152,7 @@ async function generatePageBrief(pageIdx) {
     'Best customer example: '+(R.best_customer_examples||''),
     'Top pain points: '+((R.pain_points_top5||[]).slice(0,3).join('; ')||''),
     'Top objections: '+((R.objections_top5||[]).slice(0,3).join('; ')||''),
-    'Geography: '+((R.geography&&R.geography.primary)||R.target_geography||''),
+    'Geography: '+(getPageGeo(p)||R.target_geography||''),
   ].filter(function(l){ return l.split(': ')[1]; }).join('\n');
 
   var ctxCompetitors = (R.competitors||[]).slice(0,3).map(function(c){
@@ -1178,8 +1178,8 @@ async function generatePageBrief(pageIdx) {
   if (p.primary_keyword) {
     try {
       // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
-      var country2 = (S.kwResearch && S.kwResearch.country)
-        ? S.kwResearch.country.toUpperCase()
+      var country2 = p.targetGeo ? detectCountry(p.targetGeo)
+        : (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country.toUpperCase()
         : detectCountry((R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '');
       if (streamEl) streamEl.textContent = 'Fetching SERP Intel for "' + p.primary_keyword + '"…';
       var siRes = await fetch('/api/serp-intel', {

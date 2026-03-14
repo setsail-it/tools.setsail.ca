@@ -315,9 +315,8 @@ textarea.inp{resize:vertical}
           <div><label style="font-size:12px;display:block;margin-bottom:5px">Client Name *</label><input class="inp" id="f-client" placeholder="e.g. Riverside Roofing"></div>
           <div><label style="font-size:12px;display:block;margin-bottom:5px">Website URL</label><input class="inp" id="f-url" placeholder="e.g. riversideroofing.ca"></div>
         </div>
-        <div class="grid-2">
-          <div><label style="font-size:12px;display:block;margin-bottom:5px">Target Geography</label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC"></div>
-          <div><label style="font-size:12px;display:block;margin-bottom:5px">Pricing to Mention</label><input class="inp" id="f-pricing" placeholder="e.g. From $2,400/mo flat"></div>
+        <div>
+          <label style="font-size:12px;display:block;margin-bottom:5px">Primary Market <span style="color:var(--n2)">— default geo for all pages, overrideable per page in Sitemap</span></label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC">
         </div>
       </div>
       <div class="card">
@@ -328,39 +327,10 @@ textarea.inp{resize:vertical}
         </div>
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <label style="font-size:12px">Website Strategy Brief <span style="color:var(--n2)">— 300-word synthesis used verbatim in every brief + copy prompt</span></label>
-            <button id="synth-btn" onclick="synthesiseWebStrategy()" class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-tip="Reads the full strategy document above and synthesises a focused 300-word website brief: what the site must convince visitors of, the competitive frame, one rule per page type, and any hard content rules. Injected verbatim — not summarised — into every brief and copy generation call."><i class="ti ti-sparkles"></i> Synthesise from strategy</button>
+            <label style="font-size:12px">Website Strategy Brief <span style="color:var(--n2)">— 600–800 word synthesis used verbatim in every brief + copy prompt</span></label>
+            <button id="synth-btn" onclick="synthesiseWebStrategy()" class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-tip="Reads the full strategy document above and synthesises a focused 600-800 word website brief: what the site must convince visitors of, the competitive frame, rules per page type, proof requirements, and hard content rules. Injected verbatim into every brief and copy generation call."><i class="ti ti-sparkles"></i> Synthesise from strategy</button>
           </div>
           <textarea class="inp" id="f-web-strategy" rows="5" placeholder="AI will synthesise this from your strategy doc, or write it manually. This goes verbatim into every brief and copy generation call — keep it tight and specific."></textarea>
-        </div>
-        <label style="font-size:12px;display:block;margin-bottom:5px">Brand Voice Notes</label>
-        <textarea class="inp" id="f-voice" rows="2" placeholder="e.g. Direct and confident. Canadian spelling."></textarea>
-      </div>
-      <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Competitors</span><div class="section-mark-line"></div></div>
-        <textarea class="inp" id="f-competitors" rows="3" placeholder="competitor1.ca&#10;competitor2.com"></textarea>
-      </div>
-      <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Image Style</span><div class="section-mark-line"></div></div>
-        <label style="font-size:12px;display:block;margin-bottom:5px">Global Image Style Guidelines <span style="color:var(--n2)">— applied to all AI-generated images by default (overrideable per page in Stage 5)</span></label>
-        <textarea class="inp" id="f-image-style" rows="3" placeholder="e.g. Professional photography style, clean and modern, neutral backgrounds, construction/trades industry context, no people unless requested, bright natural lighting"></textarea>
-      </div>
-      <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Site Type</span><div class="section-mark-line"></div></div>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;margin-bottom:14px">
-          <input type="checkbox" id="f-existing-site" style="width:16px;height:16px;accent-color:var(--green);cursor:pointer">
-          <span style="font-size:13px;color:var(--dark)">This is an <strong>existing site</strong> — run a pre-build snapshot to protect rankings &amp; map 301 redirects</span>
-        </label>
-        <div>
-          <label style="font-size:12px;display:block;margin-bottom:5px">CMS Platform <span style="color:var(--n2)">&#8212; determines schema variable syntax for CMS pages (blog, portfolio, etc.)</span></label>
-          <select class="inp" id="f-cms" style="font-size:13px">
-            <option value="">None / Static HTML</option>
-            <option value="webflow">Webflow</option>
-            <option value="wordpress">WordPress</option>
-            <option value="shopify">Shopify</option>
-            <option value="framer">Framer</option>
-            <option value="custom">Custom / Other</option>
-          </select>
         </div>
       </div>
       <div class="card">
@@ -1100,17 +1070,8 @@ function prefillSetup() {
   document.getElementById('f-client').value = s.client || '';
   document.getElementById('f-url').value = s.url || '';
   document.getElementById('f-geo').value = s.geo || '';
-  document.getElementById('f-pricing').value = s.pricing || '';
   document.getElementById('f-strategy').value = s.strategy || '';
   const fws = document.getElementById('f-web-strategy'); if(fws) fws.value = s.webStrategy || '';
-  document.getElementById('f-voice').value = s.voice || '';
-  document.getElementById('f-competitors').value = s.competitors || '';
-  const imgStyleEl = document.getElementById('f-image-style');
-  if (imgStyleEl) imgStyleEl.value = s.imageStyle || '';
-  const existingEl = document.getElementById('f-existing-site');
-  if (existingEl) existingEl.checked = !!s.isExistingSite;
-  const cmsEl = document.getElementById('f-cms');
-  if (cmsEl) cmsEl.value = s.cms || '';
   renderDocsList();
 }
 
@@ -1685,23 +1646,22 @@ function setupNext() {
   if (!client) return showSetupErr('Client name is required');
   if (strategy.length < 80) return showSetupErr('Strategy document is too short — paste the full brief');
   hideSetupErr();
-  const isExistingSite = document.getElementById('f-existing-site')?.checked || false;
+  const prev = S.setup || {};
   S.setup = {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
-    pricing: document.getElementById('f-pricing').value.trim(),
-    strategy, webStrategy: (document.getElementById('f-web-strategy')?.value||'').trim(), voice: document.getElementById('f-voice').value.trim(),
-    competitors: document.getElementById('f-competitors').value.trim(),
-    imageStyle: (document.getElementById('f-image-style')?.value || '').trim(),
-    cms: (document.getElementById('f-cms')?.value || '').trim(),
-    isExistingSite,
-    docs: (S.setup && S.setup.docs) ? S.setup.docs : [],
+    strategy, webStrategy: (document.getElementById('f-web-strategy')?.value||'').trim(),
+    docs: prev.docs || [],
+    // preserved from previous save or downstream stages
+    pricing: prev.pricing || '', voice: prev.voice || '',
+    competitors: prev.competitors || '', imageStyle: prev.imageStyle || '',
+    cms: prev.cms || '', isExistingSite: prev.isExistingSite || false,
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-meta-wrap').style.display = '';
   renderProjSwitcher();
   scheduleSave();
-  goTo(isExistingSite ? 'snapshot' : 'research');
+  goTo('snapshot');
 }
 
 async function synthesiseWebStrategy() {
@@ -1713,8 +1673,8 @@ async function synthesiseWebStrategy() {
   if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:10px;height:10px"></span> Synthesising...'; }
   window._aiBarLabel = 'Synthesising web strategy...';
   try {
-    var sys = 'You are a senior brand strategist. Read the full client strategy document and extract a focused 300-word website-specific strategy brief. Output exactly these 5 sections:\n1. WHAT THE SITE MUST CONVINCE: The single core belief the visitor must leave with\n2. COMPETITIVE FRAME: Why this company vs the obvious alternatives (be specific)\n3. PAGE TYPE RULES: One sentence per page type (service/location/blog/home) on what it must communicate\n4. PROOF REQUIREMENTS: What specific evidence, stats, or social proof must appear\n5. HARD RULES: Anything the copy must never do (tone, claims, topics)\n\nBe specific and direct. No generic marketing language. Use the client name throughout.';
-    var result = await callClaude(sys, 'Strategy document:\n\n' + fullDoc.slice(0, 12000), null, 1500);
+    var sys = 'You are a senior brand strategist. Read the full client strategy document and extract a focused 600–800 word website-specific strategy brief. Output exactly these 5 sections:\n1. WHAT THE SITE MUST CONVINCE: The core belief the visitor must leave with — what transformation or outcome the company delivers, and why it matters to the buyer right now. Include the emotional and rational triggers.\n2. COMPETITIVE FRAME: Why this company vs the obvious alternatives. Name the competitor types (not brands), explain the positioning gap, and state the unfair advantage. Be specific — generic differentiators like \"experienced team\" are worthless.\n3. PAGE TYPE RULES: 2–3 sentences per page type (service, location, industry, blog, home, landing) on what each must communicate, the conversion intent, and what proof belongs there. Different page types serve different buyer stages — reflect that.\n4. PROOF REQUIREMENTS: What specific evidence, stats, case studies, or social proof must appear. Name the types of proof (revenue impact, client logos, timelines, guarantees) and where they should show up. Vague proof like \"trusted by many\" is not proof.\n5. HARD RULES: Anything the copy must never do — banned phrases, tone boundaries, compliance constraints, topics to avoid, and any formatting or structural mandates.\n\nBe specific and direct. No generic marketing language. Use the client name throughout. Every sentence should be actionable — if a copywriter cannot act on it, cut it.';
+    var result = await callClaude(sys, 'Strategy document:\n\n' + fullDoc.slice(0, 16000), null, 2500);
     var el = document.getElementById('f-web-strategy');
     if (el) el.value = result;
     if (typeof aiBarNotify==='function') aiBarNotify('✓ Web strategy synthesised — review and edit before continuing', {duration:5000});
@@ -2030,6 +1990,10 @@ function sanitiseHTML(html){if(typeof DOMPurify!=='undefined')return DOMPurify.s
 // Shared country detection from geo string — single source of truth for all stages
 function detectCountry(geo){var g=(geo||'').toLowerCase();if(/australia|sydney|melbourne|brisbane|perth|adelaide/.test(g))return 'AU';if(/new zealand|auckland|wellington/.test(g))return 'NZ';if(/united kingdom|\buk\b|london|manchester|birmingham|leeds|glasgow|edinburgh/.test(g))return 'GB';if(/singapore/.test(g))return 'SG';if(/south africa|cape town|johannesburg/.test(g))return 'ZA';if(/united states|\bus\b|new york|los angeles|chicago|houston|phoenix|dallas|seattle|denver|miami|boston/.test(g))return 'US';return 'CA';}
 function detectCountryLower(geo){return detectCountry(geo).toLowerCase();}
+/** Returns the effective geo string for a page — per-page override or project default */
+function getPageGeo(page){return (page&&page.targetGeo)||((S.research&&S.research.geography&&S.research.geography.primary)||'')||((S.setup&&S.setup.geo)||'');}
+/** Returns the country code for a page */
+function getPageCountry(page){return detectCountry(getPageGeo(page));}
 function saveMetaField(slug, field, val) {
   const idx = S.pages.findIndex(p => p.slug === slug);
   if (idx < 0) return;
