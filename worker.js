@@ -1,8 +1,62 @@
+// ── CF Access JWT verification helpers ──────────────────────────────────
+// Validates the Cf-Access-JWT-Assertion token against your team's public keys.
+// Set CF_ACCESS_TEAM_DOMAIN env var to your team name (e.g. "setsail" for setsail.cloudflareaccess.com).
+// Falls back to header-only auth if env var is not yet configured (logs warning).
+let _cfAccessKeysCache = null;
+let _cfAccessKeysCachedAt = 0;
+const CF_KEYS_TTL = 3600000; // 1 hour
+
+async function getCFAccessPublicKeys(teamDomain) {
+  if (_cfAccessKeysCache && Date.now() - _cfAccessKeysCachedAt < CF_KEYS_TTL) return _cfAccessKeysCache;
+  const res = await fetch(`https://${teamDomain}.cloudflareaccess.com/cdn-cgi/access/certs`);
+  if (!res.ok) throw new Error('Failed to fetch CF Access certs');
+  const data = await res.json();
+  _cfAccessKeysCache = data.keys || data.public_certs?.map(c => c.kid) || [];
+  _cfAccessKeysCachedAt = Date.now();
+  return data;
+}
+
+function base64urlDecode(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  const bin = atob(str);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+async function verifyCFAccessJWT(token, teamDomain) {
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('Invalid JWT format');
+  const header = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[0])));
+  const payload = JSON.parse(new TextDecoder().decode(base64urlDecode(parts[1])));
+
+  // Check expiry
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) throw new Error('JWT expired');
+  // Check issuer
+  const expectedIssuer = `https://${teamDomain}.cloudflareaccess.com`;
+  if (payload.iss && payload.iss !== expectedIssuer) throw new Error('JWT issuer mismatch');
+
+  // Fetch public keys and find matching key
+  const certsData = await getCFAccessPublicKeys(teamDomain);
+  const keys = certsData.keys || [];
+  const matchingKey = keys.find(k => k.kid === header.kid);
+  if (!matchingKey) throw new Error('No matching public key for kid: ' + header.kid);
+
+  // Import the JWK and verify signature
+  const cryptoKey = await crypto.subtle.importKey('jwk', matchingKey, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const signatureBytes = base64urlDecode(parts[2]);
+  const dataBytes = new TextEncoder().encode(parts[0] + '.' + parts[1]);
+  const valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', cryptoKey, signatureBytes, dataBytes);
+  if (!valid) throw new Error('JWT signature invalid');
+
+  return payload;
+}
+// ────────────────────────────────────────────────────────────────────────
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const cors = {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': url.origin || '*',
       'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
@@ -11,18 +65,40 @@ export default {
       return new Response(null, { headers: cors });
     }
 
-    // ── AUTH — Cloudflare Access ─────────────────────────────────
-    // CF-Access-Authenticated-User-Email is injected by Cloudflare Access
-    // after the user authenticates. On localhost / non-Access requests it's absent.
-    const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email') || null;
-    const userId = userEmail ? userEmail.toLowerCase().trim() : null;
+    // ── AUTH — Cloudflare Access (JWT-verified) ───────────────────
+    // Primary: validate Cf-Access-JWT-Assertion token signature + claims.
+    // Fallback: Cf-Access-Authenticated-User-Email header (if JWT env not configured yet).
+    let userId = null;
+    const teamDomain = env.CF_ACCESS_TEAM_DOMAIN; // e.g. "setsail"
+    const jwtToken = request.headers.get('Cf-Access-JWT-Assertion');
 
-    // All /api/* routes require auth (except OPTIONS already handled above)
-    if (url.pathname.startsWith('/api/') && !userId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized', code: 'NO_AUTH' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', ...cors }
-      });
+    if (url.pathname.startsWith('/api/')) {
+      if (teamDomain && jwtToken) {
+        try {
+          const claims = await verifyCFAccessJWT(jwtToken, teamDomain);
+          userId = (claims.email || '').toLowerCase().trim() || null;
+        } catch (jwtErr) {
+          return new Response(JSON.stringify({ error: 'Auth failed: ' + jwtErr.message, code: 'JWT_INVALID' }), {
+            status: 401, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+      } else {
+        // Fallback: trust CF Access email header (safe only if *.workers.dev route is disabled)
+        const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email') || null;
+        userId = userEmail ? userEmail.toLowerCase().trim() : null;
+        if (teamDomain && !jwtToken) {
+          // JWT expected but missing — reject
+          return new Response(JSON.stringify({ error: 'Missing access token', code: 'NO_JWT' }), {
+            status: 401, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+      }
+
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized', code: 'NO_AUTH' }), {
+          status: 401, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
     }
 
     // Helper: user-scoped KV prefix for project keys
@@ -228,19 +304,32 @@ export default {
         if (!projectId || !jobs?.length) {
           return new Response(JSON.stringify({ error: 'projectId and jobs required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
+        // ── Security: whitelist job types + cap batch size ──
+        const ALLOWED_JOB_TYPES = ['brief', 'copy'];
+        const MAX_JOBS_PER_SUBMIT = 50;
+        if (jobs.length > MAX_JOBS_PER_SUBMIT) {
+          return new Response(JSON.stringify({ error: 'Too many jobs (max ' + MAX_JOBS_PER_SUBMIT + ')' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
         const submitted = [];
         for (const job of jobs) {
+          if (!ALLOWED_JOB_TYPES.includes(job.type)) {
+            return new Response(JSON.stringify({ error: 'Invalid job type: ' + job.type }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+          }
+          if (typeof job.pageIdx !== 'number' || job.pageIdx < 0 || job.pageIdx > 500) {
+            return new Response(JSON.stringify({ error: 'Invalid pageIdx' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+          }
           const jobId = `${job.type}:${job.slug}:${Date.now()}:${Math.random().toString(36).slice(2,7)}`;
           const jobKey = userPrefix + 'job:' + projectId + ':' + jobId;
           await env.SETSAIL_OS.put(jobKey, JSON.stringify({
             jobId, projectId, userId,
-            type: job.type,      // 'brief' | 'copy'
+            type: job.type,
             slug: job.slug,
             pageIdx: job.pageIdx,
             status: 'queued',
             createdAt: Date.now(),
-          }), { expirationTtl: 86400 }); // jobs expire after 24h
-          await env.SETSAIL_GEN_QUEUE.send({ jobId, jobKey, userId, userPrefix, projectId, type: job.type, slug: job.slug, pageIdx: job.pageIdx });
+          }), { expirationTtl: 86400 });
+          // Pass userId (not userPrefix) — consumer re-derives the prefix
+          await env.SETSAIL_GEN_QUEUE.send({ jobId, jobKey, userId, projectId, type: job.type, slug: job.slug, pageIdx: job.pageIdx });
           submitted.push(jobId);
         }
         return new Response(JSON.stringify({ ok: true, submitted }), { headers: { 'Content-Type': 'application/json', ...cors } });
@@ -271,6 +360,21 @@ export default {
       if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       try {
         const body = await request.json();
+        // ── Security: lock down proxy to allowed models + cap tokens ──
+        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+        const MAX_TOKENS_CAP = 8192;
+        if (body.model && !ALLOWED_MODELS.includes(body.model)) {
+          return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        if (!body.model) body.model = 'claude-sonnet-4-20250514';
+        if (!body.max_tokens || body.max_tokens > MAX_TOKENS_CAP) body.max_tokens = MAX_TOKENS_CAP;
+        if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+          return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        // Strip any fields that should not be proxied
+        const sanitised = { model: body.model, max_tokens: body.max_tokens, messages: body.messages, stream: body.stream !== false };
+        if (body.system) sanitised.system = body.system;
+        if (body.temperature != null) sanitised.temperature = Math.min(Math.max(Number(body.temperature) || 0, 0), 1);
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -278,7 +382,7 @@ export default {
             'x-api-key': env.ANTHROPIC_API_KEY,
             'anthropic-version': '2023-06-01',
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(sanitised),
         });
         return new Response(response.body, {
           status: response.status,
@@ -748,7 +852,20 @@ export default {
     if (url.pathname === '/api/claude-sync' && request.method === 'POST') {
       try {
         const body = await request.json();
-        body.stream = false;
+        // ── Security: same lockdown as /api/claude ──
+        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+        const MAX_TOKENS_CAP = 8192;
+        if (body.model && !ALLOWED_MODELS.includes(body.model)) {
+          return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        if (!body.model) body.model = 'claude-sonnet-4-20250514';
+        if (!body.max_tokens || body.max_tokens > MAX_TOKENS_CAP) body.max_tokens = MAX_TOKENS_CAP;
+        if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+          return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        const sanitised = { model: body.model, max_tokens: body.max_tokens, messages: body.messages, stream: false };
+        if (body.system) sanitised.system = body.system;
+        if (body.temperature != null) sanitised.temperature = Math.min(Math.max(Number(body.temperature) || 0, 0), 1);
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -756,7 +873,7 @@ export default {
             'x-api-key': env.ANTHROPIC_API_KEY,
             'anthropic-version': '2023-06-01',
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(sanitised),
         });
         const data = await response.json();
         return new Response(JSON.stringify(data), {
@@ -1555,7 +1672,9 @@ export default {
   async queue(batch, env) {
     for (const msg of batch.messages) {
       const job = msg.body;
-      const { jobId, jobKey, userId, userPrefix, projectId, type, slug, pageIdx } = job;
+      const { jobId, jobKey, userId, projectId, type, slug, pageIdx } = job;
+      // Security: re-derive userPrefix from userId — never trust it from the message
+      const userPrefix = userId ? 'u:' + userId + ':' : '';
 
       // ── helpers ─────────────────────────────────────────────────────────
       async function setStatus(status, extra = {}) {

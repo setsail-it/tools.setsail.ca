@@ -795,7 +795,7 @@ function populateCopyPreviews() {
   (S.pages || []).forEach(p => {
     const preview = document.getElementById('copy-preview-' + p.slug);
     if (preview && (S.copy[p.slug]||{}).copy) {
-      preview.innerHTML = (S.copy[p.slug]||{}).copy;
+      preview.innerHTML = sanitiseHTML((S.copy[p.slug]||{}).copy);
       // Add scoped copy-preview styles if not already present
       if (!document.getElementById('copy-preview-styles')) {
         const style = document.createElement('style');

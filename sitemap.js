@@ -604,7 +604,7 @@ function renderSitemapResults(approved) {
   try { _renderSitemapResultsInner(approved); } catch(err) {
     console.error('renderSitemapResults crash:', err);
     const el = document.getElementById('sitemap-results');
-    if (el) { el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;font-size:12px;background:#fff1f0;border:1px solid #ffccc7;border-radius:8px;margin:8px 0"><strong>⚠ Render error</strong><br>' + err.message + '<br><br><small>' + (err.stack||'').split('\n').slice(0,4).join('<br>') + '</small></div>'; el.style.display='block'; }
+    if (el) { el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;font-size:12px;background:#fff1f0;border:1px solid #ffccc7;border-radius:8px;margin:8px 0"><strong>\u26A0 Render error</strong><br>' + esc(err.message) + '<br><br><small>' + esc((err.stack||'').split('\n').slice(0,4).join('\n')).replace(/\n/g,'<br>') + '</small></div>'; el.style.display='block'; }
   }
 }
 function _renderSitemapResultsInner(approved) {

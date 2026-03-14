@@ -287,7 +287,8 @@ function toggleLayoutEdit(slug) {
 }
 
 function makeWireframeIframe(html) {
-  const blob = new Blob([html], {type:'text/html'});
+  const clean = sanitiseHTML(html);
+  const blob = new Blob([clean], {type:'text/html'});
   const url = URL.createObjectURL(blob);
   return `<iframe src="${url}" style="width:100%;min-height:500px;border:none;display:block" onload="autoResizeFrame(this)"></iframe>`;
 }
@@ -532,7 +533,7 @@ function printWireframe(slug) {
   const html = (S.layout[slug]||{}).html;
   if (!html) return;
   const win = window.open('', '_blank');
-  win.document.write(html);
+  win.document.write(sanitiseHTML(html));
   win.document.close();
   setTimeout(() => win.print(), 600);
 }
