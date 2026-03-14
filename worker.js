@@ -97,6 +97,48 @@ const EXCLUDED_DOMAINS = [
   'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com'
 ];
 
+// ── Rate limiting (KV-based sliding window per user) ─────────────────────
+// Groups: 'ai' (Claude/Gemini), 'data' (DataForSEO/Ahrefs), 'queue' (job submission)
+const RATE_LIMITS = {
+  ai:    { max: 60,  windowSec: 300 },  // 60 AI calls per 5 min
+  data:  { max: 40,  windowSec: 300 },  // 40 data API calls per 5 min
+  queue: { max: 5,   windowSec: 60 },   // 5 queue submits per 1 min
+  image: { max: 20,  windowSec: 300 },  // 20 image generations per 5 min
+};
+
+const ENDPOINT_RATE_GROUP = {
+  '/api/claude': 'ai', '/api/claude-sync': 'ai', '/api/page-questions': 'ai',
+  '/api/snapshot': 'data', '/api/kw-expand': 'data', '/api/paa': 'data',
+  '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
+  '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
+  '/api/queue-submit': 'queue',
+  '/api/generate-image': 'image',
+};
+
+async function checkRateLimit(env, userId, group) {
+  if (!RATE_LIMITS[group]) return null; // no limit for this group
+  const { max, windowSec } = RATE_LIMITS[group];
+  const key = 'rl:' + userId + ':' + group;
+  const now = Math.floor(Date.now() / 1000);
+
+  const raw = await env.SETSAIL_OS.get(key);
+  let bucket = raw ? JSON.parse(raw) : { count: 0, windowStart: now };
+
+  // Reset window if expired
+  if (now - bucket.windowStart >= windowSec) {
+    bucket = { count: 0, windowStart: now };
+  }
+
+  if (bucket.count >= max) {
+    const retryAfter = windowSec - (now - bucket.windowStart);
+    return { limited: true, retryAfter, remaining: 0 };
+  }
+
+  bucket.count++;
+  await env.SETSAIL_OS.put(key, JSON.stringify(bucket), { expirationTtl: windowSec + 60 });
+  return { limited: false, remaining: max - bucket.count };
+}
+
 // ────────────────────────────────────────────────────────────────────────
 
 export default {
@@ -151,6 +193,21 @@ export default {
     // Helper: user-scoped KV prefix for project keys
     // Keeps all data isolated per user. Migration path: swap userId source only.
     const userPrefix = userId ? 'u:' + userId + ':' : '';
+
+    // ── Rate limiting — check before expensive routes ──
+    const rateGroup = ENDPOINT_RATE_GROUP[url.pathname];
+    if (rateGroup && userId) {
+      const rl = await checkRateLimit(env, userId, rateGroup);
+      if (rl && rl.limited) {
+        return new Response(JSON.stringify({
+          error: 'Rate limit exceeded (' + rateGroup + '). Try again in ' + rl.retryAfter + 's.',
+          code: 'RATE_LIMITED', retryAfter: rl.retryAfter
+        }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Retry-After': String(rl.retryAfter), ...cors }
+        });
+      }
+    }
 
         // ── NICHE EXPAND — Google Suggest on per-page primary keywords ─────────
     // Takes array of {slug, primaryKeyword} → returns {slug, keywords:[]} per page
@@ -491,9 +548,22 @@ export default {
           updatedAt: Date.now(),
         };
         const serialized = JSON.stringify(data);
-        console.log('[worker save] payload size:', Math.round(serialized.length/1024) + 'KB', 'v' + data._version);
+        const sizeKB = Math.round(serialized.length / 1024);
+        const sizeMB = Math.round(sizeKB / 10.24) / 100; // 2 decimal places
+        console.log('[worker save] payload size:', sizeKB + 'KB', '(' + sizeMB + 'MB)', 'v' + data._version);
+
+        // Hard reject if over 24MB (KV limit is 25MB)
+        if (sizeKB > 24000) {
+          return new Response(JSON.stringify({
+            error: 'Project too large (' + sizeMB + 'MB). Remove some pages or clear keyword data.',
+            code: 'PAYLOAD_TOO_LARGE', sizeKB, sizeMB
+          }), { status: 413, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
         await env.SETSAIL_OS.put(kvKey, serialized, { metadata: meta });
-        return new Response(JSON.stringify({ ok: true, id, _version: data._version, sizeKB: Math.round(serialized.length/1024) }), {
+        // Return size info so client can warn proactively
+        const sizeWarning = sizeKB > 15000 ? 'approaching' : sizeKB > 20000 ? 'critical' : null;
+        return new Response(JSON.stringify({ ok: true, id, _version: data._version, sizeKB, sizeMB, sizeWarning }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch (err) {

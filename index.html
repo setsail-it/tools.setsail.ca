@@ -778,9 +778,26 @@ async function saveProject() {
       showSaveIndicator('saved');
       return;
     }
+    if (res.status === 413) {
+      var tooBig = await res.json();
+      showSaveIndicator('error');
+      aiBarNotify('Project too large (' + (tooBig.sizeMB || '?') + 'MB) — reduce pages or clear keyword data', { duration: 8000 });
+      return;
+    }
+    if (res.status === 429) {
+      showSaveIndicator('error');
+      aiBarNotify('Rate limited — try again in a moment', { duration: 3000 });
+      return;
+    }
     if (!res.ok) throw new Error('Save failed');
     var saveResult = await res.json();
     if (saveResult._version) S._version = saveResult._version;
+    // Proactive size warning
+    if (saveResult.sizeWarning === 'critical') {
+      aiBarNotify('Project is ' + saveResult.sizeMB + 'MB — approaching 25MB limit. Consider removing unused pages.', { duration: 8000 });
+    } else if (saveResult.sizeWarning === 'approaching') {
+      console.warn('[save] project size: ' + saveResult.sizeMB + 'MB — approaching KV limit');
+    }
     showSaveIndicator('saved');
   } catch(e) {
     console.error('[save] failed:', e.message);
@@ -1396,6 +1413,11 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
   });
   if (!res.ok) {
     const e = await res.json().catch(function(){return{};});
+    if (res.status === 429) {
+      var retryMsg = 'Rate limited' + (e.retryAfter ? ' — try again in ' + e.retryAfter + 's' : '');
+      aiBarEnd(); aiBarNotify(retryMsg, { duration: 5000 });
+      throw new Error(retryMsg);
+    }
     throw new Error((e.error&&e.error.message)||('API error '+res.status));
   }
   const reader = res.body.getReader();

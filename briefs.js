@@ -1511,6 +1511,7 @@ async function _pollQueueStatus() {
     }
   } catch(err) {
     console.warn('[queuePoll] error:', err.message);
+    if (err.message && err.message.indexOf('Rate limit') >= 0) aiBarNotify('Queue polling rate limited — slowing down', { duration: 3000 });
   }
 }
 
