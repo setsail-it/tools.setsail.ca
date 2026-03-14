@@ -1171,14 +1171,18 @@ var STAGE_TIPS = {
     "Strategy doc truncation is now 12,000 chars (up from 4,000) — longer docs are fully parsed.",
   ],
   keywords: [
-    "Set country before Fetch Volumes — wrong country = wrong volumes. Check the dropdown.",
-    "AI Generate Seeds produces tight head terms (2–4 words) for volume lookup, not long-tail.",
-    "Add competitor URLs in Competitor Keywords to mine non-brand terms from their domains.",
-    "Opportunities tab: P1 = must-target, P2 = worth it, P3 = low-priority or informational.",
-    "Validate Questions before pulling to Seeds — removes duplicates and checks search intent.",
-    "BOF questions (pricing, ROI, vs competitors) belong on service pages as FAQ schema.",
-    "Run Fetch Volumes after every major seed addition — volumes expire with the session.",
-    "Clusters group keywords by intent — each cluster becomes one page in the sitemap.",
+    "Start with Questions — they generate buyer-intent questions from Research data and auto-extract intent keywords into Seeds.",
+    "Questions now use services_detail, case studies, competitors, and pricing model for deeper, service-specific question generation.",
+    "Set country before Fetch Volumes — wrong country = wrong volumes. Check the dropdown in Seeds.",
+    "AI Generate Seeds produces tight head terms (2-4 words) for volume lookup, not long-tail.",
+    "Competitor Keywords mines non-brand organic terms from competitor domains into the Competitor seed bucket.",
+    "Run Fetch Volumes after adding seeds from any source — it expands via Google Suggest then gets DataForSEO volumes.",
+    "Site DR in Opportunities enables rankability badges (green check, yellow stretch, red out of range) per keyword.",
+    "Clusters now receive full research context: value proposition, differentiators, services detail, competitor weaknesses, and audience.",
+    "Strategic Override: core services from services_detail always qualify for pages even with volume under 50.",
+    "Clusters use page-title naming (e.g. SEO Services Vancouver) and prefer 3-6 blog pillars over many thin posts.",
+    "Question assignments (from Validate and Assign) flow into the cluster prompt so AEO page mapping stays aligned.",
+    "Validate and Assign checks search volumes and maps each question to a page — required before Briefs stage.",
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
@@ -2473,7 +2477,7 @@ async function deleteAdminUser() {
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15)"><span style="font-size:10px;font-weight:700;color:var(--green);min-width:20px">S1</span><span>Setup — client name, URL, primary market, strategy doc</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain authority, link metrics</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 150+ fields (proof, CTAs, services detail, competitors)</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — seeds → expand → volumes → opportunities</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — AEO pipeline: questions → seeds → opportunities → strategy-aligned clusters</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S7</span><span>Copy — generate → audit → QC → approve</span></div>
@@ -2527,24 +2531,24 @@ async function deleteAdminUser() {
 
     <!-- S4: KEYWORDS -->
     <div style="margin-bottom:24px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 4 — Keywords · Best Order</div>
-      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <li><strong>Set Country</strong> — the dropdown left of Fetch Volumes auto-detects from your geo text (AU/CA/US/GB/NZ/SG/ZA). Override manually if wrong — it saves with the project. <em>Wrong country = wrong volumes.</em></li>
-        <li><strong>AI Generate Seeds</strong> — produces 20–30 tight head terms (2–4 words). These are for volume lookup, not long-tail guesses. Add competitor URLs in the Competitor Keywords section for additional seed mining.</li>
-        <li><strong>Copy seeds</strong> (📋 icon in Seeds table header) to paste into Ahrefs for cross-validation before fetching volumes.</li>
-        <li><strong>Seed bucket filter bar</strong> — the Seeds table header shows four source buckets: <em>Mechanical</em> (built from client/service/geo data), <em>AI</em>, <em>Competitor</em>, and <em>Questions</em>. Each shows a count or — if empty. Click any bucket to filter the list to that source. Verify all relevant buckets are populated before Fetch Volumes.</li>
-        <li><strong>Mechanical Seeds</strong> button — rebuilds the Mechanical bucket from current Setup data (client name, services, location) and merges back in. Run after any Setup changes. Does not touch AI or Competitor seeds.</li>
-        <li><strong>Pull from Questions</strong> — extracts the core 2–7 word keyword phrase from each question (strips "how much does", "what is", etc.) and adds to Seeds. Full questions won't return DataForSEO volumes — only the extracted phrase will. The Questions bucket in the filter bar shows how many were extracted.</li>
-        <li><strong>Fetch Volumes</strong> — Google Suggest expands each head term into 400–600 real phrases, then DataForSEO volumes each one. Top 300 by score are kept. This is your full keyword pool.</li>
-        <li><strong>Enter Site DR</strong> in the Opportunities tab top-right — this adjusts the rankability indicator per keyword. Use the DR from Stage 2 Snapshot.</li>
-        <li><strong>Review Opportunities tab</strong> — keywords scored by: <code>log(vol+1) × 100 / max(KD, 5)</code>. Minimum vol: 10. Keywords showing "—" have no DataForSEO data for that country — you can still manually select them.</li>
-        <li><strong>Select Top 50</strong> then manually add any low-volume but strategically important terms (e.g. high-CPC, direct buyer intent).</li>
-        <li><strong>Cluster Selected</strong> — groups keywords into topical clusters for sitemap page creation.</li>
-        <li><strong>Questions tab</strong> — pure bottom-of-funnel questions only: pricing, ROI proof, risk/vetting, agency comparisons, local buying intent. Not educational — these are what a business owner searches when they’ve decided they need help and are now vetting agencies. <em>Validate &amp; Assign</em> checks DataForSEO volumes and maps each question to a page (vol is a signal not a gate — zero-vol questions still feed FAQ schema and copy). <em>+ More Questions</em> appends another 20 BOF questions in the same intent categories, deduping automatically. Intent badge uses AI assignment type post-validation. Coverage column shows once clusters exist — gap questions get a “+ Sitemap” button to queue a page directly from this table.</li>
-        <li><strong>Seeds tab ← Pull from Questions</strong> — converts all questions to seed keyword form and appends to Seeds. Run after More Questions to keep the keyword pool fed without switching tabs.</li>
+      <div style=”font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)”>Stage 4 — Keywords · AEO Pipeline</div>
+      <div style=”font-size:11px;color:var(--n2);margin-bottom:10px”>The Keywords stage follows an AEO (Answer Engine Optimisation) pipeline: <strong>Questions → Seeds → Opportunities → Clusters</strong>. Each tab feeds the next.</div>
+      <ol style=”margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px”>
+        <li><strong>Questions tab first</strong> — click <em>Fetch Questions</em> to generate 20 buyer-intent questions from Research data (services_detail, case studies, competitors, pricing model, pain points). Intent keywords are <strong>auto-extracted into Seeds</strong> so you do not need to manually pull them. Click <em>More Questions</em> for another 20 (deduped). Click <em>Blog Seeds</em> to convert informational questions into blog keyword seeds.</li>
+        <li><strong>Validate &amp; Assign</strong> — checks DataForSEO volumes for each question, then AI assigns each to a page (service FAQ, new blog, or sitewide FAQ). Coverage column appears after clustering — gap questions get a “+ Sitemap” button. This mapping flows into the cluster prompt so AEO page assignments stay aligned.</li>
+        <li><strong>Set Country</strong> in the Seeds tab dropdown — auto-detects from geo text (AU/CA/US/GB/NZ/SG/ZA). Override manually if wrong. <em>Wrong country = wrong volumes.</em></li>
+        <li><strong>AI Generate Seeds</strong> — produces 20-30 tight head terms (2-4 words) from Research context. <em>Competitor Keywords</em> mines non-brand organic terms from competitor domains. <em>Mechanical Seeds</em> rebuilds the service x geo matrix from Setup data.</li>
+        <li><strong>Seed bucket filter bar</strong> — four sources: Mechanical, AI, Competitor, Questions. Each shows a count. Verify all relevant buckets are populated before Fetch Volumes.</li>
+        <li><strong>Fetch Volumes</strong> — Google Suggest expands each seed into 400-600 real phrases, then DataForSEO volumes each one. Top 300 by score are kept. This is your full keyword pool.</li>
+        <li><strong>Enter Site DR</strong> in the Opportunities tab — enables rankability badges per keyword (green = rankable within DR range, yellow = stretch, red = too competitive).</li>
+        <li><strong>Review Opportunities</strong> — scored by <code>log(vol+1) x 100 / max(KD, 5)</code>. Select Top 50 then manually add strategic low-volume terms (high-CPC, direct buyer intent, core services).</li>
+        <li><strong>Cluster Selected</strong> — AI groups keywords into page clusters using full research context: value proposition, differentiators, services_detail, competitor weaknesses, audience, and buyer roles. Clusters use page-title naming (e.g. “SEO Services Vancouver”).</li>
+        <li><strong>Strategic Override</strong> — core services from services_detail always qualify for pages even with volume under 50. The AI will not disqualify your flagship services.</li>
+        <li><strong>Blog Architecture</strong> — clusters prefer 3-6 substantial blog pillars mapped to core services over 10+ thin standalone posts. Questions assigned as “new_blog” join or create blog clusters.</li>
+        <li><strong>Build Sitemap from Clusters</strong> — each cluster becomes a page in Stage 5. Review cluster names and anchors before proceeding.</li>
       </ol>
-      <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
-        ⚠ Run Fetch Volumes before building the Sitemap. Pages won't have volume data otherwise and the sitemap generator won't be able to justify page creation thresholds.
+      <div style=”margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a”>
+        ⚠ Run Fetch Volumes before building the Sitemap. Pages will not have volume data otherwise and the sitemap generator will not be able to justify page creation thresholds.
       </div>
     </div>
 
@@ -2643,6 +2647,10 @@ async function deleteAdminUser() {
         <p><strong>Research: Strategy doc parsing</strong> — Strategy doc truncation increased from 4,000 to 12,000 chars. Reference docs from 6,000 to 10,000 chars each. Longer strategy docs are now fully parsed during enrichment.</p>
         <p><strong>Schema: Research fields wired</strong> — Schema stage now reads business type, address, social profiles, payment methods, FAQs, and reviews from Research — no more guessing.</p>
         <p><strong>Copy: Full field wiring</strong> — Slogan, words to avoid/use, booking flow, buyer roles, and all proof/CTA fields now appear in copy prompts. E-E-A-T Pass 3 uses correct field names for case studies, awards, and notable clients.</p>
+        <p><strong>Keywords: AEO pipeline</strong> — Questions now auto-extract intent keywords into Seeds (no manual Pull from Questions needed). Question generation uses services_detail, case studies, competitors, and pricing model for deeper, service-specific questions.</p>
+        <p><strong>Keywords: Strategy-aligned clusters</strong> — Cluster prompt now receives full research context: value proposition, differentiators, services_detail, competitor weaknesses, audience, and buyer roles. Clusters use page-title naming and prefer 3-6 blog pillars over many thin posts.</p>
+        <p><strong>Keywords: Strategic Override</strong> — Core services from services_detail always qualify for pages even with volume under 50 — the AI will not disqualify flagship services.</p>
+        <p><strong>Keywords: Question-cluster alignment</strong> — Question page assignments (from Validate and Assign) are passed into the cluster prompt so AEO page mapping stays aligned with keyword clusters.</p>
       </div>
     </div>
 

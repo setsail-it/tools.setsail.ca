@@ -1088,14 +1088,91 @@ async function clusterSelectedKws() {
   var r = S.research || {};
   var setup = S.setup || {};
   var geo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
+
+  // ── Build rich research context for strategy-aligned clustering ──
+  var _clusterCtx = '';
+  _clusterCtx += '\nCLIENT: ' + (setup.client || r.client_name || '') + ' | Geo: ' + geo;
+  _clusterCtx += '\nSERVICES: ' + (r.primary_services || []).join(', ');
+  if (r.value_proposition) _clusterCtx += '\nVALUE PROP: ' + r.value_proposition;
+  if ((r.key_differentiators || []).length) _clusterCtx += '\nDIFFERENTIATORS: ' + r.key_differentiators.join('; ');
+  if (r.business_model) _clusterCtx += '\nBUSINESS MODEL: ' + r.business_model;
+  if ((r.target_audience || []).length) _clusterCtx += '\nAUDIENCE: ' + (Array.isArray(r.target_audience) ? r.target_audience.join(', ') : r.target_audience);
+  if ((r.buyer_roles_titles || []).length) _clusterCtx += '\nBUYER ROLES: ' + r.buyer_roles_titles.join(', ');
+  // Services detail — so AI knows which services are strategic priorities
+  if ((r.services_detail || []).length) {
+    _clusterCtx += '\n\nSERVICES DETAIL (strategic priorities — always build pages for these):';
+    r.services_detail.forEach(function(sd) {
+      _clusterCtx += '\n- ' + (sd.name || '') + (sd.key_differentiator ? ' (' + sd.key_differentiator + ')' : '') + (sd.target_audience ? ' → audience: ' + sd.target_audience : '');
+    });
+  }
+  // Competitor weaknesses — informs content angles
+  if ((r.competitors || []).length) {
+    var _compLines = r.competitors.slice(0, 5).map(function(c) {
+      var line = (c.name || '');
+      if (c.weaknesses) line += ' — weakness: ' + c.weaknesses;
+      if (c.what_we_do_better) line += ' | our edge: ' + c.what_we_do_better;
+      return line;
+    }).filter(function(l) { return l.length > 3; });
+    if (_compLines.length) _clusterCtx += '\n\nCOMPETITORS:\n' + _compLines.join('\n');
+  }
+
+  // ── Build user prompt ──
   var userPrompt = 'KEYWORDS (' + selKws.length + '):\n';
   userPrompt += 'kw | vol | kd | score\n';
   selKws.forEach(function(k) { userPrompt += k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n'; });
-  userPrompt += '\nCLIENT: ' + (setup.client || '') + ' | Services: ' + (r.primary_services || []).join(', ') + ' | Geo: ' + geo;
+  userPrompt += _clusterCtx;
   if (existingPages.length) userPrompt += '\n\nEXISTING PAGES:\n' + existingPages.slice(0, 20).join('\n');
-  var clusterQs = _getQuestionsArray ? _getQuestionsArray().slice(0, 20) : [];
-  if (clusterQs.length) userPrompt += '\n\nPEOPLE ALSO ASK (use for blog clusters and FAQ assignments):\n' + clusterQs.map(function(q) { return '- ' + q; }).join('\n');
-  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.\n\nRules:\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.\n- Service(/services/slug): specific service+city. vol>0 required.\n- Location(/locations/slug): city+marketing. vol>100 required.\n- Industry(/industries/slug): marketing for [industry]. vol>100 required.\n- Blog(/blog/slug): informational intent. vol>50 required.\n- Always include /about and /contact as structural (vol:0 ok). These ALWAYS get recommendation=improve_existing — NEVER build_new.\n- /about, /about-us = same page. /contact, /contact-us = same page. / = homepage. These pages ALWAYS EXIST — treat as improve_existing.\n- If cluster maps to any existing page: recommendation=improve_existing, existingSlug=exact slug from EXISTING PAGES list. Else build_new.\n- Slug matching: match by intent not exact string. Use the EXISTING slug verbatim if matched.\n- CRITICAL: If primaryVol < 50 AND recommendation would be build_new — set qualifies:false, disqualifyReason=\'Low volume — fold into a related existing page or blog pillar instead of building a standalone page\'. NEVER recommend build_new for a page with primaryVol < 50.\n- Set qualifies:false + disqualifyReason if vol thresholds not met.\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/seo-vancouver","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":["kw1","kw2"]}]';
+
+  // Question assignments — so clusters stay aligned with AEO page mapping
+  var clusterQs = _getQuestionsArray ? _getQuestionsArray().slice(0, 30) : [];
+  var _qAssignments = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) ? S.contentIntel.paa.questions : [];
+  var _hasAssignments = _qAssignments.some(function(q) { return q.assignedSlug; });
+  if (clusterQs.length) {
+    if (_hasAssignments) {
+      userPrompt += '\n\nQUESTIONS WITH PAGE ASSIGNMENTS (respect these — cluster the assigned page accordingly):';
+      _qAssignments.slice(0, 30).forEach(function(q) {
+        if (!q.question) return;
+        var line = '\n- ' + q.question;
+        if (q.assignedSlug) line += ' → ' + q.assignedSlug + ' (' + (q.contentType || 'faq_on_page') + ')';
+        if (q.vol > 0) line += ' [vol:' + q.vol + ']';
+        userPrompt += line;
+      });
+    } else {
+      userPrompt += '\n\nPEOPLE ALSO ASK (use for blog clusters and FAQ assignments):\n' + clusterQs.map(function(q) { return '- ' + q; }).join('\n');
+    }
+  }
+
+  // Strategic services list — these must always get pages even with low volume
+  var _strategicServices = (r.services_detail || []).map(function(sd) { return sd.name || ''; }).filter(Boolean);
+  if (!_strategicServices.length) _strategicServices = (r.primary_services || []).slice(0, 8);
+  var _strategicLine = _strategicServices.length ? _strategicServices.join(', ') : '';
+
+  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.'
+    + '\n\nRules:'
+    + '\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.'
+    + '\n- Service(/services/slug): specific service+city. vol>0 required.'
+    + '\n- Location(/locations/slug): city+marketing. vol>100 required.'
+    + '\n- Industry(/industries/slug): marketing for [industry]. vol>100 required.'
+    + '\n- Blog(/blog/slug): informational intent. vol>50 required.'
+    + '\n- Always include /about and /contact as structural (vol:0 ok). These ALWAYS get recommendation=improve_existing — NEVER build_new.'
+    + '\n- /about, /about-us = same page. /contact, /contact-us = same page. / = homepage. These pages ALWAYS EXIST — treat as improve_existing.'
+    + '\n- If cluster maps to any existing page: recommendation=improve_existing, existingSlug=exact slug from EXISTING PAGES list. Else build_new.'
+    + '\n- Slug matching: match by intent not exact string. Use the EXISTING slug verbatim if matched.'
+    + '\n- CRITICAL: If primaryVol < 50 AND recommendation would be build_new — set qualifies:false, disqualifyReason="Low volume — fold into a related existing page or blog pillar instead of building a standalone page". NEVER recommend build_new for a page with primaryVol < 50.'
+    + (_strategicLine ? '\n- STRATEGIC OVERRIDE: The following services are core to the business — ALWAYS qualify pages for them even if vol < 50: ' + _strategicLine + '. Set qualifies:true and add disqualifyReason=null for these.' : '')
+    + '\n- Set qualifies:false + disqualifyReason if vol thresholds not met (except strategic overrides above).'
+    + '\n- If QUESTIONS WITH PAGE ASSIGNMENTS are provided, ensure each assigned slug has a matching cluster. Do not create clusters that contradict existing question-to-page mappings.'
+    + '\n\nNaming:'
+    + '\n- Name each cluster as the page title a user would see, not a raw keyword. E.g. "SEO Services Vancouver" not "seo vancouver".'
+    + '\n- Service clusters: "[Service Name] [City]" or "[Service Name] Services"'
+    + '\n- Blog clusters: descriptive article title, e.g. "How to Choose an SEO Agency" not "choose seo agency"'
+    + '\n- Location clusters: "[City] [Business Type]"'
+    + '\n\nBlog Architecture:'
+    + '\n- Group related informational keywords into pillar clusters rather than one-off posts.'
+    + '\n- Each pillar should map to a core service or audience pain point.'
+    + '\n- Prefer 3-6 substantial blog pillars over 10+ thin standalone posts.'
+    + '\n- If a question is assigned as "new_blog", it should become or join a blog cluster.'
+    + '\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/seo-vancouver","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":["kw1","kw2"]}]';
   try {
     // Use sync endpoint for clustering — streaming cuts off large JSON responses
     var clusterRes = await fetch('/api/claude-sync', {
@@ -1623,6 +1700,27 @@ function addAllQuestionsAsSeeds() {
   if (typeof aiBarNotify==='function') aiBarNotify(msg, {meta:'Next: Fetch Volumes →', duration:5000});
 }
 
+// Silent version of addAllQuestionsAsSeeds — returns count of added seeds, no UI notification
+function _autoExtractQuestionSeeds() {
+  var qs = _getQuestionsArray();
+  if (!qs.length) return 0;
+  if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
+  if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [], questions: [] };
+  if (!S.kwResearch.seedSources.questions) S.kwResearch.seedSources.questions = [];
+  var qSet = new Set(S.kwResearch.seedSources.questions.map(function(s){ return s.toLowerCase(); }));
+  var seedSet = new Set(S.kwResearch.seeds.map(function(s){ return s.toLowerCase(); }));
+  var added = 0;
+  qs.forEach(function(q) {
+    var kw = _questionToSeedKeyword(q);
+    if (!kw) return;
+    if (!seedSet.has(kw)) { S.kwResearch.seeds.push(kw); seedSet.add(kw); added++; }
+    if (!qSet.has(kw)) { S.kwResearch.seedSources.questions.push(kw); qSet.add(kw); }
+  });
+  if (added > 0) scheduleSave();
+  return added;
+}
+
 async function fetchPAAFromKeywords() {
   if(typeof aiBarStart==='function') aiBarStart('Generating questions…');
   var r = S.research || {};
@@ -1639,13 +1737,35 @@ async function fetchPAAFromKeywords() {
 
   var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real business owners and marketing managers type into Google when evaluating or hiring a marketing agency. These should be bottom-of-funnel — evaluation, comparison, cost, and trust questions. Never generic educational questions about marketing theory. Return ONLY a JSON array of 20 question strings, no markdown, no explanation.';
 
-  var userPrompt = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
+  // Build enriched context for deeper AEO question generation
+  var _qCtx = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
     'Location: ' + (geo || 'Vancouver, BC') + '\n' +
     'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
-    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n' +
-    (painPoints ? 'Pain points they solve: ' + painPoints + '\n' : '') +
-    (industry ? 'Industry focus: ' + industry + '\n' : '') +
-    '\nGenerate 20 questions a business owner would Google when deciding whether to hire this agency or evaluating their options. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/ROI questions, red flag questions. Make them specific to the services and location where relevant.';
+    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n';
+  if (painPoints) _qCtx += 'Pain points they solve: ' + painPoints + '\n';
+  if (industry) _qCtx += 'Industry focus: ' + industry + '\n';
+  // Services detail — generates service-specific questions
+  if ((r.services_detail || []).length) {
+    _qCtx += 'Service detail:\n';
+    r.services_detail.slice(0, 6).forEach(function(sd) {
+      _qCtx += '- ' + (sd.name || '') + (sd.description ? ': ' + sd.description.slice(0, 120) : '') + (sd.target_audience ? ' (for ' + sd.target_audience + ')' : '') + '\n';
+    });
+  }
+  // Case studies — triggers proof/ROI questions
+  if ((r.case_studies || []).length) {
+    _qCtx += 'Case studies: ' + r.case_studies.slice(0, 4).map(function(cs) {
+      return typeof cs === 'object' ? ((cs.client || 'Client') + ' — ' + (cs.result || '')) : cs;
+    }).join('; ') + '\n';
+  }
+  // Competitors — triggers comparison questions
+  if ((r.competitors || []).length) {
+    _qCtx += 'Key competitors: ' + r.competitors.slice(0, 5).map(function(c) { return c.name || c; }).join(', ') + '\n';
+  }
+  if (r.pricing_model) _qCtx += 'Pricing model: ' + r.pricing_model + '\n';
+  if ((r.awards_certifications || []).length) _qCtx += 'Certifications: ' + r.awards_certifications.slice(0, 4).join(', ') + '\n';
+
+  var userPrompt = _qCtx +
+    '\nGenerate 20 questions a business owner would Google when deciding whether to hire this agency or evaluating their options. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/ROI questions, red flag questions. Make them specific to the services and location where relevant. Include at least 3 questions specific to individual services listed above.';
 
   try {
     var res = await fetch('/api/claude', {
@@ -1667,7 +1787,10 @@ async function fetchPAAFromKeywords() {
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
     S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q }; }), fetchedAt: Date.now(), source: 'ai' };
     scheduleSave();
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + questions.length + ' buyer-intent questions generated</span>';
+    // Auto-extract intent keywords into Seeds so the AEO pipeline is connected
+    var _autoExtracted = _autoExtractQuestionSeeds();
+    var _seedMsg = _autoExtracted > 0 ? ' · ' + _autoExtracted + ' intent keywords added to Seeds' : '';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + questions.length + ' buyer-intent questions generated' + _seedMsg + '</span>';
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
@@ -1692,11 +1815,22 @@ async function generateMoreQuestions() {
 
   var systemPrompt = 'You are an SEO strategist generating bottom-of-funnel buyer questions for a marketing agency website. These are questions a business owner types into Google when they are actively evaluating whether to hire an agency — not learning about marketing in general. Return ONLY a JSON array of question strings — no markdown, no explanation, no wrapper object.';
 
-  var userPrompt = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
+  // Enriched context for deeper question generation
+  var _mqCtx = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
     'Location: ' + (geo || 'Vancouver, BC') + '\n' +
     'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
-    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n' +
-    (industry ? 'Industry focus: ' + industry + '\n' : '') +
+    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n';
+  if (industry) _mqCtx += 'Industry focus: ' + industry + '\n';
+  if ((r.services_detail || []).length) {
+    _mqCtx += 'Service detail: ' + r.services_detail.slice(0, 6).map(function(sd) { return sd.name || ''; }).filter(Boolean).join(', ') + '\n';
+  }
+  if ((r.case_studies || []).length) {
+    _mqCtx += 'Has case studies: ' + r.case_studies.slice(0, 3).map(function(cs) { return typeof cs === 'object' ? (cs.client || 'Client') : cs; }).join(', ') + '\n';
+  }
+  if ((r.competitors || []).length) {
+    _mqCtx += 'Competitors: ' + r.competitors.slice(0, 4).map(function(c) { return c.name || c; }).join(', ') + '\n';
+  }
+  var userPrompt = _mqCtx +
     '\nExisting questions (DO NOT duplicate these):\n' + existingQs.slice(0, 40).map(function(q,i){return (i+1)+'. '+q;}).join('\n') +
     '\n\nGenerate 20 NEW bottom-of-funnel questions not yet covered above. These must be purchase-evaluation questions only — someone who has already decided they need marketing help and is now vetting agencies.\n\n' +
     'BOF question types to generate more of:\n' +
@@ -1738,7 +1872,10 @@ async function generateMoreQuestions() {
     S.contentIntel.paa.questions = existing.concat(fresh.map(function(q){ return { question: q }; }));
     S.contentIntel.paa.fetchedAt = Date.now();
     scheduleSave();
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> +' + fresh.length + ' questions added (' + (newQs.length - fresh.length) + ' dupes skipped)</span>';
+    // Auto-extract intent keywords into Seeds
+    var _autoExtracted2 = _autoExtractQuestionSeeds();
+    var _seedMsg2 = _autoExtracted2 > 0 ? ' · ' + _autoExtracted2 + ' intent keywords added to Seeds' : '';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> +' + fresh.length + ' questions added (' + (newQs.length - fresh.length) + ' dupes skipped)' + _seedMsg2 + '</span>';
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
