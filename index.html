@@ -756,21 +756,36 @@ async function saveProject() {
         { ...data, slots: (data.slots||[]).map(sl => ({ status: sl.status, prompt: sl.prompt, mimeType: sl.mimeType })) }
       ])),
       savedAt: Date.now(),
+      _version: S._version || 0,
     };
     const payloadStr = JSON.stringify(payload);
     const payloadKB = Math.round(payloadStr.length / 1024);
-    console.log('[save] payload size:', payloadKB + 'KB');
+    console.log('[save] payload size:', payloadKB + 'KB', 'v' + (S._version || 0));
     if (payloadKB > 20000) console.warn('[save] payload near 25MB KV limit — may fail (' + payloadKB + 'KB)');
     if (payloadKB > 24000) { showSaveIndicator('error'); console.error('[save] payload too large, aborting save (' + payloadKB + 'KB)'); return; }
-    const res = await fetch('/api/projects/' + S.projectId, {
+    var res = await fetch('/api/projects/' + S.projectId, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: payloadStr
     });
+    if (res.status === 409) {
+      // Version conflict — queue processed a save while we were editing. Reload fresh state.
+      console.warn('[save] version conflict — reloading project');
+      var conflict = await res.json();
+      aiBarNotify('Project updated by background job — reloading', { duration: 3000 });
+      var fresh = await fetch('/api/projects/' + S.projectId).then(function(r){return r.json();});
+      if (fresh && fresh.stage) { Object.assign(S, fresh); S._version = fresh._version || 0; }
+      showSaveIndicator('saved');
+      return;
+    }
     if (!res.ok) throw new Error('Save failed');
+    var saveResult = await res.json();
+    if (saveResult._version) S._version = saveResult._version;
     showSaveIndicator('saved');
   } catch(e) {
+    console.error('[save] failed:', e.message);
     showSaveIndicator('error');
+    aiBarNotify('Save failed: ' + (e.message || 'network error'), { duration: 5000 });
   }
 }
 
@@ -893,6 +908,7 @@ async function resumeProject(id) {
   if (!data) { showProjects(); return; }
 
   S.projectId = id;
+  S._version = data._version || 0;
   S.stage = data.stage || 'setup';
   S.setup = data.setup || null;
   S.snapshot = data.snapshot || null;
@@ -1889,6 +1905,9 @@ function intentBadge(kw, geo) {
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 // Sanitise AI-generated HTML — strips scripts, event handlers, dangerous tags
 function sanitiseHTML(html){if(typeof DOMPurify!=='undefined')return DOMPurify.sanitize(html||'',{FORBID_TAGS:['script','style','iframe','object','embed','form'],FORBID_ATTR:['onerror','onload','onclick','onmouseover','onfocus','onblur']});return esc(html);}
+// Shared country detection from geo string — single source of truth for all stages
+function detectCountry(geo){var g=(geo||'').toLowerCase();if(/australia|sydney|melbourne|brisbane|perth|adelaide/.test(g))return 'AU';if(/new zealand|auckland|wellington/.test(g))return 'NZ';if(/united kingdom|\buk\b|london|manchester|birmingham|leeds|glasgow|edinburgh/.test(g))return 'GB';if(/singapore/.test(g))return 'SG';if(/south africa|cape town|johannesburg/.test(g))return 'ZA';if(/united states|\bus\b|new york|los angeles|chicago|houston|phoenix|dallas|seattle|denver|miami|boston/.test(g))return 'US';return 'CA';}
+function detectCountryLower(geo){return detectCountry(geo).toLowerCase();}
 function saveMetaField(slug, field, val) {
   const idx = S.pages.findIndex(p => p.slug === slug);
   if (idx < 0) return;

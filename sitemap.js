@@ -352,14 +352,7 @@ async function enrichSitemapWithLiveData() {
     // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
     const country = (S.kwResearch && S.kwResearch.country)
       ? S.kwResearch.country.toUpperCase()
-      : (function() {
-          const geoLower = (S.research?.geography?.primary || S.setup?.geo || '').toLowerCase();
-          if (/australia|sydney|melbourne|brisbane|perth/.test(geoLower)) return 'AU';
-          if (/canada|\bbc\b|vancouver|calgary|toronto/.test(geoLower)) return 'CA';
-          if (/united kingdom|\buk\b|london/.test(geoLower)) return 'GB';
-          if (/new zealand/.test(geoLower)) return 'NZ';
-          return 'US';
-        })();
+      : detectCountry(S.research?.geography?.primary || S.setup?.geo || '');
 
     const res = await fetch('/api/ahrefs', {
       method: 'POST',
@@ -475,7 +468,7 @@ async function updatePrimaryKw(idx, rawKw) {
   }
   // Live DataForSEO lookup
   const geo = S.research?.geography?.primary || S.setup?.geo || '';
-  const country = /canada|bc|vancouver/i.test(geo) ? 'CA' : 'US';
+  const country = detectCountry(geo);
   try {
     const res = await fetch('/api/ahrefs', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keywords:[kw],country})});
     const data = await res.json();
@@ -487,7 +480,7 @@ async function updatePrimaryKw(idx, rawKw) {
       const v=hit.volume||0,d=hit.difficulty||0;
       S.pages[idx].score = v>=50&&d>0 ? Math.round((Math.log(v+1)*100/Math.max(d,5))*10)/10 : 0;
     }
-  } catch(e) {}
+  } catch(e) { console.error('[sitemap] keyword lookup failed:', e.message); if(typeof aiBarNotify==='function') aiBarNotify('Keyword lookup failed: ' + e.message, {duration:4000}); }
   scheduleSave(); renderSitemapResults(S.sitemapApproved);
 }
 
@@ -1049,7 +1042,7 @@ async function runPAA() {
 
   const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
   const geoStr = (geo + '').toLowerCase();
-  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+  const country = detectCountry(geoStr);
 
   // Use editable input if available, else fall back to P1 keywords
   const seedInput = document.getElementById('ci-paa-seeds');
@@ -1173,7 +1166,7 @@ async function runCompetitorGap() {
 
   const geo = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/, '').trim();
   const geoStr = (geo + '').toLowerCase();
-  const country = (geoStr.includes('canada') || geoStr.includes('bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto')) ? 'CA' : 'US';
+  const country = detectCountry(geoStr);
 
   // Collect all our own keywords for cross-reference
   const ownKeywords = [];

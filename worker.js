@@ -50,6 +50,53 @@ async function verifyCFAccessJWT(token, teamDomain) {
 
   return payload;
 }
+// ── Shared helpers (deduplicated) ────────────────────────────────────────
+
+const LOCATION_CODES = { CA: 2124, US: 2840, GB: 2826, AU: 2036, NZ: 2554, SG: 2702, ZA: 2710 };
+
+function getLocationCode(country, fallback = 'CA') {
+  const cc = (country || fallback).toUpperCase().slice(0, 2);
+  return LOCATION_CODES[cc] || LOCATION_CODES[fallback] || 2124;
+}
+
+function getDFSCreds(env) {
+  return btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+}
+
+function detectCountryFromGeo(geo) {
+  const g = (geo || '').toLowerCase();
+  if (/australia|sydney|melbourne|brisbane|perth|adelaide/.test(g)) return 'AU';
+  if (/new zealand|auckland|wellington/.test(g)) return 'NZ';
+  if (/united kingdom|uk\b|london|manchester|birmingham|leeds|glasgow|edinburgh/.test(g)) return 'GB';
+  if (/singapore/.test(g)) return 'SG';
+  if (/south africa|cape town|johannesburg/.test(g)) return 'ZA';
+  if (/united states|\bus\b|new york|los angeles|chicago|houston|phoenix|dallas|seattle|denver|miami|boston/.test(g)) return 'US';
+  // Default: Canada (primary market)
+  return 'CA';
+}
+
+async function fetchGoogleSuggest(term, gl) {
+  try {
+    const r = await fetch(
+      'https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + (gl || 'ca'),
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data[1] || []).filter(s => s && s.length <= 70 && s.split(' ').length <= 8).map(s => s.toLowerCase());
+  } catch(e) { return []; }
+}
+
+const EXCLUDED_DOMAINS = [
+  'clutch.co','designrush.com','semrush.com','ahrefs.com','moz.com','hubspot.com',
+  'digitalagencynetwork.com','upcity.com','expertise.com','goodfirms.co','g2.com',
+  'capterra.com','trustpilot.com','yelp.com','bbb.org','yellowpages.com','bark.com',
+  'sortlist.com','agencyspotter.com','wadline.com','featured.com','forbes.com',
+  'indeed.com','glassdoor.com','linkedin.com','reddit.com','quora.com','youtube.com',
+  'wikipedia.org','wordstream.com','searchengineland.com','searchenginejournal.com',
+  'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com'
+];
+
 // ────────────────────────────────────────────────────────────────────────
 
 export default {
@@ -113,20 +160,13 @@ export default {
         if (!pages?.length) return new Response(JSON.stringify({ error: 'No pages' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
         const gl = (country || 'ca').toLowerCase().slice(0, 2);
-        const locationCode = gl === 'us' ? 2840 : gl === 'gb' ? 2826 : gl === 'au' ? 2036 : 2124;
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = getLocationCode(gl);
+        const creds = getDFSCreds(env);
 
         // Niche modifiers — commercial + informational intent mix
         const nicheModifiers = ['services', 'company', 'agency', 'cost', 'best', 'for', 'how to', 'what is', 'vs', 'near me'];
 
-        async function fetchSuggestNiche(term) {
-          try {
-            const r = await fetch('https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            if (!r.ok) return [];
-            const data = await r.json();
-            return (data[1] || []).filter(s => s && s.length <= 70 && s.split(' ').length <= 8).map(s => s.toLowerCase());
-          } catch(e) { return []; }
-        }
+        const fetchSuggestNiche = (term) => fetchGoogleSuggest(term, gl);
 
         const results = [];
 
@@ -424,21 +464,36 @@ export default {
       }
     }
 
-    // POST /api/projects/:id — save a project
+    // POST /api/projects/:id — save a project (with optimistic locking)
     const saveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
     if (saveMatch && request.method === 'POST') {
       const id = saveMatch[1];
       try {
         const data = await request.json();
+        const kvKey = userPrefix + 'project:' + id;
+
+        // ── Optimistic locking: reject stale writes ──
+        const clientVersion = data._version || 0;
+        const existing = await env.SETSAIL_OS.get(kvKey, { type: 'json' });
+        const serverVersion = existing?._version || 0;
+        if (clientVersion > 0 && serverVersion > clientVersion) {
+          return new Response(JSON.stringify({
+            error: 'Conflict: project was modified (server v' + serverVersion + ', yours v' + clientVersion + ')',
+            code: 'VERSION_CONFLICT',
+            serverVersion
+          }), { status: 409, headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        data._version = serverVersion + 1;
+
         const meta = {
           name: data.setup?.client || id,
           stage: data.stage || 'setup',
           updatedAt: Date.now(),
         };
         const serialized = JSON.stringify(data);
-        console.log('[worker save] payload size:', Math.round(serialized.length/1024) + 'KB');
-        await env.SETSAIL_OS.put(userPrefix + 'project:' + id, serialized, { metadata: meta });
-        return new Response(JSON.stringify({ ok: true, id, sizeKB: Math.round(serialized.length/1024) }), {
+        console.log('[worker save] payload size:', Math.round(serialized.length/1024) + 'KB', 'v' + data._version);
+        await env.SETSAIL_OS.put(kvKey, serialized, { metadata: meta });
+        return new Response(JSON.stringify({ ok: true, id, _version: data._version, sizeKB: Math.round(serialized.length/1024) }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch (err) {
@@ -552,14 +607,8 @@ export default {
         const modifiers = ['near me', 'services', 'company', 'cost', 'best', 'local', 'affordable', 'top'];
 
         async function fetchSuggest(term) {
-          try {
-            const url = 'https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl;
-            const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            if (!r.ok) return;
-            const data = await r.json();
-            const suggestions = data[1] || [];
-            suggestions.forEach(s => { if (s && s.length <= 60 && s.split(' ').length <= 7) suggestExpanded.add(s.toLowerCase()); });
-          } catch(e) {}
+          const results = await fetchGoogleSuggest(term, gl);
+          results.forEach(s => suggestExpanded.add(s));
         }
 
         // Fire suggest requests: bare term + key modifiers (batched to avoid rate limits)
@@ -581,9 +630,8 @@ export default {
 
         // ── DataForSEO (preferred — pay-per-use, ~$0.0005/kw) ──
         if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) {
-          const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-          const locationCodes = { CA: 2124, US: 2840, GB: 2826, AU: 2036, NZ: 2554, SG: 2702, ZA: 2710 };
-          const locationCode = locationCodes[(cc||'').toUpperCase()] || 2840;
+          const creds = getDFSCreds(env);
+          const locationCode = getLocationCode(cc, 'US');
           const body = [{ keywords: kwList, location_code: locationCode, language_code: 'en' }];
           let dfsRes, dfsData, dfsRaw;
           try {
@@ -691,8 +739,8 @@ export default {
         const { seeds, country } = await request.json();
         if (!seeds?.length) return new Response(JSON.stringify({ error: 'No seeds' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCode = (country || 'CA') === 'CA' ? 2124 : (country === 'US' ? 2840 : 2124);
+        const creds = getDFSCreds(env);
+        const locationCode = getLocationCode(country);
 
         // ── keywords_for_keywords is disabled on this plan — seeds arrive pre-expanded from client ──
         // Just run search_volume/live on the full seed list in batches of 200
@@ -814,7 +862,7 @@ export default {
         }
         const { seeds } = await request.json();
         const testSeeds = (seeds || ['seo vancouver', 'digital marketing vancouver']).slice(0, 3);
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const creds = getDFSCreds(env);
 
         // Test 1: keywords_for_keywords
         let expandResult, expandError;
@@ -822,7 +870,7 @@ export default {
           const r = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live', {
             method: 'POST',
             headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-            body: JSON.stringify(testSeeds.map(s => ({ keyword: s, location_code: 2124, language_code: 'en', limit: 5 })))
+            body: JSON.stringify(testSeeds.map(s => ({ keyword: s, location_code: getLocationCode('CA'), language_code: 'en', limit: 5 })))
           });
           const raw = await r.text();
           expandResult = { status: r.status, body: JSON.parse(raw) };
@@ -834,7 +882,7 @@ export default {
           const r = await fetch('https://api.dataforseo.com/v3/keywords_data/google_ads/search_volume/live', {
             method: 'POST',
             headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ keywords: testSeeds, location_code: 2124, language_code: 'en' }])
+            body: JSON.stringify([{ keywords: testSeeds, location_code: getLocationCode('CA'), language_code: 'en' }])
           });
           const raw = await r.text();
           volResult = { status: r.status, body: JSON.parse(raw) };
@@ -895,8 +943,8 @@ export default {
         const { keywords, country } = await request.json();
         if (!keywords?.length) return new Response(JSON.stringify({ error: 'No keywords' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCode = (country || 'CA') === 'CA' ? 2124 : 2840;
+        const creds = getDFSCreds(env);
+        const locationCode = getLocationCode(country);
 
         // Strip location modifiers — Google shows PAA for informational queries, not local/commercial ones
         const locationWords = /\b(vancouver|victoria|burnaby|surrey|richmond|langley|coquitlam|toronto|calgary|edmonton|montreal|ottawa|canada|bc|ontario|alberta|near me)\b/gi;
@@ -979,9 +1027,8 @@ export default {
         const { domains, ownKeywords, country } = await request.json();
         if (!domains?.length) return new Response(JSON.stringify({ error: 'No domains' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCodes2 = { CA: 2124, US: 2840, GB: 2826, AU: 2036, NZ: 2554, SG: 2702, ZA: 2710 };
-        const locationCode = locationCodes2[(country || 'US').toUpperCase()] || 2840;
+        const creds = getDFSCreds(env);
+        const locationCode = getLocationCode(country, 'US');
         const cc = (country || 'us').toLowerCase().slice(0, 2);
         const ownSet = new Set((ownKeywords || []).map(k => k.toLowerCase().trim()));
 
@@ -1041,17 +1088,11 @@ export default {
         if (!allKeywords.length) {
           gapDebug = { domainsAttempted: domains.slice(0,3), note: 'dataforseo_labs returned 0 — using Google Suggest fallback' };
           const suggestSet = new Set();
-          const glMap2 = { ca: 'ca', us: 'us', gb: 'gb', au: 'au', nz: 'nz', sg: 'sg', za: 'za' };
-          const gl2 = glMap2[(cc || 'us').toLowerCase()] || 'us';
+          const gl2 = (cc || 'us').toLowerCase();
 
           async function fetchSuggestComp(term) {
-            try {
-              const url = 'https://suggestqueries.google.com/complete/search?client=firefox&q=' + encodeURIComponent(term) + '&hl=en&gl=' + gl2;
-              const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-              if (!r.ok) return;
-              const data = await r.json();
-              (data[1] || []).forEach(s => { if (s && s.length <= 60 && s.split(' ').length <= 7) suggestSet.add(s.toLowerCase()); });
-            } catch(e) {}
+            const results = await fetchGoogleSuggest(term, gl2);
+            results.forEach(s => suggestSet.add(s));
           }
 
           // For each domain, use its bare name parts as seeds (e.g. oceanicdental → "oceanic dental lab")
@@ -1091,14 +1132,14 @@ export default {
         const { keyword, location_code } = await request.json();
         if (!keyword) return new Response(JSON.stringify({ error: 'keyword required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const creds = getDFSCreds(env);
 
         const res = await fetch('https://api.dataforseo.com/v3/business_data/google/my_business_info/live', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
           body: JSON.stringify([{
             keyword: keyword,
-            location_code: location_code || 2840,
+            location_code: location_code || getLocationCode('CA'),
             language_code: 'en'
           }])
         });
@@ -1179,7 +1220,7 @@ export default {
         const { domain, location_code } = await request.json();
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const creds = getDFSCreds(env);
         const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
 
         const res = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/competitors_domain/live', {
@@ -1188,7 +1229,7 @@ export default {
           body: JSON.stringify([{
             target: cleanDomain,
             language_code: 'en',
-            location_code: location_code || 2840,
+            location_code: location_code || getLocationCode('CA'),
             limit: 10,
             filters: ['metrics.organic.count', '>', 0],
             order_by: ['metrics.organic.count,desc']
@@ -1202,16 +1243,7 @@ export default {
           });
         }
         const items = task?.result?.[0]?.items || [];
-        // Exclude directories, review platforms, tools, and job sites — not real competitors
-        const EXCLUDED_DOMAINS = [
-          'clutch.co','designrush.com','semrush.com','ahrefs.com','moz.com','hubspot.com',
-          'digitalagencynetwork.com','upcity.com','expertise.com','goodfirms.co','g2.com',
-          'capterra.com','trustpilot.com','yelp.com','bbb.org','yellowpages.com','bark.com',
-          'sortlist.com','agencyspotter.com','wadline.com','featured.com','forbes.com',
-          'indeed.com','glassdoor.com','linkedin.com','reddit.com','quora.com','youtube.com',
-          'wikipedia.org','wordstream.com','searchengineland.com','searchenginejournal.com',
-          'neilpatel.com','backlinko.com','moz.com','sproutsocial.com','hootsuite.com'
-        ];
+        // Uses shared EXCLUDED_DOMAINS defined at top of file
         const competitors = items.map(item => ({
           domain: item.domain || '',
           intersections: item.metrics?.organic?.count || 0,
@@ -1240,8 +1272,8 @@ export default {
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        const locationCode = (country || '').toUpperCase() === 'US' ? 2840 : 2124; // CA=2124, US=2840
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+        const locationCode = getLocationCode(country);
+        const creds = getDFSCreds(env);
         const dfsPost = async (path, body) => {
           const r = await fetch('https://api.dataforseo.com' + path, {
             method: 'POST',
@@ -1522,8 +1554,8 @@ export default {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
 
-        const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
-        const locationCode = (country || 'CA').toUpperCase() === 'US' ? 2840 : 2124;
+        const creds = getDFSCreds(env);
+        const locationCode = getLocationCode(country);
 
         // Step 1: Get top 10 organic SERP results
         const serpRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
@@ -1720,11 +1752,11 @@ export default {
           if (p.primary_keyword && env.DATAFORSEO_LOGIN) {
             try {
               const geo = ((R.geography?.primary) || setup.geo || '').toLowerCase();
-              const country = /australia|sydney|melbourne/.test(geo) ? 'AU' : /canada|bc|vancouver/.test(geo) ? 'CA' : /united kingdom|uk|london/.test(geo) ? 'GB' : 'US';
-              const creds = btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+              const country = detectCountryFromGeo(geo);
+              const creds = getDFSCreds(env);
               const siRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
                 method: 'POST', headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-                body: JSON.stringify([{ keyword: p.primary_keyword, location_code: country === 'CA' ? 2124 : country === 'AU' ? 2036 : country === 'GB' ? 2826 : 2840, language_code: 'en', depth: 10 }])
+                body: JSON.stringify([{ keyword: p.primary_keyword, location_code: getLocationCode(country), language_code: 'en', depth: 10 }])
               });
               if (siRes.ok) {
                 const siData = await siRes.json();
@@ -1779,16 +1811,21 @@ export default {
 
           const briefText = await claudeCall(sysPrompt, prompt, 4000);
 
-          // Write brief back to project
-          if (!S.pages[pageIdx].brief) S.pages[pageIdx].brief = {};
-          S.pages[pageIdx].brief.generated = true;
-          S.pages[pageIdx].brief.summary = briefText;
-          S.pages[pageIdx].brief.generatedAt = Date.now();
-          S.pages[pageIdx].updatedAt = Date.now();
-
-          // Save updated project to KV
-          await env.SETSAIL_OS.put(userPrefix + 'project:' + projectId, JSON.stringify(S), {
-            metadata: { name: setup.businessName || projectId, stage: S.currentStage || 'briefs', updatedAt: new Date().toISOString() }
+          // Write brief back to project (version-aware atomic write)
+          // Re-read latest state to avoid clobbering concurrent saves
+          const kvKey = userPrefix + 'project:' + projectId;
+          const freshRaw = await env.SETSAIL_OS.get(kvKey);
+          const freshS = freshRaw ? JSON.parse(freshRaw) : S;
+          if (freshS.pages?.[pageIdx]) {
+            if (!freshS.pages[pageIdx].brief) freshS.pages[pageIdx].brief = {};
+            freshS.pages[pageIdx].brief.generated = true;
+            freshS.pages[pageIdx].brief.summary = briefText;
+            freshS.pages[pageIdx].brief.generatedAt = Date.now();
+            freshS.pages[pageIdx].updatedAt = Date.now();
+          }
+          freshS._version = (freshS._version || 0) + 1;
+          await env.SETSAIL_OS.put(kvKey, JSON.stringify(freshS), {
+            metadata: { name: setup.businessName || projectId, stage: freshS.currentStage || 'briefs', updatedAt: new Date().toISOString() }
           });
           await setStatus('done', { completedAt: Date.now() });
 

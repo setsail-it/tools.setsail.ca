@@ -69,7 +69,7 @@ async function fetchKeywordResearch() {
 
   // Determine country
   const geoStr = allGeos.join(' ').toLowerCase();
-  const country = (geoStr.includes('canada') || geoStr.includes(' bc') || geoStr.includes('vancouver') || geoStr.includes('calgary') || geoStr.includes('toronto') || geoStr.includes('alberta')) ? 'CA' : 'US';
+  const country = detectCountry(geoStr);
 
   // Always ensure a valid geo -- fall back to 'vancouver' so seeds are never blank
   const _rawCity = (primaryGeo || '').replace(/,.*$/, '').trim().toLowerCase();
@@ -489,13 +489,8 @@ async function _runCompetitorSeeds() {
 function _autoDetectKwCountry() {
   var r = S.research || {};
   var setup = S.setup || {};
-  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
-  if (geo.indexOf('australia') >= 0 || geo.indexOf('sydney') >= 0 || geo.indexOf('melbourne') >= 0 || geo.indexOf('brisbane') >= 0 || geo.indexOf('perth') >= 0) return 'au';
-  if (geo.indexOf('canada') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) return 'ca';
-  if (geo.indexOf('united kingdom') >= 0 || geo.indexOf('london') >= 0) return 'gb';
-  if (geo.indexOf('new zealand') >= 0) return 'nz';
-  if (geo.indexOf('singapore') >= 0) return 'sg';
-  return 'us';
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || ''));
+  return detectCountryLower(geo);
 }
 
 function _setKwCountry(val) {
@@ -905,13 +900,7 @@ async function fetchKwVolumes() {
   var r = S.research || {};
   var setup = S.setup || {};
   // Use manually selected country, or auto-detect from geo text
-  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : (function() {
-    var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
-    if (geo.indexOf('australia') >= 0 || geo.indexOf(' au') >= 0 || geo.indexOf('sydney') >= 0 || geo.indexOf('melbourne') >= 0 || geo.indexOf('brisbane') >= 0 || geo.indexOf('perth') >= 0) return 'au';
-    if (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0 || geo.indexOf('calgary') >= 0 || geo.indexOf('toronto') >= 0) return 'ca';
-    if (geo.indexOf('united kingdom') >= 0 || geo.indexOf(' uk') >= 0 || geo.indexOf('london') >= 0) return 'gb';
-    return 'us';
-  })();
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : detectCountryLower(r.geography && r.geography.primary ? r.geography.primary : (setup.geo || ''));
   try {
     var res = await fetch('/api/kw-expand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seeds: seeds, country: country }) });
     var data = await res.json();
@@ -1190,8 +1179,8 @@ async function validateAndAssignQuestions() {
   var statusEl = document.getElementById('kw-questions-fetch-status');
   var r = S.research || {};
   var setup = S.setup || {};
-  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).toLowerCase();
-  var country = (geo.indexOf('canada') >= 0 || geo.indexOf(' bc') >= 0 || geo.indexOf('vancouver') >= 0) ? 'ca' : 'us';
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || ''));
+  var country = detectCountryLower(geo);
 
   // ── Step 1: Volume lookup ────────────────────────────────────────────────
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Step 1/2: Checking search volumes...';
@@ -2420,7 +2409,7 @@ async function addManualKeyword(pageIdx, rawKw) {
 
   // Live lookup for unknown keyword
   const geo = S.research?.geography?.primary || S.setup?.geo || '';
-  const country = geo.toLowerCase().includes('canada')||geo.toLowerCase().includes('bc')||geo.toLowerCase().includes('vancouver') ? 'CA' : 'US';
+  const country = detectCountry(geo);
   try {
     const res = await fetch('/api/ahrefs', {
       method: 'POST',

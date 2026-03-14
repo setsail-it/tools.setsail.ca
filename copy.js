@@ -40,14 +40,7 @@ async function runSerpIntel(slug) {
   // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
   const country = (S.kwResearch && S.kwResearch.country)
     ? S.kwResearch.country.toUpperCase()
-    : (function() {
-        var geo = ((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '').toLowerCase();
-        if (/australia|sydney|melbourne|brisbane|perth/.test(geo)) return 'AU';
-        if (/canada|\bbc\b|vancouver|calgary|toronto/.test(geo)) return 'CA';
-        if (/united kingdom|\buk\b|london/.test(geo)) return 'GB';
-        if (/new zealand/.test(geo)) return 'NZ';
-        return 'US';
-      })();
+    : detectCountry((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '');
 
   try {
     const res = await fetch('/api/serp-intel', {
