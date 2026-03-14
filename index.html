@@ -539,11 +539,11 @@ textarea.inp{resize:vertical}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="goTo('sitemap')"><i class="ti ti-arrow-left"></i> Back to Sitemap</button>
-          <button class="btn btn-ghost" id="briefs-run-btn" onclick="generateAllBriefs()" title="Write briefs for all pages sequentially"><i class="ti ti-pencil"></i> Write All Briefs</button>
-          <button class="btn btn-primary" id="briefs-queue-btn" onclick="queueAllBriefs()" title="Queue all ungenerated briefs — tab-close safe, auto-retries on rate limits"><i class="ti ti-stack-2"></i> Queue All</button>
+          <button class="btn btn-ghost" id="briefs-run-btn" onclick="generateAllBriefs()" data-tip="Generates briefs for all pages sequentially in the browser. Tab must stay open. For large sitemaps (30+ pages) use Queue All instead."><i class="ti ti-pencil"></i> Write All Briefs</button>
+          <button class="btn btn-primary" id="briefs-queue-btn" onclick="queueAllBriefs()" data-tip="Submits all un-generated pages to the Cloudflare Queue for server-side generation. Tab-close safe — worker runs in background. Retries automatically on rate limits. Progress shown in AI bar with ETA."><i class="ti ti-stack-2"></i> Queue All</button>
           <span id="briefs-queue-status" style="font-size:11px;color:var(--n3);display:none"></span>
-          <button class="btn btn-ghost" id="niche-expand-btn" onclick="runNicheExpand()" title="Expand keyword pool using each page's primary keyword via Google Suggest"><i class="ti ti-antenna"></i> Expand Niche Keywords</button>
-          <button class="btn btn-ghost" id="page-questions-btn" onclick="runPageQuestions()" title="Generate 6 targeted FAQs per page using Claude"><i class="ti ti-message-question"></i> Generate Page Questions</button>
+          <button class="btn btn-ghost" id="niche-expand-btn" onclick="runNicheExpand()" data-tip="Runs Google Suggest on each pages primary keyword with 10 modifiers to pull niche variants. Gets DataForSEO volumes. Run before AI Assign so specific keyword variants are available per page."><i class="ti ti-antenna"></i> Expand Niche Keywords</button>
+          <button class="btn btn-ghost" id="page-questions-btn" onclick="runPageQuestions()" data-tip="Generates 8 per-page questions specific to each pages primary keyword and type. These become FAQ H3s in briefs and feed FAQ schema. Skips pages without a primary keyword."><i class="ti ti-message-question"></i> Generate Page Questions</button>
           <button class="btn btn-primary" id="ai-assign-btn" onclick="aiAssignKeywordsAndQuestions()"><i class="ti ti-sparkles"></i> AI Assign Keywords + Questions</button>
         </div>
       </div>

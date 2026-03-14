@@ -668,10 +668,10 @@ function _renderSitemapResultsInner(approved) {
   html += '<div style="display:flex;align-items:center;gap:8px">';
   if (hasKwData) {
     html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
-    html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
+    html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap. Use after making keyword edits in Edit mode." style="font-size:11px;padding:2px 8px" onclick="fetchKeywordResearch().then(()=>renderSitemapResults(S.sitemapApproved))"><i class="ti ti-refresh"></i> Refresh</button>';
   }
-  html += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
-  html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Generates a visual hierarchy diagram of the sitemap — shows parent/child page relationships. Useful for client presentations and IA review." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
+  html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Priority [| Actions]

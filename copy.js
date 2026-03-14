@@ -557,6 +557,74 @@ async function runCopyAudit(slug) {
   }
 }
 
+
+async function runCopyPass3(slug) {
+  var cd = S.copy[slug];
+  if (!cd || !cd.copy) return;
+  var p = orderedPages().find(function(pp){ return pp.slug===slug; }) || cd.page || {};
+  if (S.copyRunning) return;
+  S.copyRunning = true; copyStopFlag = false;
+  S.copyCurrentSlug = slug;
+  renderCopyQueue();
+  var streamEl = document.getElementById('copy-stream-'+slug);
+  if (streamEl) { streamEl.style.display='block'; streamEl.textContent=''; }
+
+  var r = S.research || {}, s = S.setup;
+  // Build E-E-A-T material from research
+  var proofPoints = (r.proof_points || []).slice(0,6).join('\n- ');
+  var caseStudies = (r.case_studies || r.client_results || []).slice(0,3).map(function(cs){ return typeof cs==='object'?(cs.result||cs.title||JSON.stringify(cs)):cs; }).join('\n- ');
+  var teamCreds = (r.team_credentials || r.founder_bio || r.team_bios || '');
+  var awards = (r.awards || r.accreditations || []).join(', ');
+  var clientLogos = (r.client_logos || r.notable_clients || []).join(', ');
+  var pageCtx = (p.pageContext || '').trim();
+
+  var pass3System = 'You are a senior E-E-A-T specialist and conversion copywriter. You receive existing page HTML and add Experience, Expertise, Authoritativeness, and Trust signals throughout the copy without changing its structure. Make signals specific and credible — never generic. Canadian spelling.';
+  var prompt = '## EXISTING COPY\n' + cd.copy
+    + '\n\n## E-E-A-T MATERIAL TO INJECT'
+    + (proofPoints ? '\n\nProof points:\n- ' + proofPoints : '')
+    + (caseStudies ? '\n\nCase study results:\n- ' + caseStudies : '')
+    + (teamCreds ? '\n\nTeam credentials: ' + teamCreds : '')
+    + (awards ? '\n\nAwards/accreditations: ' + awards : '')
+    + (clientLogos ? '\n\nNotable clients: ' + clientLogos : '')
+    + (pageCtx ? '\n\nPage-specific context: ' + pageCtx : '')
+    + '\n\n## TASK\nEnhance this copy with E-E-A-T signals using the material above. Rules:'
+    + '\n1. Add specific stats, results, and credentials where they strengthen credibility'
+    + '\n2. Make social proof concrete — named clients, specific outcomes, real numbers'
+    + '\n3. Flag any E-E-A-T material that is missing (no stats, no case studies, etc.) with <!-- MISSING: --> comments'
+    + '\n4. Never invent proof points — only use material provided above'
+    + '\n5. Maintain the existing H2/H3 structure and CTA positions'
+    + '\n6. Return the complete enhanced HTML';
+
+  try {
+    if(typeof storePrompt==='function') storePrompt('copy-pass3-'+slug, pass3System, prompt, 'Pass 3 E-E-A-T: '+(p.page_name||slug), slug);
+    window._aiBarLabel = 'Pass 3 E-E-A-T: '+(p.page_name||slug);
+    var result = await callClaude(pass3System, prompt, function(t){
+      if (copyStopFlag) return;
+      if (streamEl) streamEl.textContent = t.slice(-600);
+    }, 6000);
+    if (!copyStopFlag) {
+      var _drafts = cd.drafts || [];
+      var _newDraft = {v: _drafts.length+1, html: result, pass: 3, generatedAt: Date.now()};
+      _drafts.push(_newDraft);
+      if (_drafts.length > 3) _drafts = _drafts.slice(-3);
+      cd.copy = result;
+      cd.drafts = _drafts;
+      cd.activeDraft = _drafts.length-1;
+      cd.audit = null;
+      scheduleSave();
+      if(typeof aiBarNotify==='function') aiBarNotify('✓ Pass 3 complete — E-E-A-T signals injected. Re-run audit.', {duration:5000});
+    }
+  } catch(e) {
+    console.error('Pass 3 error', e);
+    if(typeof aiBarNotify==='function') aiBarNotify('Pass 3 failed: '+e.message, {isError:true,duration:4000});
+  }
+  if (streamEl) streamEl.style.display='none';
+  S.copyCurrentSlug = null;
+  S.copyRunning = false;
+  renderCopyQueue(); updateCopyProgress();
+}
+
+
 async function runCopyPass2(slug) {
   var c = S.copy[slug];
   if (!c || !c.copy || !c.audit) return;
@@ -931,6 +999,14 @@ function renderCopyQueue() {
             if (_aPct < 100) {
               var _nextPassNum = (_drafts.filter(function(d){return d.pass===2;}).length) + 2;
               html += '<div style="margin-top:8px;display:flex;align-items:center;gap:8px"><button onclick="runCopyPass2(\''+p.slug+'\')" style="background:var(--lime);border:none;border-radius:4px;padding:4px 14px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">✦ Run Pass '+_nextPassNum+' — Fix '+(_audit.total-_audit.passed)+' failed checks</button><span style="font-size:9px;color:var(--n2)">Surgical patch only — passing sections preserved</span></div>';
+            } else {
+              // Audit passing — offer Pass 3 E-E-A-T
+              var _hasPass3 = _drafts.some(function(d){return d.pass===3;});
+              html += '<div style="margin-top:8px;display:flex;align-items:center;gap:8px">'
+                + '<button onclick="runCopyPass3(\''+p.slug+'\')" data-tip="Pass 3 injects E-E-A-T signals into the copy using proof points, case study results, team credentials, and notable clients from Research. Run after audit passes. Never invents proof — only uses data you have provided. Flags missing material with comments." style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:4px;padding:4px 14px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);color:var(--green)">'
+                + (_hasPass3?'↺ Re-run':'✦ Run') + ' Pass 3 — E-E-A-T</button>'
+                + '<span style="font-size:9px;color:var(--n2)">Injects proof, credentials, results into existing copy</span>'
+                + '</div>';
             }
           } else {
             html += '<button onclick="runCopyAudit(\''+p.slug+'\')" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:5px 14px;font-size:10px;font-weight:500;cursor:pointer;font-family:var(--font);color:var(--n3)"><i class="ti ti-robot" style="font-size:11px"></i> Run AI Audit (10 checks)</button>';
