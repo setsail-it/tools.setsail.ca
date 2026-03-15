@@ -176,6 +176,30 @@ var ANTI_INFLATION_CAPS = [
       for (var d = 1; d <= 7; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
       if (totalChecks < 10) return false; // not enough data
       return (totalPass / totalChecks) < 0.6;
+    } },
+  // Positioning Direction caps — founder alignment gate
+  { condition:'no_hypotheses_no_direction', section:'positioning', dimension:'data', cap:5,
+    test: function() {
+      var p = S.strategy && S.strategy.positioning || {};
+      return (!p.hypotheses_input || !p.hypotheses_input.length) && !p.selected_direction;
+    } },
+  { condition:'hypotheses_no_direction', section:'positioning', dimension:'confidence', cap:6.5,
+    test: function() {
+      var p = S.strategy && S.strategy.positioning || {};
+      return p.hypothesis_evaluations && p.hypothesis_evaluations.length > 0 && !p.selected_direction;
+    } },
+  { condition:'low_provability_direction', section:'positioning', dimension:'specificity', cap:6,
+    test: function() {
+      var p = S.strategy && S.strategy.positioning || {};
+      if (!p.selected_direction) return false;
+      var dir = p.selected_direction;
+      if (dir.provability_score && dir.provability_score < 5) return true;
+      // Check if it came from a hypothesis eval with low provability
+      if (dir._source_hypothesis && p.hypothesis_evaluations) {
+        var match = p.hypothesis_evaluations.find(function(h) { return h.hypothesis === dir._source_hypothesis; });
+        if (match && match.scores && match.scores.provability < 5) return true;
+      }
+      return false;
     } }
 ];
 
@@ -1102,13 +1126,36 @@ function buildDiagnosticPrompt(num) {
       }).join('');
     }
 
+    // Include selected direction as constraint if available
+    var directionConstraint = '';
+    var posDir = st.positioning && st.positioning.selected_direction;
+    if (posDir) {
+      directionConstraint = '\nSELECTED POSITIONING DIRECTION (MUST constrain all outputs to this):\n'
+        + '- Direction: ' + (posDir.direction || '') + '\n'
+        + (posDir.headline ? '- Headline: ' + posDir.headline + '\n' : '')
+        + (posDir.rationale ? '- Rationale: ' + posDir.rationale + '\n' : '')
+        + (posDir.what_changes_if_chosen ? '- Impact: ' + posDir.what_changes_if_chosen + '\n' : '')
+        + '\nYour positioning angle, value proposition, messaging hierarchy, brand voice direction, and proof strategy MUST all align with and serve this direction. Do not contradict it or propose an alternative.\n\n';
+    }
+
+    // Include hypothesis evaluations context if available
+    var hypCtx = '';
+    var posHyps = st.positioning && st.positioning.hypothesis_evaluations;
+    if (posHyps && posHyps.length) {
+      hypCtx = '\nHYPOTHESIS EVALUATION RESULTS:\n' + posHyps.map(function(h) {
+        return '- "' + h.hypothesis + '" — ' + h.verdict + (h.reframing ? ' (reframing: ' + h.reframing + ')' : '');
+      }).join('\n') + '\n';
+    }
+
     return ctx + '\n\nDIAGNOSTIC: Competitive Position Assessment\n\n'
+      + directionConstraint
       + 'CLIENT SERVICES: ' + JSON.stringify((r.services_detail || []).map(function(s) { return s.name; })) + '\n'
       + 'CLIENT CLAIMED STRENGTHS: ' + JSON.stringify(r.existing_proof || r.proof_points || []) + '\n'
       + 'CLIENT AWARDS/CERTS: ' + JSON.stringify(r.awards_certifications || []) + '\n\n'
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
-      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory.\n\n'
+      + hypCtx
+      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory.' + (posDir ? ' Align ALL outputs to the selected positioning direction.' : '') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "market_position": "where client sits vs competitors",\n'
       + '  "authority_gap": "DR/content/backlink gap description",\n'
@@ -1452,7 +1499,16 @@ async function runDiagnostic(num) {
       if (parsed.estimated_cac) S.strategy.targets.target_cac = parsed.estimated_cac;
       if (parsed.ltv_cac_ratio) S.strategy.targets.ltv_cac_ratio = parsed.ltv_cac_ratio;
     } else if (num === 2) {
+      // Preserve hypothesis/direction data that D2 should not overwrite
+      var _prevPos = S.strategy.positioning || {};
       S.strategy.positioning = parsed;
+      if (_prevPos.hypotheses_input) S.strategy.positioning.hypotheses_input = _prevPos.hypotheses_input;
+      if (_prevPos.hypothesis_evaluations) S.strategy.positioning.hypothesis_evaluations = _prevPos.hypothesis_evaluations;
+      if (_prevPos.recommended_directions) S.strategy.positioning.recommended_directions = _prevPos.recommended_directions;
+      if (_prevPos.selected_direction) S.strategy.positioning.selected_direction = _prevPos.selected_direction;
+      if (_prevPos.system_recommendation) S.strategy.positioning.system_recommendation = _prevPos.system_recommendation;
+      if (_prevPos.founder_decision_prompt) S.strategy.positioning.founder_decision_prompt = _prevPos.founder_decision_prompt;
+      S.strategy.positioning._direction_stale = false; // D2 ran with direction constraint
       // Also set brand voice direction
       if (parsed.brand_voice_direction) {
         S.strategy.brand_strategy = S.strategy.brand_strategy || {};
@@ -2059,9 +2115,14 @@ function renderStrategyScorecard() {
   html += '<div>';
   html += '<div style="font-size:12px;color:var(--n2)">Strategy Score</div>';
   if (meta.current_version > 0) {
-    html += '<div style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:6px">v' + meta.current_version;
+    html += '<div style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:6px;flex-wrap:wrap">v' + meta.current_version;
     if (meta.approved) html += ' <span style="color:var(--green)">Approved</span>';
     if (meta.versions && meta.versions.length > 1) html += ' <a href="#" onclick="event.preventDefault();showStrategyHistory()" style="color:var(--blue);font-size:10px">History</a>';
+    // Show selected direction label
+    var _posDir = S.strategy.positioning && S.strategy.positioning.selected_direction;
+    if (_posDir) {
+      html += ' <span style="color:var(--n1)">|</span> <span style="color:#6b21a8;font-weight:500">Direction: ' + esc(_posDir.direction.length > 35 ? _posDir.direction.slice(0, 35) + '...' : _posDir.direction) + '</span>';
+    }
     html += '</div>';
   }
   html += '</div></div>';
@@ -2504,12 +2565,423 @@ function _stratSection(title, content) {
     + esc(title) + '</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px">' + content + '</div></div>';
 }
 
+// ── Positioning Hypotheses & Direction Selection ──────────────────────
+
+async function evaluateHypotheses() {
+  var p = S.strategy && S.strategy.positioning || {};
+  var hypotheses = (p.hypotheses_input || []).filter(function(h) { return h && h.trim(); });
+  if (!hypotheses.length) {
+    aiBarNotify('Add at least one positioning hypothesis first', { duration: 3000 });
+    return;
+  }
+
+  var r = S.research || {};
+  var st = S.strategy || {};
+
+  // Build competitor context
+  var compCtx = '';
+  if (r.competitors && r.competitors.length) {
+    compCtx = r.competitors.map(function(c) {
+      return '- ' + c.name + ' (' + c.url + '): Positioning: ' + (c.why_they_win || '') + '. Weaknesses: ' + (c.weaknesses || '');
+    }).join('\n');
+  }
+  var deepDive = '';
+  if (st._enrichment && st._enrichment.competitor_deep_dive && st._enrichment.competitor_deep_dive.length) {
+    deepDive = st._enrichment.competitor_deep_dive.map(function(cd) {
+      return (cd.url || '') + ': ' + (cd.positioning || '') + ' | DR: ' + (cd.dr || '?') + ' | Strengths: ' + (cd.strengths || []).join(', ');
+    }).join('\n');
+  }
+
+  // Differentiator context from existing D2 if available
+  var diffCtx = '';
+  if (p.validated_differentiators && p.validated_differentiators.length) {
+    diffCtx = 'VALIDATED: ' + p.validated_differentiators.join('; ');
+  }
+  if (p.rejected_differentiators && p.rejected_differentiators.length) {
+    diffCtx += '\nREJECTED: ' + p.rejected_differentiators.map(function(rd) { return rd.claim + ' (reason: ' + rd.reason + ')'; }).join('; ');
+  }
+
+  // Demand signals from D8
+  var demandCtx = '';
+  if (st.demand_validation) {
+    demandCtx = 'Demand verdict: ' + (st.demand_validation.overall_verdict || 'not run');
+    if (st.demand_validation.seo_viability_score) demandCtx += ' | SEO viability: ' + st.demand_validation.seo_viability_score;
+  }
+  var kwCtx = '';
+  var kw = S.kwResearch || {};
+  if (kw.keywords && kw.keywords.length) {
+    var topKw = kw.keywords.slice().sort(function(a,b){return(b.vol||0)-(a.vol||0);}).slice(0,15);
+    kwCtx = topKw.map(function(k){return '"'+k.kw+'" ('+k.vol+'/mo, KD:'+k.kd+')';}).join(', ');
+  }
+
+  var sys = 'You are a senior brand strategist stress-testing positioning hypotheses against market reality.\n\n'
+    + 'You receive the founder hypotheses alongside competitor data, validated/rejected differentiators, and demand signals.\n\n'
+    + 'For EACH hypothesis, evaluate rigorously — do not be polite. If a hypothesis is contested by competitors, say so. If it is unproven, say so.\n\n'
+    + 'Then recommend 2-3 DIRECTIONS that represent the strongest positioning options available — these can combine, reframe, or improve upon the founder hypotheses, or propose something entirely new if the data warrants it.\n\n'
+    + 'Respond with ONLY valid JSON matching this schema:\n'
+    + '{\n'
+    + '  "hypothesis_evaluations": [\n'
+    + '    {\n'
+    + '      "hypothesis": "the founder hypothesis text",\n'
+    + '      "verdict": "viable | partially_viable | contested",\n'
+    + '      "verdict_label": "short human label",\n'
+    + '      "scores": { "provability": 0, "distinctiveness": 0, "market_demand": 0, "risk": 0 },\n'
+    + '      "evidence_for": ["specific evidence from data"],\n'
+    + '      "evidence_against": ["specific evidence from data"],\n'
+    + '      "reframing": "if not viable, how to reframe",\n'
+    + '      "proof_requirements": ["what client needs to prove this"]\n'
+    + '    }\n'
+    + '  ],\n'
+    + '  "recommended_directions": [\n'
+    + '    {\n'
+    + '      "direction": "short label",\n'
+    + '      "headline": "one sentence the homepage would say",\n'
+    + '      "combines": ["which hypotheses or elements it draws from"],\n'
+    + '      "provability_score": 0,\n'
+    + '      "distinctiveness_score": 0,\n'
+    + '      "rationale": "why this direction scores highest",\n'
+    + '      "risk": "what could go wrong",\n'
+    + '      "what_changes_if_chosen": "how this shapes messaging, proof strategy, content"\n'
+    + '    }\n'
+    + '  ],\n'
+    + '  "system_recommendation": "which direction the system recommends and why",\n'
+    + '  "founder_decision_prompt": "the core trade-off the founder needs to resolve"\n'
+    + '}\n\n'
+    + 'All scores 1-10. Risk is inverted (lower = better = less risky).';
+
+  var user = 'FOUNDER POSITIONING HYPOTHESES:\n'
+    + hypotheses.map(function(h, i) { return (i + 1) + '. ' + h; }).join('\n')
+    + '\n\nCLIENT SERVICES: ' + JSON.stringify((r.services_detail || []).map(function(s) { return s.name; }))
+    + '\nCLIENT PROOF: ' + JSON.stringify(r.existing_proof || [])
+    + '\nCASE STUDIES: ' + JSON.stringify((r.case_studies || []).map(function(cs) { return (cs.client||'') + ': ' + (cs.result||''); }))
+    + '\n\nCOMPETITORS:\n' + (compCtx || 'No competitor data')
+    + (deepDive ? '\n\nCOMPETITOR DEEP-DIVE:\n' + deepDive : '')
+    + (diffCtx ? '\n\nEXISTING DIFFERENTIATOR ANALYSIS:\n' + diffCtx : '')
+    + (demandCtx ? '\n\nDEMAND SIGNALS:\n' + demandCtx : '')
+    + (kwCtx ? '\n\nTOP KEYWORDS: ' + kwCtx : '');
+
+  aiBarStart('Evaluating positioning hypotheses...');
+  try {
+    var result = await callClaude(sys, user, null, 6000, 'Hypothesis evaluation');
+    var parsed = parseEnrichResult(result);
+    if (!parsed || !parsed.hypothesis_evaluations) {
+      aiBarNotify('Could not parse hypothesis evaluation', { isError: true, duration: 4000 });
+      return;
+    }
+
+    S.strategy.positioning = S.strategy.positioning || {};
+    S.strategy.positioning.hypothesis_evaluations = parsed.hypothesis_evaluations;
+    S.strategy.positioning.recommended_directions = parsed.recommended_directions || [];
+    S.strategy.positioning.system_recommendation = parsed.system_recommendation || '';
+    S.strategy.positioning.founder_decision_prompt = parsed.founder_decision_prompt || '';
+
+    scheduleSave();
+    renderStrategyScorecard();
+    renderStrategyTabContent();
+    aiBarEnd('Hypotheses evaluated — ' + parsed.hypothesis_evaluations.length + ' analysed, ' + (parsed.recommended_directions || []).length + ' directions recommended');
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Evaluation failed: ' + e.message, { isError: true, duration: 4000 });
+  }
+}
+
+function selectPositioningDirection(idx) {
+  var p = S.strategy && S.strategy.positioning || {};
+  var dirs = p.recommended_directions || [];
+  var dir = dirs[idx];
+  if (!dir) return;
+
+  if (!confirm('Selecting this direction will regenerate Positioning Angle, Value Proposition, Messaging, and Proof Strategy when D2 next runs.\n\nDirection: ' + dir.direction + '\n\nContinue?')) return;
+
+  S.strategy.positioning.selected_direction = {
+    direction: dir.direction,
+    headline: dir.headline,
+    combines: dir.combines,
+    provability_score: dir.provability_score,
+    distinctiveness_score: dir.distinctiveness_score,
+    rationale: dir.rationale,
+    risk: dir.risk,
+    what_changes_if_chosen: dir.what_changes_if_chosen,
+    selected_at: new Date().toISOString(),
+    _source: 'recommended'
+  };
+  // Mark stale if D2 outputs already exist (they need regeneration)
+  S.strategy.positioning._direction_stale = !!(S.strategy.positioning.core_value_proposition || S.strategy.positioning.recommended_positioning_angle);
+
+  scheduleSave();
+  renderStrategyScorecard();
+  renderStrategyTabContent();
+  aiBarNotify('Direction selected: ' + dir.direction + ' — re-run D2 to regenerate positioning outputs', { duration: 5000 });
+}
+
+function setCustomPositioningDirection() {
+  var textarea = document.getElementById('pos-custom-direction');
+  if (!textarea || !textarea.value.trim()) {
+    aiBarNotify('Enter a custom direction first', { duration: 2000 });
+    return;
+  }
+
+  if (!confirm('Setting a custom direction will regenerate Positioning Angle, Value Proposition, Messaging, and Proof Strategy when D2 next runs.\n\nContinue?')) return;
+
+  S.strategy.positioning = S.strategy.positioning || {};
+  S.strategy.positioning.selected_direction = {
+    direction: textarea.value.trim(),
+    headline: '',
+    combines: [],
+    provability_score: null,
+    distinctiveness_score: null,
+    rationale: 'Custom strategist direction',
+    risk: '',
+    what_changes_if_chosen: '',
+    selected_at: new Date().toISOString(),
+    _source: 'custom'
+  };
+  S.strategy.positioning._direction_stale = !!(S.strategy.positioning.core_value_proposition || S.strategy.positioning.recommended_positioning_angle);
+
+  scheduleSave();
+  renderStrategyScorecard();
+  renderStrategyTabContent();
+  aiBarNotify('Custom direction set — re-run D2 to regenerate positioning outputs', { duration: 5000 });
+}
+
+function addPositioningHypothesis() {
+  S.strategy.positioning = S.strategy.positioning || {};
+  if (!S.strategy.positioning.hypotheses_input) S.strategy.positioning.hypotheses_input = [];
+  if (S.strategy.positioning.hypotheses_input.length >= 4) {
+    aiBarNotify('Maximum 4 hypotheses', { duration: 2000 });
+    return;
+  }
+  S.strategy.positioning.hypotheses_input.push('');
+  renderStrategyTabContent();
+}
+
+function removePositioningHypothesis(idx) {
+  if (!S.strategy || !S.strategy.positioning || !S.strategy.positioning.hypotheses_input) return;
+  S.strategy.positioning.hypotheses_input.splice(idx, 1);
+  scheduleSave();
+  renderStrategyTabContent();
+}
+
+function updatePositioningHypothesis(idx, value) {
+  if (!S.strategy || !S.strategy.positioning) return;
+  if (!S.strategy.positioning.hypotheses_input) S.strategy.positioning.hypotheses_input = [];
+  S.strategy.positioning.hypotheses_input[idx] = value;
+  scheduleSave();
+}
+
+async function scanStrategyDocForHypotheses() {
+  var docText = (S.setup && S.setup.strategy) || '';
+  if (!docText || docText.trim().length < 50) {
+    aiBarNotify('No strategy document found in Setup', { duration: 3000 });
+    return;
+  }
+
+  aiBarStart('Scanning strategy document for positioning hypotheses...');
+  try {
+    var sys = 'Extract any positioning hypotheses, desired directions, or strategic bets from this strategy document. A hypothesis is any statement about how the client wants to be positioned, perceived, or differentiated in their market.\n\nRespond with ONLY a JSON array of strings, each being one hypothesis. If none found, respond with []. Maximum 4 hypotheses.';
+    var user = docText.slice(0, 8000);
+    var result = await callClaude(sys, user, null, 1000, 'Doc scan');
+    var jsonMatch = result.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) { aiBarEnd('No hypotheses found in document'); return; }
+    var found = JSON.parse(jsonMatch[0]);
+    if (!found.length) { aiBarEnd('No positioning hypotheses found in document'); return; }
+
+    S.strategy.positioning = S.strategy.positioning || {};
+    S.strategy.positioning.hypotheses_input = found.slice(0, 4);
+    scheduleSave();
+    renderStrategyTabContent();
+    aiBarEnd('Found ' + found.length + ' positioning hypotheses in strategy document');
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Document scan failed: ' + e.message, { isError: true, duration: 4000 });
+  }
+}
+
 function _renderPositioning(st) {
   var p = st.positioning || {};
-  if (!p.core_value_proposition && !p.recommended_positioning_angle) {
+  if (!p.core_value_proposition && !p.recommended_positioning_angle && !p.hypotheses_input && !p.hypothesis_evaluations) {
     return '<div class="card" style="color:var(--n2);text-align:centre"><p>No positioning data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
+
+  // ── Positioning Direction section (top of tab) ──
+  html += '<div class="card" style="margin-bottom:18px;padding:16px 18px;border-left:3px solid #6b21a8">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html += '<div style="font-size:13px;font-weight:600;color:#6b21a8"><i class="ti ti-compass" style="margin-right:4px"></i> Positioning Direction</div>';
+  if (p.selected_direction) {
+    html += '<span style="background:rgba(21,142,29,0.08);color:var(--green);font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);font-weight:500"><i class="ti ti-check" style="font-size:10px"></i> Active</span>';
+  }
+  html += '</div>';
+
+  // Show selected direction banner if exists
+  if (p.selected_direction) {
+    var sd = p.selected_direction;
+    html += '<div style="background:rgba(21,142,29,0.04);border:1px solid rgba(21,142,29,0.2);border-radius:8px;padding:12px 14px;margin-bottom:14px">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark)">' + esc(sd.direction) + '</div>';
+    if (sd.headline) html += '<div style="font-size:12px;color:var(--n3);margin-top:2px;font-style:italic">"' + esc(sd.headline) + '"</div>';
+    if (sd.provability_score) html += '<div style="font-size:10px;color:var(--n2);margin-top:4px">Provability: ' + sd.provability_score + '/10 | Distinctiveness: ' + (sd.distinctiveness_score || '?') + '/10</div>';
+    if (p._direction_stale) html += '<div style="font-size:10px;color:var(--warn);margin-top:4px"><i class="ti ti-alert-triangle" style="font-size:10px"></i> Direction changed — re-run D2 to align downstream outputs</div>';
+    html += '</div>';
+  }
+
+  // Hypothesis input fields
+  html += '<div style="font-size:11px;color:var(--n2);margin-bottom:8px">Enter the founder hypotheses about desired positioning — how does the client want to be perceived?</div>';
+  var hypotheses = p.hypotheses_input || [];
+  if (!hypotheses.length) hypotheses = [''];
+  hypotheses.forEach(function(h, i) {
+    html += '<div style="display:flex;gap:6px;align-items:start;margin-bottom:6px">';
+    html += '<span style="font-size:11px;color:var(--n2);padding-top:6px;min-width:18px">' + (i + 1) + '.</span>';
+    html += '<textarea id="pos-hyp-' + i + '" onblur="updatePositioningHypothesis(' + i + ',this.value)" style="flex:1;font-size:12px;color:var(--dark);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:var(--font);resize:vertical;min-height:36px;line-height:1.4;outline:none" placeholder="e.g. We want to be the AI + Human agency...">' + esc(h) + '</textarea>';
+    if (hypotheses.length > 1) {
+      html += '<button onclick="removePositioningHypothesis(' + i + ')" style="background:transparent;border:1px solid rgba(220,50,47,0.2);border-radius:4px;padding:4px 6px;cursor:pointer;color:var(--error);font-size:11px;opacity:0.5;margin-top:2px" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.5\'">✕</button>';
+    }
+    html += '</div>';
+  });
+
+  html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">';
+  if (hypotheses.length < 4) {
+    html += '<button class="btn btn-ghost sm" onclick="addPositioningHypothesis()" style="font-size:11px"><i class="ti ti-plus"></i> Add Hypothesis</button>';
+  }
+  html += '<button class="btn btn-primary sm" onclick="evaluateHypotheses()" style="font-size:11px" data-tip="AI stress-tests each hypothesis against competitor data, differentiators, and market demand. Produces scored evaluations and recommended directions."><i class="ti ti-sparkles"></i> Evaluate Hypotheses</button>';
+  var hasStratDoc = S.setup && S.setup.strategy && S.setup.strategy.trim().length > 50;
+  if (hasStratDoc && !p.hypotheses_input) {
+    html += '<button class="btn btn-ghost sm" onclick="scanStrategyDocForHypotheses()" style="font-size:11px" data-tip="Scans the strategy document uploaded in Setup for positioning hypotheses and pre-populates them"><i class="ti ti-file-search"></i> Scan Strategy Doc</button>';
+  }
+  html += '</div>';
+
+  // ── Hypothesis evaluation cards ──
+  if (p.hypothesis_evaluations && p.hypothesis_evaluations.length) {
+    html += '<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">';
+    html += '<div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Hypothesis Evaluations</div>';
+
+    p.hypothesis_evaluations.forEach(function(ev) {
+      var verdictColour = ev.verdict === 'viable' ? 'var(--green)' : ev.verdict === 'partially_viable' ? 'var(--warn)' : 'var(--error)';
+      var verdictBg = ev.verdict === 'viable' ? 'rgba(21,142,29,0.06)' : ev.verdict === 'partially_viable' ? 'rgba(245,166,35,0.06)' : 'rgba(220,50,47,0.06)';
+
+      html += '<div style="background:' + verdictBg + ';border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:14px;margin-bottom:10px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+      html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">' + esc(ev.hypothesis) + '</span>';
+      html += '<span style="background:' + verdictBg + ';color:' + verdictColour + ';font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid;font-weight:500">' + esc(ev.verdict_label || ev.verdict) + '</span>';
+      html += '</div>';
+
+      // Score bars
+      if (ev.scores) {
+        var scoreFields = [
+          { key:'provability', label:'Provability', colour:'#3b82f6' },
+          { key:'distinctiveness', label:'Distinctiveness', colour:'#6b21a8' },
+          { key:'market_demand', label:'Market Demand', colour:'var(--green)' },
+          { key:'risk', label:'Risk (lower = better)', colour:'var(--error)' }
+        ];
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-bottom:10px">';
+        scoreFields.forEach(function(sf) {
+          var val = ev.scores[sf.key] || 0;
+          var pct = val * 10;
+          html += '<div>';
+          html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--n2);margin-bottom:2px"><span>' + sf.label + '</span><span style="font-weight:500;color:var(--dark)">' + val + '/10</span></div>';
+          html += '<div style="background:rgba(0,0,0,0.06);border-radius:2px;height:4px"><div style="background:' + sf.colour + ';height:4px;border-radius:2px;width:' + pct + '%;transition:width 0.3s"></div></div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Evidence for/against (collapsible via details)
+      if ((ev.evidence_for && ev.evidence_for.length) || (ev.evidence_against && ev.evidence_against.length)) {
+        html += '<details style="margin-bottom:6px"><summary style="font-size:11px;color:var(--n2);cursor:pointer;margin-bottom:4px">Evidence</summary>';
+        if (ev.evidence_for && ev.evidence_for.length) {
+          html += '<div style="font-size:11px;margin-bottom:4px"><span style="color:var(--green);font-weight:500">For:</span>';
+          html += '<ul style="margin:2px 0 0;padding-left:16px">' + ev.evidence_for.map(function(e) { return '<li style="margin-bottom:2px">' + esc(e) + '</li>'; }).join('') + '</ul></div>';
+        }
+        if (ev.evidence_against && ev.evidence_against.length) {
+          html += '<div style="font-size:11px"><span style="color:var(--error);font-weight:500">Against:</span>';
+          html += '<ul style="margin:2px 0 0;padding-left:16px">' + ev.evidence_against.map(function(e) { return '<li style="margin-bottom:2px">' + esc(e) + '</li>'; }).join('') + '</ul></div>';
+        }
+        html += '</details>';
+      }
+
+      // Reframing
+      if (ev.reframing && ev.verdict !== 'viable') {
+        html += '<div style="background:rgba(59,130,246,0.06);border-left:2px solid #3b82f6;padding:6px 10px;font-size:11px;color:var(--dark);margin-bottom:6px;border-radius:0 4px 4px 0"><strong>Reframing:</strong> ' + esc(ev.reframing) + '</div>';
+      }
+
+      // Proof requirements
+      if (ev.proof_requirements && ev.proof_requirements.length) {
+        html += '<details><summary style="font-size:11px;color:var(--n2);cursor:pointer">Proof Requirements (' + ev.proof_requirements.length + ')</summary>';
+        html += '<ul style="margin:4px 0 0;padding-left:16px;font-size:11px">' + ev.proof_requirements.map(function(pr) { return '<li style="margin-bottom:2px">' + esc(pr) + '</li>'; }).join('') + '</ul>';
+        html += '</details>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Recommended Directions ──
+  if (p.recommended_directions && p.recommended_directions.length) {
+    html += '<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">';
+    html += '<div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Recommended Directions</div>';
+    if (p.founder_decision_prompt) {
+      html += '<div style="font-size:12px;color:#6b21a8;margin-bottom:10px;font-style:italic;background:rgba(107,33,168,0.04);border:1px solid rgba(107,33,168,0.15);border-radius:6px;padding:8px 12px">' + esc(p.founder_decision_prompt) + '</div>';
+    }
+    if (p.system_recommendation) {
+      html += '<div style="font-size:11px;color:var(--n3);margin-bottom:10px"><strong>System:</strong> ' + esc(p.system_recommendation) + '</div>';
+    }
+
+    p.recommended_directions.forEach(function(dir, i) {
+      var isSelected = p.selected_direction && p.selected_direction.direction === dir.direction && p.selected_direction._source === 'recommended';
+      var isSysRec = p.system_recommendation && p.system_recommendation.toLowerCase().indexOf(dir.direction.toLowerCase()) >= 0;
+
+      html += '<div style="background:' + (isSelected ? 'rgba(21,142,29,0.04)' : 'var(--panel)') + ';border:1px solid ' + (isSelected ? 'rgba(21,142,29,0.3)' : 'var(--border)') + ';border-radius:8px;padding:14px;margin-bottom:10px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--dark)">' + esc(dir.direction) + '</div>';
+      html += '<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">';
+      if (isSysRec) html += '<span style="background:rgba(107,33,168,0.08);color:#6b21a8;font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid rgba(107,33,168,0.2);font-weight:500">RECOMMENDED</span>';
+      if (isSelected) {
+        html += '<span style="background:rgba(21,142,29,0.08);color:var(--green);font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid rgba(21,142,29,0.2);font-weight:500">ACTIVE</span>';
+      } else {
+        html += '<button class="btn btn-ghost sm" onclick="selectPositioningDirection(' + i + ')" style="font-size:10px;padding:2px 8px"><i class="ti ti-check"></i> Select</button>';
+      }
+      html += '</div></div>';
+
+      if (dir.headline) html += '<div style="font-size:12px;color:var(--n3);font-style:italic;margin-bottom:6px">"' + esc(dir.headline) + '"</div>';
+      if (dir.combines && dir.combines.length) html += '<div style="font-size:10px;color:var(--n2);margin-bottom:4px">Combines: ' + dir.combines.map(function(c) { return esc(c); }).join(', ') + '</div>';
+
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-bottom:6px">';
+      if (dir.provability_score) html += '<div style="font-size:10px;color:var(--n2)">Provability: <strong style="color:var(--dark)">' + dir.provability_score + '/10</strong></div>';
+      if (dir.distinctiveness_score) html += '<div style="font-size:10px;color:var(--n2)">Distinctiveness: <strong style="color:var(--dark)">' + dir.distinctiveness_score + '/10</strong></div>';
+      html += '</div>';
+
+      if (dir.rationale) html += '<div style="font-size:11px;color:var(--n3);margin-bottom:4px">' + esc(dir.rationale) + '</div>';
+      if (dir.risk) {
+        html += '<details><summary style="font-size:10px;color:var(--n2);cursor:pointer">Risk & Impact</summary>';
+        html += '<div style="font-size:11px;color:var(--error);margin-top:4px"><strong>Risk:</strong> ' + esc(dir.risk) + '</div>';
+        if (dir.what_changes_if_chosen) html += '<div style="font-size:11px;color:var(--n3);margin-top:4px"><strong>If chosen:</strong> ' + esc(dir.what_changes_if_chosen) + '</div>';
+        html += '</details>';
+      }
+      html += '</div>';
+    });
+
+    // Custom direction option
+    html += '<div style="margin-top:10px">';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:4px">Or write a custom direction:</div>';
+    html += '<div style="display:flex;gap:6px;align-items:start">';
+    html += '<textarea id="pos-custom-direction" style="flex:1;font-size:12px;color:var(--dark);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:var(--font);resize:vertical;min-height:36px;line-height:1.4;outline:none" placeholder="None of these — I want to position as...">' + (p.selected_direction && p.selected_direction._source === 'custom' ? esc(p.selected_direction.direction) : '') + '</textarea>';
+    html += '<button class="btn btn-ghost sm" onclick="setCustomPositioningDirection()" style="font-size:11px;margin-top:4px"><i class="ti ti-check"></i> Set</button>';
+    html += '</div></div>';
+
+    html += '</div>';
+  }
+
+  html += '</div>'; // end Positioning Direction card
+
+  // Stale indicator if direction changed after D2 ran
+  if (p.selected_direction && p._direction_stale) {
+    html += '<div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:var(--warn)"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Positioning outputs below are stale — re-run D2: Competitive Position to align with the selected direction.</div>';
+  }
+
+  // ── Existing positioning outputs ──
+  if (!p.core_value_proposition && !p.recommended_positioning_angle) {
+    return html; // no D2 output yet, just show direction section
+  }
+
   html += _stratSection('Positioning',
     _stratField('Positioning Angle', p.recommended_positioning_angle, {span:true}) +
     _stratField('Core Value Proposition', p.core_value_proposition, {span:true, textarea:true}) +
@@ -4068,6 +4540,24 @@ async function compileStrategyOutput() {
     }
   }
 
+  // Positioning Direction (hypothesis-driven)
+  if (st.positioning && st.positioning.selected_direction) {
+    var _sd = st.positioning.selected_direction;
+    ctx += '\nPOSITIONING DIRECTION (founder-aligned):\n';
+    ctx += '- Selected direction: ' + _sd.direction + '\n';
+    if (_sd.headline) ctx += '- Headline: ' + _sd.headline + '\n';
+    if (_sd.rationale) ctx += '- Rationale: ' + _sd.rationale + '\n';
+    if (_sd.provability_score) ctx += '- Provability: ' + _sd.provability_score + '/10 | Distinctiveness: ' + (_sd.distinctiveness_score || '?') + '/10\n';
+    if (_sd.risk) ctx += '- Risk: ' + _sd.risk + '\n';
+    if (_sd.what_changes_if_chosen) ctx += '- Impact: ' + _sd.what_changes_if_chosen + '\n';
+  }
+  if (st.positioning && st.positioning.hypothesis_evaluations && st.positioning.hypothesis_evaluations.length) {
+    ctx += '\nHYPOTHESIS EVALUATIONS:\n';
+    st.positioning.hypothesis_evaluations.forEach(function(he) {
+      ctx += '- "' + he.hypothesis + '" — ' + he.verdict + ' (provability: ' + (he.scores && he.scores.provability || '?') + ', distinctiveness: ' + (he.scores && he.scores.distinctiveness || '?') + ')\n';
+    });
+  }
+
   // D2: Positioning
   if (st.positioning && st.positioning.core_value_proposition) {
     ctx += '\nPOSITIONING:\n';
@@ -4335,7 +4825,7 @@ async function compileStrategyOutput() {
   }
 
   var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 12 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'Write in these 13 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
     + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores, real case study results, real proof points. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers. If strategist notes were provided, incorporate their direction.\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
     + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition. Reference the strategy score and any active scoring caps that represent known limitations.\n\n'
@@ -4343,25 +4833,27 @@ async function compileStrategyOutput() {
     + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability, pricing model. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
     + '## 3. SUBTRACTION ANALYSIS\n'
     + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any redirect recommendations.\n\n'
-    + '## 4. COMPETITIVE LANDSCAPE\n'
+    + '## 4. POSITIONING DIRECTION\n'
+    + 'If founder hypotheses were evaluated, briefly summarise each hypothesis and its verdict (viable/partially viable/contested). State which direction was selected and why — include the headline and rationale. Acknowledge the trade-offs. List the proof that needs to be built to fully own this positioning. If no direction was evaluated, note that positioning was system-generated without founder alignment.\n\n'
+    + '## 5. COMPETITIVE LANDSCAPE\n'
     + 'Name the actual competitors from the data. For each major competitor, state their specific strength, their weakness, and what we do better. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap and each competitor DR.\n\n'
-    + '## 5. POSITIONING & MESSAGING\n'
-    + 'The value proposition, positioning angle, validated differentiators, and messaging hierarchy (primary message + supporting messages). Include the brand voice direction (style, tone, words to use, words to avoid). Reference specific proof points that support each differentiator.\n\n'
-    + '## 6. KEYWORD & DEMAND STRATEGY\n'
+    + '## 6. POSITIONING & MESSAGING\n'
+    + 'The value proposition, positioning angle, validated differentiators, and messaging hierarchy (primary message + supporting messages). Include the brand voice direction (style, tone, words to use, words to avoid). Reference specific proof points that support each differentiator. This section must align with the selected positioning direction.\n\n'
+    + '## 7. KEYWORD & DEMAND STRATEGY\n'
     + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the demand validation verdict, SEO viability score, and realistic organic timeline. If strategic revisions were flagged, state them.\n\n'
-    + '## 7. CONTENT & AUTHORITY STRATEGY\n'
+    + '## 8. CONTENT & AUTHORITY STRATEGY\n'
     + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins and content mix.\n\n'
-    + '## 8. WEBSITE & CONVERSION\n'
+    + '## 9. WEBSITE & CONVERSION\n'
     + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. Full CTA architecture (primary, secondary, low-commitment), conversion pathway, funnel architecture, form strategy, and tracking requirements. Reference the KPIs that will measure website success.\n\n'
-    + '## 9. CHANNEL ALLOCATION\n'
+    + '## 10. CHANNEL ALLOCATION\n'
     + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever and its rationale. Explain the website role in the overall channel mix.\n\n'
-    + '## 10. GROWTH PLAN & EXECUTION TIMELINE\n'
+    + '## 11. GROWTH PLAN & EXECUTION TIMELINE\n'
     + 'Phased execution timeline showing what gets built when. Reference the growth plan timeline items with their phases and durations. Include funnel architecture and how the execution phases build on each other.\n\n'
-    + '## 11. GEO & LOCAL STRATEGY\n'
+    + '## 12. GEO & LOCAL STRATEGY\n'
     + 'Geographic targeting approach, primary and secondary markets, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
-    + '## 12. RISKS, PROOF & CONSTRAINTS\n'
+    + '## 13. RISKS, PROOF & CONSTRAINTS\n'
     + 'Top risks with severity scores and specific mitigations. E-E-A-T proof inventory: list actual case studies (client, result, timeframe), notable clients, awards/certifications, team credentials, and founder bio. Hard rules and constraints the team must follow — including words to avoid and tone boundaries.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2000-2800 words total.';
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2200-3000 words total.';
 
   aiBarStart('Compiling strategy document...');
   try {
