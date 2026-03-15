@@ -2496,12 +2496,14 @@ function _renderGrowth(st) {
   }
 
   // Interactive Gantt Timeline
-  var hasOverrides = gp.timeline_overrides && Object.keys(gp.timeline_overrides).length > 0;
+  var overrideCount = (gp.timeline_overrides ? Object.keys(gp.timeline_overrides).length : 0)
+    + (gp.deleted_items ? gp.deleted_items.length : 0)
+    + (gp.custom_items ? gp.custom_items.length : 0);
+  var hasOverrides = overrideCount > 0;
   html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">'
     + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Execution Timeline</span>'
     + '</div>';
   if (hasOverrides) {
-    var overrideCount = Object.keys(gp.timeline_overrides).length;
     html += '<div id="gantt-override-bar" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40">'
       + '<i class="ti ti-pencil" style="color:#e6a23c;font-size:14px"></i>'
       + '<span style="font-size:11px;color:var(--dark);font-weight:500">' + overrideCount + ' unsaved edit' + (overrideCount === 1 ? '' : 's') + '</span>'
@@ -2548,6 +2550,7 @@ var _ganttMonths = 12;
 function _buildGanttItems(st) {
   var gp = st.growth_plan || {};
   var overrides = gp.timeline_overrides || {};
+  var deleted = gp.deleted_items || [];
   var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
 
   // Base items: tracking + website build
@@ -2569,6 +2572,27 @@ function _buildGanttItems(st) {
       budgetPct: lev.budget_allocation_pct || 0
     });
   });
+
+  // Add custom (user-added) items
+  if (gp.custom_items && gp.custom_items.length) {
+    gp.custom_items.forEach(function(ci) {
+      items.push({
+        id: ci.id,
+        phase: ci.phase || 1,
+        label: ci.label || 'Custom Item',
+        depends: ci.depends || [],
+        duration: ci.duration || '4 weeks',
+        startWeek: ci.startWeek || 0,
+        notes: ci.notes || '',
+        isCustom: true
+      });
+    });
+  }
+
+  // Remove deleted items
+  if (deleted.length) {
+    items = items.filter(function(item) { return deleted.indexOf(item.id) < 0; });
+  }
 
   // Apply overrides
   items.forEach(function(item) {
@@ -2645,6 +2669,8 @@ function _ganttResetOverrides() {
   if (!S.strategy) return;
   S.strategy.growth_plan = S.strategy.growth_plan || {};
   S.strategy.growth_plan.timeline_overrides = {};
+  S.strategy.growth_plan.deleted_items = [];
+  S.strategy.growth_plan.custom_items = [];
   scheduleSave();
   renderStrategyTabContent();
   aiBarNotify('Timeline reset to AI-generated defaults', { type: 'info', duration: 2000 });
@@ -2673,6 +2699,8 @@ function _ganttAcceptOverrides() {
 
   // Clear overrides — accepted state is now the baseline
   gp.timeline_overrides = {};
+  gp.deleted_items = [];
+  gp.custom_items = [];
   scheduleSave();
   renderStrategyTabContent();
   aiBarNotify('Timeline edits accepted', { type: 'success', duration: 2000 });
@@ -2686,6 +2714,137 @@ function _ganttSaveOverride(id, field, value) {
   ov[field] = value;
   S.strategy.growth_plan.timeline_overrides[id] = ov;
   scheduleSave();
+}
+
+function _ganttDeleteItem(id) {
+  if (!S.strategy) return;
+  var gp = S.strategy.growth_plan = S.strategy.growth_plan || {};
+  gp.deleted_items = gp.deleted_items || [];
+  if (gp.deleted_items.indexOf(id) < 0) gp.deleted_items.push(id);
+  // Also remove from custom items if it was user-added
+  if (gp.custom_items) {
+    gp.custom_items = gp.custom_items.filter(function(ci) { return ci.id !== id; });
+  }
+  // Clean up any overrides for deleted item
+  if (gp.timeline_overrides && gp.timeline_overrides[id]) {
+    delete gp.timeline_overrides[id];
+  }
+  scheduleSave();
+  renderStrategyTabContent();
+}
+
+function _ganttAddItem() {
+  // Modal to add a new custom timeline item
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:600;display:flex;align-items:center;justify-content:center';
+
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;width:380px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.15)';
+
+  card.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:14px">Add Timeline Item</div>';
+
+  // Label
+  var labelRow = document.createElement('div');
+  labelRow.style.cssText = 'margin-bottom:10px';
+  labelRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Name</label>';
+  var labelInput = document.createElement('input');
+  labelInput.type = 'text';
+  labelInput.placeholder = 'e.g. Email Nurture Sequence';
+  labelInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  labelRow.appendChild(labelInput);
+  card.appendChild(labelRow);
+
+  // Phase
+  var phaseRow = document.createElement('div');
+  phaseRow.style.cssText = 'margin-bottom:10px';
+  phaseRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Phase</label>';
+  var phaseSelect = document.createElement('select');
+  phaseSelect.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  ['0: Foundation','1: Launch','2: Scale','3: Optimise'].forEach(function(lbl, i) {
+    var opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = lbl;
+    if (i === 1) opt.selected = true;
+    phaseSelect.appendChild(opt);
+  });
+  phaseRow.appendChild(phaseSelect);
+  card.appendChild(phaseRow);
+
+  // Start week
+  var startRow = document.createElement('div');
+  startRow.style.cssText = 'margin-bottom:10px';
+  startRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Start (week)</label>';
+  var startInput = document.createElement('input');
+  startInput.type = 'number';
+  startInput.min = '0';
+  startInput.max = '48';
+  startInput.value = '4';
+  startInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  startRow.appendChild(startInput);
+  card.appendChild(startRow);
+
+  // Duration
+  var durRow = document.createElement('div');
+  durRow.style.cssText = 'margin-bottom:10px';
+  durRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Duration</label>';
+  var durInput = document.createElement('input');
+  durInput.type = 'text';
+  durInput.placeholder = 'e.g. 4 weeks, 2-3 months, ongoing';
+  durInput.value = '4 weeks';
+  durInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  durRow.appendChild(durInput);
+  card.appendChild(durRow);
+
+  // Notes
+  var noteRow = document.createElement('div');
+  noteRow.style.cssText = 'margin-bottom:14px';
+  noteRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Notes</label>';
+  var noteInput = document.createElement('textarea');
+  noteInput.rows = 2;
+  noteInput.placeholder = 'Optional notes';
+  noteInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg);resize:vertical';
+  noteRow.appendChild(noteInput);
+  card.appendChild(noteRow);
+
+  // Buttons
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { overlay.remove(); };
+  btnRow.appendChild(cancelBtn);
+
+  var addBtn = document.createElement('button');
+  addBtn.className = 'btn btn-dark sm';
+  addBtn.textContent = 'Add';
+  addBtn.onclick = function() {
+    var name = labelInput.value.trim();
+    if (!name) { labelInput.style.borderColor = '#f56c6c'; return; }
+    var gp = S.strategy.growth_plan = S.strategy.growth_plan || {};
+    gp.custom_items = gp.custom_items || [];
+    var id = 'custom_' + Date.now();
+    gp.custom_items.push({
+      id: id,
+      label: name,
+      phase: parseInt(phaseSelect.value, 10),
+      startWeek: parseInt(startInput.value, 10) || 0,
+      duration: durInput.value.trim() || '4 weeks',
+      notes: noteInput.value.trim(),
+      depends: []
+    });
+    scheduleSave();
+    overlay.remove();
+    renderStrategyTabContent();
+  };
+  btnRow.appendChild(addBtn);
+  card.appendChild(btnRow);
+
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  labelInput.focus();
 }
 
 function _mountGantt(st) {
@@ -2706,6 +2865,9 @@ function _mountGantt(st) {
   });
   var totalWeeks = Math.max(maxWeek, 48); // at least 12 months
   var monthCount = Math.ceil(totalWeeks / 4);
+  var pxPerWeek = 60 / 4; // 60px per month / 4 weeks
+  var labelW = 240;
+  var minRowW = labelW + monthCount * 60;
 
   // Build the chart
   var wrap = document.createElement('div');
@@ -2713,7 +2875,7 @@ function _mountGantt(st) {
 
   // Month headers
   var headerRow = document.createElement('div');
-  headerRow.style.cssText = 'display:flex;border-bottom:1px solid var(--border);padding-left:220px;min-width:' + (220 + monthCount * 60) + 'px';
+  headerRow.style.cssText = 'display:flex;border-bottom:1px solid var(--border);padding-left:' + labelW + 'px;min-width:' + minRowW + 'px';
   for (var m = 0; m < monthCount; m++) {
     var mCell = document.createElement('div');
     mCell.style.cssText = 'width:60px;min-width:60px;text-align:center;font-size:9px;font-weight:500;color:var(--n3);padding:4px 0;text-transform:uppercase';
@@ -2726,11 +2888,11 @@ function _mountGantt(st) {
   var dragState = { dragging: null };
   items.forEach(function(item, idx) {
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;min-height:36px;border-bottom:1px solid var(--border);min-width:' + (220 + monthCount * 60) + 'px;transition:background .15s';
+    row.style.cssText = 'display:flex;align-items:center;min-height:36px;border-bottom:1px solid var(--border);min-width:' + minRowW + 'px;transition:background .15s';
     row.setAttribute('data-gantt-idx', idx);
     row.setAttribute('draggable', 'true');
 
-    // Drag handlers
+    // Drag handlers for row reorder
     row.addEventListener('dragstart', function(e) {
       dragState.dragging = idx;
       e.dataTransfer.effectAllowed = 'move';
@@ -2752,9 +2914,7 @@ function _mountGantt(st) {
       e.preventDefault();
       row.style.background = '';
       if (dragState.dragging == null || dragState.dragging === idx) return;
-      // Reorder: assign order overrides
       var newOrder = items.map(function(it, i) { return { id: it.id, order: i }; });
-      // Move dragged to drop position
       var fromIdx = dragState.dragging;
       var moved = newOrder.splice(fromIdx, 1)[0];
       newOrder.splice(idx, 0, moved);
@@ -2764,25 +2924,28 @@ function _mountGantt(st) {
       renderStrategyTabContent();
     });
 
-    // Label cell (fixed width)
+    // Label cell
     var labelCell = document.createElement('div');
-    labelCell.style.cssText = 'width:220px;min-width:220px;display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:grab';
+    labelCell.style.cssText = 'width:' + labelW + 'px;min-width:' + labelW + 'px;display:flex;align-items:center;gap:5px;padding:4px 8px;cursor:grab';
 
     // Phase badge
     var phaseBadge = document.createElement('span');
     phaseBadge.style.cssText = 'background:' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';color:white;font-size:9px;padding:1px 6px;border-radius:3px;cursor:pointer;flex-shrink:0';
     phaseBadge.textContent = 'P' + item.phase;
     phaseBadge.title = 'Click to change phase';
-    phaseBadge.onclick = function() {
-      var next = ((item.phase || 0) + 1) % 4;
-      _ganttSaveOverride(item.id, 'phase', next);
-      renderStrategyTabContent();
-    };
+    (function(it) {
+      phaseBadge.onclick = function(e) {
+        e.stopPropagation();
+        var next = ((it.phase || 0) + 1) % 4;
+        _ganttSaveOverride(it.id, 'phase', next);
+        renderStrategyTabContent();
+      };
+    })(item);
     labelCell.appendChild(phaseBadge);
 
     // Label text
     var labelTxt = document.createElement('span');
-    labelTxt.style.cssText = 'font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    labelTxt.style.cssText = 'font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1';
     labelTxt.textContent = item.label;
     labelTxt.title = item.notes || item.label;
     labelCell.appendChild(labelTxt);
@@ -2794,6 +2957,24 @@ function _mountGantt(st) {
       budgetTag.textContent = item.budgetPct + '%';
       labelCell.appendChild(budgetTag);
     }
+
+    // Delete button
+    var delBtn = document.createElement('span');
+    delBtn.style.cssText = 'font-size:12px;color:var(--n3);cursor:pointer;flex-shrink:0;padding:0 2px;opacity:0;transition:opacity .15s';
+    delBtn.innerHTML = '<i class="ti ti-x"></i>';
+    delBtn.title = 'Remove from timeline';
+    (function(it) {
+      delBtn.onclick = function(e) {
+        e.stopPropagation();
+        _ganttDeleteItem(it.id);
+      };
+    })(item);
+    labelCell.appendChild(delBtn);
+
+    // Show delete on hover
+    row.addEventListener('mouseenter', function() { delBtn.style.opacity = '1'; });
+    row.addEventListener('mouseleave', function() { delBtn.style.opacity = '0'; });
+
     row.appendChild(labelCell);
 
     // Chart area
@@ -2809,53 +2990,104 @@ function _mountGantt(st) {
 
     // Bar
     var durWeeks = _ganttParseWeeks(item.duration);
-    var pxPerWeek = 60 / 4; // 60px per month / 4 weeks
     var barLeft = item.startWeek * pxPerWeek;
     var barWidth = Math.max(durWeeks * pxPerWeek, 15);
     var isOngoing = !item.duration || item.duration === 'ongoing';
+    var colour = _ganttPhaseColours[item.phase] || 'var(--n2)';
 
     var bar = document.createElement('div');
-    bar.style.cssText = 'position:absolute;top:4px;height:20px;border-radius:4px;cursor:pointer;display:flex;align-items:center;padding:0 6px;font-size:9px;color:white;font-weight:500;white-space:nowrap;overflow:hidden;transition:box-shadow .15s;'
+    bar.style.cssText = 'position:absolute;top:4px;height:20px;border-radius:4px;cursor:grab;display:flex;align-items:center;padding:0 6px;font-size:9px;color:white;font-weight:500;white-space:nowrap;overflow:hidden;'
       + 'left:' + barLeft + 'px;width:' + barWidth + 'px;'
-      + 'background:' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';'
-      + (isOngoing ? 'background:linear-gradient(90deg,' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ' 80%,transparent);border-right:2px dashed ' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';' : '');
+      + 'background:' + colour + ';'
+      + (isOngoing ? 'background:linear-gradient(90deg,' + colour + ' 80%,transparent);border-right:2px dashed ' + colour + ';' : '');
     bar.textContent = item.duration;
-    bar.title = item.label + ': ' + item.duration + (item.notes ? '\n' + item.notes : '') + '\nClick to edit | Drag bar edges to resize';
+    bar.title = item.label + ': ' + item.duration + (item.notes ? '\n' + item.notes : '') + '\nDrag to move | Double-click to edit';
 
-    // Click to edit duration/notes
-    (function(it) {
-      bar.onclick = function(e) {
-        e.stopPropagation();
-        _ganttEditItem(it);
-      };
-    })(item);
-
-    // Drag to adjust start week (left edge)
+    // Drag entire bar to move start week
     (function(it, barEl) {
-      var resizeHandle = document.createElement('div');
-      resizeHandle.style.cssText = 'position:absolute;left:0;top:0;bottom:0;width:6px;cursor:w-resize';
-      resizeHandle.onmousedown = function(e) {
+      var isDragging = false;
+      barEl.onmousedown = function(e) {
+        // Check if clicking near edges for resize
+        var rect = barEl.getBoundingClientRect();
+        var edgeZone = 8;
+        var isLeftEdge = e.clientX - rect.left < edgeZone;
+        var isRightEdge = rect.right - e.clientX < edgeZone;
+
         e.preventDefault();
         e.stopPropagation();
+        isDragging = true;
+        barEl.style.cursor = 'grabbing';
+        barEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+
         var startX = e.clientX;
         var origStart = it.startWeek;
+        var origDur = _ganttParseWeeks(it.duration);
+
         var onMove = function(me) {
           var dx = me.clientX - startX;
           var dWeeks = Math.round(dx / pxPerWeek);
-          var newStart = Math.max(0, origStart + dWeeks);
-          _ganttSaveOverride(it.id, 'startWeek', newStart);
-          barEl.style.left = (newStart * pxPerWeek) + 'px';
+          if (isLeftEdge) {
+            // Resize from left: move start, shrink/grow duration
+            var newStart = Math.max(0, origStart + dWeeks);
+            var newDurWeeks = Math.max(1, origDur - (newStart - origStart));
+            barEl.style.left = (newStart * pxPerWeek) + 'px';
+            barEl.style.width = Math.max(newDurWeeks * pxPerWeek, 15) + 'px';
+          } else if (isRightEdge) {
+            // Resize from right: change duration
+            var newDurWeeks2 = Math.max(1, origDur + dWeeks);
+            barEl.style.width = Math.max(newDurWeeks2 * pxPerWeek, 15) + 'px';
+          } else {
+            // Move entire bar
+            var newStart2 = Math.max(0, origStart + dWeeks);
+            barEl.style.left = (newStart2 * pxPerWeek) + 'px';
+          }
         };
-        var onUp = function() {
+
+        var onUp = function(ue) {
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup', onUp);
+          barEl.style.cursor = 'grab';
+          barEl.style.boxShadow = '';
+          isDragging = false;
+
+          var dx = ue.clientX - startX;
+          var dWeeks = Math.round(dx / pxPerWeek);
+          if (Math.abs(dWeeks) < 1 && !isLeftEdge && !isRightEdge) return; // no meaningful move
+
+          if (isLeftEdge) {
+            var newStart = Math.max(0, origStart + dWeeks);
+            var newDurWeeks = Math.max(1, origDur - (newStart - origStart));
+            _ganttSaveOverride(it.id, 'startWeek', newStart);
+            _ganttSaveOverride(it.id, 'duration', newDurWeeks + ' weeks');
+          } else if (isRightEdge) {
+            var newDurWeeks2 = Math.max(1, origDur + dWeeks);
+            _ganttSaveOverride(it.id, 'duration', newDurWeeks2 + ' weeks');
+          } else {
+            var newStart2 = Math.max(0, origStart + dWeeks);
+            _ganttSaveOverride(it.id, 'startWeek', newStart2);
+          }
           renderStrategyTabContent();
         };
+
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
       };
-      barEl.appendChild(resizeHandle);
+
+      // Double-click to open editor
+      barEl.ondblclick = function(e) {
+        e.stopPropagation();
+        _ganttEditItem(it);
+      };
     })(item, bar);
+
+    // Cursor hints for resize zones
+    bar.onmousemove = function(e) {
+      var rect = bar.getBoundingClientRect();
+      var edgeZone = 8;
+      if (e.clientX - rect.left < edgeZone) bar.style.cursor = 'w-resize';
+      else if (rect.right - e.clientX < edgeZone) bar.style.cursor = 'e-resize';
+      else bar.style.cursor = 'grab';
+    };
 
     chartArea.appendChild(bar);
     row.appendChild(chartArea);
@@ -2863,6 +3095,15 @@ function _mountGantt(st) {
   });
 
   container.appendChild(wrap);
+
+  // Add row button
+  var addRow = document.createElement('div');
+  addRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;color:var(--n2);font-size:11px;border-bottom:1px solid var(--border);transition:color .15s';
+  addRow.innerHTML = '<i class="ti ti-plus" style="font-size:13px"></i> Add item';
+  addRow.onmouseenter = function() { addRow.style.color = 'var(--dark)'; };
+  addRow.onmouseleave = function() { addRow.style.color = 'var(--n2)'; };
+  addRow.onclick = function() { _ganttAddItem(); };
+  container.appendChild(addRow);
 
   // Legend
   var legend = document.createElement('div');
@@ -2879,7 +3120,7 @@ function _mountGantt(st) {
   });
   var hint = document.createElement('span');
   hint.style.cssText = 'font-size:10px;color:var(--n3);margin-left:auto';
-  hint.textContent = 'Drag rows to reorder \u2022 Click bars to edit \u2022 Click phase badge to cycle';
+  hint.textContent = 'Drag bars to move \u2022 Drag edges to resize \u2022 Double-click to edit \u2022 Drag rows to reorder';
   legend.appendChild(hint);
   container.appendChild(legend);
 }
