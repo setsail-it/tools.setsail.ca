@@ -853,6 +853,7 @@ async function saveProject() {
         page: c.page ? { slug: c.page.slug, page_type: c.page.page_type, primary_keyword: c.page.primary_keyword, meta_title: c.page.meta_title, meta_description: c.page.meta_description } : null,
         error: c.error || null
       }])),
+      strategy: S.strategy || null,
       schema: S.schema,
       kwMetrics: S.kwMetrics || {},
       // Strip monthly trend arrays from keywords before saving — reconstructed from DataForSEO on next fetch
@@ -1061,6 +1062,7 @@ async function resumeProject(id) {
   } else {
     S.kwResearch = null;
   }
+  S.strategy = data.strategy || null;
   S.sitemapApproved = data.sitemapApproved || false;
   S.layout = data.layout || {};
   S.images = data.images || {};
