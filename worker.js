@@ -856,6 +856,12 @@ export default {
               });
             });
             console.log('[kw-expand] batch sent:', batch.length, 'hits:', hits.length, 'api_code:', volData.status_code, 'api_msg:', volData.status_message);
+            // Detect auth failure and abort early
+            if (volData.status_code === 40100 || volRes.status === 401) {
+              return new Response(JSON.stringify({ error: 'DataForSEO auth failed — check API credentials at https://app.dataforseo.com/api-access', keywords: [], debug: lastTaskDebug }), {
+                status: 200, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
           } catch(e) { console.error('[kw-expand] batch error:', e.message); }
         }
 
