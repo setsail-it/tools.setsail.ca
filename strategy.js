@@ -2496,11 +2496,27 @@ function _renderGrowth(st) {
   }
 
   // Interactive Gantt Timeline
+  var hasOverrides = gp.timeline_overrides && Object.keys(gp.timeline_overrides).length > 0;
   html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">'
     + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Execution Timeline</span>'
-    + '<span style="display:flex;gap:6px">'
-    + '<button class="btn btn-ghost sm" onclick="_ganttResetOverrides()" data-tip="Clear all manual edits and revert to AI-generated timeline" style="font-size:10px;padding:2px 8px">Reset</button>'
-    + '</span></div>';
+    + '</div>';
+  if (hasOverrides) {
+    var overrideCount = Object.keys(gp.timeline_overrides).length;
+    html += '<div id="gantt-override-bar" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40">'
+      + '<i class="ti ti-pencil" style="color:#e6a23c;font-size:14px"></i>'
+      + '<span style="font-size:11px;color:var(--dark);font-weight:500">' + overrideCount + ' unsaved edit' + (overrideCount === 1 ? '' : 's') + '</span>'
+      + '<span style="flex:1"></span>'
+      + '<button class="btn btn-ghost sm" onclick="_ganttResetOverrides()" style="font-size:10px;padding:2px 8px;color:#f56c6c"><i class="ti ti-arrow-back-up" style="font-size:12px"></i> Reset</button>'
+      + '<button class="btn btn-dark sm" onclick="_ganttAcceptOverrides()" style="font-size:10px;padding:2px 8px"><i class="ti ti-check" style="font-size:12px"></i> Accept</button>'
+      + '</div>';
+  } else if (gp.accepted_at) {
+    var acceptDate = new Date(gp.accepted_at);
+    var dateStr = acceptDate.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 10px;margin-bottom:10px;font-size:10px;color:var(--green)">'
+      + '<i class="ti ti-circle-check" style="font-size:13px"></i>'
+      + '<span>Timeline accepted ' + dateStr + '</span>'
+      + '</div>';
+  }
   html += '<div id="strat-gantt-container"></div></div>';
   // Gantt is rendered via DOM after innerHTML is set (see _mountGantt call in renderStrategyTabContent)
 
@@ -2631,6 +2647,35 @@ function _ganttResetOverrides() {
   S.strategy.growth_plan.timeline_overrides = {};
   scheduleSave();
   renderStrategyTabContent();
+  aiBarNotify('Timeline reset to AI-generated defaults', { type: 'info', duration: 2000 });
+}
+
+function _ganttAcceptOverrides() {
+  if (!S.strategy) return;
+  var gp = S.strategy.growth_plan = S.strategy.growth_plan || {};
+  var overrides = gp.timeline_overrides || {};
+  if (!Object.keys(overrides).length) return;
+
+  // Bake overrides into accepted_timeline snapshot
+  var items = _buildGanttItems(S.strategy);
+  gp.accepted_timeline = items.map(function(item) {
+    return {
+      id: item.id,
+      phase: item.phase,
+      label: item.label,
+      startWeek: item.startWeek,
+      duration: item.duration,
+      notes: item.notes,
+      depends: item.depends
+    };
+  });
+  gp.accepted_at = new Date().toISOString();
+
+  // Clear overrides — accepted state is now the baseline
+  gp.timeline_overrides = {};
+  scheduleSave();
+  renderStrategyTabContent();
+  aiBarNotify('Timeline edits accepted', { type: 'success', duration: 2000 });
 }
 
 function _ganttSaveOverride(id, field, value) {
