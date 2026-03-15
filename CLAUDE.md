@@ -144,6 +144,35 @@ Always use `getLocationCode(country, fallback)`. Never hardcode `2124` or `2840`
 ### DataForSEO credentials
 Always use `getDFSCreds(env)`. Never inline `btoa(login + ':' + password)`.
 
+### Stop/Resume system for AI generations
+All bulk AI loops must be stoppable and resumable. The system uses three globals in `index.html`:
+- `window._aiAbortCtrl` — `AbortController` passed as `signal` to `fetch()`. `aiStopAll()` calls `.abort()` to kill active streams.
+- `window._aiStopAll` — boolean flag. Bulk loops must check this between iterations and `return` early if true.
+- `window._aiStopResumeCtx` — `{ label, fn, args }` object set by the loop when it stops. `_aiShowResume()` renders Resume/Dismiss buttons in the AI bar.
+
+**Pattern for stoppable bulk loops:**
+```js
+async function generateAll(startFrom) {
+  window._aiStopAll = false;
+  var start = startFrom || 0;
+  for (var i = start; i < items.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Paused (' + i + '/' + items.length + ')',
+        fn: function(args) { generateAll(args.startFrom); },
+        args: { startFrom: i }
+      };
+      return;
+    }
+    // ... do work ...
+  }
+}
+```
+Already implemented in: `generateAllBriefs` (briefs.js), `enrichAll` (research.js), `generateAllPageGoals` (sitemap.js).
+
+### Stage eyebrows
+Stage counts use `data-stage-num` attributes populated by `STAGES.length` via `_updateStageEyebrows()`. Never hardcode "Stage X of Y" — use `<div class="eyebrow stage-eyebrow" data-stage-num="N"></div>`.
+
 ### Guide panel + STAGE_TIPS
 Every feature that changes workflow **must update**:
 1. `<!-- HELP / WORKFLOW GUIDE PANEL -->` in `index.html`

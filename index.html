@@ -147,6 +147,7 @@ textarea.inp{resize:vertical}
 .mobile-stage-item.done .msi-icon{background:var(--dark);color:white}
 .mobile-stage-item.active .msi-icon{background:var(--dark);color:white}
 .tbl-row{transition:background 0.1s ease}
+.tbl-row:hover,.kw-row:hover{background:rgba(0,0,0,0.04)!important}
 .brief-pick-item:hover { background: rgba(0,0,0,0.04) !important; }
 
 /* USER DROPDOWN */
@@ -227,7 +228,10 @@ textarea.inp{resize:vertical}
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
       <span id="ai-bar-label" style="cursor:default"></span>
-      <span id="ai-bar-meta"></span>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <button id="ai-bar-stop" onclick="aiStopAll()" style="display:none;background:none;border:1px solid var(--border);border-radius:4px;padding:1px 8px;font-size:10px;font-family:var(--font);color:var(--n2);cursor:pointer;white-space:nowrap;line-height:1.4" onmouseenter="this.style.borderColor='#e5534b';this.style.color='#e5534b'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--n2)'">Stop</button>
+        <span id="ai-bar-meta"></span>
+      </div>
     </div>
     <div id="ai-bar-track"><div id="ai-bar-fill" class="indeterminate"></div></div>
     <div id="ai-tip-line" style="width:100%;text-align:center;font-size:10px;color:var(--n2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;min-height:12px;transition:opacity .4s;cursor:default"></div>
@@ -305,7 +309,7 @@ textarea.inp{resize:vertical}
   <!-- SETUP -->
   <div class="screen" id="screen-setup">
     <div style="max-width:680px">
-      <div class="eyebrow">Stage 1 of 8</div>
+      <div class="eyebrow stage-eyebrow" data-stage-num="1"></div>
       <h2 class="ph">New project</h2>
       <p class="psub">Fill in client details and paste the full strategy document.</p>
 
@@ -350,7 +354,7 @@ textarea.inp{resize:vertical}
   <!-- SNAPSHOT -->
   <div class="screen" id="screen-snapshot">
     <div style="max-width:860px">
-      <div class="eyebrow">Stage 2 of 9</div>
+      <div class="eyebrow stage-eyebrow" data-stage-num="2"></div>
       <h2 class="ph">Site Snapshot</h2>
       <p class="psub">Ahrefs audit of the existing site — captures what's ranking, what has backlinks, and builds the 301 redirect map before we touch anything.</p>
 
@@ -430,9 +434,10 @@ textarea.inp{resize:vertical}
   <!-- RESEARCH -->
   <div class="screen" id="screen-research">
     <div style="max-width:920px">
-      <div class="eyebrow">Stage 3 of 9</div>
+      <div class="eyebrow stage-eyebrow" data-stage-num="3"></div>
       <h2 class="ph sm">Client Research</h2>
       <p class="psub">AI-enriched client intelligence. Every field feeds copy, schema, and layout stages downstream.</p>
+      <div id="research-scorecard"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
         <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
         <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
@@ -454,7 +459,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 4 of 9</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="4"></div>
           <h2 class="ph sm">Keyword Research</h2>
           <p class="psub" style="margin-bottom:0">Validate seed keywords, select opportunities, and cluster into page groups that feed the sitemap.</p>
         </div>
@@ -475,7 +480,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 5 of 10</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="5"></div>
           <h2 class="ph sm">Sitemap + Keyword Map</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 1</span> — Approve before copy begins.</p>
         </div>
@@ -504,7 +509,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 6 of 10</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="6"></div>
           <h2 class="ph sm">Page Briefs</h2>
           <p class="psub" style="margin-bottom:0"><span style="color:var(--green);font-weight:500">⛳ Gate 2</span> — Approve briefs before copy is written.</p>
         </div>
@@ -526,7 +531,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-copy">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 7 of 10</div>
+        <div class="eyebrow stage-eyebrow" data-stage-num="7"></div>
         <h2 class="ph sm">Copy Generation</h2>
         <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
       </div>
@@ -547,7 +552,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:900px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 8 of 10</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="8"></div>
           <h2 class="ph sm">Image Generation</h2>
           <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
         </div>
@@ -588,7 +593,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:960px">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px">
         <div>
-          <div class="eyebrow">Stage 9 of 10</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="9"></div>
           <h2 class="ph sm">Page Wireframes</h2>
           <p class="psub" style="margin-bottom:0">AI generates full annotated wireframes — ready to hand to a designer.</p>
         </div>
@@ -615,7 +620,7 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-schema">
     <div style="max-width:860px">
       <div style="margin-bottom:16px">
-        <div class="eyebrow">Stage 9 of 10</div>
+        <div class="eyebrow stage-eyebrow" data-stage-num="10"></div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
         <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
       </div>
@@ -636,7 +641,7 @@ textarea.inp{resize:vertical}
     <div style="max-width:920px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div>
-          <div class="eyebrow">Stage 10 of 10</div>
+          <div class="eyebrow stage-eyebrow" data-stage-num="11"></div>
           <h2 class="ph sm">Export Package</h2>
           <p class="psub" style="margin-bottom:0" id="export-subtitle"></p>
         </div>
@@ -1091,11 +1096,20 @@ const STAGES = [
 ];
 const STAGE_ORDER = STAGES.map(s => s.id);
 
+function _updateStageEyebrows() {
+  var total = STAGES.length;
+  document.querySelectorAll('.stage-eyebrow').forEach(function(el) {
+    var num = el.getAttribute('data-stage-num');
+    if (num) el.textContent = 'STAGE ' + num + ' OF ' + total;
+  });
+}
+
 function goTo(stage) {
   S.stage = stage;
   document.getElementById('projects-screen').style.display = 'none';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + stage).classList.add('active');
+  _updateStageEyebrows();
   document.body.classList.add('in-project');
   var _gsb = document.getElementById('sidebar');
   if (_gsb) { _gsb.style.display = ''; _gsb.classList.add('visible'); }
@@ -1161,14 +1175,17 @@ var STAGE_TIPS = {
     "Low DA (< 20) means prioritise long-tail, low-KD keywords in Stage 4.",
   ],
   research: [
-    "Upload strategy docs, proposals, or intake notes — AI enriches 150+ fields across 5 tabs.",
+    "Completeness scorecard at top shows overall percentage and per-tab progress bars — click any missing field to jump straight to it.",
+    "Fields labelled AI can be filled by the Enrich button. Fields labelled MANUAL need human input (links, brand colours, reviews).",
     "Run all 5 tabs: Business, Audience, Brand, Schema and Local, Competitors.",
-    "Proof and E-E-A-T section (Brand tab): case studies, notable clients, awards, team credentials, founder bio — these feed directly into copy Pass 3 and brief prompts.",
-    "CTA Architecture (Audience tab): primary, secondary, and low-commitment CTAs — injected into every brief and copy prompt.",
-    "Services Detail (Business tab): structured service descriptions with target audience and differentiators — feeds briefs and copy context.",
-    "Competitors tab now includes Weaknesses and What We Do Better columns — feeds competitor context in briefs.",
+    "CTA Architecture (Audience tab): primary, secondary, and low-commitment CTAs — all AI-enrichable and injected into every brief and copy prompt.",
+    "Services Detail (Business tab): structured service descriptions with target audience and differentiators — feeds briefs, clusters, and copy.",
+    "Proof and E-E-A-T (Brand tab): case studies, notable clients, awards, team credentials, founder bio — feeds copy Pass 3 and brief prompts.",
+    "Competitors tab includes Weaknesses and What We Do Better — feeds competitor context in briefs and cluster strategy.",
     "Re-run individual tabs anytime — it merges, not replaces. Re-enrich overwrites all fields.",
-    "Strategy doc truncation is now 12,000 chars (up from 4,000) — longer docs are fully parsed.",
+    "Stop button in the AI bar pauses enrichment mid-tab. Resume continues from the next unfinished tab.",
+    "Client name auto-populates from Setup — no need to type it again.",
+    "Enrichment scrapes up to 11 website pages (about, services, pricing, portfolio, team, contact) for context.",
   ],
   keywords: [
     "Start with Questions — they generate buyer-intent questions from Research data and auto-extract intent keywords into Seeds.",
@@ -1198,15 +1215,16 @@ var STAGE_TIPS = {
     "Run Niche Expand first — pulls Google Suggest variants per page and gets DataForSEO volumes.",
     "Generate Page Questions before AI Assign — they become FAQ H3s in the brief.",
     "AI Assign Keywords + Questions maps the right keywords and FAQs to each page in one pass.",
-    "SERP Intel fetches top 3 competitor pages — H2 structure and word count appear in the brief.",
-    "Brief Evaluator scores 8 quality checks — fix reds before approving.",
+    "SERP Intel is cached per keyword — re-generating a brief skips the API call if data already exists.",
+    "Brief Evaluator scores 9-11 quality checks including page goal alignment — fix reds before approving.",
+    "Pre-generation warnings flag missing keywords, questions, research data, or CTAs before the AI call runs.",
+    "Stop button in the AI bar pauses any generation mid-stream. Resume picks up exactly where it left off.",
     "Queue All generates all briefs server-side — safe to close the tab while it runs.",
     "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
-    "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy. Upload text files or images too.",
-    "Web Strategy (in Setup) — synthesise a 600-800 word site brief from your strategy doc. It flows into every brief, copy, and sitemap generation call.",
+    "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy.",
     "Page Goal from the Sitemap stage is injected into the brief prompt — the AI writes every section to serve that strategic purpose.",
+    "Services pricing from Research is now included in brief context — the AI uses real pricing data for CRO recommendations.",
     "The code icon on each brief card shows the exact prompt sent to Claude — use it to diagnose unexpected outputs.",
-    "The blue badge in the info strip shows the recommended lead gen tool for that page type (Insites audit, email capture, discovery call, etc.).",
   ],
   copy: [
     "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
@@ -1340,9 +1358,9 @@ function renderSidebar(current) {
     const iconHtml = done
       ? '<span class="sb-check"><i class="ti ti-check"></i></span>'
       : '<span class="sb-icon"><i class="ti ' + s.icon + '"></i></span>';
-    const stepNum = '<span style="font-size:10px;opacity:.5;margin-left:auto">S' + (i+1) + '</span>';
+    const stepNum = '<span style="font-size:10px;opacity:' + (active ? '.5' : '0') + ';margin-left:auto">S' + (i+1) + '</span>';
     html += '<button class="' + cls + '"' + (canClick && !active ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + '>'
-      + iconHtml + s.label + (active ? stepNum : '') + '</button>';
+      + iconHtml + s.label + stepNum + '</button>';
   });
   el.innerHTML = html;
 }
@@ -1381,6 +1399,88 @@ var _aiBarTimer = null;
 var _aiBarStart = 0;
 var _aiBarActive = false;
 
+// ── GLOBAL AI STOP / RESUME SYSTEM ──────────────────────────────────
+// _aiAbortCtrl: AbortController for current callClaude stream
+// _aiStopAll: flag checked by bulk loops (generateAllBriefs, enrichAll, etc.)
+// _aiStopResumeCtx: stores context for resuming a stopped bulk operation
+window._aiAbortCtrl = null;
+window._aiStopAll = false;
+window._aiStopResumeCtx = null;
+
+function aiStopAll() {
+  window._aiStopAll = true;
+  // Abort current streaming fetch
+  if (window._aiAbortCtrl) {
+    try { window._aiAbortCtrl.abort(); } catch(e) {}
+    window._aiAbortCtrl = null;
+  }
+  // Stop queue polling
+  if (typeof _queuePollTimer !== 'undefined' && _queuePollTimer) {
+    clearInterval(_queuePollTimer);
+    _queuePollTimer = null;
+  }
+  // Stop copy generation
+  if (typeof copyStopFlag !== 'undefined') { copyStopFlag = true; }
+  // Stop image generation
+  if (typeof S !== 'undefined' && S) { S.imageGenStop = true; }
+  // Kill the aiBarEnd auto-fade timer
+  if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
+  _aiBarActive = false;
+  var stopBtn = document.getElementById('ai-bar-stop');
+  if (stopBtn) stopBtn.style.display = 'none';
+  // Show "stopped" immediately — bulk loops will call _aiShowResume() when they set resumeCtx
+  aiBarNotify('Stopping…', { duration: 2000 });
+  // Delayed check: if a bulk loop set resumeCtx, show the resume UI
+  setTimeout(function() {
+    if (window._aiStopResumeCtx) {
+      _aiShowResume(window._aiStopResumeCtx);
+    }
+  }, 500);
+}
+
+function _aiShowResume(ctx) {
+  // Cancel any pending notify/end cleanup timers
+  if (_aiBarNotifyTimer) { clearTimeout(_aiBarNotifyTimer); _aiBarNotifyTimer = null; }
+  if (window._aiBarEndTimer) { clearTimeout(window._aiBarEndTimer); window._aiBarEndTimer = null; }
+  var bar = document.getElementById('ai-bar');
+  var labelEl = document.getElementById('ai-bar-label');
+  var track = document.getElementById('ai-bar-track');
+  if (bar) bar.classList.add('active');
+  if (labelEl) { labelEl.textContent = 'Stopped — ' + (ctx.label || 'generation paused'); labelEl.style.color = 'var(--dark)'; }
+  if (track) track.style.opacity = '0';
+  stopStageTips(false);
+  _showResumeButton(ctx);
+}
+
+function _showResumeButton(ctx) {
+  var metaEl = document.getElementById('ai-bar-meta');
+  if (!metaEl) return;
+  var resumeBtn = document.createElement('button');
+  resumeBtn.textContent = 'Resume';
+  resumeBtn.style.cssText = 'background:var(--green);color:white;border:none;border-radius:4px;padding:2px 10px;font-size:10px;font-family:var(--font);cursor:pointer;white-space:nowrap';
+  resumeBtn.onclick = function() {
+    window._aiStopAll = false;
+    window._aiStopResumeCtx = null;
+    metaEl.textContent = '';
+    if (ctx.fn && typeof ctx.fn === 'function') ctx.fn(ctx.args);
+  };
+  var dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.style.cssText = 'background:none;color:var(--n2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;font-family:var(--font);cursor:pointer;white-space:nowrap';
+  dismissBtn.onclick = function() {
+    window._aiStopResumeCtx = null;
+    var bar = document.getElementById('ai-bar');
+    if (bar) bar.classList.remove('active');
+    var labelEl = document.getElementById('ai-bar-label');
+    if (labelEl) { labelEl.textContent = ''; labelEl.style.color = ''; }
+    metaEl.innerHTML = '';
+    if (S && S.stage) startStageTips(S.stage);
+  };
+  metaEl.innerHTML = '';
+  metaEl.appendChild(resumeBtn);
+  metaEl.appendChild(dismissBtn);
+}
+
 function aiBarStart(label) {
   _aiBarActive = true;
   stopStageTips(false); // pause tips during generation
@@ -1395,6 +1495,8 @@ function aiBarStart(label) {
   if (fill) { fill.style.width = '0%'; fill.classList.add('indeterminate'); }
   if (meta) meta.textContent = '';
   bar.classList.add('active');
+  var stopBtn = document.getElementById('ai-bar-stop');
+  if (stopBtn) stopBtn.style.display = 'inline-block';
   if (_aiBarTimer) clearInterval(_aiBarTimer);
   _aiBarTimer = setInterval(function() {
     var sec = Math.round((Date.now() - _aiBarStart) / 1000);
@@ -1409,12 +1511,16 @@ function aiBarEnd(label) {
   var fill = document.getElementById('ai-bar-fill');
   var meta = document.getElementById('ai-bar-meta');
   var labelEl = document.getElementById('ai-bar-label');
+  var stopBtn = document.getElementById('ai-bar-stop');
+  if (stopBtn) stopBtn.style.display = 'none';
   if (!bar) return;
   if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '100%'; }
   var sec = Math.round((Date.now() - _aiBarStart) / 1000);
   if (meta) meta.textContent = 'Done in ' + sec + 's';
   if (labelEl && label) labelEl.textContent = label;
-  setTimeout(function() {
+  if (window._aiBarEndTimer) clearTimeout(window._aiBarEndTimer);
+  window._aiBarEndTimer = setTimeout(function() {
+    window._aiBarEndTimer = null;
     if (!_aiBarActive) {
       bar.classList.remove('active');
       if (fill) fill.style.width = '0%';
@@ -1426,6 +1532,7 @@ function aiBarEnd(label) {
 
 // Queue mode: real progress bar (called by _pollQueueStatus)
 
+var _aiBarNotifyTimer = null;
 function aiBarNotify(msg, opts) {
   // opts: { duration: ms, meta: string, isError: bool }
   var o = opts || {};
@@ -1436,6 +1543,7 @@ function aiBarNotify(msg, opts) {
   var track = document.getElementById('ai-bar-track');
   if (!bar) return;
   if (_aiBarTimer) { clearInterval(_aiBarTimer); _aiBarTimer = null; }
+  if (_aiBarNotifyTimer) { clearTimeout(_aiBarNotifyTimer); _aiBarNotifyTimer = null; }
   if (labelEl) { labelEl.textContent = msg; labelEl._tipText = msg; labelEl.setAttribute('data-tip', msg); }
   if (metaEl) metaEl.textContent = o.meta || '';
   if (fill) { fill.classList.remove('indeterminate'); fill.style.width = '0%'; }
@@ -1444,7 +1552,8 @@ function aiBarNotify(msg, opts) {
   if (labelEl) labelEl.style.color = o.isError ? 'var(--error)' : 'var(--dark)';
   var dur = o.duration !== undefined ? o.duration : 4000;
   if (dur > 0) {
-    setTimeout(function() {
+    _aiBarNotifyTimer = setTimeout(function() {
+      _aiBarNotifyTimer = null;
       bar.classList.remove('active');
       if (labelEl) { labelEl.textContent = ''; labelEl.style.color = ''; }
       if (metaEl) metaEl.textContent = '';
@@ -1473,6 +1582,8 @@ function aiBarQueue(done, total, avgSeconds) {
 
 async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
   aiBarStart(_aiLabel || window._aiBarLabel || 'Generating…');
+  var ctrl = new AbortController();
+  window._aiAbortCtrl = ctrl;
   try {
   const res = await fetch('/api/claude', {
     method:'POST',
@@ -1483,7 +1594,8 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
       stream:true,
       system,
       messages:[{role:'user',content:user}]
-    })
+    }),
+    signal: ctrl.signal
   });
   if (!res.ok) {
     const e = await res.json().catch(function(){return{};});
@@ -1497,10 +1609,15 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let full = '';
+  let _buf = '';
   while(true) {
+    if (ctrl.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     const {done,value} = await reader.read();
     if(done) break;
-    for(const line of dec.decode(value).split('\n')) {
+    _buf += dec.decode(value, {stream:true});
+    const lines = _buf.split('\n');
+    _buf = lines.pop();
+    for(const line of lines) {
       if(!line.startsWith('data: ')) continue;
       try {
         const d = JSON.parse(line.slice(6));
@@ -1512,9 +1629,14 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
       } catch(e2) { if(e2.message&&e2.message.indexOf('rate')!==-1) throw e2; }
     }
   }
+  window._aiAbortCtrl = null;
   aiBarEnd();
   return full;
-  } catch(ccErr) { aiBarEnd('Error'); throw ccErr; }
+  } catch(ccErr) {
+    window._aiAbortCtrl = null;
+    if (ccErr.name === 'AbortError') { aiBarEnd('Stopped'); throw ccErr; }
+    aiBarEnd('Error'); throw ccErr;
+  }
 }
 
 function safeParseJSON(text) {
@@ -2463,7 +2585,7 @@ async function deleteAdminUser() {
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Interface</div>
       <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
         <p><strong>Left sidebar</strong> — shows all 11 pipeline stages. Green checkmark = done. Active stage highlighted dark. Locked stages (grey) require completing earlier steps first. Click any accessible stage to jump directly.</p>
-        <p><strong>Top bar centre — AI bar</strong> — three modes: (1) <em>Generating</em>: indeterminate pulse + elapsed timer while a Claude call is running. (2) <em>Notification</em>: success or error message after an action (hover to see full text if truncated). (3) <em>Tips</em>: stage-specific workflow tips from this guide rotate every 7s when idle — pauses during generation, resumes after.</p>
+        <p><strong>Top bar centre — AI bar</strong> — four modes: (1) <em>Generating</em>: indeterminate pulse + elapsed timer + Stop button while a Claude call is running. (2) <em>Stopped</em>: shows Resume and Dismiss buttons when a bulk operation is paused — Resume continues from exactly where it stopped. (3) <em>Notification</em>: success or error message after an action (hover to see full text if truncated). (4) <em>Tips</em>: stage-specific workflow tips rotate every 7s when idle — pauses during generation, resumes after.</p>
         <p><strong>Project switcher</strong> — click the project name in the top bar to switch between projects without going back to the projects screen.</p>
         <p><strong>Admin panel</strong> — click your name (top right) → Admin. Manage team members: name, email, role (Admin / Strategist / Viewer), and project access (specific project IDs or blank = all). Edit your own name from the same panel. Log out via the same dropdown.</p>
         <p><strong>Button tooltips</strong> — hover any action button for 0.3s to see a description of exactly what it does. Implemented across Keywords, Briefs, and Sitemap stages.</p>
@@ -2592,7 +2714,9 @@ async function deleteAdminUser() {
         <li><strong>SERP Intel</strong> (per page, or auto-runs at brief generation) — fetches top 3 organic results for the primary keyword, extracts: word count, H2 structure, KW density. Sets word count target at max competitor × 1.05. Some sites block crawlers — this is normal.</li>
         <li><strong>Generate / Regenerate Brief</strong> — click any page row to expand it (accordion). Once open, use the top-right action bar to generate, regenerate, or run a new version. SERP Intel auto-runs silently if not already done.</li>
         <li><strong>Queue All</strong> — submits all un-generated briefs to the Cloudflare Queue for server-side generation. Tab-close safe — the worker generates briefs in the background even if you leave. Processes 2 concurrent, retries automatically on rate limits. Progress shows in the AI bar with estimated time remaining. Results merge back into the page when done.</li>
-        <li><strong>Evaluate Brief</strong> — AI scorecard: 9–11 checks including reader profile, H1, CTA presence, objections, trust signals, SERP word count target, H2 coverage.</li>
+        <li><strong>Stop / Resume</strong> — click Stop in the AI bar to pause any generation mid-stream. The Resume button appears and picks up exactly where it left off. Works for Write All Briefs, Enrich All, page goals, and queue polling.</li>
+        <li><strong>Pre-generation validation</strong> — warnings appear in the AI bar if a page is missing its primary keyword, assigned questions, business overview, or primary CTA. Generation still runs but the brief quality will be lower.</li>
+        <li><strong>Evaluate Brief</strong> — AI scorecard: 9–11 checks including reader profile, H1, CTA presence, objections, trust signals, SERP word count target, H2 coverage, and page goal alignment.</li>
         <li><strong>Version pills (V1 / V2…)</strong> — appear in the score bar once more than one draft exists. Click to switch between versions. Last 2 kept — V1 is dropped when V3 is pushed. Run V2 via <em>+ V2</em> button in the action bar.</li>
         <li><strong>Approve Brief</strong> — button in the top-right action bar of each card. Locks the brief. Copy stage will not process a page without an approved brief.</li>
       </ol>

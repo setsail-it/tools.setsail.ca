@@ -340,6 +340,11 @@ async function scoreBrief(pageIdx) {
     { id:'wordcount',label:'Word count'       },
   ];
 
+  // Add page goal alignment check if page_goal exists
+  if (p.page_goal && p.page_goal.trim()) {
+    checks.push({ id:'goal_alignment', label:'Brief serves page goal: '+p.page_goal.trim().substring(0,40) });
+  }
+
   // Add SERP-aware checks if serpIntel data exists
   var serpContext = '';
   if (p.serpIntel && p.serpIntel.directives) {
@@ -359,7 +364,9 @@ async function scoreBrief(pageIdx) {
   var prompt = 'You are evaluating a content brief for completeness and quality.\n\n'
     + '## BRIEF TO EVALUATE\n'+p.brief.summary+'\n\n'
     + '## PAGE\n'
-    + 'Type: '+p.page_type+' | Primary keyword: '+(p.primary_keyword||'none')+'\n\n'
+    + 'Type: '+p.page_type+' | Primary keyword: '+(p.primary_keyword||'none')+'\n'
+    + (p.page_goal ? 'Page goal: '+p.page_goal+'\n' : '')
+    + '\n'
      + serpContext
     + '\n## CHECKS\\nFor each check below, return pass:true  or pass:false plus a one-line note (max 8 words).\n\n'
     + checkList+'\n\n'
@@ -475,7 +482,7 @@ async function improveBrief(pageIdx) {
   try {
     window._aiBarLabel = '↑ Improving brief: ' + (p.page_name||p.slug);
     if(typeof storePrompt==='function') storePrompt('brief-'+pageIdx, sysPrompt, prompt, '↑ Improve: '+p.page_name, failures.length+' fixes');
-    var improved = await callClaude(sysPrompt, prompt, function(t){ if(streamEl){ streamEl.style.display='block'; streamEl.textContent=t; streamEl.scrollTop=streamEl.scrollHeight; } }, 4000);
+    var improved = await callClaude(sysPrompt, prompt, function(t){ if(streamEl){ streamEl.style.display='block'; streamEl.textContent=t; streamEl.scrollTop=streamEl.scrollHeight; } }, 8000);
     // Push as new version
     p.brief._requestNewVersion = true;
     var _bDrafts = p.brief.drafts || [];
@@ -1134,6 +1141,24 @@ async function generatePageBrief(pageIdx) {
   var R = S.research || {};
   var pt = (p.page_type||'service').toLowerCase();
 
+  // ── PRE-GENERATION VALIDATION ─────────────────────────────────────
+  var _warnings = [];
+  if (!p.primary_keyword && !['home','about','contact','utility','team'].includes(pt)) {
+    _warnings.push('No primary keyword assigned — brief will lack keyword targeting');
+  }
+  if (!assignedQs.length) {
+    _warnings.push('No questions assigned — FAQ section will be generic');
+  }
+  if (!R.business_overview && !R.value_proposition) {
+    _warnings.push('Research incomplete — no business overview or value proposition');
+  }
+  if (!R.primary_cta) {
+    _warnings.push('No primary CTA defined in Research — CTA architecture will be generic');
+  }
+  if (_warnings.length && typeof aiBarNotify === 'function') {
+    aiBarNotify('Brief warnings: ' + _warnings.join('. '), { duration: 6000 });
+  }
+
   // ── SHARED CONTEXT ───────────────────────────────────────────────
   var ctxBusiness = [
     'Client: '+(R.client_name||S.setup&&S.setup.client_name||'Unknown'),
@@ -1146,6 +1171,7 @@ async function generatePageBrief(pageIdx) {
     (R.words_to_avoid&&R.words_to_avoid.length ? 'Words to avoid: '+R.words_to_avoid.join(', ') : ''),
     (R.words_to_use&&R.words_to_use.length ? 'Words to use: '+R.words_to_use.join(', ') : ''),
     (R.booking_flow_description ? 'Booking flow: '+R.booking_flow_description : ''),
+    (R.pricing_notes ? 'Pricing notes: '+R.pricing_notes : ''),
   ].filter(function(l){ return l && l.split(': ')[1]; }).join('\n');
   var _webStrategy = (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
   var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
@@ -1172,7 +1198,7 @@ async function generatePageBrief(pageIdx) {
   // Services detail context
   var ctxServicesDetail = '';
   if ((R.services_detail||[]).length) {
-    ctxServicesDetail = '\n\n## SERVICES DETAIL\n'+(R.services_detail||[]).slice(0,8).map(function(sd){ return '- '+sd.name+(sd.description?' — '+sd.description:'')+(sd.key_differentiator?' [differentiator: '+sd.key_differentiator+']':''); }).join('\n');
+    ctxServicesDetail = '\n\n## SERVICES DETAIL\n'+(R.services_detail||[]).slice(0,8).map(function(sd){ return '- '+sd.name+(sd.description?' — '+sd.description:'')+(sd.pricing?' (pricing: '+sd.pricing+')':'')+(sd.key_differentiator?' [differentiator: '+sd.key_differentiator+']':''); }).join('\n');
   }
 
   var ctxAudience = [
@@ -1202,27 +1228,33 @@ async function generatePageBrief(pageIdx) {
     return pg.slug !== p.slug && pg.primary_keyword && (pg.page_type==='service'||pg.page_type==='location'||pg.page_type==='industry');
   }).slice(0,8).map(function(pg){ return '- /'+pg.slug+' ('+pg.primary_keyword+')'; }).join('\n') || 'None available yet';
 
-  // ── SERP INTEL (fetch silently before brief generation) ─────────────────
+  // ── SERP INTEL (fetch silently before brief generation, cache per keyword) ──
   var serpBriefBlock = '';
   if (p.primary_keyword) {
-    try {
-      // Use saved country selection (from Keywords stage) — fallback to auto-detect from geo
-      var country2 = p.targetGeo ? detectCountry(p.targetGeo)
-        : (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country.toUpperCase()
-        : detectCountry((R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '');
-      if (streamEl) streamEl.textContent = 'Fetching SERP Intel for "' + p.primary_keyword + '"…';
-      var siRes = await fetch('/api/serp-intel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: p.primary_keyword, country: country2 })
-      });
-      var siData = await siRes.json();
-      if (siData.competitors && siData.competitors.length) {
-        S.pages[pageIdx].serpIntel = siData;
-        scheduleSave();
-        serpBriefBlock = buildSerpIntelBlock(p);
-      }
-    } catch(siErr) { /* non-fatal — continue without */ }
+    // Skip re-fetch if serpIntel already cached for this keyword
+    if (p.serpIntel && p.serpIntel.competitors && p.serpIntel.competitors.length && p.serpIntel._keyword === p.primary_keyword) {
+      serpBriefBlock = buildSerpIntelBlock(p);
+      if (streamEl) streamEl.textContent = 'Using cached SERP Intel…';
+    } else {
+      try {
+        var country2 = p.targetGeo ? detectCountry(p.targetGeo)
+          : (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country.toUpperCase()
+          : detectCountry((R.geography && R.geography.primary) || (S.setup && S.setup.geo) || '');
+        if (streamEl) streamEl.textContent = 'Fetching SERP Intel for "' + p.primary_keyword + '"…';
+        var siRes = await fetch('/api/serp-intel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword: p.primary_keyword, country: country2 })
+        });
+        var siData = await siRes.json();
+        if (siData.competitors && siData.competitors.length) {
+          siData._keyword = p.primary_keyword; // tag for cache check
+          S.pages[pageIdx].serpIntel = siData;
+          scheduleSave();
+          serpBriefBlock = buildSerpIntelBlock(p);
+        }
+      } catch(siErr) { /* non-fatal — continue without */ }
+    }
     if (streamEl) streamEl.textContent = 'Writing brief…';
   }
 
@@ -1396,12 +1428,19 @@ async function generatePageBrief(pageIdx) {
       + 'Format: landing page blocks, narrative, hybrid?\n';
   }
 
+  // ── INPUT SIZE ESTIMATION ─────────────────────────────────────────
+  var _estimatedInputChars = (sysPrompt + prompt).length;
+  var _estimatedInputTokens = Math.round(_estimatedInputChars / 3.5); // ~3.5 chars per token average
+  if (_estimatedInputTokens > 12000 && typeof aiBarNotify === 'function') {
+    aiBarNotify('Large input (~' + Math.round(_estimatedInputTokens/1000) + 'k tokens) — brief may take longer', { duration: 4000 });
+  }
+
   var contentEl = document.getElementById('brief-content-'+pageIdx);
   if (contentEl) contentEl.style.display = 'none';
   try {
     window._aiBarLabel = 'Brief: ' + (p.page_name || p.slug);
     if(typeof storePrompt==='function') storePrompt('brief-'+pageIdx, sysPrompt, prompt, 'Brief: '+p.page_name, p.slug+' · '+p.page_type+(p.primary_keyword?' · '+p.primary_keyword:''));
-    var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 4000);
+    var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 8000);
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
     p.brief.summary = briefText;
@@ -1487,8 +1526,11 @@ async function queueAllBriefs() {
 function _startQueuePoll() {
   if (_queuePollTimer) clearInterval(_queuePollTimer);
   window._queueStartTime = Date.now();
+  window._aiStopAll = false;
   _queuePollTimer = setInterval(_pollQueueStatus, 4000);
   if (typeof aiBarQueue === 'function') aiBarQueue(0, jobs.length, 12);
+  var stopBtn = document.getElementById('ai-bar-stop');
+  if (stopBtn) stopBtn.style.display = 'inline-block';
 }
 
 async function _pollQueueStatus() {
@@ -1563,15 +1605,29 @@ async function _mergeQueuedBrief(job) {
   } catch(e) { /* non-fatal */ }
 }
 
-async function generateAllBriefs() {
+async function generateAllBriefs(startFrom) {
   var btn = document.getElementById('briefs-run-btn');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Generating...'; }
+  window._aiStopAll = false;
   var seoPages = S.pages.filter(function(p){ return p.page_type !== 'utility'; });
-  for (var i = 0; i < seoPages.length; i++) {
+  var start = startFrom || 0;
+  for (var i = start; i < seoPages.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Briefs paused (' + i + '/' + seoPages.length + ')',
+        fn: function(args) { generateAllBriefs(args.startFrom); },
+        args: { startFrom: i }
+      };
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-pencil"></i> Write All Briefs'; }
+      return;
+    }
     var idx = S.pages.indexOf(seoPages[i]);
-    await generatePageBrief(idx);
+    try {
+      await generatePageBrief(idx);
+    } catch(e) { if (e.name === 'AbortError') return; }
     await new Promise(function(r){ setTimeout(r, 400); });
   }
+  window._aiStopResumeCtx = null;
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Regenerate All'; }
 }
 

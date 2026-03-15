@@ -1,9 +1,229 @@
+// ── Field Metadata Registry ───────────────────────────────────────
+// Maps every research field to tab, label, importance, and source.
+// source: 'ai' = AI-enrichable, 'manual' = human-only, 'auto' = auto-populated
+var RESEARCH_FIELD_META = {
+  // Business
+  client_name:               { tab:'business',    label:'Client Name',              importance:'critical', source:'auto' },
+  business_overview:         { tab:'business',    label:'Business Overview',        importance:'critical', source:'ai' },
+  value_proposition:         { tab:'business',    label:'Value Proposition',        importance:'critical', source:'ai' },
+  industry:                  { tab:'business',    label:'Industry',                 importance:'critical', source:'manual' },
+  sub_industry:              { tab:'business',    label:'Sub-Industry / Niche',     importance:'normal',   source:'ai' },
+  business_model:            { tab:'business',    label:'Business Model',           importance:'normal',   source:'ai' },
+  years_in_business:         { tab:'business',    label:'Years in Business',        importance:'optional', source:'ai' },
+  team_size:                 { tab:'business',    label:'Team Size',                importance:'optional', source:'ai' },
+  locations_count:           { tab:'business',    label:'Number of Locations',      importance:'optional', source:'ai' },
+  primary_services:          { tab:'business',    label:'Primary Services',         importance:'normal',   source:'auto' },
+  top_offers:                { tab:'business',    label:'Top Offers',               importance:'normal',   source:'ai' },
+  services_detail:           { tab:'business',    label:'Services (Detailed)',      importance:'critical', source:'ai' },
+  pricing_notes:             { tab:'business',    label:'Pricing Notes',            importance:'normal',   source:'ai' },
+  pricing_model:             { tab:'business',    label:'Pricing Model',            importance:'normal',   source:'ai' },
+  capacity_constraints:      { tab:'business',    label:'Capacity Constraints',     importance:'optional', source:'ai' },
+  seasonality_notes:         { tab:'business',    label:'Seasonality Notes',        importance:'optional', source:'manual' },
+  strategic_recommendations: { tab:'business',    label:'Strategic Recommendations',importance:'normal',   source:'ai' },
+  // Audience
+  primary_audience_description: { tab:'audience', label:'Audience Description',     importance:'critical', source:'ai' },
+  buyer_roles_titles:        { tab:'audience',    label:'Buyer Roles / Titles',     importance:'normal',   source:'ai' },
+  target_geography:          { tab:'audience',    label:'Target Geography Scope',   importance:'normal',   source:'ai' },
+  best_customer_examples:    { tab:'audience',    label:'Ideal Customer Examples',  importance:'normal',   source:'ai' },
+  pain_points_top5:          { tab:'audience',    label:'Top Pain Points',          importance:'critical', source:'ai' },
+  objections_top5:           { tab:'audience',    label:'Top Objections',           importance:'normal',   source:'ai' },
+  lead_channels_today:       { tab:'audience',    label:'Current Lead Channels',    importance:'optional', source:'ai' },
+  sales_cycle_length:        { tab:'audience',    label:'Sales Cycle Length',       importance:'optional', source:'ai' },
+  lead_qualification_criteria:{ tab:'audience',   label:'Lead Qualification',       importance:'optional', source:'ai' },
+  close_rate_estimate:       { tab:'audience',    label:'Estimated Close Rate',     importance:'optional', source:'ai' },
+  top_reasons_leads_dont_close:{ tab:'audience',  label:'Reasons Leads Do Not Close',importance:'optional',source:'ai' },
+  booking_flow_description:  { tab:'audience',    label:'Booking / Intake Flow',    importance:'optional', source:'ai' },
+  primary_goal:              { tab:'audience',    label:'Primary Goal',             importance:'critical', source:'ai' },
+  secondary_goals:           { tab:'audience',    label:'Secondary Goals',          importance:'normal',   source:'ai' },
+  target_audience:           { tab:'audience',    label:'Target Audience Personas', importance:'normal',   source:'ai' },
+  'geography.primary':       { tab:'audience',    label:'Primary City / Region',    importance:'normal',   source:'ai' },
+  'geography.secondary':     { tab:'audience',    label:'Secondary Cities',         importance:'optional', source:'ai' },
+  primary_cta:               { tab:'audience',    label:'Primary CTA',             importance:'critical', source:'ai' },
+  secondary_cta:             { tab:'audience',    label:'Secondary CTA',           importance:'normal',   source:'ai' },
+  low_commitment_cta:        { tab:'audience',    label:'Low-Commitment CTA',      importance:'normal',   source:'ai' },
+  // Brand
+  brand_name:                { tab:'brand',       label:'Brand Name',               importance:'critical', source:'ai' },
+  slogan_or_tagline:         { tab:'brand',       label:'Slogan / Tagline',         importance:'normal',   source:'ai' },
+  brand_voice_style:         { tab:'brand',       label:'Voice Style',              importance:'normal',   source:'ai' },
+  tone_and_voice:            { tab:'brand',       label:'Tone & Voice Notes',       importance:'normal',   source:'ai' },
+  words_to_use:              { tab:'brand',       label:'Words to Use',             importance:'normal',   source:'ai' },
+  words_to_avoid:            { tab:'brand',       label:'Words to Avoid',           importance:'normal',   source:'ai' },
+  key_differentiators:       { tab:'brand',       label:'Key Differentiators',      importance:'critical', source:'ai' },
+  proof_points:              { tab:'brand',       label:'Proof Points',             importance:'normal',   source:'ai' },
+  brand_colours:             { tab:'brand',       label:'Brand Colours',            importance:'optional', source:'manual' },
+  fonts:                     { tab:'brand',       label:'Fonts',                    importance:'optional', source:'manual' },
+  brand_guidelines_link:     { tab:'brand',       label:'Brand Guidelines Link',    importance:'optional', source:'manual' },
+  logo_files_link:           { tab:'brand',       label:'Logo Files Link',          importance:'optional', source:'manual' },
+  photo_library_link:        { tab:'brand',       label:'Photo Library Link',       importance:'optional', source:'manual' },
+  video_library_link:        { tab:'brand',       label:'Video Library Link',       importance:'optional', source:'manual' },
+  existing_ad_creatives_link:{ tab:'brand',       label:'Ad Creatives Link',        importance:'optional', source:'manual' },
+  do_not_use_assets_notes:   { tab:'brand',       label:'Do Not Use Notes',         importance:'optional', source:'manual' },
+  case_studies:              { tab:'brand',       label:'Case Studies',             importance:'critical', source:'ai' },
+  notable_clients:           { tab:'brand',       label:'Notable Clients',          importance:'normal',   source:'ai' },
+  awards_certifications:     { tab:'brand',       label:'Awards & Certifications',  importance:'normal',   source:'ai' },
+  team_credentials:          { tab:'brand',       label:'Team Credentials',         importance:'normal',   source:'ai' },
+  founder_bio:               { tab:'brand',       label:'Founder Bio',              importance:'normal',   source:'ai' },
+  publications_media:        { tab:'brand',       label:'Publications & Media',     importance:'optional', source:'ai' },
+  reference_brands:          { tab:'brand',       label:'Reference Brands',         importance:'optional', source:'manual' },
+  // Schema
+  schema_business_type:      { tab:'schema',      label:'Business Type',            importance:'critical', source:'ai' },
+  schema_primary_category:   { tab:'schema',      label:'Primary Category',         importance:'critical', source:'ai' },
+  schema_price_range:        { tab:'schema',      label:'Price Range',              importance:'optional', source:'ai' },
+  schema_payment_methods:    { tab:'schema',      label:'Payment Methods',          importance:'optional', source:'ai' },
+  schema_has_physical_locations:{ tab:'schema',   label:'Has Physical Locations',   importance:'normal',   source:'ai' },
+  schema_street_address:     { tab:'schema',      label:'Street Address',           importance:'normal',   source:'ai' },
+  schema_city:               { tab:'schema',      label:'City',                     importance:'normal',   source:'ai' },
+  schema_region:             { tab:'schema',      label:'Province / State',         importance:'normal',   source:'ai' },
+  schema_postal_code:        { tab:'schema',      label:'Postal Code',              importance:'normal',   source:'ai' },
+  schema_country:            { tab:'schema',      label:'Country',                  importance:'normal',   source:'ai' },
+  social_profiles:           { tab:'schema',      label:'Social Profiles',          importance:'normal',   source:'ai' },
+  schema_services:           { tab:'schema',      label:'Schema Services',          importance:'normal',   source:'ai' },
+  has_location_pages:        { tab:'schema',      label:'Location Pages',           importance:'normal',   source:'ai' },
+  has_service_pages:         { tab:'schema',      label:'Service Pages',            importance:'normal',   source:'ai' },
+  has_blog:                  { tab:'schema',      label:'Blog',                     importance:'normal',   source:'ai' },
+  has_faq_section:           { tab:'schema',      label:'FAQ Section',              importance:'normal',   source:'ai' },
+  schema_injection_method:   { tab:'schema',      label:'Schema Injection Method',  importance:'optional', source:'manual' },
+  faqs:                      { tab:'schema',      label:'FAQs',                     importance:'normal',   source:'ai' },
+  reviews:                   { tab:'schema',      label:'Reviews',                  importance:'optional', source:'manual' },
+  // Competitors
+  competitors:               { tab:'competitors', label:'Competitors',              importance:'critical', source:'ai' },
+};
+
+// ── Completeness Calculation ──────────────────────────────────────
+
+function calcResearchCompleteness() {
+  var r = S.research || {};
+  var total = { filled:0, count:0 };
+  var byTab = {};
+  var missing = [];
+  var keys = Object.keys(RESEARCH_FIELD_META);
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var meta = RESEARCH_FIELD_META[key];
+    if (!byTab[meta.tab]) byTab[meta.tab] = { filled:0, count:0 };
+    byTab[meta.tab].count++;
+    total.count++;
+    var val;
+    if (key.indexOf('.') !== -1) {
+      var parts = key.split('.');
+      val = r[parts[0]] ? r[parts[0]][parts[1]] : undefined;
+    } else {
+      val = r[key];
+    }
+    var filled = false;
+    if (Array.isArray(val)) { filled = val.length > 0; }
+    else if (typeof val === 'boolean') { filled = true; }
+    else if (typeof val === 'string') { filled = val.trim().length > 0; }
+    else if (typeof val === 'number') { filled = true; }
+    else if (val && typeof val === 'object') { filled = Object.keys(val).length > 0; }
+    if (filled) {
+      total.filled++;
+      byTab[meta.tab].filled++;
+    } else {
+      missing.push({ key:key, label:meta.label, tab:meta.tab, importance:meta.importance, source:meta.source });
+    }
+  }
+  total.pct = total.count ? Math.round((total.filled / total.count) * 100) : 0;
+  Object.keys(byTab).forEach(function(t) {
+    byTab[t].pct = byTab[t].count ? Math.round((byTab[t].filled / byTab[t].count) * 100) : 0;
+  });
+  return { total:total, byTab:byTab, missing:missing };
+}
+
+// ── Scorecard Rendering ───────────────────────────────────────────
+
+var _scorecardTimer = null;
+function scheduleScorecard() {
+  if (_scorecardTimer) clearTimeout(_scorecardTimer);
+  _scorecardTimer = setTimeout(renderResearchScorecard, 300);
+}
+
+function renderResearchScorecard() {
+  var el = document.getElementById('research-scorecard');
+  if (!el) return;
+  if (!S.research) { el.innerHTML = ''; return; }
+  var c = calcResearchCompleteness();
+  var pct = c.total.pct;
+  var colour = pct >= 75 ? 'var(--green)' : pct >= 40 ? '#e6a23c' : '#f56c6c';
+
+  var html = '<div class="card" style="margin-bottom:14px;padding:14px 18px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+  html += '<div style="display:flex;align-items:center;gap:10px">';
+  html += '<span style="font-size:22px;font-weight:600;color:' + colour + '">' + pct + '%</span>';
+  html += '<span style="font-size:12px;color:var(--n2)">Research Completeness</span>';
+  html += '</div>';
+  html += '<span style="font-size:11px;color:var(--n2)">' + c.total.filled + ' / ' + c.total.count + ' fields</span>';
+  html += '</div>';
+
+  // Per-tab progress bars
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+  var tabLabels = { business:'Business', audience:'Audience', brand:'Brand', schema:'Schema', competitors:'Competitors' };
+  ['business','audience','brand','schema','competitors'].forEach(function(t) {
+    var tb = c.byTab[t] || { pct:0, filled:0, count:0 };
+    var tc = tb.pct >= 75 ? 'var(--green)' : tb.pct >= 40 ? '#e6a23c' : '#f56c6c';
+    html += '<div style="flex:1;min-width:100px">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--n2);margin-bottom:3px">';
+    html += '<span>' + tabLabels[t] + '</span><span>' + tb.pct + '%</span></div>';
+    html += '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + tb.pct + '%;background:' + tc + ';border-radius:2px;transition:width .3s"></div>';
+    html += '</div></div>';
+  });
+  html += '</div>';
+
+  // Missing fields (critical first, then normal — skip optional)
+  var critMissing = c.missing.filter(function(m) { return m.importance === 'critical'; });
+  var normMissing = c.missing.filter(function(m) { return m.importance === 'normal'; });
+  if (critMissing.length || normMissing.length) {
+    html += '<details style="margin-top:6px"><summary style="font-size:11px;color:var(--n2);cursor:pointer;user-select:none">';
+    html += critMissing.length + ' critical, ' + normMissing.length + ' normal fields missing</summary>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">';
+    critMissing.forEach(function(m) {
+      var badge = m.source === 'manual' ? '<span style="font-size:9px;color:#e6a23c;margin-left:3px">MANUAL</span>' : '<span style="font-size:9px;color:var(--green);margin-left:3px">AI</span>';
+      html += '<button onclick="jumpToResearchField(\'' + m.key + '\',\'' + m.tab + '\')" style="border:1px solid #f56c6c33;background:#f56c6c0d;color:var(--dark);font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:var(--font);white-space:nowrap">'
+        + m.label + badge + '</button>';
+    });
+    normMissing.forEach(function(m) {
+      var badge = m.source === 'manual' ? '<span style="font-size:9px;color:#e6a23c;margin-left:3px">MANUAL</span>' : '<span style="font-size:9px;color:var(--green);margin-left:3px">AI</span>';
+      html += '<button onclick="jumpToResearchField(\'' + m.key + '\',\'' + m.tab + '\')" style="border:1px solid var(--border);background:var(--bg);color:var(--dark);font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:var(--font);white-space:nowrap">'
+        + m.label + badge + '</button>';
+    });
+    html += '</div></details>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function jumpToResearchField(key, tab) {
+  if (_rTab !== tab) {
+    _rTab = tab;
+    renderResearchNav();
+    renderResearchTabContent();
+  }
+  var fieldId = 'rf-' + key.replace(/[.\[\]]/g, '-');
+  setTimeout(function() {
+    var fieldEl = document.getElementById(fieldId);
+    if (fieldEl) {
+      fieldEl.scrollIntoView({ behavior:'smooth', block:'center' });
+      fieldEl.style.outline = '2px solid var(--green)';
+      fieldEl.style.outlineOffset = '2px';
+      setTimeout(function() { fieldEl.style.outline = ''; fieldEl.style.outlineOffset = ''; }, 2000);
+    }
+  }, 60);
+}
 
 function initResearch() {
   if (!S.research) S.research = researchDefaults();
+  _cachedWebsiteText = null; // reset website cache on project load
+  // Auto-populate client_name from Setup
+  if (!S.research.client_name && S.setup && S.setup.client) {
+    S.research.client_name = S.setup.client;
+    scheduleSave();
+  }
   _rTab = _rTab || 'business';
   renderResearchNav();
   renderResearchTabContent();
+  scheduleScorecard();
 }
 
 function researchDefaults() {
@@ -97,7 +317,14 @@ function rField(key, label, value, type, opts) {
   type = type || 'text';
   opts = opts || {};
   const id = 'rf-' + key.replace(/[.\[\]]/g,'-');
-  const lHtml = `<label for="${id}" style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">${label}</label>`;
+  var meta = RESEARCH_FIELD_META[key];
+  var badge = '';
+  if (meta) {
+    var isEmpty = Array.isArray(value) ? !value.length : (typeof value === 'string' ? !value.trim() : !value);
+    if (meta.source === 'manual') badge = '<span style="font-size:9px;color:#e6a23c;background:#e6a23c15;padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:middle;letter-spacing:0">MANUAL</span>';
+    else if (meta.source === 'ai' && isEmpty) badge = '<span style="font-size:9px;color:var(--green);background:var(--green-bg,#10b98115);padding:1px 5px;border-radius:3px;margin-left:6px;vertical-align:middle;letter-spacing:0">AI</span>';
+  }
+  const lHtml = `<label for="${id}" style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px">${label}${badge}</label>`;
   const base = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--dark);font-family:var(--font);outline:none;box-sizing:border-box';
   const span = (type==='textarea'||type==='textarea-array'||opts.span) ? 'grid-column:1/-1;' : '';
   let input = '';
@@ -163,6 +390,7 @@ function setRF(key, value) {
   for (let i = 0; i < parts.length - 1; i++) { obj[parts[i]] = obj[parts[i]] || {}; obj = obj[parts[i]]; }
   obj[parts[parts.length-1]] = value;
   scheduleSave();
+  scheduleScorecard();
 }
 
 function setRFArr(key, value) {
@@ -179,6 +407,7 @@ function setRFRep(key, idx, field, value) {
   if (!S.research[key][idx]) S.research[key][idx] = {};
   S.research[key][idx][field] = value;
   scheduleSave();
+  scheduleScorecard();
 }
 
 function addRFRep(key) {
@@ -187,6 +416,7 @@ function addRFRep(key) {
   S.research[key].push({});
   scheduleSave();
   renderResearchTabContent();
+  scheduleScorecard();
 }
 
 function removeRFRep(key, idx) {
@@ -194,6 +424,7 @@ function removeRFRep(key, idx) {
   S.research[key].splice(idx, 1);
   scheduleSave();
   renderResearchTabContent();
+  scheduleScorecard();
 }
 
 // ── Tab renderers ─────────────────────────────────────────────────
@@ -219,18 +450,17 @@ function renderRBusiness(r) {
     rField('locations_count','Number of Locations', r.locations_count)
   );
   html += rSec('Services & Pricing',
-    rField('primary_services','Primary Services (one per line)', r.primary_services, 'textarea-array', {rows:5}) +
     rField('pricing_notes','Pricing Notes', r.pricing_notes, 'textarea', {rows:3}) +
     rField('pricing_model','Pricing Model', r.pricing_model, 'select', {options:['','quote_based','fixed_menu','subscription']}) +
     rField('capacity_constraints','Capacity Constraints', r.capacity_constraints) +
     rField('seasonality_notes','Seasonality Notes', r.seasonality_notes)
   );
+  html += rRepGroup('services_detail','Services',
+    [{key:'name',label:'Service Name',width:'150px'},{key:'description',label:'Description'},{key:'pricing',label:'Pricing',width:'120px'},{key:'target_audience',label:'Target Audience',width:'130px'},{key:'key_differentiator',label:'Differentiator',width:'130px'}],
+    '+ Add Service'
+  );
   html += rSec('Strategic Recommendations',
     rField('strategic_recommendations','Recommendations (one per line)', r.strategic_recommendations, 'textarea-array', {rows:5})
-  );
-  html += rRepGroup('services_detail','Services (Detailed)',
-    [{key:'name',label:'Service Name',width:'160px'},{key:'description',label:'Description'},{key:'target_audience',label:'Target Audience',width:'140px'},{key:'key_differentiator',label:'Differentiator',width:'140px'}],
-    '+ Add Service Detail'
   );
   html += rRepGroup('top_offers','Top Offers',
     [{key:'offer_name',label:'Offer Name'},{key:'priority',label:'Priority',width:'80px'},{key:'notes',label:'Notes'}],
@@ -426,6 +656,8 @@ function renderRKeywords(el) {
 // ── AI Enrichment ─────────────────────────────────────────────────
 
 async function enrichOneTab(tab) {
+  // Clear website cache so re-enrich fetches fresh data from all pages
+  _cachedWebsiteText = null;
   if (!S.research) S.research = researchDefaults();
   var _s = S.setup || {};
   if (_s.client && !S.research.client_name) S.research.client_name = _s.client;
@@ -447,7 +679,7 @@ async function enrichOneTab(tab) {
   }
 }
 
-async function enrichAll(forceAll) {
+async function enrichAll(forceAll, startFrom) {
   const tabs = ['business','audience','brand','schema','competitors'];
   const btn = document.getElementById('research-enrich-btn');
   const statusEl = document.getElementById('research-enrich-status');
@@ -456,10 +688,22 @@ async function enrichAll(forceAll) {
   var _s = S.setup || {};
   if (_s.client && !S.research.client_name) S.research.client_name = _s.client;
   if (_s.client && !S.research.brand_name) S.research.brand_name = _s.client;
-  _enrichDone.clear();
+  if (!startFrom) _enrichDone.clear();
+  window._aiStopAll = false;
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
   if (statusEl) statusEl.style.display = 'flex';
-  for (let i = 0; i < tabs.length; i++) {
+  var start = startFrom || 0;
+  for (let i = start; i < tabs.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Enrichment paused (' + i + '/' + tabs.length + ' tabs)',
+        fn: function(args) { enrichAll(args.forceAll, args.startFrom); },
+        args: { forceAll: forceAll, startFrom: i }
+      };
+      _enriching = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; }
+      return;
+    }
     const tab = tabs[i];
     const label = tab.charAt(0).toUpperCase()+tab.slice(1);
     _enriching = tab;
@@ -468,7 +712,9 @@ async function enrichAll(forceAll) {
     if (progEl) progEl.textContent = (i+1)+' / '+tabs.length;
     renderResearchNav();
     renderResearchTabContent();
-    await enrichRTab(tab, forceAll);
+    try {
+      await enrichRTab(tab, forceAll);
+    } catch(e) { if (e.name === 'AbortError') return; }
     _enrichDone.add(tab);
     // Pause between tabs to avoid Anthropic rate limits
     if (i < tabs.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
@@ -495,6 +741,14 @@ function mergeEnriched(target, source, forceAll) {
     var existing = target[key];
     var incoming = source[key];
     if (incoming === null || incoming === undefined) return;
+
+    // Never overwrite with empty — that just deletes existing data
+    var incomingEmpty = false;
+    if (typeof incoming === 'string' && !incoming.trim()) incomingEmpty = true;
+    if (Array.isArray(incoming) && incoming.length === 0) incomingEmpty = true;
+
+    if (incomingEmpty) return; // skip empty values regardless of forceAll
+
     if (!forceAll) {
       if (typeof existing === 'string' && existing.trim()) return;
       if (Array.isArray(existing) && existing.length > 0) return;
@@ -504,41 +758,162 @@ function mergeEnriched(target, source, forceAll) {
   });
 }
 
+function _repairJSON(raw) {
+  var s = raw;
+  // Strip control chars except newline/tab
+  s = s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+  // Remove trailing commas before } or ]
+  s = s.replace(/,(\s*[}\]])/g, '$1');
+  // Fix unquoted keys
+  s = s.replace(/([{,]\s*)([a-zA-Z_]\w*)\s*:/g, '$1"$2":');
+  // Fix single-quoted values (but not apostrophes inside words)
+  s = s.replace(/:\s*'([^']*)'/g, ':"$1"');
+  return s;
+}
+
 function parseEnrichResult(result) {
+  var cleaned = result.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
   var parsed = null;
-  try { parsed = JSON.parse(result.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim()); } catch(e) {}
-  if (!parsed) {
-    try {
-      var si = result.indexOf('{'), ei = result.lastIndexOf('}');
-      if (si >= 0 && ei > si) parsed = JSON.parse(result.slice(si, ei+1));
-    } catch(e) {}
-  }
+  // Attempt 1: direct parse
+  try { parsed = JSON.parse(cleaned); } catch(e) {}
+  if (parsed) return parsed;
+  // Attempt 2: extract JSON block
+  var si = cleaned.indexOf('{'), ei = cleaned.lastIndexOf('}');
+  if (si >= 0 && ei > si) cleaned = cleaned.slice(si, ei+1);
+  try { parsed = JSON.parse(cleaned); } catch(e) {}
+  if (parsed) return parsed;
+  // Attempt 3: repair then parse
+  var repaired = _repairJSON(cleaned);
+  try { parsed = JSON.parse(repaired); } catch(e) {}
+  if (parsed) return parsed;
+  // Attempt 4: aggressive — remove newlines inside strings
+  try {
+    var agg = repaired.replace(/\n/g, ' ');
+    parsed = JSON.parse(agg);
+  } catch(e) {}
   return parsed;
+}
+
+// Cache website text per session to avoid re-fetching on each tab
+var _cachedWebsiteText = null;
+
+async function _fetchWebsiteText() {
+  if (_cachedWebsiteText !== null) return _cachedWebsiteText;
+  var siteUrl = (S.setup && S.setup.url) || '';
+  if (!siteUrl) { _cachedWebsiteText = ''; return ''; }
+  // Normalise base URL
+  var base = siteUrl.trim().replace(/\/+$/, '');
+  if (!base.startsWith('http')) base = 'https://' + base;
+  // Scrape homepage + key inner pages for richer data
+  var innerPaths = ['/about', '/about-us', '/services', '/our-services', '/pricing', '/our-work', '/portfolio', '/team', '/our-team', '/contact'];
+  var urls = [base];
+  for (var i = 0; i < innerPaths.length; i++) urls.push(base + innerPaths[i]);
+  try {
+    var res = await fetch('/api/fetch-page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: urls })
+    });
+    var data = await res.json();
+    if (data.pages && data.pages.length > 0) {
+      var parts = [];
+      for (var j = 0; j < data.pages.length; j++) {
+        var p = data.pages[j];
+        if (p.text) parts.push('--- PAGE: ' + p.url + ' ---\n' + p.text);
+      }
+      _cachedWebsiteText = parts.join('\n\n');
+    } else {
+      _cachedWebsiteText = data.text || '';
+    }
+  } catch(e) {
+    console.warn('Website fetch failed:', e.message);
+    _cachedWebsiteText = '';
+  }
+  return _cachedWebsiteText;
+}
+
+async function _autoGMB() {
+  var r = S.research || {};
+  // Skip if we already have GMB data (address filled)
+  if (r.schema_street_address || r.schema_city) return;
+  var keyword = (S.setup && S.setup.client) || r.client_name || '';
+  if (!keyword) return;
+  try {
+    var res = await fetch('/api/gmb', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: keyword + ' ' + ((S.setup && S.setup.geo) || '') })
+    });
+    var data = await res.json();
+    if (!data.result) return;
+    var g = data.result;
+    if (!S.research) S.research = researchDefaults();
+    var rd = S.research;
+    var ap = g.address_parts || {};
+    if (ap.address) rd.schema_street_address = ap.address;
+    if (ap.city || ap.borough) rd.schema_city = ap.city || ap.borough;
+    if (ap.region) rd.schema_region = ap.region;
+    if (ap.zip) rd.schema_postal_code = ap.zip;
+    if (ap.country_code) rd.schema_country = ap.country_code;
+    if (g.category && !rd.schema_primary_category) rd.schema_primary_category = g.category;
+    if (g.price_level && !rd.schema_price_range) rd.schema_price_range = g.price_level;
+    if (g.social_profiles && g.social_profiles.length > 0 && !rd.social_profiles.length) rd.social_profiles = g.social_profiles;
+    if (g.reviews && g.reviews.length > 0 && !rd.reviews.length) rd.reviews = g.reviews;
+    scheduleSave();
+  } catch(e) {
+    console.warn('Auto GMB pull failed:', e.message);
+  }
 }
 
 async function enrichRTab(tab, forceAll) {
   if (!S.research) S.research = researchDefaults();
   var r = S.research;
   var s = S.setup || {};
-  var ctx = buildEnrichCtx();
 
-  var sys = 'You are a senior digital marketing strategist at Setsail Marketing. Extract REAL information from the provided documents. Do NOT use placeholder text. Return ONLY valid JSON — no preamble, no markdown fences, no backticks.';
+  // Pre-fetch website content and GMB data in parallel
+  var _preFetchDone = await Promise.allSettled([_fetchWebsiteText(), _autoGMB()]);
+  var websiteText = _cachedWebsiteText || '';
+
+  var ctx = buildEnrichCtx();
+  if (websiteText) ctx += '\n\nWEBSITE CONTENT (scraped from ' + (s.url || '') + ' and inner pages):\n' + websiteText.slice(0, 14000);
+
+  // Cross-tab context: pass already-enriched fields so later tabs can build on them
+  var crossCtx = '';
+  if (r.business_overview) crossCtx += '\nBUSINESS: ' + r.business_overview;
+  if (r.primary_services && r.primary_services.length) crossCtx += '\nSERVICES: ' + r.primary_services.join(', ');
+  if (r.industry) crossCtx += '\nINDUSTRY: ' + r.industry;
+  if (r.team_size) crossCtx += '\nTEAM SIZE: ' + r.team_size;
+  if (r.primary_audience_description) crossCtx += '\nAUDIENCE: ' + r.primary_audience_description;
+  if (r.primary_goal) crossCtx += '\nPRIMARY GOAL: ' + r.primary_goal;
+  if (r.geography && r.geography.primary) crossCtx += '\nGEOGRAPHY: ' + r.geography.primary;
+  if (crossCtx) ctx += '\n\nALREADY EXTRACTED (from other research tabs):' + crossCtx;
+
+  var sys = 'You are a senior digital marketing strategist at Setsail Marketing. Extract REAL information from the provided documents and website content.\n'
+    + 'CRITICAL RULES:\n'
+    + '1. The WEBSITE CONTENT section contains live scraped data from the actual website — this is your PRIMARY source of truth for factual fields (services, team size, locations, contact info, about info).\n'
+    + '2. If the website shows different information than the strategy doc, PREFER the website data — it is more current.\n'
+    + '3. Extract ALL services listed on the website, not just the top 3. Check /services and /our-services pages carefully.\n'
+    + '4. For team_size: check /team, /our-team, /about pages and COUNT the actual team members listed. If the website lists individual team members, count them.\n'
+    + '5. Do NOT use placeholder text. If you cannot find information, use an empty string or empty array.\n'
+    + '6. Return ONLY valid JSON — no preamble, no markdown fences, no backticks.';
 
   var b = '\n  ';
   var prompts = {
-    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the documents, not placeholder text:\n{\n'
+    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the website and documents.\nRULES:\n- Include EVERY service from the /services page — do not summarise or skip any\n- For team_size: count every individual person named on /about or /team page\n- For pricing in services_detail: pull actual dollar amounts from the /pricing page\n- Prefer website data over strategy doc when they conflict\n{\n'
       + b + '"business_overview": "2-3 sentence factual description of what this business does",\n'
       + b + '"value_proposition": "the core promise to customers in one sentence",\n'
       + b + '"industry": "e.g. Healthcare, Construction, Legal Services",\n'
       + b + '"sub_industry": "specific niche within that industry",\n'
       + b + '"business_model": "one of: b2b b2c b2b2c marketplace saas nonprofit",\n'
       + b + '"years_in_business": "number as string or empty string if unknown",\n'
-      + b + '"team_size": "approximate headcount as string or empty string if unknown",\n'
-      + b + '"primary_services": ["actual service 1", "actual service 2", "actual service 3"],\n'
+      + b + '"team_size": "COUNT every individual team member name found on /about or /team pages and return that number as a string — if 12 people are listed, return 12",\n'
       + b + '"pricing_notes": "how pricing works",\n'
       + b + '"pricing_model": "one of: quote_based fixed_menu subscription",\n'
       + b + '"top_offers": [{"offer_name": "specific offer name", "priority": "1", "notes": "why this is a top offer"}],\n'
-      + b + '"services_detail": [{"name": "service name", "description": "1-2 sentence description of this service", "target_audience": "who buys this service", "key_differentiator": "what makes this service unique"}],\n'
+      + b + '"locations_count": "number of physical locations as string, or empty string if unknown",\n'
+      + b + '"capacity_constraints": "any limits on capacity, throughput, or availability — or empty string",\n'
+      + b + '"seasonality_notes": "seasonal patterns in demand or revenue — or empty string",\n'
+      + b + '"services_detail": [{"name": "service name from website", "description": "1-2 sentence description", "pricing": "pricing from /pricing page e.g. $1800 setup + $2400/mo, or empty string if not found", "target_audience": "who buys this service", "key_differentiator": "what makes this unique"}],\n'
       + b + '"strategic_recommendations": ["specific rec 1", "specific rec 2", "specific rec 3"]\n}',
 
     audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values:\n{\n'
@@ -555,29 +930,30 @@ async function enrichRTab(tab, forceAll) {
       + b + '"top_reasons_leads_dont_close": "main reasons deals fall through",\n'
       + b + '"booking_flow_description": "how a prospect becomes a client - steps in the intake process",\n'
       + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
+      + b + '"secondary_goals": ["secondary goal 1", "secondary goal 2"],\n'
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
       + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}],\n'
       + b + '"primary_cta": "the main conversion action e.g. Book a Discovery Call",\n'
       + b + '"secondary_cta": "secondary conversion action e.g. Download Free Guide",\n'
       + b + '"low_commitment_cta": "low-friction entry point e.g. Free Website Audit"\n}',
 
-    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object. For brand_colours/fonts: only include values explicitly in reference docs, use [] if not found. Do NOT invent values.\nFor tone, differentiators, voice: extract specifically from strategy and brand docs.\nReturn ONLY valid JSON, no preamble.\n{\n'
+    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours/fonts: only include values explicitly found in reference docs — use [] if not found. Do NOT invent values.\n- For tone, differentiators, voice: extract from strategy and brand docs.\n- For case_studies: extract EVERY case study from the /our-work and /portfolio pages. Include ALL of them with specific results and metrics mentioned. Do NOT limit to 2-3.\n- For notable_clients: list EVERY client name mentioned on the website.\n- Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
-      + b + '"slogan_or_tagline": "tagline from docs, or empty string",\n'
+      + b + '"slogan_or_tagline": "tagline from docs or website, or empty string",\n'
       + b + '"brand_voice_style": "one of: direct playful premium technical warm other",\n'
-      + b + '"tone_and_voice": "2-3 sentences on tone and personality from the docs",\n'
+      + b + '"tone_and_voice": "2-3 sentences on tone and personality from the docs and website copy",\n'
       + b + '"words_to_use": ["power words fitting this brand voice"],\n'
       + b + '"words_to_avoid": ["words that conflict with this brand voice"],\n'
-      + b + '"key_differentiators": ["real differentiator from the docs"],\n'
-      + b + '"proof_points": ["real cert/award/stat from docs, or []"],\n'
+      + b + '"key_differentiators": ["real differentiator from the docs or website"],\n'
+      + b + '"proof_points": ["real cert/award/stat/number from docs or website, e.g. 273 Projects, 10+ Years, B Corp Certified"],\n'
       + b + '"brand_colours": ["hex from brand guide only, or []"],\n'
       + b + '"fonts": ["font from brand guide only, or []"],\n'
-      + b + '"case_studies": [{"client": "client name", "result": "specific measurable outcome", "timeframe": "e.g. 90 days"}],\n'
-      + b + '"notable_clients": ["real client name from docs"],\n'
-      + b + '"awards_certifications": ["real award or certification from docs"],\n'
-      + b + '"team_credentials": "founder/team qualifications, years of experience, specialisations",\n'
-      + b + '"founder_bio": "founder background and expertise from docs",\n'
-      + b + '"publications_media": ["media mention or publication from docs"]\n}',
+      + b + '"case_studies": [{"client": "client name from /our-work page", "result": "specific measurable outcome with numbers", "timeframe": "e.g. 90 days or ongoing"}],\n'
+      + b + '"notable_clients": ["EVERY client name found on the website — check /our-work, /portfolio, /about, testimonials"],\n'
+      + b + '"awards_certifications": ["real award or certification — check /about page for partnerships and certs"],\n'
+      + b + '"team_credentials": "founder/team qualifications, years of experience, specialisations from /about page",\n'
+      + b + '"founder_bio": "founder background and expertise from /about page",\n'
+      + b + '"publications_media": ["media mention or publication from docs or website"]\n}',
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
       + b + '"schema_business_type": "LocalBusiness or Organization",\n'
@@ -593,6 +969,7 @@ async function enrichRTab(tab, forceAll) {
       + b + '"social_profiles": [{"platform": "Facebook", "url": "https://..."}],\n'
       + b + '"schema_services": [{"service_name": "actual service", "service_page_url": "/services/slug", "service_description_short": "one sentence"}],\n'
       + b + '"faqs": [{"question": "real customer question 1", "answer": "direct answer"}, {"question": "real customer question 2", "answer": "direct answer"}],\n'
+      + b + '"has_location_pages": "Yes or Planned or No",\n'
       + b + '"has_service_pages": "Yes or Planned or No",\n'
       + b + '"has_blog": "Yes or Planned or No",\n'
       + b + '"has_faq_section": "Yes or Planned or No"\n}',
@@ -650,16 +1027,18 @@ async function enrichRTab(tab, forceAll) {
       + 'You MUST return a populated competitors array. Never return an empty array. '
       + 'Return ONLY valid JSON, no preamble, no markdown fences, no backticks.'
       : sys;
+    // Brand tab needs more tokens for case studies, clients, credentials
+    var tabTokens = (tab === 'brand' || tab === 'business') ? 8000 : 6000;
     var result;
     try {
       window._aiBarLabel = 'Research: ' + tab;
-      result = await callClaude(activeSys, prompts[tab], null, 3500);
+      result = await callClaude(activeSys, prompts[tab], null, tabTokens);
     } catch(rateErr) {
       if (rateErr.message && rateErr.message.toLowerCase().indexOf('rate') !== -1) {
         var _retryEl = document.getElementById('research-enrich-msg');
         if (_retryEl) _retryEl.textContent = 'Rate limit on ' + tab + ' - retrying in 8s...';
         await new Promise(function(res){ setTimeout(res, 8000); });
-        result = await callClaude(activeSys, prompts[tab], null, 3500);
+        result = await callClaude(activeSys, prompts[tab], null, tabTokens);
       } else { throw rateErr; }
     }
     console.error('ENRICH RAW ['+tab+']:', result.slice(0,600));
@@ -677,6 +1056,7 @@ async function enrichRTab(tab, forceAll) {
         scheduleSave();
         _rTab = 'competitors';
         renderResearchTabContent();
+        scheduleScorecard();
         return;
       }
       if (parsed.geography) {
@@ -688,9 +1068,14 @@ async function enrichRTab(tab, forceAll) {
         delete parsed.geography;
       }
       mergeEnriched(r, parsed, forceAll);
+      // Auto-derive primary_services from services_detail (keeps downstream consumers in sync)
+      if (r.services_detail && r.services_detail.length > 0) {
+        r.primary_services = r.services_detail.map(function(sd) { return sd.name; });
+      }
       scheduleSave();
       _rTab = tab;  // ensure we re-render the tab that was just enriched
       renderResearchTabContent();
+      scheduleScorecard();
     } else {
       console.error('ENRICH PARSE FAILED ['+tab+']: raw:', result.slice(0,500));
       var _statusFail = document.getElementById('enrich-status-'+tab);

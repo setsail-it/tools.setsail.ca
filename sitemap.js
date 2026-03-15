@@ -482,19 +482,34 @@ async function generatePageGoal(idx) {
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i>'; }
 }
 
-async function generateAllPageGoals() {
+async function generateAllPageGoals(startFrom) {
   var pages = S.pages || [];
   var empty = pages.filter(function(p){ return !p.page_goal || !p.page_goal.trim(); });
-  if (!empty.length) { if(typeof aiBarNotify==='function') aiBarNotify('All pages already have goals', {duration:3000}); return; }
+  if (!empty.length && !startFrom) { if(typeof aiBarNotify==='function') aiBarNotify('All pages already have goals', {duration:3000}); return; }
+  window._aiStopAll = false;
   if(typeof aiBarStart==='function') aiBarStart('Generating page goals');
-  for (var i = 0; i < pages.length; i++) {
+  var start = startFrom || 0;
+  var generated = 0;
+  for (var i = start; i < pages.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Goals paused (' + i + '/' + pages.length + ')',
+        fn: function(args) { generateAllPageGoals(args.startFrom); },
+        args: { startFrom: i }
+      };
+      return;
+    }
     if (pages[i].page_goal && pages[i].page_goal.trim()) continue;
     if(typeof aiBarNotify==='function') aiBarNotify('Goal '+(i+1)+'/'+pages.length+': '+pages[i].page_name, {duration:2000});
-    await generatePageGoal(i);
+    try {
+      await generatePageGoal(i);
+      generated++;
+    } catch(e) { if (e.name === 'AbortError') return; }
   }
+  window._aiStopResumeCtx = null;
   renderSitemapResults(S.sitemapApproved);
   if(typeof aiBarEnd==='function') aiBarEnd();
-  if(typeof aiBarNotify==='function') aiBarNotify('Page goals generated for '+empty.length+' pages', {duration:4000});
+  if(typeof aiBarNotify==='function') aiBarNotify('Page goals generated for '+generated+' pages', {duration:4000});
 }
 
 function updatePageField(idx, field, val) {

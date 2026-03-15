@@ -971,6 +971,70 @@ export default {
       }
     }
 
+    // ── FETCH PAGE (scrape website text for enrichment) ──────────────
+    // Accepts { url } for single page or { urls: [...] } for multi-page
+    if (url.pathname === '/api/fetch-page' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const urls = body.urls || (body.url ? [body.url] : []);
+        if (!urls.length) return new Response(JSON.stringify({ error: 'url or urls required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+
+        function stripHtml(html) {
+          return html
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+            .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+            .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&[a-z]+;/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        }
+
+        // Fetch up to 12 pages in parallel, 5s timeout each
+        const results = await Promise.allSettled(urls.slice(0, 12).map(async (pageUrl) => {
+          let fetchUrl = pageUrl.trim();
+          if (!fetchUrl.startsWith('http')) fetchUrl = 'https://' + fetchUrl;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          try {
+            const res = await fetch(fetchUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetSailOS/1.0; +https://setsail.ca)' },
+              redirect: 'follow',
+              signal: controller.signal,
+              cf: { cacheTtl: 300 },
+            });
+            clearTimeout(timer);
+            if (!res.ok) return { url: pageUrl, text: '' };
+            const html = await res.text();
+            return { url: pageUrl, text: stripHtml(html) };
+          } catch (e) {
+            clearTimeout(timer);
+            return { url: pageUrl, text: '' };
+          }
+        }));
+
+        const pages = results.map(r => r.status === 'fulfilled' ? r.value : { url: '', text: '' }).filter(p => p.text);
+        // Single-page backward compat: return { text }
+        if (!body.urls) {
+          return new Response(JSON.stringify({ text: (pages[0] && pages[0].text || '').slice(0, 10000) }), { headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+        // Multi-page: return { pages: [{ url, text }] }
+        const trimmed = [];
+        let totalLen = 0;
+        for (const p of pages) {
+          const avail = Math.max(0, 18000 - totalLen);
+          if (avail <= 200) break;
+          trimmed.push({ url: p.url, text: p.text.slice(0, Math.min(avail, 8000)) });
+          totalLen += trimmed[trimmed.length - 1].text.length;
+        }
+        return new Response(JSON.stringify({ pages: trimmed }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── CLAUDE SYNC (non-streaming, for large JSON responses) ──────────────
     if (url.pathname === '/api/claude-sync' && request.method === 'POST') {
       try {
@@ -1906,7 +1970,7 @@ export default {
           const _pageGoal = (p.page_goal||'').trim();
           const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + (_webStrat?'\n\n## WEBSITE STRATEGY\n'+_webStrat:'') + (_pageGoal?'\n\n## PAGE GOAL (every section must serve this strategic purpose)\n'+_pageGoal:'') + ctxProof + ctxCTA + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + (_pageCtx?'\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx:'') + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';
 
-          const briefText = await claudeCall(sysPrompt, prompt, 4000);
+          const briefText = await claudeCall(sysPrompt, prompt, 8000);
 
           // Write brief back to project (version-aware atomic write)
           // Re-read latest state to avoid clobbering concurrent saves
