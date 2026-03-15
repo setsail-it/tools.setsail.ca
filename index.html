@@ -1221,7 +1221,7 @@ var STAGE_TIPS = {
   setup: [
     "Primary Market drives country auto-detection for keyword volumes — 'Vancouver, BC' targets Canada, 'Sydney' targets Australia.",
     "Client name and URL are used in all downstream copy and SEO output.",
-    "Upload strategy docs, then click Synthesise — creates a 600-800 word website strategy brief that feeds into every brief and copy prompt.",
+    "Upload strategy docs here — they feed Research enrichment and Strategy generation. The website strategy brief is auto-generated in Strategy (Output tab).",
     "Primary Market is the default geo for all pages — override per page in the Sitemap Market column.",
   ],
   snapshot: [
@@ -1260,6 +1260,7 @@ var STAGE_TIPS = {
     "Enrichment runs automatically before diagnostics: competitor deep-dives, keyword pre-scan, CPC estimates, site performance checks.",
     "Economics tab shows Market CPC Intelligence when keyword research has been completed — real CPC data grounds CPL and paid viability estimates.",
     "Run Keywords research before re-running Economics for the most accurate unit economics — CPC data from keyword research replaces shallow estimates.",
+    "Open the Workflow Guide (book icon, top bar) and scroll to Strategy Scoring Engine for a full breakdown of dimensions, weights, caps, and audit diagnostics.",
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
@@ -2842,7 +2843,7 @@ async function deleteAdminUser() {
       <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px">
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Client name + website URL</strong> — used in all downstream copy, SEO output, and domain lookups. Fill carefully.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Primary Market</strong> — the default geo for all pages. Drives country auto-detection for keyword volumes ("Vancouver, BC" → Canada, "Sydney" → Australia). Override per page in the Sitemap Market column for multi-market projects.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Strategy document upload</strong> — paste or upload your client strategy doc. Click <em>Synthesise from strategy</em> to generate a 600-800 word website strategy brief covering: what the site must convince, competitive frame, page type rules, proof requirements, and hard rules. This brief is injected verbatim into every brief, copy, and sitemap prompt.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Strategy document upload</strong> — paste or upload your client strategy doc. This feeds Research enrichment and Strategy generation. The website strategy brief is auto-generated in the Strategy stage (Output tab) after all 7 diagnostics complete.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Fields like voice, competitors, pricing, and image style</strong> are derived automatically in Research (Stage 3) — they are not entered here. Setup is intentionally minimal.</span></div>
       </div>
     </div>
@@ -2977,6 +2978,75 @@ async function deleteAdminUser() {
       </div>
     </div>
 
+    <!-- STRATEGY SCORING -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Strategy Scoring Engine</div>
+      <p style="font-size:11.5px;margin:0 0 10px">Every strategy section is scored on three dimensions. The weighted average produces a section score (0–10), and section scores roll up into an overall strategy score.</p>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Three Scoring Dimensions</div>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;margin-bottom:14px">
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(21,142,29,0.05);border-radius:5px"><span style="font-weight:600;min-width:140px">Data Completeness (35%)</span><span>Are all required inputs present? Each section defines a checklist of fields — missing fields reduce this score proportionally.</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:140px">Analytical Confidence (40%)</span><span>How trustworthy is the analysis? Derived from content depth (key count in the section data) and audit pass rate. Sections with 8+ keys score 7, 4+ keys score 5.5, fewer score 4. High audit pass rate (&ge;90%) adds +1, low pass rate (&lt;50%) deducts -1.5.</span></div>
+        <div style="display:flex;gap:8px;padding:5px 8px;background:rgba(0,0,0,0.02);border-radius:5px"><span style="font-weight:600;min-width:140px">Specificity (25%)</span><span>Is the output specific to this client? Generic outputs score low. Concrete data — real numbers, named competitors, validated differentiators — scores high.</span></div>
+      </div>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Section Weights</div>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;margin-bottom:14px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Positioning</strong> — 18% &nbsp;|&nbsp; <strong>Channel Strategy</strong> — 18%</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Unit Economics</strong> — 14% &nbsp;|&nbsp; <strong>Subtraction</strong> — 12%</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Growth Plan</strong> — 12% &nbsp;|&nbsp; <strong>Risks</strong> — 10%</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Execution</strong> — 8% &nbsp;|&nbsp; <strong>Brand</strong> — 8%</span></div>
+      </div>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Anti-Inflation Caps <span style="font-size:9px;color:#f56c6c"><i class="ti ti-lock" style="font-size:9px"></i></span></div>
+      <p style="font-size:11px;margin:0 0 6px;color:var(--n2)">Caps prevent score gaming. If a condition is true, the affected dimension is capped — even if the raw score is higher. Active caps show as red lock icons in the scorecard.</p>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;margin-bottom:14px">
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No strategy docs uploaded</strong> — all sections specificity capped at 6</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No validated differentiators</strong> — Positioning confidence capped at 6</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Estimated close rate (contains ~ or "estimate")</strong> — Economics data capped at 7</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No CPC data</strong> — Economics and Channels confidence capped at 6</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Fewer than 3 competitors</strong> — Positioning confidence capped at 5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No analytics integration</strong> — Execution data capped at 5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Website-only voice (no strategy doc)</strong> — Brand confidence capped at 5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No DR data</strong> — Brand data capped at 5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No current activities data</strong> — Subtraction data capped at 4</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No channel strategy levers</strong> — Growth confidence capped at 3</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>High-severity risks unmitigated</strong> — Risks confidence capped at 5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Budget mismatch (&gt;2x difference)</strong> — Channels data capped at 6</span></div>
+      </div>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Overall Score Caps</div>
+      <p style="font-size:11px;margin:0 0 6px;color:var(--n2)">These cap the final overall score regardless of section scores:</p>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;margin-bottom:14px">
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>D8 demand validation not run</strong> — overall capped at 6.5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>D8 high-severity strategic revision needed</strong> — overall capped at 6.5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No subtraction analysis</strong> — overall capped at 7.0</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Low audit pass rate (&lt;50% across all diagnostics)</strong> — overall capped at 7.0</span></div>
+      </div>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Audit Diagnostics (D1–D7)</div>
+      <p style="font-size:11px;margin:0 0 6px;color:var(--n2)">Each scored section runs 4–8 quality checks after generation. Audit pass rates feed into the confidence dimension — high pass rates boost it, low rates penalise it.</p>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;margin-bottom:14px">
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D1</strong> Positioning — differentiators are specific and testable, not generic claims</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D2</strong> Unit Economics — numbers are realistic, margins and CAC are internally consistent</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D3</strong> Subtraction — activities have clear stop/keep verdicts, not just summaries</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D4</strong> Channel Strategy — budget allocation sums to 100%, channel mix has gaps flagged</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D5</strong> Growth Plan — timeline items have durations and dependencies, funnel architecture present</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D6</strong> Execution — KPIs are measurable, not vague aspirational statements</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D7</strong> Risks — risks have severity scores and actionable mitigations</span></div>
+      </div>
+
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Score Thresholds</div>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0"></span><span><strong>&ge; 7.0</strong> — Strong. Strategy is well-supported with real data and specific to the client.</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:50%;background:#e6a23c;flex-shrink:0"></span><span><strong>4.0 – 6.9</strong> — Developing. Some gaps remain — check the gap panel and active caps.</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><span style="width:10px;height:10px;border-radius:50%;background:#f56c6c;flex-shrink:0"></span><span><strong>&lt; 4.0</strong> — Weak. Major data or analysis missing. Run enrichments and diagnostics.</span></div>
+      </div>
+      <div style="padding:8px 10px;background:rgba(21,142,29,0.05);border-radius:6px;border:1px solid rgba(21,142,29,0.15);font-size:11px;color:#0a5c10">
+        ✓ To raise a score: check the gap panel for missing inputs (many are auto-resolvable), run diagnostics to improve audit pass rates, and upload strategy documents to lift specificity caps.
+      </div>
+    </div>
+
     <!-- KEY LIMITS -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Recent Features (March 2026)</div>
@@ -2985,7 +3055,7 @@ async function deleteAdminUser() {
         <p><strong>Per-page geo / Market column (Sitemap)</strong> — Each page inherits the Primary Market from Setup by default. Override per page in the Market column for multi-market projects (e.g. US landing pages on a Canadian project). Keyword volume Refresh groups lookups by target market — separate DataForSEO API calls per country. Briefs and copy prompts use per-page geo for SERP Intel and geography context.</p>
         <p><strong>Intent column (Sitemap)</strong> — Search intent classification (commercial, transactional, informational, navigational) visible in the grid. Colour-coded: orange = transactional, blue = commercial, green = informational, grey = navigational. Editable dropdown in Edit mode.</p>
         <p><strong>Setup simplified</strong> — Stripped to essentials: client name, URL, primary market, strategy doc. Voice, competitors, pricing, image style, and site type are derived downstream in Research or later stages. Old field values preserved for backward compatibility.</p>
-        <p><strong>Web Strategy Brief (Setup)</strong> — "Synthesise from strategy" reads your full strategy doc and produces a focused 5-section 600-800 word website brief: what the site must convince visitors of, competitive frame, page type rules, proof requirements, hard rules. Injected verbatim into every brief, copy, and sitemap generation call.</p>
+        <p><strong>Web Strategy Brief (Strategy Output tab)</strong> — Auto-generated after strategy compilation; regenerate anytime from the Output tab. Reads all 8 strategy sections plus research data and produces a 7-section 800-1100 word website brief: (1) what the site must convince, (2) competitive frame, (3) conversion economics, (4) page type rules, (5) proof requirements, (6) channel integration, (7) hard rules and risk guardrails. Injected into every brief, copy, and sitemap generation call.</p>
         <p><strong>Per-page context (Briefs)</strong> — "Page Context" field at the bottom of every brief card. Paste case study data, stats, claims, or custom copy instructions. Upload text files (appended to context) or images (noted for reference). Saves on blur, injected as <code>## PAGE-SPECIFIC CONTEXT</code> in briefs and copy.</p>
         <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve.</p>
         <p><strong>Prompt viewer (Briefs)</strong> — The <i class="ti ti-code"></i> icon in each brief card action bar shows the exact system + user prompt sent to Claude for that brief. Useful for diagnosing unexpected outputs or training staff.</p>

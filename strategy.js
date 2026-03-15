@@ -1815,59 +1815,182 @@ async function synthesiseWebStrategy() {
   var r = S.research || {};
   var s = S.setup || {};
 
-  // Build comprehensive context from completed strategy + research
+  // ── Build comprehensive context from ALL strategy sections + research ──
+
   var ctx = 'CLIENT: ' + (s.client || r.client_name || '') + '\n';
   ctx += 'URL: ' + (s.url || '') + '\n';
   ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
   ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (r.services_detail && r.services_detail.length) {
+    ctx += 'SERVICES DETAIL:\n';
+    r.services_detail.forEach(function(sd) {
+      ctx += '- ' + (sd.name || '') + ': ' + (sd.description || '') + (sd.differentiator ? ' (differentiator: ' + sd.differentiator + ')' : '') + '\n';
+    });
+  }
+
+  // Positioning
   if (st.positioning) {
     ctx += '\nPOSITIONING:\n';
     if (st.positioning.core_value_proposition) ctx += '- Value Prop: ' + st.positioning.core_value_proposition + '\n';
-    if (st.positioning.recommended_positioning_angle) ctx += '- Positioning: ' + st.positioning.recommended_positioning_angle + '\n';
+    if (st.positioning.recommended_positioning_angle) ctx += '- Positioning angle: ' + st.positioning.recommended_positioning_angle + '\n';
     if (st.positioning.validated_differentiators) ctx += '- Differentiators: ' + JSON.stringify(st.positioning.validated_differentiators) + '\n';
     if (st.positioning.brand_voice_direction) {
       var bv = st.positioning.brand_voice_direction;
       if (bv.style) ctx += '- Voice: ' + bv.style + '\n';
       if (bv.tone_detail) ctx += '- Tone: ' + bv.tone_detail + '\n';
       if (bv.words_to_avoid) ctx += '- Words to avoid: ' + JSON.stringify(bv.words_to_avoid) + '\n';
+      if (bv.words_to_use) ctx += '- Words to use: ' + JSON.stringify(bv.words_to_use) + '\n';
     }
     if (st.positioning.messaging_hierarchy) {
       var mh = st.positioning.messaging_hierarchy;
       if (mh.primary_message) ctx += '- Primary message: ' + mh.primary_message + '\n';
+      if (mh.supporting_messages) ctx += '- Supporting messages: ' + JSON.stringify(mh.supporting_messages) + '\n';
       if (mh.proof_points) ctx += '- Proof points: ' + JSON.stringify(mh.proof_points) + '\n';
     }
   }
-  if (st.execution_plan && st.execution_plan.primary_cta) ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
-  if (st.channel_strategy && st.channel_strategy.priority_order) ctx += '\nCHANNEL PRIORITY: ' + st.channel_strategy.priority_order.join(', ') + '\n';
-  if (r.primary_audience_description) ctx += '\nAUDIENCE: ' + r.primary_audience_description + '\n';
-  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
-  if (r.existing_proof && r.existing_proof.length) ctx += 'PROOF: ' + r.existing_proof.join('; ') + '\n';
-  if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return c.client + ': ' + c.result; }).join('; ') + '\n';
-  if (st.risks && st.risks.length) {
-    var topRisks = st.risks.filter(function(rk) { return rk.severity >= 7; }).map(function(rk) { return rk.risk + ' (' + rk.mitigation + ')'; });
-    if (topRisks.length) ctx += '\nHIGH RISKS: ' + topRisks.join('; ') + '\n';
+
+  // Unit Economics — conversion context for CTA urgency and offer framing
+  if (st.unit_economics) {
+    var ue = st.unit_economics;
+    ctx += '\nUNIT ECONOMICS:\n';
+    if (ue.average_deal_size) ctx += '- Avg deal size: ' + ue.average_deal_size + '\n';
+    if (ue.customer_ltv) ctx += '- Customer LTV: ' + ue.customer_ltv + '\n';
+    if (ue.max_allowable_cpl) ctx += '- Max CPL: $' + ue.max_allowable_cpl + '\n';
+    if (ue.paid_media_viable !== undefined) ctx += '- Paid media viable: ' + (ue.paid_media_viable ? 'Yes' : 'No') + '\n';
+    if (ue.monthly_budget) ctx += '- Monthly marketing budget: ' + ue.monthly_budget + '\n';
+    if (ue.pricing_model) ctx += '- Pricing model: ' + ue.pricing_model + '\n';
   }
-  // Include reference docs
+
+  // Channel Strategy — what channels the website supports and budget reality
+  if (st.channel_strategy) {
+    var cs = st.channel_strategy;
+    ctx += '\nCHANNEL STRATEGY:\n';
+    if (cs.priority_order) ctx += '- Priority channels: ' + cs.priority_order.join(', ') + '\n';
+    if (cs.website_role) ctx += '- Website role in channel mix: ' + cs.website_role + '\n';
+    if (cs.budget_allocation && cs.budget_allocation.total_monthly) ctx += '- Total monthly budget: ' + cs.budget_allocation.total_monthly + '\n';
+    if (cs.levers && cs.levers.length) {
+      var topLevers = cs.levers.filter(function(l) { return l.priority_score >= 7; }).slice(0, 4);
+      if (topLevers.length) {
+        ctx += '- Top channel levers:\n';
+        topLevers.forEach(function(l) {
+          ctx += '  · ' + (l.name || l.channel || '') + ' (priority: ' + l.priority_score + '/10)' + (l.rationale ? ' — ' + l.rationale : '') + '\n';
+        });
+      }
+    }
+  }
+
+  // Subtraction — what has been cut so copy does not reference discontinued activities
+  if (st.subtraction && st.subtraction.current_activities_audit) {
+    var stopItems = st.subtraction.current_activities_audit.filter(function(a) { return a.verdict === 'stop' || a.verdict === 'reduce'; });
+    if (stopItems.length) {
+      ctx += '\nSUBTRACTION (stopped/reduced activities — do not reference in copy):\n';
+      stopItems.forEach(function(a) {
+        ctx += '- ' + a.verdict.toUpperCase() + ': ' + (a.activity || a.name || '') + (a.reason ? ' (' + a.reason + ')' : '') + '\n';
+      });
+    }
+  }
+
+  // Growth Plan — funnel architecture and conversion pathway
+  if (st.growth_plan) {
+    var gp = st.growth_plan;
+    if (gp.funnel_architecture) {
+      ctx += '\nFUNNEL ARCHITECTURE:\n';
+      if (typeof gp.funnel_architecture === 'string') ctx += gp.funnel_architecture + '\n';
+      else ctx += JSON.stringify(gp.funnel_architecture) + '\n';
+    }
+    if (gp.conversion_pathway) {
+      ctx += 'CONVERSION PATHWAY: ' + (typeof gp.conversion_pathway === 'string' ? gp.conversion_pathway : JSON.stringify(gp.conversion_pathway)) + '\n';
+    }
+  }
+
+  // Brand Strategy — authority and DR context
+  if (st.brand_strategy) {
+    var bs = st.brand_strategy;
+    ctx += '\nBRAND STRATEGY:\n';
+    if (bs.content_authority_plan) ctx += '- Content authority: ' + (typeof bs.content_authority_plan === 'string' ? bs.content_authority_plan : JSON.stringify(bs.content_authority_plan)) + '\n';
+    if (bs.dr_gap_analysis) {
+      if (bs.dr_gap_analysis.client_dr) ctx += '- Client DR: ' + bs.dr_gap_analysis.client_dr + '\n';
+      if (bs.dr_gap_analysis.competitor_avg_dr) ctx += '- Competitor avg DR: ' + bs.dr_gap_analysis.competitor_avg_dr + '\n';
+      if (bs.dr_gap_analysis.recommendation) ctx += '- DR recommendation: ' + bs.dr_gap_analysis.recommendation + '\n';
+    }
+  }
+
+  // Execution Plan — CTAs and KPIs
+  if (st.execution_plan) {
+    ctx += '\nEXECUTION PLAN:\n';
+    if (st.execution_plan.primary_cta) ctx += '- Primary CTA: ' + st.execution_plan.primary_cta + '\n';
+    if (st.execution_plan.secondary_cta) ctx += '- Secondary CTA: ' + st.execution_plan.secondary_cta + '\n';
+    if (st.execution_plan.low_commitment_cta) ctx += '- Low-commitment CTA: ' + st.execution_plan.low_commitment_cta + '\n';
+    if (st.execution_plan.kpis && st.execution_plan.kpis.length) {
+      ctx += '- KPIs: ' + st.execution_plan.kpis.slice(0, 5).map(function(k) { return typeof k === 'string' ? k : (k.metric || k.name || ''); }).join('; ') + '\n';
+    }
+  }
+
+  // Demand Validation — keyword demand reality
+  if (st.demand_validation) {
+    var dv = st.demand_validation;
+    ctx += '\nDEMAND VALIDATION:\n';
+    if (dv.overall_verdict) ctx += '- Overall demand: ' + dv.overall_verdict + '\n';
+    if (dv.total_monthly_volume) ctx += '- Total monthly search volume: ' + dv.total_monthly_volume + '\n';
+    if (dv.strategic_revisions_needed && dv.strategic_revisions_needed.length) {
+      ctx += '- Revisions flagged:\n';
+      dv.strategic_revisions_needed.slice(0, 3).forEach(function(rev) {
+        ctx += '  · ' + (rev.revision || rev.description || JSON.stringify(rev)) + '\n';
+      });
+    }
+  }
+
+  // Audience and proof
+  if (r.primary_audience_description) ctx += '\nAUDIENCE: ' + r.primary_audience_description + '\n';
+  if (r.buyer_roles && r.buyer_roles.length) ctx += 'BUYER ROLES: ' + r.buyer_roles.join('; ') + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  if (r.objections_top5 && r.objections_top5.length) ctx += 'BUYER OBJECTIONS: ' + r.objections_top5.join('; ') + '\n';
+  if (r.existing_proof && r.existing_proof.length) ctx += 'PROOF: ' + r.existing_proof.join('; ') + '\n';
+  if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || 'Client') + ': ' + (c.result || '') + (c.timeframe ? ' (' + c.timeframe + ')' : ''); }).join('; ') + '\n';
+  if (r.notable_clients && r.notable_clients.length) ctx += 'NOTABLE CLIENTS: ' + r.notable_clients.join(', ') + '\n';
+  if (r.awards_certifications && r.awards_certifications.length) ctx += 'AWARDS/CERTS: ' + r.awards_certifications.join(', ') + '\n';
+
+  // Risks
+  if (st.risks && st.risks.risks && st.risks.risks.length) {
+    var topRisks = st.risks.risks.filter(function(rk) { return rk.severity >= 6; }).map(function(rk) { return rk.risk + ' (severity: ' + rk.severity + ', mitigation: ' + (rk.mitigation || 'none') + ')'; });
+    if (topRisks.length) ctx += '\nRISKS (severity 6+):\n' + topRisks.join('\n') + '\n';
+  } else if (st.risks && st.risks.length) {
+    var topRisks2 = st.risks.filter(function(rk) { return rk.severity >= 6; }).map(function(rk) { return rk.risk + ' (severity: ' + rk.severity + ', mitigation: ' + (rk.mitigation || 'none') + ')'; });
+    if (topRisks2.length) ctx += '\nRISKS (severity 6+):\n' + topRisks2.join('\n') + '\n';
+  }
+
+  // Competitors
+  if (r.competitors && r.competitors.length) {
+    ctx += '\nCOMPETITORS:\n';
+    r.competitors.slice(0, 5).forEach(function(c) {
+      ctx += '- ' + (c.name || c.url || '') + ': strengths=' + (c.strengths || '') + '; weaknesses=' + (c.weaknesses || '') + '; what we do better=' + (c.what_we_do_better || '') + '\n';
+    });
+  }
+
+  // Reference docs
   if (s.docs && s.docs.length) {
     ctx += '\nREFERENCE DOCUMENTS:\n';
     ctx += _docExtractCtx(s.docs, ['facts','decisions','requirements','competitors','audience','services','goals']);
   }
 
-  var sys = 'You are a senior brand strategist. Using the completed strategy analysis below, write a focused 600-800 word website-specific strategy brief. Output exactly these 5 sections:\n'
-    + '1. WHAT THE SITE MUST CONVINCE: The core belief the visitor must leave with — what transformation or outcome the company delivers, and why it matters to the buyer right now. Include the emotional and rational triggers.\n'
-    + '2. COMPETITIVE FRAME: Why this company vs the obvious alternatives. Name the competitor types (not brands), explain the positioning gap, and state the unfair advantage. Be specific — generic differentiators like "experienced team" are worthless.\n'
-    + '3. PAGE TYPE RULES: 2-3 sentences per page type (service, location, industry, blog, home, landing) on what each must communicate, the conversion intent, and what proof belongs there. Different page types serve different buyer stages — reflect that.\n'
-    + '4. PROOF REQUIREMENTS: What specific evidence, stats, case studies, or social proof must appear. Name the types of proof (revenue impact, client logos, timelines, guarantees) and where they should show up. Vague proof like "trusted by many" is not proof.\n'
-    + '5. HARD RULES: Anything the copy must never do — banned phrases, tone boundaries, compliance constraints, topics to avoid, and any formatting or structural mandates.\n\n'
-    + 'Be specific and direct. No generic marketing language. Use the client name throughout. Every sentence should be actionable — if a copywriter cannot act on it, cut it.';
+  var sys = 'You are a senior brand and conversion strategist. Using the completed strategy analysis below, write a focused 800-1100 word website-specific strategy brief. This brief will be injected into every downstream prompt (sitemap, briefs, copy) so it must be actionable and specific — not a summary.\n\n'
+    + 'Output exactly these 7 sections:\n\n'
+    + '1. WHAT THE SITE MUST CONVINCE: The core belief the visitor must leave with — what transformation or outcome the company delivers, and why it matters to the buyer right now. Include emotional triggers (frustration with status quo, relief, confidence) and rational triggers (pricing model, ROI data, guarantees). Reference specific proof points and numbers from the strategy.\n\n'
+    + '2. COMPETITIVE FRAME: Why this company vs the obvious alternatives. Name the competitor types (not brands), explain the positioning gap, and state the unfair advantage. Reference validated differentiators — not generic claims like "experienced team". Include competitor weaknesses the copy should exploit without naming competitors.\n\n'
+    + '3. CONVERSION ECONOMICS: How the website fits into the business model. State the deal size range, what a lead is worth (max CPL), whether paid media is viable, and what that means for CTA urgency and offer framing. If the economics favour organic over paid, say so — it affects how aggressively the site should gate content vs give it away. Reference the funnel architecture if available.\n\n'
+    + '4. PAGE TYPE RULES: 2-3 sentences per page type (service, location, industry, blog, home, about, contact) on: what each must communicate, the conversion intent (transactional vs informational vs trust-building), what proof belongs there, and which buyer stage it serves. Map to the funnel — top-of-funnel blog content serves different goals than bottom-of-funnel service pages.\n\n'
+    + '5. PROOF REQUIREMENTS: What specific evidence, stats, case studies, or social proof must appear. Name the actual proof available (specific case study results, named clients, certifications, metrics). State where each type belongs (homepage hero vs service page vs about). Vague proof like "trusted by many" is not proof — use the real data from the strategy.\n\n'
+    + '6. CHANNEL INTEGRATION: How the website supports the broader channel strategy. Which channels drive traffic to which pages? If organic SEO is the primary channel, what does that mean for content depth and keyword integration? If paid is viable, which pages serve as landing pages? State what the content authority plan requires from the website.\n\n'
+    + '7. HARD RULES & RISK GUARDRAILS: Anything the copy must never do — banned phrases, words to avoid, tone boundaries, compliance constraints, topics to avoid. Include risk-derived guardrails: if the strategy flagged specific risks (e.g. demand risk, competitive risk, market risk), state what the copy must do to mitigate them. List any activities that were cut in the subtraction analysis — copy must not reference discontinued services or channels.\n\n'
+    + 'Be specific and direct. No generic marketing language. Use the client name throughout. Every sentence must be actionable — if a copywriter cannot act on it, cut it. Do not repeat data verbatim — interpret it into creative direction.';
 
   aiBarStart('Synthesising website strategy brief...');
   try {
-    var result = await callClaude(sys, 'Strategy analysis and research:\n\n' + ctx.slice(0, 16000), null, 2500);
+    var result = await callClaude(sys, 'Full strategy analysis and research data:\n\n' + ctx.slice(0, 20000), null, 4000);
     S.strategy.webStrategy = result;
     scheduleSave();
     renderStrategyScorecard();
-    aiBarNotify('Website strategy brief synthesised', { duration: 4000 });
+    aiBarNotify('Website strategy brief synthesised (7 sections)', { duration: 4000 });
   } catch (e) {
     aiBarNotify('Synthesis failed: ' + e.message, { isError: true, duration: 4000 });
   }
@@ -3888,14 +4011,40 @@ async function compileStrategyOutput() {
   var r = S.research || {};
   var s = S.setup || {};
 
-  // Build comprehensive context from ALL diagnostic outputs
+  // Build comprehensive context from ALL diagnostic outputs + research
   var ctx = 'CLIENT: ' + (s.client || r.client_name || '') + '\n';
   ctx += 'URL: ' + (s.url || '') + '\n';
   ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
   ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (r.services_detail && r.services_detail.length) {
+    ctx += 'SERVICES DETAIL:\n';
+    r.services_detail.forEach(function(sd) {
+      ctx += '- ' + (sd.name || '') + ': ' + (sd.description || '');
+      if (sd.target_audience) ctx += ' | Target: ' + sd.target_audience;
+      if (sd.differentiator) ctx += ' | Differentiator: ' + sd.differentiator;
+      ctx += '\n';
+    });
+  }
   ctx += 'GEO: ' + (r.geography && r.geography.primary ? r.geography.primary : s.geo || '') + '\n';
+  if (r.geography && r.geography.secondary && r.geography.secondary.length) ctx += 'SECONDARY GEOS: ' + r.geography.secondary.join(', ') + '\n';
   ctx += 'AUDIENCE: ' + (r.primary_audience_description || '') + '\n';
+  if (r.buyer_roles && r.buyer_roles.length) ctx += 'BUYER ROLES: ' + r.buyer_roles.join('; ') + '\n';
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  if (r.objections_top5 && r.objections_top5.length) ctx += 'BUYER OBJECTIONS: ' + r.objections_top5.join('; ') + '\n';
+
+  // Proof & E-E-A-T signals
+  if (r.existing_proof && r.existing_proof.length) ctx += 'PROOF POINTS: ' + r.existing_proof.join('; ') + '\n';
+  if (r.case_studies && r.case_studies.length) {
+    ctx += 'CASE STUDIES:\n';
+    r.case_studies.forEach(function(cs) {
+      ctx += '- ' + (cs.client || 'Client') + ': ' + (cs.result || '') + (cs.timeframe ? ' (' + cs.timeframe + ')' : '') + '\n';
+    });
+  }
+  if (r.notable_clients && r.notable_clients.length) ctx += 'NOTABLE CLIENTS: ' + r.notable_clients.join(', ') + '\n';
+  if (r.awards_certifications && r.awards_certifications.length) ctx += 'AWARDS/CERTS: ' + r.awards_certifications.join(', ') + '\n';
+  if (r.team_credentials) ctx += 'TEAM CREDENTIALS: ' + r.team_credentials + '\n';
+  if (r.founder_bio) ctx += 'FOUNDER: ' + r.founder_bio + '\n';
+  if (r.publications_media && r.publications_media.length) ctx += 'MEDIA/PUBLICATIONS: ' + r.publications_media.join(', ') + '\n';
 
   // D1: Unit Economics
   if (st.unit_economics && st.unit_economics.recommendation) {
@@ -3927,11 +4076,16 @@ async function compileStrategyOutput() {
     ctx += '- Tagline: ' + (st.positioning.recommended_tagline || '') + '\n';
     if (st.positioning.validated_differentiators) ctx += '- Differentiators: ' + st.positioning.validated_differentiators.join('; ') + '\n';
     if (st.positioning.messaging_hierarchy) {
-      ctx += '- Primary Message: ' + (st.positioning.messaging_hierarchy.primary_message || '') + '\n';
-      if (st.positioning.messaging_hierarchy.proof_points) ctx += '- Proof: ' + st.positioning.messaging_hierarchy.proof_points.join('; ') + '\n';
+      var mh = st.positioning.messaging_hierarchy;
+      ctx += '- Primary Message: ' + (mh.primary_message || '') + '\n';
+      if (mh.supporting_messages && mh.supporting_messages.length) ctx += '- Supporting Messages: ' + mh.supporting_messages.join('; ') + '\n';
+      if (mh.proof_points) ctx += '- Proof: ' + mh.proof_points.join('; ') + '\n';
     }
     if (st.positioning.brand_voice_direction) {
-      ctx += '- Voice: ' + (st.positioning.brand_voice_direction.style || '') + ' / ' + (st.positioning.brand_voice_direction.tone_detail || '') + '\n';
+      var bvd = st.positioning.brand_voice_direction;
+      ctx += '- Voice: ' + (bvd.style || '') + ' / ' + (bvd.tone_detail || '') + '\n';
+      if (bvd.words_to_avoid && bvd.words_to_avoid.length) ctx += '- Words to avoid: ' + bvd.words_to_avoid.join(', ') + '\n';
+      if (bvd.words_to_use && bvd.words_to_use.length) ctx += '- Words to use: ' + bvd.words_to_use.join(', ') + '\n';
     }
   }
 
@@ -3962,8 +4116,18 @@ async function compileStrategyOutput() {
   if (st.channel_strategy && st.channel_strategy.priority_order) {
     ctx += '\nCHANNEL STRATEGY:\n';
     ctx += '- Priority: ' + st.channel_strategy.priority_order.join(', ') + '\n';
+    if (st.channel_strategy.website_role) ctx += '- Website role: ' + st.channel_strategy.website_role + '\n';
     if (st.channel_strategy.budget_allocation) ctx += '- Budget: $' + (st.channel_strategy.budget_allocation.total_monthly || '?') + '/mo\n';
-    if (st.channel_strategy.funnel_gaps_flagged) ctx += '- Funnel Gaps: ' + st.channel_strategy.funnel_gaps_flagged.join('; ') + '\n';
+    if (st.channel_strategy.funnel_gaps_flagged && st.channel_strategy.funnel_gaps_flagged.length) ctx += '- Funnel Gaps: ' + st.channel_strategy.funnel_gaps_flagged.join('; ') + '\n';
+    if (st.channel_strategy.levers && st.channel_strategy.levers.length) {
+      ctx += '- Levers:\n';
+      st.channel_strategy.levers.forEach(function(lev) {
+        ctx += '  · ' + (lev.lever || lev.name || '') + ': priority ' + (lev.priority_score || '?') + '/10, ' + (lev.budget_allocation_pct || 0) + '% budget';
+        if (lev.timeline_to_results) ctx += ', results: ' + lev.timeline_to_results;
+        if (lev.rationale) ctx += ' — ' + lev.rationale;
+        ctx += '\n';
+      });
+    }
   }
 
   // D5: Website & CRO
@@ -3975,8 +4139,34 @@ async function compileStrategyOutput() {
     if (web.conversion_strategy) ctx += '- Conversion: ' + web.conversion_strategy + '\n';
     if (web.architecture_direction && web.architecture_direction.page_types_needed) ctx += '- Pages needed: ' + web.architecture_direction.page_types_needed.join(', ') + '\n';
   }
-  if (st.execution_plan && st.execution_plan.primary_cta && !web) {
-    ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
+  // Full CTA architecture from execution plan
+  if (st.execution_plan) {
+    if (st.execution_plan.primary_cta && !web) ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
+    if (st.execution_plan.secondary_cta) ctx += 'SECONDARY CTA: ' + st.execution_plan.secondary_cta + '\n';
+    if (st.execution_plan.low_commitment_cta) ctx += 'LOW-COMMITMENT CTA: ' + st.execution_plan.low_commitment_cta + '\n';
+    if (st.execution_plan.kpis && st.execution_plan.kpis.length) {
+      ctx += 'KPIs: ' + st.execution_plan.kpis.slice(0, 8).map(function(k) {
+        return typeof k === 'string' ? k : (k.metric || k.name || '') + (k.target ? ' (target: ' + k.target + ')' : '');
+      }).join('; ') + '\n';
+    }
+  }
+
+  // Growth Plan — funnel architecture and conversion pathway
+  if (st.growth_plan) {
+    var gp = st.growth_plan;
+    ctx += '\nGROWTH PLAN:\n';
+    if (gp.funnel_architecture) {
+      ctx += '- Funnel architecture: ' + (typeof gp.funnel_architecture === 'string' ? gp.funnel_architecture : JSON.stringify(gp.funnel_architecture)) + '\n';
+    }
+    if (gp.conversion_pathway) {
+      ctx += '- Conversion pathway: ' + (typeof gp.conversion_pathway === 'string' ? gp.conversion_pathway : JSON.stringify(gp.conversion_pathway)) + '\n';
+    }
+    if (gp.timeline && gp.timeline.length) {
+      ctx += '- Execution timeline (' + gp.timeline.length + ' items):\n';
+      gp.timeline.slice(0, 10).forEach(function(t) {
+        ctx += '  · ' + (t.lever || t.name || '') + ': ' + (t.duration || '?') + (t.phase ? ' [' + t.phase + ']' : '') + '\n';
+      });
+    }
   }
 
   // D6: Content & Authority
@@ -4032,6 +4222,41 @@ async function compileStrategyOutput() {
     ctx += '\nDEMAND VALIDATION: ' + st.demand_validation.overall_verdict + '\n';
     if (st.demand_validation.seo_viability_score) ctx += '- SEO viability: ' + st.demand_validation.seo_viability_score + '/10\n';
     if (st.demand_validation.time_to_meaningful_organic) ctx += '- Time to organic: ' + st.demand_validation.time_to_meaningful_organic + '\n';
+    if (st.demand_validation.total_monthly_volume) ctx += '- Total monthly search volume: ' + st.demand_validation.total_monthly_volume + '\n';
+    if (st.demand_validation.strategic_revisions_needed && st.demand_validation.strategic_revisions_needed.length) {
+      ctx += '- Strategic revisions needed:\n';
+      st.demand_validation.strategic_revisions_needed.forEach(function(rev) {
+        ctx += '  · ' + (rev.revision || rev.description || JSON.stringify(rev));
+        if (rev.impact_severity) ctx += ' [severity: ' + rev.impact_severity + ']';
+        ctx += '\n';
+      });
+    }
+  }
+
+  // Strategy scoring summary
+  var scores = scoreStrategy();
+  ctx += '\nSTRATEGY SCORE: ' + scores.overall + '/10\n';
+  Object.keys(scores.sections).forEach(function(sec) {
+    var ss = scores.sections[sec];
+    ctx += '- ' + (STRATEGY_SECTION_LABELS[sec] || sec) + ': ' + ss.score + '/10 (data:' + ss.scores.data + ' confidence:' + ss.scores.confidence + ' specificity:' + ss.scores.specificity + ')\n';
+  });
+  if (scores.activeCaps && scores.activeCaps.length) {
+    ctx += '- Active caps: ' + scores.activeCaps.map(function(c) { return c.condition.replace(/_/g, ' ') + ' (cap:' + c.cap + ')'; }).join('; ') + '\n';
+  }
+  if (scores.gaps.length) {
+    var topGaps = scores.gaps.filter(function(g) { return g.can_auto_resolve === false; }).slice(0, 5);
+    if (topGaps.length) ctx += '- Key gaps: ' + topGaps.map(function(g) { return g.gap; }).join('; ') + '\n';
+  }
+
+  // Strategist notes (manual overrides/inputs)
+  if (st._strategist_notes) {
+    var noteSections = Object.keys(st._strategist_notes).filter(function(k) { return st._strategist_notes[k] && st._strategist_notes[k].trim(); });
+    if (noteSections.length) {
+      ctx += '\nSTRATEGIST NOTES:\n';
+      noteSections.forEach(function(ns) {
+        ctx += '- ' + ns + ': ' + st._strategist_notes[ns].trim() + '\n';
+      });
+    }
   }
 
   // Real competitor names from research
@@ -4092,17 +4317,6 @@ async function compileStrategyOutput() {
       });
     }
   }
-  // Per-lever budget percentages from channel strategy levers
-  if (st.channel_strategy && st.channel_strategy.levers && st.channel_strategy.levers.length) {
-    ctx += '\nCHANNEL LEVER DETAILS:\n';
-    st.channel_strategy.levers.forEach(function(lev) {
-      ctx += '- ' + (lev.lever || lev.name || '') + ': ' + (lev.budget_allocation_pct || 0) + '% of budget';
-      if (lev.timeline_to_results) ctx += ', results in ' + lev.timeline_to_results;
-      if (lev.recommendation) ctx += ' — ' + lev.recommendation;
-      ctx += '\n';
-    });
-  }
-
   // Audit summary
   var auditSummary = [];
   for (var d = 1; d <= 7; d++) {
@@ -4121,33 +4335,37 @@ async function compileStrategyOutput() {
   }
 
   var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 10 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
-    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers.\n\n'
+    + 'Write in these 12 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores, real case study results, real proof points. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers. If strategist notes were provided, incorporate their direction.\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
-    + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition.\n\n'
+    + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition. Reference the strategy score and any active scoring caps that represent known limitations.\n\n'
     + '## 2. MARKET ECONOMICS\n'
-    + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
+    + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability, pricing model. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
     + '## 3. SUBTRACTION ANALYSIS\n'
-    + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any assumptions made about costs.\n\n'
+    + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any redirect recommendations.\n\n'
     + '## 4. COMPETITIVE LANDSCAPE\n'
-    + 'Name the actual competitors from the data. For each major competitor, state their specific strength and the gap we exploit. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap.\n\n'
-    + '## 5. KEYWORD & DEMAND STRATEGY\n'
-    + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the realistic organic timeline from demand validation.\n\n'
-    + '## 6. CONTENT & AUTHORITY STRATEGY\n'
-    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins.\n\n'
-    + '## 7. WEBSITE & CONVERSION\n'
-    + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. CTA strategy (primary, secondary, low-commitment), form strategy, and tracking requirements.\n\n'
-    + '## 8. CHANNEL ALLOCATION\n'
-    + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever.\n\n'
-    + '## 9. GEO & LOCAL STRATEGY\n'
-    + 'Geographic targeting approach, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
-    + '## 10. RISKS & CONSTRAINTS\n'
-    + 'Top risks with mitigations. Hard rules and constraints the team must follow.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 1500-2200 words total.';
+    + 'Name the actual competitors from the data. For each major competitor, state their specific strength, their weakness, and what we do better. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap and each competitor DR.\n\n'
+    + '## 5. POSITIONING & MESSAGING\n'
+    + 'The value proposition, positioning angle, validated differentiators, and messaging hierarchy (primary message + supporting messages). Include the brand voice direction (style, tone, words to use, words to avoid). Reference specific proof points that support each differentiator.\n\n'
+    + '## 6. KEYWORD & DEMAND STRATEGY\n'
+    + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the demand validation verdict, SEO viability score, and realistic organic timeline. If strategic revisions were flagged, state them.\n\n'
+    + '## 7. CONTENT & AUTHORITY STRATEGY\n'
+    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins and content mix.\n\n'
+    + '## 8. WEBSITE & CONVERSION\n'
+    + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. Full CTA architecture (primary, secondary, low-commitment), conversion pathway, funnel architecture, form strategy, and tracking requirements. Reference the KPIs that will measure website success.\n\n'
+    + '## 9. CHANNEL ALLOCATION\n'
+    + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever and its rationale. Explain the website role in the overall channel mix.\n\n'
+    + '## 10. GROWTH PLAN & EXECUTION TIMELINE\n'
+    + 'Phased execution timeline showing what gets built when. Reference the growth plan timeline items with their phases and durations. Include funnel architecture and how the execution phases build on each other.\n\n'
+    + '## 11. GEO & LOCAL STRATEGY\n'
+    + 'Geographic targeting approach, primary and secondary markets, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
+    + '## 12. RISKS, PROOF & CONSTRAINTS\n'
+    + 'Top risks with severity scores and specific mitigations. E-E-A-T proof inventory: list actual case studies (client, result, timeframe), notable clients, awards/certifications, team credentials, and founder bio. Hard rules and constraints the team must follow — including words to avoid and tone boundaries.\n\n'
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2000-2800 words total.';
 
   aiBarStart('Compiling strategy document...');
   try {
-    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 20000), null, 6000, 'Strategy output');
+    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 24000), null, 8000, 'Strategy output');
     S.strategy.compiled_output = result;
     // Also update the webStrategy brief (shorter version for downstream)
     if (!S.strategy.webStrategy || S.strategy.webStrategy.length < 100) {
