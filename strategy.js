@@ -145,6 +145,37 @@ var ANTI_INFLATION_CAPS = [
     test: function() {
       if (!S.strategy || !S.strategy.demand_validation || !S.strategy.demand_validation.strategic_revisions_needed) return false;
       return S.strategy.demand_validation.strategic_revisions_needed.some(function(r) { return r.impact_severity === 'high'; });
+    } },
+  // Growth: no channel strategy means growth plan is baseless
+  { condition:'no_channel_strategy_growth', section:'growth', dimension:'confidence', cap:3,
+    test: function() { return !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers || !S.strategy.channel_strategy.levers.length; } },
+  // Growth: no funnel architecture means gaps in coverage
+  { condition:'no_funnel_arch', section:'growth', dimension:'data', cap:6,
+    test: function() { var gp = S.strategy && S.strategy.growth_plan || {}; return !gp.funnel_architecture; } },
+  // Risks: no high-severity mitigations is a gap
+  { condition:'high_risk_unmitigated', section:'risks', dimension:'confidence', cap:5,
+    test: function() { var r = S.strategy && S.strategy.risks || {}; if (!r.risks) return false; return r.risks.some(function(ri) { return ri.severity >= 7 && (!ri.mitigation || ri.mitigation.length < 10); }); } },
+  // Cross-check: budget mismatch between economics and channels
+  { condition:'budget_mismatch', section:'channels', dimension:'data', cap:6,
+    test: function() {
+      var ue = S.strategy && S.strategy.unit_economics || {};
+      var cs = S.strategy && S.strategy.channel_strategy || {};
+      var ba = cs.budget_allocation || {};
+      if (!ue.monthly_budget || !ba.total_monthly) return false;
+      var econBudget = parseFloat(String(ue.monthly_budget).replace(/[^0-9.]/g, '')) || 0;
+      var chanBudget = parseFloat(String(ba.total_monthly).replace(/[^0-9.]/g, '')) || 0;
+      if (econBudget === 0 || chanBudget === 0) return false;
+      var ratio = chanBudget / econBudget;
+      return ratio < 0.5 || ratio > 2.0; // flag if budgets differ by more than 2x
+    } },
+  // Low audit pass rate caps overall confidence
+  { condition:'low_audit_pass_rate', section:'_overall', dimension:'_cap', cap:7.0,
+    test: function() {
+      var au = S.strategy && S.strategy._audit || {};
+      var totalPass = 0; var totalChecks = 0;
+      for (var d = 1; d <= 7; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
+      if (totalChecks < 10) return false; // not enough data
+      return (totalPass / totalChecks) < 0.6;
     } }
 ];
 
@@ -189,7 +220,7 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'budget_alloc',      label:'Budget allocation provided',             check: function(d) { return d.budget_allocation && d.budget_allocation.total_monthly > 0; } },
     { id:'budget_sums',       label:'Budget percentages sum to ~100%',        check: function(d) { if (!d.levers) return false; var sum = d.levers.reduce(function(s, l) { return s + (l.budget_allocation_pct || 0); }, 0); return sum >= 90 && sum <= 110; } },
     { id:'funnel_complete',   label:'All funnel stages covered',             check: function(d) { if (!d.funnel_coverage) return false; return ['awareness','consideration','conversion'].every(function(s) { return d.funnel_coverage[s] && d.funnel_coverage[s].covered; }); } },
-    { id:'gaps_flagged',      label:'Funnel gaps identified',                check: function(d) { return d.funnel_gaps_flagged && d.funnel_gaps_flagged.length >= 0; } },
+    { id:'gaps_flagged',      label:'Funnel gaps identified or none exist',   check: function(d) { return d.funnel_gaps_flagged !== undefined; } },
     { id:'not_recommended',   label:'Not-recommended levers explained',      check: function(d) { return d.levers_not_recommended && d.levers_not_recommended.length >= 1; } }
   ],
   5: [ // D5: Website & CRO
@@ -433,10 +464,29 @@ function scoreSection(section) {
   else if (section === 'risks') sectionData = st.risks;
 
   var hasContent = sectionData && Object.keys(sectionData).length > 0;
-  var confidenceScore = hasContent ? 7 : 0;
-  if (hasContent && sectionData.confidence === 'high') confidenceScore = 9;
-  else if (hasContent && sectionData.confidence === 'medium') confidenceScore = 7;
-  else if (hasContent && sectionData.confidence === 'low') confidenceScore = 4;
+  var keyCount = hasContent ? Object.keys(sectionData).filter(function(k) { return k !== 'confidence' && k !== '_order'; }).length : 0;
+
+  // Confidence: based on AI self-assessment + content depth
+  var confidenceScore = 0;
+  if (hasContent) {
+    if (sectionData.confidence === 'high') confidenceScore = 9;
+    else if (sectionData.confidence === 'medium') confidenceScore = 7;
+    else if (sectionData.confidence === 'low') confidenceScore = 4;
+    else {
+      // No explicit confidence — derive from content depth
+      confidenceScore = keyCount >= 8 ? 7 : keyCount >= 4 ? 5.5 : keyCount >= 1 ? 4 : 0;
+    }
+  }
+
+  // Audit pass rate boosts or penalises confidence
+  var diagMap2 = { positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
+  var diagNum2 = diagMap2[section];
+  if (diagNum2 && st._audit && st._audit[diagNum2]) {
+    var auResult = st._audit[diagNum2];
+    var auRate = auResult.total > 0 ? auResult.pass / auResult.total : 0;
+    if (auRate >= 0.9 && confidenceScore < 9) confidenceScore = Math.min(confidenceScore + 1, 9);
+    else if (auRate < 0.5 && confidenceScore > 4) confidenceScore = Math.max(confidenceScore - 1.5, 4);
+  }
 
   // Specificity: higher if enrichment data is present, strategy doc exists
   var specificityScore = hasContent ? 6 : 0;
@@ -508,7 +558,19 @@ function scoreStrategy() {
   var subCap = ANTI_INFLATION_CAPS.find(function(c) { return c.condition === 'no_subtraction'; });
   if (subCap && subCap.test() && overall > 7.0) overall = 7.0;
 
-  return { overall: overall, sections: sections, gaps: allGaps };
+  // Low audit pass rate cap — poor quality outputs drag down the score
+  var auditCap = ANTI_INFLATION_CAPS.find(function(c) { return c.condition === 'low_audit_pass_rate'; });
+  if (auditCap && auditCap.test() && overall > auditCap.cap) overall = auditCap.cap;
+
+  // Collect active caps for transparency
+  var activeCaps = [];
+  ANTI_INFLATION_CAPS.forEach(function(cap) {
+    if (cap.section === '_overall' && cap.test()) {
+      activeCaps.push({ condition: cap.condition, cap: cap.cap });
+    }
+  });
+
+  return { overall: overall, sections: sections, gaps: allGaps, activeCaps: activeCaps };
 }
 
 // ── Version Control ───────────────────────────────────────────────────
@@ -1921,6 +1983,18 @@ function renderStrategyScorecard() {
     html += '<div style="font-size:11px;color:' + vc + ';margin-top:6px">Demand: ' + verdict + '</div>';
   }
 
+  // Active score caps (transparency)
+  if (scores.activeCaps && scores.activeCaps.length) {
+    html += '<div style="margin-top:6px">';
+    scores.activeCaps.forEach(function(ac) {
+      var capLabel = ac.condition.replace(/_/g, ' ').replace(/\bd8\b/g, 'D8').replace(/\bno\b/g, 'No');
+      html += '<div style="font-size:10px;color:#f56c6c;display:flex;align-items:center;gap:4px;margin-top:2px">'
+        + '<i class="ti ti-lock" style="font-size:10px"></i>'
+        + '<span>Score capped at ' + ac.cap + ' — ' + esc(capLabel) + '</span></div>';
+    });
+    html += '</div>';
+  }
+
   // Website strategy brief status
   if (meta.current_version > 0) {
     var hasWs = S.strategy.webStrategy && S.strategy.webStrategy.trim();
@@ -2050,6 +2124,24 @@ function renderStrategyTabContent() {
     var sScore = scoreSection(_sTab);
     if (sScore.gaps.length > 0 && sScore.score < 7) {
       html += _renderGapPanel(sScore);
+    }
+
+    // Show active caps for this section
+    var secCaps = [];
+    ANTI_INFLATION_CAPS.forEach(function(cap) {
+      if ((cap.section === _sTab || cap.section === '_all') && cap.test()) {
+        secCaps.push(cap);
+      }
+    });
+    if (secCaps.length) {
+      html += '<div style="padding:6px 10px;margin-bottom:10px;border-radius:4px;background:#fef0f0;border:1px solid #f56c6c20">';
+      secCaps.forEach(function(cap) {
+        var capLabel = cap.condition.replace(/_/g, ' ');
+        html += '<div style="font-size:10px;color:#f56c6c;display:flex;align-items:center;gap:4px;margin:2px 0">'
+          + '<i class="ti ti-lock" style="font-size:10px"></i>'
+          + '<span>' + esc(cap.dimension) + ' score capped at ' + cap.cap + ' — ' + esc(capLabel) + '</span></div>';
+      });
+      html += '</div>';
     }
   }
 
