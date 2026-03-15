@@ -2996,9 +2996,22 @@ async function compileStrategyOutput() {
   if (st.unit_economics && st.unit_economics.recommendation) {
     ctx += '\nUNIT ECONOMICS:\n';
     ctx += '- Max CPL: $' + (st.unit_economics.max_allowable_cpl || '?') + '\n';
+    ctx += '- Estimated Market CPL: $' + (st.unit_economics.estimated_market_cpl || '?') + '\n';
+    ctx += '- LTV: $' + (st.unit_economics.ltv || '?') + '\n';
+    ctx += '- Estimated CAC: $' + (st.unit_economics.estimated_cac || '?') + '\n';
     ctx += '- LTV:CAC: ' + (st.unit_economics.ltv_cac_ratio || '?') + ' (' + (st.unit_economics.ltv_cac_health || '?') + ')\n';
     ctx += '- Paid viable: ' + (st.unit_economics.paid_media_viable ? 'Yes' : 'No') + '\n';
     ctx += '- Recommendation: ' + st.unit_economics.recommendation + '\n';
+    if (st.unit_economics.market_cpc_summary) {
+      var cpcS = st.unit_economics.market_cpc_summary;
+      ctx += '- Market CPC: avg $' + (cpcS.avg_cpc || '?') + ', median $' + (cpcS.median_cpc || '?') + ', range ' + (cpcS.cpc_range || '?') + '\n';
+      if (cpcS.high_intent_avg_cpc) ctx += '- High-intent CPC: $' + cpcS.high_intent_avg_cpc + '\n';
+      ctx += '- CPC data source: ' + (cpcS.data_source || 'unknown') + '\n';
+      if (cpcS.rationale) ctx += '- CPC to CPL rationale: ' + cpcS.rationale + '\n';
+    }
+    if (st.unit_economics.assumptions && st.unit_economics.assumptions.length) {
+      ctx += '- Assumptions: ' + st.unit_economics.assumptions.join('; ') + '\n';
+    }
   }
 
   // D2: Positioning
@@ -3063,12 +3076,39 @@ async function compileStrategyOutput() {
 
   // D6: Content & Authority
   var content = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
-  if (content && content.content_pillars) {
+  var bs = st.brand_strategy || {};
+  if ((content && content.content_pillars) || bs.dr_gap_analysis) {
     ctx += '\nCONTENT & AUTHORITY:\n';
-    ctx += '- Pillars: ' + content.content_pillars.join(', ') + '\n';
-    if (content.content_velocity) ctx += '- Velocity: ' + content.content_velocity + '\n';
-    if (content.geo_targeting_strategy) ctx += '- Geo Strategy: ' + content.geo_targeting_strategy + '\n';
-    if (content.local_seo_priority) ctx += '- Local SEO: ' + content.local_seo_priority + '\n';
+    if (content && content.content_pillars) ctx += '- Pillars: ' + content.content_pillars.join(', ') + '\n';
+    var pillars = bs.content_pillars || (content && content.content_pillars) || [];
+    if (pillars.length && !(content && content.content_pillars)) ctx += '- Pillars: ' + pillars.join(', ') + '\n';
+    if (bs.content_velocity || (content && content.content_velocity)) ctx += '- Velocity: ' + (bs.content_velocity || content.content_velocity) + '\n';
+    if (bs.content_mix && bs.content_mix.length) {
+      ctx += '- Content mix: ' + bs.content_mix.map(function(cm) { return cm.type + ' (' + cm.monthly + '/mo)'; }).join(', ') + '\n';
+    }
+    if (bs.dr_gap_analysis) {
+      var drg = bs.dr_gap_analysis;
+      ctx += '- Client DR: ' + (drg.client_dr || '?') + ' (source: ' + (drg.client_dr_source || 'unknown') + ')\n';
+      if (drg.competitor_drs && drg.competitor_drs.length) {
+        ctx += '- Competitor DRs: ' + drg.competitor_drs.map(function(c) { return c.name + ' (DR:' + c.dr + ')'; }).join(', ') + '\n';
+      }
+      if (drg.dr_gap) ctx += '- DR gap: ' + drg.dr_gap + '\n';
+      if (drg.realistic_dr_target_12mo) ctx += '- 12-month DR target: ' + drg.realistic_dr_target_12mo + '\n';
+      if (drg.dr_growth_strategy) ctx += '- DR growth strategy: ' + drg.dr_growth_strategy + '\n';
+    }
+    if (bs.authority_timeline && bs.authority_timeline.length) {
+      ctx += '- Authority timeline:\n';
+      bs.authority_timeline.forEach(function(phase) {
+        ctx += '  * ' + phase.phase + ': ' + (phase.milestones || []).join('; ') + '\n';
+      });
+    }
+    if (bs.quick_wins && bs.quick_wins.length) {
+      ctx += '- Quick wins: ' + bs.quick_wins.map(function(qw) { return qw.opportunity + ' (' + qw.effort + ' effort)'; }).join('; ') + '\n';
+    }
+    if (content && content.geo_targeting_strategy) ctx += '- Geo Strategy: ' + content.geo_targeting_strategy + '\n';
+    if (bs.geo_targeting_strategy) ctx += '- Geo Strategy: ' + bs.geo_targeting_strategy + '\n';
+    if (content && content.local_seo_priority) ctx += '- Local SEO: ' + content.local_seo_priority + '\n';
+    if (bs.local_seo_priority) ctx += '- Local SEO: ' + bs.local_seo_priority + '\n';
   }
 
   // D7: Risks
@@ -3123,6 +3163,19 @@ async function compileStrategyOutput() {
     if (qualifiedClusters.length > 25) ctx += '... and ' + (qualifiedClusters.length - 25) + ' more clusters\n';
   }
 
+  // Market CPC data from keyword research
+  var kwR2 = S.kwResearch || {};
+  if (kwR2.keywords && kwR2.keywords.length >= 10) {
+    var kwsC2 = kwR2.keywords.filter(function(k) { return k.cpc > 0; });
+    if (kwsC2.length >= 3) {
+      var avgC2 = Math.round((kwsC2.reduce(function(s,k){return s+k.cpc;},0)/kwsC2.length)*100)/100;
+      var topC2 = kwsC2.slice().sort(function(a,b){return b.cpc-a.cpc;}).slice(0,5);
+      ctx += '\nMARKET CPC DATA (' + kwsC2.length + ' keywords):\n';
+      ctx += '- Avg CPC: $' + avgC2 + '\n';
+      ctx += '- Top by CPC: ' + topC2.map(function(k){return '"'+k.kw+'" $'+k.cpc;}).join(', ') + '\n';
+    }
+  }
+
   // Budget breakdown from channel strategy
   var budgetAlloc = (st.channel_strategy && st.channel_strategy.budget_allocation) || (st.growth_plan && st.growth_plan.budget_allocation) || null;
   if (budgetAlloc) {
@@ -3163,25 +3216,29 @@ async function compileStrategyOutput() {
   }
 
   var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 8 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
-    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers.\n\n'
+    + 'Write in these 10 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers.\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
     + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition.\n\n'
-    + '## 2. COMPETITIVE LANDSCAPE\n'
-    + 'Name the actual competitors from the data. For each major competitor, state their specific strength and the gap we exploit. Identify the unoccupied territory we are claiming.\n\n'
-    + '## 3. KEYWORD & DEMAND STRATEGY\n'
+    + '## 2. MARKET ECONOMICS\n'
+    + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
+    + '## 3. SUBTRACTION ANALYSIS\n'
+    + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any assumptions made about costs.\n\n'
+    + '## 4. COMPETITIVE LANDSCAPE\n'
+    + 'Name the actual competitors from the data. For each major competitor, state their specific strength and the gap we exploit. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap.\n\n'
+    + '## 5. KEYWORD & DEMAND STRATEGY\n'
     + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the realistic organic timeline from demand validation.\n\n'
-    + '## 4. CONTENT STRATEGY\n'
-    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue.\n\n'
-    + '## 5. WEBSITE & CONVERSION\n'
+    + '## 6. CONTENT & AUTHORITY STRATEGY\n'
+    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins.\n\n'
+    + '## 7. WEBSITE & CONVERSION\n'
     + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. CTA strategy (primary, secondary, low-commitment), form strategy, and tracking requirements.\n\n'
-    + '## 6. CHANNEL ALLOCATION\n'
+    + '## 8. CHANNEL ALLOCATION\n'
     + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever.\n\n'
-    + '## 7. GEO & LOCAL STRATEGY\n'
+    + '## 9. GEO & LOCAL STRATEGY\n'
     + 'Geographic targeting approach, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
-    + '## 8. RISKS & CONSTRAINTS\n'
+    + '## 10. RISKS & CONSTRAINTS\n'
     + 'Top risks with mitigations. Hard rules and constraints the team must follow.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 1200-1800 words total.';
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 1500-2200 words total.';
 
   aiBarStart('Compiling strategy document...');
   try {
