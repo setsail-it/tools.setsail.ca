@@ -2090,6 +2090,11 @@ function renderStrategyTabContent() {
       })(_sTab, diagNum);
     }
   }
+
+  // Mount interactive Gantt chart (DOM-based, after innerHTML)
+  if (_sTab === 'growth') {
+    _mountGantt(S.strategy || {});
+  }
 }
 
 // ── UI: Strategist Override Panel ─────────────────────────────────────
@@ -2490,44 +2495,14 @@ function _renderGrowth(st) {
     html += '</table></div>';
   }
 
-  // Timeline table (replaces Gantt)
-  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Execution Timeline</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-  html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Phase</th>'
-    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Lever</th>'
-    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Depends On</th>'
-    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Duration</th>'
-    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Notes</th></tr>';
-
-  // Build timeline from channel strategy levers
-  var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
-  // Always include tracking/website as prerequisites
-  var timelineItems = [
-    { phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', notes: 'Setsail measurement product. Must complete before paid levers.' },
-    { phase: 1, label: 'Website Build', depends: [], duration: '4-8 weeks', notes: 'Can start in parallel with tracking.' }
-  ];
-  levers.forEach(function(lev, idx) {
-    timelineItems.push({
-      phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
-      label: (lev.lever || '').replace(/_/g, ' '),
-      depends: lev.dependencies || [],
-      duration: lev.timeline_to_results || 'ongoing',
-      notes: lev.recommendation ? lev.recommendation.slice(0, 80) : ''
-    });
-  });
-  timelineItems.sort(function(a, b) { return a.phase - b.phase; });
-
-  var phaseColours = { 0: '#e6a23c', 1: '#409eff', 2: 'var(--green)', 3: '#67c23a' };
-  timelineItems.forEach(function(item) {
-    html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:6px 8px"><span style="background:' + (phaseColours[item.phase] || 'var(--n2)') + ';color:white;font-size:9px;padding:1px 6px;border-radius:3px">P' + item.phase + '</span></td>';
-    html += '<td style="padding:6px 8px;font-weight:500">' + esc(item.label) + '</td>';
-    html += '<td style="padding:6px 8px;color:var(--n2)">' + esc((item.depends || []).join(', ') || '\u2014') + '</td>';
-    html += '<td style="padding:6px 8px">' + esc(item.duration) + '</td>';
-    html += '<td style="padding:6px 8px;color:var(--n2);font-size:11px">' + esc(item.notes) + '</td>';
-    html += '</tr>';
-  });
-  html += '</table></div>';
+  // Interactive Gantt Timeline
+  html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">'
+    + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Execution Timeline</span>'
+    + '<span style="display:flex;gap:6px">'
+    + '<button class="btn btn-ghost sm" onclick="_ganttResetOverrides()" data-tip="Clear all manual edits and revert to AI-generated timeline" style="font-size:10px;padding:2px 8px">Reset</button>'
+    + '</span></div>';
+  html += '<div id="strat-gantt-container"></div></div>';
+  // Gantt is rendered via DOM after innerHTML is set (see _mountGantt call in renderStrategyTabContent)
 
   // Budget allocation
   if (gp.budget_allocation) {
@@ -2547,6 +2522,418 @@ function _renderGrowth(st) {
   }
 
   return html;
+}
+
+/* ── Interactive Gantt helpers ─────────────────────────── */
+
+var _ganttPhaseColours = ['#e6a23c','#409eff','#67c23a','#9b59b6','#e74c3c'];
+var _ganttMonths = 12;
+
+function _buildGanttItems(st) {
+  var gp = st.growth_plan || {};
+  var overrides = gp.timeline_overrides || {};
+  var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
+
+  // Base items: tracking + website build
+  var items = [
+    { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' },
+    { id: '_website',  phase: 1, label: 'Website Build', depends: [], duration: '4-8 weeks', startWeek: 0, notes: 'Can start in parallel with tracking.' }
+  ];
+
+  levers.forEach(function(lev) {
+    var id = (lev.lever || '').replace(/\s+/g, '_').toLowerCase();
+    items.push({
+      id: id,
+      phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
+      label: (lev.lever || '').replace(/_/g, ' '),
+      depends: lev.dependencies || [],
+      duration: lev.timeline_to_results || 'ongoing',
+      startWeek: 0,
+      notes: lev.recommendation ? lev.recommendation.slice(0, 100) : '',
+      budgetPct: lev.budget_allocation_pct || 0
+    });
+  });
+
+  // Apply overrides
+  items.forEach(function(item) {
+    var ov = overrides[item.id];
+    if (ov) {
+      if (ov.phase != null) item.phase = ov.phase;
+      if (ov.startWeek != null) item.startWeek = ov.startWeek;
+      if (ov.duration) item.duration = ov.duration;
+      if (ov.notes) item.notes = ov.notes;
+      if (ov.order != null) item._order = ov.order;
+    }
+  });
+
+  // Auto-calculate start weeks for items without overrides
+  _ganttAutoStartWeeks(items);
+
+  // Sort by phase then order then startWeek
+  items.sort(function(a, b) {
+    if (a.phase !== b.phase) return a.phase - b.phase;
+    if (a._order != null && b._order != null) return a._order - b._order;
+    return a.startWeek - b.startWeek;
+  });
+
+  return items;
+}
+
+function _ganttAutoStartWeeks(items) {
+  // For items without explicit start overrides, calculate from dependencies and phase
+  var byId = {};
+  items.forEach(function(item) { byId[item.id] = item; });
+
+  items.forEach(function(item) {
+    var gp = (S.strategy && S.strategy.growth_plan) || {};
+    var ov = (gp.timeline_overrides || {})[item.id];
+    if (ov && ov.startWeek != null) return; // user set it manually
+
+    if (item.depends && item.depends.length) {
+      var maxEnd = 0;
+      item.depends.forEach(function(dep) {
+        var depId = dep.replace(/\s+/g, '_').toLowerCase();
+        var depItem = byId[depId];
+        if (depItem) {
+          var depEnd = depItem.startWeek + _ganttParseWeeks(depItem.duration);
+          if (depEnd > maxEnd) maxEnd = depEnd;
+        }
+      });
+      item.startWeek = maxEnd || (item.phase * 4);
+    } else {
+      // Phase-based default: P0=0, P1=2, P2=8
+      item.startWeek = item.phase === 0 ? 0 : item.phase === 1 ? 2 : 8;
+    }
+  });
+}
+
+function _ganttParseWeeks(dur) {
+  if (!dur || dur === 'ongoing') return 12;
+  var s = String(dur).toLowerCase();
+  // "4-8 weeks" → take the higher number
+  var wMatch = s.match(/(\d+)\s*[-\u2013]\s*(\d+)\s*week/);
+  if (wMatch) return parseInt(wMatch[2], 10);
+  wMatch = s.match(/(\d+)\s*week/);
+  if (wMatch) return parseInt(wMatch[1], 10);
+  // "3-6 months"
+  var mMatch = s.match(/(\d+)\s*[-\u2013]\s*(\d+)\s*month/);
+  if (mMatch) return parseInt(mMatch[2], 10) * 4;
+  mMatch = s.match(/(\d+)\s*month/);
+  if (mMatch) return parseInt(mMatch[1], 10) * 4;
+  // "1 year"
+  if (s.indexOf('year') >= 0) return 48;
+  return 12; // default
+}
+
+function _ganttResetOverrides() {
+  if (!S.strategy) return;
+  S.strategy.growth_plan = S.strategy.growth_plan || {};
+  S.strategy.growth_plan.timeline_overrides = {};
+  scheduleSave();
+  renderStrategyTabContent();
+}
+
+function _ganttSaveOverride(id, field, value) {
+  if (!S.strategy) return;
+  S.strategy.growth_plan = S.strategy.growth_plan || {};
+  S.strategy.growth_plan.timeline_overrides = S.strategy.growth_plan.timeline_overrides || {};
+  var ov = S.strategy.growth_plan.timeline_overrides[id] || {};
+  ov[field] = value;
+  S.strategy.growth_plan.timeline_overrides[id] = ov;
+  scheduleSave();
+}
+
+function _mountGantt(st) {
+  var container = document.getElementById('strat-gantt-container');
+  if (!container) return;
+
+  var items = _buildGanttItems(st);
+  if (!items.length) {
+    container.innerHTML = '<div style="color:var(--n2);font-size:12px;padding:12px">No channel strategy data. Run Diagnostic 4 (Channels) first.</div>';
+    return;
+  }
+
+  // Calculate total weeks for chart
+  var maxWeek = 0;
+  items.forEach(function(item) {
+    var end = item.startWeek + _ganttParseWeeks(item.duration);
+    if (end > maxWeek) maxWeek = end;
+  });
+  var totalWeeks = Math.max(maxWeek, 48); // at least 12 months
+  var monthCount = Math.ceil(totalWeeks / 4);
+
+  // Build the chart
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'overflow-x:auto;margin-bottom:12px';
+
+  // Month headers
+  var headerRow = document.createElement('div');
+  headerRow.style.cssText = 'display:flex;border-bottom:1px solid var(--border);padding-left:220px;min-width:' + (220 + monthCount * 60) + 'px';
+  for (var m = 0; m < monthCount; m++) {
+    var mCell = document.createElement('div');
+    mCell.style.cssText = 'width:60px;min-width:60px;text-align:center;font-size:9px;font-weight:500;color:var(--n3);padding:4px 0;text-transform:uppercase';
+    mCell.textContent = 'M' + (m + 1);
+    headerRow.appendChild(mCell);
+  }
+  wrap.appendChild(headerRow);
+
+  // Rows
+  var dragState = { dragging: null };
+  items.forEach(function(item, idx) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;min-height:36px;border-bottom:1px solid var(--border);min-width:' + (220 + monthCount * 60) + 'px;transition:background .15s';
+    row.setAttribute('data-gantt-idx', idx);
+    row.setAttribute('draggable', 'true');
+
+    // Drag handlers
+    row.addEventListener('dragstart', function(e) {
+      dragState.dragging = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      row.style.opacity = '0.5';
+    });
+    row.addEventListener('dragend', function() {
+      row.style.opacity = '1';
+      dragState.dragging = null;
+    });
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      row.style.background = 'var(--bg2)';
+    });
+    row.addEventListener('dragleave', function() {
+      row.style.background = '';
+    });
+    row.addEventListener('drop', function(e) {
+      e.preventDefault();
+      row.style.background = '';
+      if (dragState.dragging == null || dragState.dragging === idx) return;
+      // Reorder: assign order overrides
+      var newOrder = items.map(function(it, i) { return { id: it.id, order: i }; });
+      // Move dragged to drop position
+      var fromIdx = dragState.dragging;
+      var moved = newOrder.splice(fromIdx, 1)[0];
+      newOrder.splice(idx, 0, moved);
+      newOrder.forEach(function(o, i) {
+        _ganttSaveOverride(o.id, 'order', i);
+      });
+      renderStrategyTabContent();
+    });
+
+    // Label cell (fixed width)
+    var labelCell = document.createElement('div');
+    labelCell.style.cssText = 'width:220px;min-width:220px;display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:grab';
+
+    // Phase badge
+    var phaseBadge = document.createElement('span');
+    phaseBadge.style.cssText = 'background:' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';color:white;font-size:9px;padding:1px 6px;border-radius:3px;cursor:pointer;flex-shrink:0';
+    phaseBadge.textContent = 'P' + item.phase;
+    phaseBadge.title = 'Click to change phase';
+    phaseBadge.onclick = function() {
+      var next = ((item.phase || 0) + 1) % 4;
+      _ganttSaveOverride(item.id, 'phase', next);
+      renderStrategyTabContent();
+    };
+    labelCell.appendChild(phaseBadge);
+
+    // Label text
+    var labelTxt = document.createElement('span');
+    labelTxt.style.cssText = 'font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    labelTxt.textContent = item.label;
+    labelTxt.title = item.notes || item.label;
+    labelCell.appendChild(labelTxt);
+
+    // Budget % if present
+    if (item.budgetPct) {
+      var budgetTag = document.createElement('span');
+      budgetTag.style.cssText = 'font-size:9px;color:var(--n2);flex-shrink:0';
+      budgetTag.textContent = item.budgetPct + '%';
+      labelCell.appendChild(budgetTag);
+    }
+    row.appendChild(labelCell);
+
+    // Chart area
+    var chartArea = document.createElement('div');
+    chartArea.style.cssText = 'flex:1;position:relative;height:28px';
+
+    // Month grid lines
+    for (var g = 0; g < monthCount; g++) {
+      var gridLine = document.createElement('div');
+      gridLine.style.cssText = 'position:absolute;left:' + (g * 60) + 'px;top:0;bottom:0;width:1px;background:var(--border);opacity:0.4';
+      chartArea.appendChild(gridLine);
+    }
+
+    // Bar
+    var durWeeks = _ganttParseWeeks(item.duration);
+    var pxPerWeek = 60 / 4; // 60px per month / 4 weeks
+    var barLeft = item.startWeek * pxPerWeek;
+    var barWidth = Math.max(durWeeks * pxPerWeek, 15);
+    var isOngoing = !item.duration || item.duration === 'ongoing';
+
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:absolute;top:4px;height:20px;border-radius:4px;cursor:pointer;display:flex;align-items:center;padding:0 6px;font-size:9px;color:white;font-weight:500;white-space:nowrap;overflow:hidden;transition:box-shadow .15s;'
+      + 'left:' + barLeft + 'px;width:' + barWidth + 'px;'
+      + 'background:' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';'
+      + (isOngoing ? 'background:linear-gradient(90deg,' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ' 80%,transparent);border-right:2px dashed ' + (_ganttPhaseColours[item.phase] || 'var(--n2)') + ';' : '');
+    bar.textContent = item.duration;
+    bar.title = item.label + ': ' + item.duration + (item.notes ? '\n' + item.notes : '') + '\nClick to edit | Drag bar edges to resize';
+
+    // Click to edit duration/notes
+    (function(it) {
+      bar.onclick = function(e) {
+        e.stopPropagation();
+        _ganttEditItem(it);
+      };
+    })(item);
+
+    // Drag to adjust start week (left edge)
+    (function(it, barEl) {
+      var resizeHandle = document.createElement('div');
+      resizeHandle.style.cssText = 'position:absolute;left:0;top:0;bottom:0;width:6px;cursor:w-resize';
+      resizeHandle.onmousedown = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var startX = e.clientX;
+        var origStart = it.startWeek;
+        var onMove = function(me) {
+          var dx = me.clientX - startX;
+          var dWeeks = Math.round(dx / pxPerWeek);
+          var newStart = Math.max(0, origStart + dWeeks);
+          _ganttSaveOverride(it.id, 'startWeek', newStart);
+          barEl.style.left = (newStart * pxPerWeek) + 'px';
+        };
+        var onUp = function() {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          renderStrategyTabContent();
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      };
+      barEl.appendChild(resizeHandle);
+    })(item, bar);
+
+    chartArea.appendChild(bar);
+    row.appendChild(chartArea);
+    wrap.appendChild(row);
+  });
+
+  container.appendChild(wrap);
+
+  // Legend
+  var legend = document.createElement('div');
+  legend.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;padding:6px 0';
+  var phaseLabels = ['Phase 0: Foundation', 'Phase 1: Launch', 'Phase 2: Scale', 'Phase 3: Optimise'];
+  phaseLabels.forEach(function(lbl, i) {
+    var chip = document.createElement('span');
+    chip.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:10px;color:var(--n2)';
+    var dot = document.createElement('span');
+    dot.style.cssText = 'width:8px;height:8px;border-radius:2px;background:' + _ganttPhaseColours[i];
+    chip.appendChild(dot);
+    chip.appendChild(document.createTextNode(lbl));
+    legend.appendChild(chip);
+  });
+  var hint = document.createElement('span');
+  hint.style.cssText = 'font-size:10px;color:var(--n3);margin-left:auto';
+  hint.textContent = 'Drag rows to reorder \u2022 Click bars to edit \u2022 Click phase badge to cycle';
+  legend.appendChild(hint);
+  container.appendChild(legend);
+}
+
+function _ganttEditItem(item) {
+  // Inline editor modal
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:600;display:flex;align-items:center;justify-content:center';
+
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;width:380px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.15)';
+
+  card.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:14px">' + esc(item.label) + '</div>';
+
+  // Phase selector
+  var phaseRow = document.createElement('div');
+  phaseRow.style.cssText = 'margin-bottom:10px';
+  phaseRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Phase</label>';
+  var phaseSelect = document.createElement('select');
+  phaseSelect.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  ['0: Foundation','1: Launch','2: Scale','3: Optimise'].forEach(function(lbl, i) {
+    var opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = lbl;
+    if (i === item.phase) opt.selected = true;
+    phaseSelect.appendChild(opt);
+  });
+  phaseRow.appendChild(phaseSelect);
+  card.appendChild(phaseRow);
+
+  // Start week
+  var startRow = document.createElement('div');
+  startRow.style.cssText = 'margin-bottom:10px';
+  startRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Start (week)</label>';
+  var startInput = document.createElement('input');
+  startInput.type = 'number';
+  startInput.min = '0';
+  startInput.max = '48';
+  startInput.value = item.startWeek || 0;
+  startInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  startRow.appendChild(startInput);
+  card.appendChild(startRow);
+
+  // Duration
+  var durRow = document.createElement('div');
+  durRow.style.cssText = 'margin-bottom:10px';
+  durRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Duration</label>';
+  var durInput = document.createElement('input');
+  durInput.type = 'text';
+  durInput.value = item.duration || '';
+  durInput.placeholder = 'e.g. 4 weeks, 2-3 months, ongoing';
+  durInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg)';
+  durRow.appendChild(durInput);
+  card.appendChild(durRow);
+
+  // Notes
+  var noteRow = document.createElement('div');
+  noteRow.style.cssText = 'margin-bottom:14px';
+  noteRow.innerHTML = '<label style="font-size:11px;font-weight:500;color:var(--n2);display:block;margin-bottom:4px">Notes</label>';
+  var noteInput = document.createElement('textarea');
+  noteInput.value = item.notes || '';
+  noteInput.rows = 2;
+  noteInput.style.cssText = 'width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg);resize:vertical';
+  noteRow.appendChild(noteInput);
+  card.appendChild(noteRow);
+
+  // Buttons
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { overlay.remove(); };
+  btnRow.appendChild(cancelBtn);
+
+  var saveBtn = document.createElement('button');
+  saveBtn.className = 'btn btn-dark sm';
+  saveBtn.textContent = 'Save';
+  saveBtn.onclick = function() {
+    var newPhase = parseInt(phaseSelect.value, 10);
+    var newStart = parseInt(startInput.value, 10) || 0;
+    var newDur = durInput.value.trim() || item.duration;
+    var newNotes = noteInput.value.trim();
+
+    _ganttSaveOverride(item.id, 'phase', newPhase);
+    _ganttSaveOverride(item.id, 'startWeek', newStart);
+    _ganttSaveOverride(item.id, 'duration', newDur);
+    if (newNotes) _ganttSaveOverride(item.id, 'notes', newNotes);
+
+    overlay.remove();
+    renderStrategyTabContent();
+  };
+  btnRow.appendChild(saveBtn);
+  card.appendChild(btnRow);
+
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 }
 
 function _renderExecution(st) {
