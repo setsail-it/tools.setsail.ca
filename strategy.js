@@ -2552,9 +2552,11 @@ function _buildGanttItems(st) {
   var overrides = gp.timeline_overrides || {};
   var deleted = gp.deleted_items || [];
   var items;
+  var fromAccepted = false;
 
   // If an accepted timeline exists, use it as the base
   if (gp.accepted_timeline && gp.accepted_timeline.length) {
+    fromAccepted = true;
     items = gp.accepted_timeline.map(function(at) {
       return {
         id: at.id,
@@ -2624,8 +2626,9 @@ function _buildGanttItems(st) {
     }
   });
 
-  // Auto-calculate start weeks for items without overrides
-  _ganttAutoStartWeeks(items);
+  // Auto-calculate start weeks — skip when loading from accepted timeline
+  // (accepted positions are already finalised by the user)
+  _ganttAutoStartWeeks(items, fromAccepted);
 
   // Sort by phase then order then startWeek
   items.sort(function(a, b) {
@@ -2637,8 +2640,11 @@ function _buildGanttItems(st) {
   return items;
 }
 
-function _ganttAutoStartWeeks(items) {
-  // For items without explicit start overrides, calculate from dependencies and phase
+function _ganttAutoStartWeeks(items, fromAccepted) {
+  // Skip auto-calculation entirely when loading from accepted timeline —
+  // those positions were already finalised by the user.
+  if (fromAccepted) return;
+
   var byId = {};
   items.forEach(function(item) { byId[item.id] = item; });
 
@@ -2911,18 +2917,8 @@ function _mountGantt(st) {
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;min-height:36px;border-bottom:1px solid var(--border);min-width:' + minRowW + 'px;transition:background .15s';
     row.setAttribute('data-gantt-idx', idx);
-    row.setAttribute('draggable', 'true');
 
-    // Drag handlers for row reorder
-    row.addEventListener('dragstart', function(e) {
-      dragState.dragging = idx;
-      e.dataTransfer.effectAllowed = 'move';
-      row.style.opacity = '0.5';
-    });
-    row.addEventListener('dragend', function() {
-      row.style.opacity = '1';
-      dragState.dragging = null;
-    });
+    // Row reorder drop target (row itself is not draggable — the label is the drag handle)
     row.addEventListener('dragover', function(e) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -2945,9 +2941,19 @@ function _mountGantt(st) {
       renderStrategyTabContent();
     });
 
-    // Label cell
+    // Label cell — this is the drag handle for row reorder
     var labelCell = document.createElement('div');
     labelCell.style.cssText = 'width:' + labelW + 'px;min-width:' + labelW + 'px;display:flex;align-items:center;gap:5px;padding:4px 8px;cursor:grab';
+    labelCell.setAttribute('draggable', 'true');
+    labelCell.addEventListener('dragstart', function(e) {
+      dragState.dragging = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      row.style.opacity = '0.5';
+    });
+    labelCell.addEventListener('dragend', function() {
+      row.style.opacity = '1';
+      dragState.dragging = null;
+    });
 
     // Phase badge
     var phaseBadge = document.createElement('span');
