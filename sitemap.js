@@ -1,4 +1,201 @@
 
+// ── STRATEGY ALIGNMENT, PILLAR TAGS, PRIORITY SUGGESTIONS ────────────
+
+// Map page types to the strategy levers they support
+function _leverForPageType(pageType) {
+  var t = (pageType || '').toLowerCase();
+  if (['home','about','contact','utility','faq','team'].indexOf(t) >= 0) return '_website';
+  if (t === 'location') return 'local_seo';
+  if (['blog','article','recipe','event','portfolio'].indexOf(t) >= 0) return 'content_marketing';
+  // service/industry/product → SEO lever
+  return 'seo';
+}
+
+// Find a lever in channel_strategy.levers by fuzzy id match
+function _findLever(leverId) {
+  var st = S.strategy;
+  if (!st || !st.channel_strategy || !st.channel_strategy.levers) return null;
+  return st.channel_strategy.levers.find(function(l) {
+    var id = (l.lever || l.name || '').replace(/\s+/g, '_').toLowerCase();
+    return id === leverId || id.indexOf(leverId) >= 0 || leverId.indexOf(id) >= 0;
+  }) || null;
+}
+
+// Compute strategy alignment for a page: 'aligned' | 'review' | 'cut'
+function _computeAlignment(page) {
+  var st = S.strategy;
+  if (!st || !st._meta || st._meta.current_version === 0) return 'review'; // no strategy yet
+
+  // Check subtraction — if activity matches page type/name, suggest cut
+  if (st.subtraction && st.subtraction.current_activities_audit) {
+    var pageName = (page.page_name || '').toLowerCase();
+    var pageSlug = (page.slug || '').toLowerCase();
+    var cut = st.subtraction.current_activities_audit.some(function(a) {
+      if (a.verdict !== 'stop' && a.verdict !== 'reduce') return false;
+      var activity = (a.activity || a.name || '').toLowerCase();
+      return pageName.indexOf(activity) >= 0 || pageSlug.indexOf(activity) >= 0 || activity.indexOf(pageName) >= 0;
+    });
+    if (cut) return 'cut';
+  }
+
+  // Structural pages are always aligned
+  if (page.is_structural) return 'aligned';
+
+  // Check if lever for this page type exists and has decent priority
+  var leverId = _leverForPageType(page.page_type);
+  var lever = _findLever(leverId);
+  if (lever && lever.priority_score >= 5) return 'aligned';
+
+  // Check page_types_needed from architecture direction
+  var web = st.execution_plan && st.execution_plan.lever_details && st.execution_plan.lever_details.website;
+  if (web && web.architecture_direction && web.architecture_direction.page_types_needed) {
+    var needed = web.architecture_direction.page_types_needed.map(function(t) { return t.toLowerCase(); });
+    if (needed.indexOf((page.page_type || '').toLowerCase()) >= 0) return 'aligned';
+  }
+
+  // Check if lever exists but low priority
+  if (lever && lever.priority_score >= 3) return 'review';
+
+  // No lever found at all
+  return 'review';
+}
+
+// Calculate monthly revenue potential for a page (for low-volume tooltip)
+function _revenueEstimate(page) {
+  var st = S.strategy;
+  if (!st || !st.unit_economics) return null;
+  var ue = st.unit_economics;
+  var dealSize = parseFloat(String(ue.average_deal_size || ue.deal_size || '0').replace(/[^0-9.]/g, '')) || 0;
+  var closeRate = parseFloat(String(ue.close_rate || ue.close_rate_estimate || '0').replace(/[^0-9.%]/g, '')) || 0;
+  if (closeRate > 1) closeRate = closeRate / 100; // convert percentage
+  var vol = page.primary_vol || 0;
+  if (!dealSize || !closeRate || !vol) return null;
+  var ctr = 0.035; // estimated CTR for a new page in position 5-8
+  var monthlyRevenue = vol * ctr * closeRate * dealSize;
+  return { vol: vol, ctr: ctr, closeRate: closeRate, dealSize: dealSize, monthly: Math.round(monthlyRevenue) };
+}
+
+// Suggest priority from growth plan phases and channel lever scores
+function _suggestPriority(page) {
+  var st = S.strategy;
+  if (!st || !st._meta || st._meta.current_version === 0) return null; // no strategy
+
+  // Structural pages are always P1 or P2
+  if (page.is_structural) {
+    var t = (page.page_type || '').toLowerCase();
+    return (t === 'home' || t === 'contact') ? 'P1' : 'P2';
+  }
+
+  var leverId = _leverForPageType(page.page_type);
+  var lever = _findLever(leverId);
+  var leverScore = lever ? (lever.priority_score || 0) : 0;
+
+  // Check growth plan timeline for this lever phase
+  var gp = st.growth_plan || {};
+  var timelineItems = gp.accepted_timeline || [];
+  // If no accepted timeline, build from levers
+  if (!timelineItems.length && st.channel_strategy && st.channel_strategy.levers) {
+    timelineItems = st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }).map(function(l) {
+      return {
+        id: (l.lever || '').replace(/\s+/g, '_').toLowerCase(),
+        phase: l.dependencies && l.dependencies.length ? 2 : 1
+      };
+    });
+    // Add foundation items
+    timelineItems.unshift({ id: '_website', phase: 1 });
+    timelineItems.unshift({ id: '_tracking', phase: 0 });
+  }
+  var tlItem = timelineItems.find(function(t) {
+    var tid = (t.id || t.label || '').toLowerCase().replace(/\s+/g, '_');
+    return tid === leverId || tid.indexOf(leverId) >= 0 || leverId.indexOf(tid) >= 0;
+  });
+  var phase = tlItem ? (tlItem.phase || 0) : 3;
+
+  // Map phase + lever score to priority
+  var suggested;
+  if (phase <= 1 && leverScore >= 7) suggested = 'P1';
+  else if (phase <= 1 && leverScore >= 5) suggested = 'P1';
+  else if (phase <= 2 && leverScore >= 5) suggested = 'P2';
+  else suggested = 'P3';
+
+  // Alignment boost: aligned pages bump up one tier
+  var align = _computeAlignment(page);
+  if (align === 'aligned' && suggested === 'P2') suggested = 'P1';
+  else if (align === 'aligned' && suggested === 'P3') suggested = 'P2';
+  // Cut suggested pages are always P3
+  if (align === 'cut') suggested = 'P3';
+
+  // High-volume override: if vol >= 500 and we would suggest P2/P3, suggest P1
+  if ((page.primary_vol || 0) >= 500 && suggested !== 'P1') suggested = 'P1';
+
+  return suggested;
+}
+
+// Assign content pillars to blog pages via Claude
+async function assignContentPillars() {
+  var st = S.strategy;
+  var pillars = (st && st.brand_strategy && st.brand_strategy.content_pillars) || [];
+  if (!pillars.length) {
+    aiBarNotify('No content pillars found — run Strategy Brand diagnostic (D6) first', { isError: true, duration: 4000 });
+    return;
+  }
+  var blogPages = (S.pages || []).filter(function(p) {
+    return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0;
+  });
+  if (!blogPages.length) {
+    aiBarNotify('No blog pages in sitemap to assign pillars to', { duration: 3000 });
+    return;
+  }
+
+  // Build pillar list (handle both string and object formats)
+  var pillarNames = pillars.map(function(p) { return typeof p === 'string' ? p : (p.name || p.pillar || p.topic || String(p)); });
+
+  var sys = 'You are a content strategist. Given a list of blog pages and a list of content pillars, assign each blog page to the single best-fit pillar. If no pillar fits, assign "Unassigned". Output ONLY a JSON array of objects: [{"slug":"...","pillar":"..."}]. No explanation.';
+  var user = 'CONTENT PILLARS:\n' + pillarNames.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n')
+    + '\n\nBLOG PAGES:\n' + blogPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | kw: ' + (p.primary_keyword || 'none'); }).join('\n');
+
+  aiBarStart('Assigning content pillars...');
+  try {
+    var result = await callClaude(sys, user, null, 2000);
+    // Parse JSON from response
+    var jsonMatch = result.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('No JSON array in response');
+    var assignments = JSON.parse(jsonMatch[0]);
+    var count = 0;
+    assignments.forEach(function(a) {
+      var page = S.pages.find(function(p) { return p.slug === a.slug; });
+      if (page && a.pillar) {
+        page.content_pillar = a.pillar;
+        count++;
+      }
+    });
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    aiBarNotify('Assigned pillars to ' + count + ' blog pages', { duration: 4000 });
+  } catch (e) {
+    aiBarNotify('Pillar assignment failed: ' + e.message, { isError: true, duration: 4000 });
+  }
+}
+
+// Accept all priority suggestions
+function acceptAllPrioritySuggestions() {
+  var count = 0;
+  (S.pages || []).forEach(function(p) {
+    var suggested = _suggestPriority(p);
+    if (suggested && suggested !== p.priority) {
+      p.priority = suggested;
+      count++;
+    }
+  });
+  if (count > 0) {
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    aiBarNotify('Accepted priority suggestions for ' + count + ' pages', { duration: 4000 });
+  } else {
+    aiBarNotify('All pages already match suggested priorities', { duration: 3000 });
+  }
+}
+
 function confirmRunSitemap() {
   if (S.pages && S.pages.length > 0) {
     if (!confirm('Rebuild the sitemap? This will recalculate all pages from clusters.\n\nExisting copy, images, and schema data will be preserved.\n\nContinue?')) return;
@@ -91,7 +288,10 @@ function buildSitemapFromClusters() {
     var vol = c.primaryVol || 0;
     var kd = c.primaryKd || 0;
     var score = vol >= 50 && kd > 0 ? Math.round((Math.log(vol+1)*100/Math.max(kd,5))*10)/10 : 0;
-    var priority = vol >= 500 ? 'P1' : vol >= 100 ? 'P2' : 'P3';
+    var _volPriority = vol >= 500 ? 'P1' : vol >= 100 ? 'P2' : 'P3';
+    var _tmpPage = { page_type: c.pageType || 'service', is_structural: false, slug: slug, page_name: c.name || _slugToName(slug), primary_vol: vol };
+    var _stratPriority = _suggestPriority(_tmpPage);
+    var priority = _stratPriority || _volPriority;
     pages.push({
       page_name: c.name || _slugToName(slug),
       slug: slug,
@@ -116,12 +316,15 @@ function buildSitemapFromClusters() {
     if (covered.has(slug)) return;
     var sp = snapPage(slug);
     var rkws = existingRankKws(slug);
+    var _existPt = _guessPageType(slug);
+    var _existPage = { page_type: _existPt, is_structural: false, slug: slug, page_name: _slugToName(slug), primary_vol: 0 };
+    var _existPri = _suggestPriority(_existPage) || 'P3';
     pages.push({
       page_name: _slugToName(slug),
       slug: slug,
-      page_type: _guessPageType(slug),
+      page_type: _existPt,
       is_structural: false,
-      priority: 'P3',
+      priority: _existPri,
       action: 'improve_existing',
       primary_keyword: rkws.length ? (rkws[0].kw||'') : '',
       primary_vol: 0, primary_kd: 0, score: 0,
@@ -704,6 +907,16 @@ function _renderSitemapResultsInner(approved) {
   html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+allPages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
   if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-vol</span>';
+  // Alignment stats
+  if (_hasStrategy) {
+    var _alignCounts = { aligned: 0, review: 0, cut: 0 };
+    allPages.forEach(function(p) { var a = _computeAlignment(p); _alignCounts[a] = (_alignCounts[a] || 0) + 1; });
+    if (_alignCounts.cut > 0) html += '<span style="background:rgba(220,50,47,0.08);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.15)">'+_alignCounts.cut+' cut</span>';
+    if (_alignCounts.review > 0) html += '<span style="background:rgba(245,166,35,0.08);color:var(--warn);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(245,166,35,0.15)">'+_alignCounts.review+' review</span>';
+    // Priority suggestion diff count
+    var _diffCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
+    if (_diffCount > 0) html += '<span style="background:rgba(59,130,246,0.08);color:#3b82f6;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(59,130,246,0.15)">'+_diffCount+' priority diffs</span>';
+  }
   html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes</span></span>';
   html += '</div>';
 
@@ -734,17 +947,28 @@ function _renderSitemapResultsInner(approved) {
     html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market. Use after making keyword or market edits." style="font-size:11px;padding:2px 8px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
   }
   html += '<button class="btn btn-ghost sm" data-tip="AI-generates a strategic page goal for every page that does not have one yet. Uses the website strategy, page type, keyword intent, and CRO context." style="font-size:11px;padding:2px 8px" onclick="generateAllPageGoals()"><i class="ti ti-sparkles"></i> Goals</button>';
+  if (_hasStrategy) {
+    var _blogCount = allPages.filter(function(p) { return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0; }).length;
+    if (_blogCount > 0) {
+      html += '<button class="btn btn-ghost sm" data-tip="AI assigns each blog page to a content pillar from your brand strategy. Requires D6 Brand diagnostic in Strategy." style="font-size:11px;padding:2px 8px" onclick="assignContentPillars()"><i class="ti ti-tags"></i> Pillars</button>';
+    }
+    var _suggestCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
+    html += '<button class="btn btn-ghost sm" data-tip="Recalculates strategy-driven priority suggestions for all pages based on channel lever scores and growth plan phases." style="font-size:11px;padding:2px 8px" onclick="renderSitemapResults(S.sitemapApproved)"><i class="ti ti-arrows-sort"></i> Re-suggest</button>';
+    if (_suggestCount > 0) {
+      html += '<button class="btn btn-ghost sm" data-tip="Accept all ' + _suggestCount + ' priority suggestions from strategy at once." style="font-size:11px;padding:2px 8px;color:#3b82f6;border-color:rgba(59,130,246,0.3)" onclick="acceptAllPrioritySuggestions()"><i class="ti ti-checks"></i> Accept ' + _suggestCount + '</button>';
+    }
+  }
   html += '<button class="btn btn-ghost sm" data-tip="Generates a visual hierarchy diagram of the sitemap — shows parent/child page relationships. Useful for client presentations and IA review." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
   html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
 
-  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Intent | Priority | Market | Traffic
-  const gcols = sitemapEditMode ? '22px 1.4fr 1.1fr 54px 42px 48px 62px 48px 76px 54px' : '22px 1.4fr 1.1fr 54px 42px 48px 62px 52px 76px 54px';
+  // Grid: # | Page + slug | Keyword | Vol | KD | Score | Intent | Priority | Align | Market | Traffic
+  var _hasStrategy = S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0;
+  const gcols = sitemapEditMode ? '22px 1.3fr 1fr 54px 42px 44px 56px 46px 36px 72px 50px' : '22px 1.3fr 1fr 54px 42px 44px 56px 48px 36px 72px 50px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
-    + '<span>#</span><span>Page</span><span title="Cluster anchor keyword — sets page scope. Niche variants &amp; copy-level assignment happen in Stage 6 Briefs.">Cluster Anchor <span style="font-size:8px;font-weight:400;opacity:0.6;text-transform:none">↓ Stage 6</span></span><span>Vol/mo</span><span>KD</span><span>Score</span><span title="Search intent of the page">Intent</span><span>Priority</span><span title="Target market — inherits primary market unless overridden">Market</span><span title="Existing monthly organic traffic">Traffic</span>'
-    + ''
+    + '<span>#</span><span>Page</span><span title="Cluster anchor keyword — sets page scope. Niche variants &amp; copy-level assignment happen in Stage 6 Briefs.">Cluster Anchor <span style="font-size:8px;font-weight:400;opacity:0.6;text-transform:none">↓ S6</span></span><span>Vol</span><span>KD</span><span>Score</span><span title="Search intent of the page">Intent</span><span>Priority</span><span title="Strategy alignment — green = page type supported by strategy levers, yellow = review, red = cut suggested">Align</span><span title="Target market — inherits primary market unless overridden">Market</span><span title="Existing monthly organic traffic">Traffic</span>'
     + '</div>';
 
   // Display sort: Core → Service/Industry/Product → Location → Blog → rest
@@ -809,6 +1033,17 @@ function _renderSitemapResultsInner(approved) {
       html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
       ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
       html += '</select>';
+      // Content pillar dropdown (blog-type pages only, if pillars exist)
+      if (['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
+        var _pillars = (S.strategy.brand_strategy && S.strategy.brand_strategy.content_pillars) || [];
+        var _pillarNames = _pillars.map(function(pl) { return typeof pl === 'string' ? pl : (pl.name || pl.pillar || pl.topic || String(pl)); });
+        if (_pillarNames.length) {
+          html += '<select onchange="updatePageField('+i+',\'content_pillar\',this.value)" style="font-size:10px;color:#3b82f6;background:rgba(59,130,246,0.04);border:1px solid rgba(59,130,246,0.2);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+          html += '<option value="">Pillar…</option>';
+          _pillarNames.forEach(function(pn) { html += '<option value="'+esc(pn)+'"'+(p.content_pillar===pn?' selected':'')+'>'+esc(pn)+'</option>'; });
+          html += '</select>';
+        }
+      }
       // Icon-only reorder/delete
       html += '<div style="display:flex;gap:3px;margin-top:1px">';
       html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
@@ -844,6 +1079,12 @@ function _renderSitemapResultsInner(approved) {
       html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       if (p.page_goal) html += '<div style="font-size:10px;color:#6b21a8;margin-top:2px" title="Page goal: '+esc(p.page_goal)+'"><i class="ti ti-target" style="font-size:10px;margin-right:2px"></i>'+esc(p.page_goal.length>80?p.page_goal.slice(0,80)+'…':p.page_goal)+'</div>';
+      // Content pillar tag (blog pages only)
+      if (p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0) {
+        html += '<div style="margin-top:2px"><span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500">'+esc(p.content_pillar)+'</span></div>';
+      } else if (!p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
+        html += '<div style="margin-top:2px"><span style="background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">Unassigned</span></div>';
+      }
       html += '</div>';
       const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
       var _kwDisplay = p.primary_keyword
@@ -867,11 +1108,32 @@ function _renderSitemapResultsInner(approved) {
       html += '<span style="color:'+_intentColor+';font-size:10px;font-weight:500">'+_intentLabel+'</span>';
     }
     if (sitemapEditMode) {
+      var _suggested = _suggestPriority(p);
+      var _hasSuggestion = _suggested && _suggested !== p.priority;
+      html += '<div style="display:flex;flex-direction:column;gap:1px">';
       html += `<select onchange="updatePageField(${i},'priority',this.value);renderSitemapResults(S.sitemapApproved)" style="font-size:11px;color:${pColor};font-weight:500;background:var(--n1);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-family:var(--font);outline:none">`;
       ['P1','P2','P3'].forEach(pv => { html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`; });
       html += '</select>';
+      if (_hasSuggestion) {
+        html += `<button onclick="updatePageField(${i},'priority','${_suggested}');renderSitemapResults(S.sitemapApproved)" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:3px;padding:0 4px;font-size:9px;color:#3b82f6;cursor:pointer;font-family:var(--font);line-height:1.4" title="Strategy suggests ${_suggested}">${_suggested} ✓</button>`;
+      }
+      html += '</div>';
     } else {
       html += '<span style="color:'+pColor+';font-size:11px;font-weight:500">'+esc(p.priority||'–')+'</span>';
+    }
+    // Alignment column
+    var _align = _hasStrategy ? _computeAlignment(p) : null;
+    if (_align) {
+      var _alignColor = _align === 'aligned' ? 'var(--green)' : _align === 'cut' ? 'var(--error)' : 'var(--warn)';
+      var _alignLabel = _align === 'aligned' ? 'Aligned' : _align === 'cut' ? 'Cut' : 'Review';
+      var _alignTip = _alignLabel;
+      if (_align !== 'aligned' && !isStructural) {
+        var _rev = _revenueEstimate(p);
+        if (_rev) _alignTip += ' | Est. $' + _rev.monthly.toLocaleString() + '/mo (' + _rev.vol + ' vol x ' + (_rev.ctr * 100).toFixed(1) + '% CTR x ' + (_rev.closeRate * 100).toFixed(1) + '% close x $' + _rev.dealSize.toLocaleString() + ')';
+      }
+      html += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + _alignColor + ';margin-top:2px" title="' + esc(_alignTip) + '"></span>';
+    } else {
+      html += '<span style="color:var(--n1);font-size:10px">–</span>';
     }
     // Market column
     var _defaultGeoLabel = (S.research&&S.research.geography&&S.research.geography.primary)||(S.setup&&S.setup.geo)||'';
@@ -917,7 +1179,7 @@ function _renderSitemapResultsInner(approved) {
         } else {
           html += '<span></span>';
         }
-        html += '<span></span><span></span><span></span>'; // Intent + Market + Traffic spacers
+        html += '<span></span><span></span><span></span><span></span>'; // Intent + Align + Market + Traffic spacers
         html += '</div>';
       });
     }
