@@ -258,7 +258,7 @@ async function runSitemap(withRevisions) {
   prompt += 'Secondary geos: ' + ((r.geography?.secondary || []).join(', ') || 'none') + '\n';
   prompt += 'Services: ' + ((r.primary_services || []).join(', ') || 'N/A') + '\n';
   prompt += 'Value prop: ' + (getStrategyField('positioning.value_proposition', 'value_proposition') || r.business_overview || '') + '\n';
-  var _ws = (S.setup&&S.setup.webStrategy||'').trim();
+  var _ws = ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)||'').trim();
   if (_ws) prompt += '\n## WEBSITE STRATEGY (use this to derive page_goal for each page)\n' + _ws.slice(0, 3000) + '\n\n';
   else prompt += '\n';
 
@@ -459,7 +459,7 @@ async function generatePageGoal(idx) {
   var btn = document.getElementById('goal-ai-btn-'+idx);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>'; }
   var R = S.research || {};
-  var ws = (S.setup&&S.setup.webStrategy||'').trim();
+  var ws = ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)||'').trim();
   var sys = 'You are a senior CRO + SEO strategist. Write a 1-2 sentence page goal — the strategic purpose this page must achieve. Be specific: name the audience segment, the desired action, and the proof required. No generic goals. Canadian spelling.';
   var user = 'Client: '+(R.client_name||S.setup.client||'')+'\n'
     + 'Page: '+p.page_name+' (/'+p.slug+')\n'

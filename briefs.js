@@ -1182,7 +1182,7 @@ async function generatePageBrief(pageIdx) {
     (R.booking_flow_description ? 'Booking flow: '+R.booking_flow_description : ''),
     (_pn ? 'Pricing notes: '+_pn : ''),
   ].filter(function(l){ return l && l.split(': ')[1]; }).join('\n');
-  var _webStrategy = (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
+  var _webStrategy = (S.strategy&&S.strategy.webStrategy&&S.strategy.webStrategy.trim()) || (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
   var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
   var _pageGoal = (p.page_goal&&p.page_goal.trim()) || '';
   var ctxWebStrategy = _webStrategy ? '\n\n## WEBSITE STRATEGY (follow this strictly)\n'+_webStrategy : '';

@@ -1977,7 +1977,7 @@ export default {
             ? 'You are a senior content strategist and SEO specialist. Write editorial briefs for blog posts. E-E-A-T, unique insight, and backlink potential are priorities. Canadian spelling.'
             : 'You are a senior SEO strategist and brand strategist. Write page briefs for homepage, about, and utility pages. Canadian spelling.';
 
-          const _webStrat = (setup.webStrategy||'').trim();
+          const _webStrat = ((ST.webStrategy)||setup.webStrategy||'').trim();
           const _pageCtx = (p.pageContext||'').trim();
           const _pageGoal = (p.page_goal||'').trim();
           const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + (_webStrat?'\n\n## WEBSITE STRATEGY\n'+_webStrat:'') + (_pageGoal?'\n\n## PAGE GOAL (every section must serve this strategic purpose)\n'+_pageGoal:'') + ctxProof + ctxCTA + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + (_pageCtx?'\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx:'') + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';

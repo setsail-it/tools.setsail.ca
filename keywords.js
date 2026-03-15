@@ -807,9 +807,11 @@ async function generateAISeeds() {
     ctx += '\nPEOPLE ALSO ASK (from Google — reveals real search intent):\n' + paaQs.slice(0, 20).map(function(q, i) { return (i+1) + '. ' + q; }).join('\n') + '\n';
   }
 
-  // Strategy doc + uploaded docs (truncated)
-  if (setup.strategy && setup.strategy.trim()) {
-    ctx += '\nSTRATEGY DOCUMENT (excerpt):\n' + setup.strategy.slice(0, 1200) + '\n';
+  // Uploaded docs (truncated)
+  if (setup.docs && setup.docs.length) {
+    ctx += '\nREFERENCE DOCUMENTS (excerpt):\n';
+    setup.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 3000); });
+    ctx += '\n';
   }
   if (setup.voice && setup.voice.trim()) {
     ctx += 'BRAND VOICE: ' + setup.voice.slice(0, 300) + '\n';

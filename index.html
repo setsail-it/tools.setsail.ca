@@ -324,18 +324,8 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Strategy</span><div class="section-mark-line"></div></div>
-        <div style="margin-bottom:12px">
-          <label style="font-size:12px;display:block;margin-bottom:5px">Strategy Document * <span style="color:var(--n2)">— paste discovery notes, brief, questionnaire</span></label>
-          <textarea class="inp" id="f-strategy" rows="10" placeholder="Paste the full strategy document here. Services, audience, geography, competitors, pricing, tone — everything."></textarea>
-        </div>
-        <div style="margin-bottom:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <label style="font-size:12px">Website Strategy Brief <span style="color:var(--n2)">— 600–800 word synthesis used verbatim in every brief + copy prompt</span></label>
-            <button id="synth-btn" onclick="synthesiseWebStrategy()" class="btn btn-ghost" style="font-size:11px;padding:3px 10px" data-tip="Reads the full strategy document above and synthesises a focused 600-800 word website brief: what the site must convince visitors of, the competitive frame, rules per page type, proof requirements, and hard content rules. Injected verbatim into every brief and copy generation call."><i class="ti ti-sparkles"></i> Synthesise from strategy</button>
-          </div>
-          <textarea class="inp" id="f-web-strategy" rows="5" placeholder="AI will synthesise this from your strategy doc, or write it manually. This goes verbatim into every brief and copy generation call — keep it tight and specific."></textarea>
-        </div>
+        <div class="section-mark"><span class="section-mark-label">Discovery Notes</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Upload call transcripts, discovery notes, questionnaire responses, or any docs. These feed Research enrichment and Strategy diagnostics. Use Reference Documents below, or paste directly here for quick projects.</p>
       </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Reference Documents</span><div class="section-mark-line"></div></div>
@@ -684,8 +674,8 @@ textarea.inp{resize:vertical}
  * @property {string} url - Website URL
  * @property {string} geo - Primary geography (e.g. "Vancouver, BC, Canada")
  * @property {string} pricing - Pricing tier/model
- * @property {string} strategy - Full strategy document text
- * @property {string} webStrategy - 300-word synthesised website strategy brief
+ * @property {string} strategy - (deprecated) Full strategy document text — kept for backward compat
+ * @property {string} webStrategy - (deprecated) Moved to S.strategy.webStrategy
  * @property {string} voice - Brand voice description
  * @property {string[]} competitors - Competitor URLs
  * @property {string} imageStyle - Preferred image style for Gemini
@@ -1090,8 +1080,6 @@ function prefillSetup() {
   document.getElementById('f-client').value = s.client || '';
   document.getElementById('f-url').value = s.url || '';
   document.getElementById('f-geo').value = s.geo || '';
-  document.getElementById('f-strategy').value = s.strategy || '';
-  const fws = document.getElementById('f-web-strategy'); if(fws) fws.value = s.webStrategy || '';
   // Sales qualification
   var fdl = document.getElementById('f-deal-likelihood'); if(fdl) fdl.value = s.deal_likelihood || '';
   var fes = document.getElementById('f-engagement-size'); if(fes) fes.value = s.estimated_engagement_size || '';
@@ -1784,7 +1772,6 @@ function buildEnrichCtx() {
   if (s.pricing)     ctx += '\nPRICING: '+s.pricing;
   if (s.voice)       ctx += '\nBRAND VOICE: '+s.voice;
   if (s.competitors) ctx += '\nKNOWN COMPETITORS:\n'+s.competitors;
-  if (s.strategy)    ctx += '\n\nSTRATEGY DOCUMENT:\n'+s.strategy.slice(0, 12000);
   const docs = s.docs || [];
   if (docs.length) {
     ctx += '\n\nREFERENCE DOCUMENTS:';
@@ -1797,15 +1784,13 @@ function buildEnrichCtx() {
 
 function setupNext() {
   const client = document.getElementById('f-client').value.trim();
-  const strategy = document.getElementById('f-strategy').value.trim();
   if (!client) return showSetupErr('Client name is required');
-  if (strategy.length < 80) return showSetupErr('Strategy document is too short — paste the full brief');
   hideSetupErr();
   const prev = S.setup || {};
   S.setup = {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
-    strategy, webStrategy: (document.getElementById('f-web-strategy')?.value||'').trim(),
+    strategy: prev.strategy || '', // preserved for backward compat but no longer editable in Setup
     docs: prev.docs || [],
     // preserved from previous save or downstream stages
     pricing: prev.pricing || '', voice: prev.voice || '',
@@ -1823,26 +1808,6 @@ function setupNext() {
   renderProjSwitcher();
   scheduleSave();
   goTo('snapshot');
-}
-
-async function synthesiseWebStrategy() {
-  var btn = document.getElementById('synth-btn');
-  var strategyDoc = (document.getElementById('f-strategy')?.value||'').trim();
-  var docsText = (S.setup&&S.setup.docs||[]).map(function(d){return d.name+':\n'+d.content;}).join('\n\n');
-  var fullDoc = [strategyDoc, docsText].filter(Boolean).join('\n\n');
-  if (fullDoc.length < 80) { if(typeof aiBarNotify==='function') aiBarNotify('Paste your strategy document first', {isError:true,duration:3000}); return; }
-  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner" style="width:10px;height:10px"></span> Synthesising...'; }
-  window._aiBarLabel = 'Synthesising web strategy...';
-  try {
-    var sys = 'You are a senior brand strategist. Read the full client strategy document and extract a focused 600–800 word website-specific strategy brief. Output exactly these 5 sections:\n1. WHAT THE SITE MUST CONVINCE: The core belief the visitor must leave with — what transformation or outcome the company delivers, and why it matters to the buyer right now. Include the emotional and rational triggers.\n2. COMPETITIVE FRAME: Why this company vs the obvious alternatives. Name the competitor types (not brands), explain the positioning gap, and state the unfair advantage. Be specific — generic differentiators like \"experienced team\" are worthless.\n3. PAGE TYPE RULES: 2–3 sentences per page type (service, location, industry, blog, home, landing) on what each must communicate, the conversion intent, and what proof belongs there. Different page types serve different buyer stages — reflect that.\n4. PROOF REQUIREMENTS: What specific evidence, stats, case studies, or social proof must appear. Name the types of proof (revenue impact, client logos, timelines, guarantees) and where they should show up. Vague proof like \"trusted by many\" is not proof.\n5. HARD RULES: Anything the copy must never do — banned phrases, tone boundaries, compliance constraints, topics to avoid, and any formatting or structural mandates.\n\nBe specific and direct. No generic marketing language. Use the client name throughout. Every sentence should be actionable — if a copywriter cannot act on it, cut it.';
-    var result = await callClaude(sys, 'Strategy document:\n\n' + fullDoc.slice(0, 16000), null, 2500);
-    var el = document.getElementById('f-web-strategy');
-    if (el) el.value = result;
-    if (typeof aiBarNotify==='function') aiBarNotify('✓ Web strategy synthesised — review and edit before continuing', {duration:5000});
-  } catch(e) {
-    if(typeof aiBarNotify==='function') aiBarNotify('Synthesis failed: '+e.message, {isError:true,duration:4000});
-  }
-  if (btn) { btn.disabled=false; btn.innerHTML='<i class="ti ti-sparkles"></i> Synthesise from strategy'; }
 }
 
 function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}

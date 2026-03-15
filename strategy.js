@@ -627,7 +627,6 @@ function _stratCtx() {
   if (r.primary_audience_description) ctx += 'AUDIENCE: ' + r.primary_audience_description + '\n';
   if (r.geography && r.geography.primary) ctx += 'PRIMARY GEO: ' + r.geography.primary + '\n';
   if (r.primary_goal) ctx += 'PRIMARY GOAL: ' + r.primary_goal + '\n';
-  if (s.strategy) ctx += '\nSTRATEGY DOCUMENT:\n' + s.strategy.slice(0, 8000) + '\n';
   if (s.docs && s.docs.length) {
     ctx += '\nREFERENCE DOCUMENTS:\n';
     s.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 6000); });
@@ -1182,6 +1181,75 @@ function approveStrategy() {
   aiBarNotify('Strategy approved', { duration: 3000 });
 }
 
+// ── Website Strategy Brief (synthesised from completed strategy) ──────
+
+async function synthesiseWebStrategy() {
+  if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version === 0) {
+    aiBarNotify('Generate a strategy first before synthesising the website brief', { isError: true, duration: 3000 });
+    return;
+  }
+  var st = S.strategy;
+  var r = S.research || {};
+  var s = S.setup || {};
+
+  // Build comprehensive context from completed strategy + research
+  var ctx = 'CLIENT: ' + (s.client || r.client_name || '') + '\n';
+  ctx += 'URL: ' + (s.url || '') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (st.positioning) {
+    ctx += '\nPOSITIONING:\n';
+    if (st.positioning.core_value_proposition) ctx += '- Value Prop: ' + st.positioning.core_value_proposition + '\n';
+    if (st.positioning.recommended_positioning_angle) ctx += '- Positioning: ' + st.positioning.recommended_positioning_angle + '\n';
+    if (st.positioning.validated_differentiators) ctx += '- Differentiators: ' + JSON.stringify(st.positioning.validated_differentiators) + '\n';
+    if (st.positioning.brand_voice_direction) {
+      var bv = st.positioning.brand_voice_direction;
+      if (bv.style) ctx += '- Voice: ' + bv.style + '\n';
+      if (bv.tone_detail) ctx += '- Tone: ' + bv.tone_detail + '\n';
+      if (bv.words_to_avoid) ctx += '- Words to avoid: ' + JSON.stringify(bv.words_to_avoid) + '\n';
+    }
+    if (st.positioning.messaging_hierarchy) {
+      var mh = st.positioning.messaging_hierarchy;
+      if (mh.primary_message) ctx += '- Primary message: ' + mh.primary_message + '\n';
+      if (mh.proof_points) ctx += '- Proof points: ' + JSON.stringify(mh.proof_points) + '\n';
+    }
+  }
+  if (st.execution_plan && st.execution_plan.primary_cta) ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
+  if (st.channel_strategy && st.channel_strategy.priority_order) ctx += '\nCHANNEL PRIORITY: ' + st.channel_strategy.priority_order.join(', ') + '\n';
+  if (r.primary_audience_description) ctx += '\nAUDIENCE: ' + r.primary_audience_description + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  if (r.existing_proof && r.existing_proof.length) ctx += 'PROOF: ' + r.existing_proof.join('; ') + '\n';
+  if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return c.client + ': ' + c.result; }).join('; ') + '\n';
+  if (st.risks && st.risks.length) {
+    var topRisks = st.risks.filter(function(rk) { return rk.severity >= 7; }).map(function(rk) { return rk.risk + ' (' + rk.mitigation + ')'; });
+    if (topRisks.length) ctx += '\nHIGH RISKS: ' + topRisks.join('; ') + '\n';
+  }
+  // Include reference docs
+  if (s.docs && s.docs.length) {
+    ctx += '\nREFERENCE DOCUMENTS:\n';
+    s.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 6000); });
+  }
+
+  var sys = 'You are a senior brand strategist. Using the completed strategy analysis below, write a focused 600-800 word website-specific strategy brief. Output exactly these 5 sections:\n'
+    + '1. WHAT THE SITE MUST CONVINCE: The core belief the visitor must leave with — what transformation or outcome the company delivers, and why it matters to the buyer right now. Include the emotional and rational triggers.\n'
+    + '2. COMPETITIVE FRAME: Why this company vs the obvious alternatives. Name the competitor types (not brands), explain the positioning gap, and state the unfair advantage. Be specific — generic differentiators like "experienced team" are worthless.\n'
+    + '3. PAGE TYPE RULES: 2-3 sentences per page type (service, location, industry, blog, home, landing) on what each must communicate, the conversion intent, and what proof belongs there. Different page types serve different buyer stages — reflect that.\n'
+    + '4. PROOF REQUIREMENTS: What specific evidence, stats, case studies, or social proof must appear. Name the types of proof (revenue impact, client logos, timelines, guarantees) and where they should show up. Vague proof like "trusted by many" is not proof.\n'
+    + '5. HARD RULES: Anything the copy must never do — banned phrases, tone boundaries, compliance constraints, topics to avoid, and any formatting or structural mandates.\n\n'
+    + 'Be specific and direct. No generic marketing language. Use the client name throughout. Every sentence should be actionable — if a copywriter cannot act on it, cut it.';
+
+  aiBarStart('Synthesising website strategy brief...');
+  try {
+    var result = await callClaude(sys, 'Strategy analysis and research:\n\n' + ctx.slice(0, 16000), null, 2500);
+    S.strategy.webStrategy = result;
+    scheduleSave();
+    renderStrategyScorecard();
+    aiBarNotify('Website strategy brief synthesised', { duration: 4000 });
+  } catch (e) {
+    aiBarNotify('Synthesis failed: ' + e.message, { isError: true, duration: 4000 });
+  }
+}
+
 function canProceedFromStrategy() {
   if (!S.strategy) return false;
   if (!S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) return false;
@@ -1286,6 +1354,20 @@ function renderStrategyScorecard() {
     var verdict = S.strategy.demand_validation.overall_verdict;
     var vc = verdict === 'viable' ? 'var(--green)' : verdict === 'marginal' ? '#e6a23c' : '#f56c6c';
     html += '<div style="font-size:11px;color:' + vc + ';margin-top:6px">Demand: ' + verdict + '</div>';
+  }
+
+  // Website strategy brief status
+  if (meta.current_version > 0) {
+    var hasWs = S.strategy.webStrategy && S.strategy.webStrategy.trim();
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:11px">';
+    if (hasWs) {
+      html += '<span style="color:var(--green)"><i class="ti ti-check" style="font-size:11px"></i> Website strategy brief ready</span>';
+      html += '<button class="btn btn-ghost sm" style="font-size:10px" onclick="synthesiseWebStrategy()"><i class="ti ti-refresh"></i> Regenerate</button>';
+    } else {
+      html += '<span style="color:var(--n2)">Website strategy brief not yet generated</span>';
+      html += '<button class="btn btn-ghost sm" style="font-size:10px" onclick="synthesiseWebStrategy()"><i class="ti ti-sparkles"></i> Synthesise</button>';
+    }
+    html += '</div>';
   }
 
   // Proceed gate

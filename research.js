@@ -995,7 +995,6 @@ async function enrichRTab(tab, forceAll) {
       + 'Industry: ' + (S.research && S.research.industry ? S.research.industry : 'unknown') + '\n'
       + 'Services: ' + (S.research && S.research.primary_services && S.research.primary_services.length ? S.research.primary_services.join(', ') : 'see strategy doc') + '\n'
       + (S.setup && S.setup.competitors ? 'Competitors named by client: ' + S.setup.competitors + '\n' : '')
-      + '\nStrategy doc excerpt:\n' + ((S.setup && S.setup.strategy) ? S.setup.strategy.slice(0, 2000) : '') + '\n'
       + '\n\nIdentify 5-8 REAL, verifiable competitors for this business. Sources in priority order:\n'
       + '1. Any competitors named by the client above.\n'
       + '2. Real domains from DataForSEO data (if any was prepended to this prompt).\n'
