@@ -2551,27 +2551,45 @@ function _buildGanttItems(st) {
   var gp = st.growth_plan || {};
   var overrides = gp.timeline_overrides || {};
   var deleted = gp.deleted_items || [];
-  var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
+  var items;
 
-  // Base items: tracking + website build
-  var items = [
-    { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' },
-    { id: '_website',  phase: 1, label: 'Website Build', depends: [], duration: '4-8 weeks', startWeek: 0, notes: 'Can start in parallel with tracking.' }
-  ];
-
-  levers.forEach(function(lev) {
-    var id = (lev.lever || '').replace(/\s+/g, '_').toLowerCase();
-    items.push({
-      id: id,
-      phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
-      label: (lev.lever || '').replace(/_/g, ' '),
-      depends: lev.dependencies || [],
-      duration: lev.timeline_to_results || 'ongoing',
-      startWeek: 0,
-      notes: lev.recommendation ? lev.recommendation.slice(0, 100) : '',
-      budgetPct: lev.budget_allocation_pct || 0
+  // If an accepted timeline exists, use it as the base
+  if (gp.accepted_timeline && gp.accepted_timeline.length) {
+    items = gp.accepted_timeline.map(function(at) {
+      return {
+        id: at.id,
+        phase: at.phase,
+        label: at.label,
+        startWeek: at.startWeek || 0,
+        duration: at.duration,
+        notes: at.notes || '',
+        depends: at.depends || [],
+        budgetPct: at.budgetPct || 0
+      };
     });
-  });
+  } else {
+    // Build from AI data
+    var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
+
+    items = [
+      { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' },
+      { id: '_website',  phase: 1, label: 'Website Build', depends: [], duration: '4-8 weeks', startWeek: 0, notes: 'Can start in parallel with tracking.' }
+    ];
+
+    levers.forEach(function(lev) {
+      var id = (lev.lever || '').replace(/\s+/g, '_').toLowerCase();
+      items.push({
+        id: id,
+        phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
+        label: (lev.lever || '').replace(/_/g, ' '),
+        depends: lev.dependencies || [],
+        duration: lev.timeline_to_results || 'ongoing',
+        startWeek: 0,
+        notes: lev.recommendation ? lev.recommendation.slice(0, 100) : '',
+        budgetPct: lev.budget_allocation_pct || 0
+      });
+    });
+  }
 
   // Add custom (user-added) items
   if (gp.custom_items && gp.custom_items.length) {
@@ -2671,6 +2689,8 @@ function _ganttResetOverrides() {
   S.strategy.growth_plan.timeline_overrides = {};
   S.strategy.growth_plan.deleted_items = [];
   S.strategy.growth_plan.custom_items = [];
+  S.strategy.growth_plan.accepted_timeline = null;
+  S.strategy.growth_plan.accepted_at = null;
   scheduleSave();
   renderStrategyTabContent();
   aiBarNotify('Timeline reset to AI-generated defaults', { type: 'info', duration: 2000 });
@@ -2692,7 +2712,8 @@ function _ganttAcceptOverrides() {
       startWeek: item.startWeek,
       duration: item.duration,
       notes: item.notes,
-      depends: item.depends
+      depends: item.depends,
+      budgetPct: item.budgetPct || 0
     };
   });
   gp.accepted_at = new Date().toISOString();
