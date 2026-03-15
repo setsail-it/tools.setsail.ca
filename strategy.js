@@ -1138,6 +1138,17 @@ function buildDiagnosticPrompt(num) {
         + '\nYour positioning angle, value proposition, messaging hierarchy, brand voice direction, and proof strategy MUST all align with and serve this direction. Do not contradict it or propose an alternative.\n\n';
     }
 
+    // Include positioning to avoid as hard constraint
+    var posAvoid = st.positioning && st.positioning.positioning_to_avoid;
+    if (posAvoid && posAvoid.length) {
+      var _avoidFiltered = posAvoid.filter(function(a) { return a && a.trim(); });
+      if (_avoidFiltered.length) {
+        directionConstraint += 'POSITIONING TO AVOID (founder explicitly rejects — do NOT position the client this way):\n'
+          + _avoidFiltered.map(function(a) { return '- ' + a; }).join('\n') + '\n'
+          + 'Ensure the value proposition, messaging, and brand voice do not overlap with or imply any of the avoided positions.\n\n';
+      }
+    }
+
     // Include hypothesis evaluations context if available
     var hypCtx = '';
     var posHyps = st.positioning && st.positioning.hypothesis_evaluations;
@@ -1508,6 +1519,7 @@ async function runDiagnostic(num) {
       if (_prevPos.selected_direction) S.strategy.positioning.selected_direction = _prevPos.selected_direction;
       if (_prevPos.system_recommendation) S.strategy.positioning.system_recommendation = _prevPos.system_recommendation;
       if (_prevPos.founder_decision_prompt) S.strategy.positioning.founder_decision_prompt = _prevPos.founder_decision_prompt;
+      if (_prevPos.positioning_to_avoid) S.strategy.positioning.positioning_to_avoid = _prevPos.positioning_to_avoid;
       S.strategy.positioning._direction_stale = false; // D2 ran with direction constraint
       // Also set brand voice direction
       if (parsed.brand_voice_direction) {
@@ -2617,6 +2629,7 @@ async function evaluateHypotheses() {
   var sys = 'You are a senior brand strategist stress-testing positioning hypotheses against market reality.\n\n'
     + 'You receive the founder hypotheses alongside competitor data, validated/rejected differentiators, and demand signals.\n\n'
     + 'For EACH hypothesis, evaluate rigorously — do not be polite. If a hypothesis is contested by competitors, say so. If it is unproven, say so.\n\n'
+    + 'The founder may also specify positioning they want to AVOID. If provided, no recommended direction should overlap with, imply, or resemble the avoided positioning. Flag any hypothesis that risks being perceived as the avoided positioning.\n\n'
     + 'Then recommend 2-3 DIRECTIONS that represent the strongest positioning options available — these can combine, reframe, or improve upon the founder hypotheses, or propose something entirely new if the data warrants it.\n\n'
     + 'Respond with ONLY valid JSON matching this schema:\n'
     + '{\n'
@@ -2649,8 +2662,12 @@ async function evaluateHypotheses() {
     + '}\n\n'
     + 'All scores 1-10. Risk is inverted (lower = better = less risky).';
 
+  // Positioning to avoid
+  var avoidList = (p.positioning_to_avoid || []).filter(function(a) { return a && a.trim(); });
+
   var user = 'FOUNDER POSITIONING HYPOTHESES:\n'
     + hypotheses.map(function(h, i) { return (i + 1) + '. ' + h; }).join('\n')
+    + (avoidList.length ? '\n\nPOSITIONING TO AVOID (founder explicitly rejects these directions — no recommended direction should overlap with these):\n' + avoidList.map(function(a) { return '- ' + a; }).join('\n') : '')
     + '\n\nCLIENT SERVICES: ' + JSON.stringify((r.services_detail || []).map(function(s) { return s.name; }))
     + '\nCLIENT PROOF: ' + JSON.stringify(r.existing_proof || [])
     + '\nCASE STUDIES: ' + JSON.stringify((r.case_studies || []).map(function(cs) { return (cs.client||'') + ': ' + (cs.result||''); }))
@@ -2769,6 +2786,31 @@ function updatePositioningHypothesis(idx, value) {
   scheduleSave();
 }
 
+function addPositioningAvoid() {
+  S.strategy.positioning = S.strategy.positioning || {};
+  if (!S.strategy.positioning.positioning_to_avoid) S.strategy.positioning.positioning_to_avoid = [];
+  if (S.strategy.positioning.positioning_to_avoid.length >= 4) {
+    aiBarNotify('Maximum 4 items', { duration: 2000 });
+    return;
+  }
+  S.strategy.positioning.positioning_to_avoid.push('');
+  renderStrategyTabContent();
+}
+
+function removePositioningAvoid(idx) {
+  if (!S.strategy || !S.strategy.positioning || !S.strategy.positioning.positioning_to_avoid) return;
+  S.strategy.positioning.positioning_to_avoid.splice(idx, 1);
+  scheduleSave();
+  renderStrategyTabContent();
+}
+
+function updatePositioningAvoid(idx, value) {
+  if (!S.strategy || !S.strategy.positioning) return;
+  if (!S.strategy.positioning.positioning_to_avoid) S.strategy.positioning.positioning_to_avoid = [];
+  S.strategy.positioning.positioning_to_avoid[idx] = value;
+  scheduleSave();
+}
+
 async function scanStrategyDocForHypotheses() {
   var docText = (S.setup && S.setup.strategy) || '';
   if (!docText || docText.trim().length < 50) {
@@ -2837,6 +2879,26 @@ function _renderPositioning(st) {
     }
     html += '</div>';
   });
+
+  // Positioning to avoid
+  html += '<div style="margin-top:12px;margin-bottom:8px">';
+  html += '<div style="font-size:11px;color:var(--error);margin-bottom:6px;font-weight:500"><i class="ti ti-ban" style="font-size:11px;margin-right:2px"></i> Positioning to Avoid</div>';
+  html += '<div style="font-size:10px;color:var(--n2);margin-bottom:6px">What the founder explicitly does NOT want to be associated with or perceived as.</div>';
+  var avoidItems = p.positioning_to_avoid || [];
+  if (!avoidItems.length) avoidItems = [''];
+  avoidItems.forEach(function(a, i) {
+    html += '<div style="display:flex;gap:6px;align-items:start;margin-bottom:4px">';
+    html += '<span style="font-size:11px;color:var(--error);padding-top:6px;min-width:14px">✕</span>';
+    html += '<input id="pos-avoid-' + i + '" value="' + esc(a) + '" onblur="updatePositioningAvoid(' + i + ',this.value)" style="flex:1;font-size:12px;color:var(--dark);background:rgba(220,50,47,0.03);border:1px solid rgba(220,50,47,0.15);border-radius:6px;padding:5px 10px;font-family:var(--font);outline:none" placeholder="e.g. Do not position us as a cheap option..."/>';
+    if (avoidItems.length > 1) {
+      html += '<button onclick="removePositioningAvoid(' + i + ')" style="background:transparent;border:1px solid rgba(220,50,47,0.2);border-radius:4px;padding:3px 6px;cursor:pointer;color:var(--error);font-size:10px;opacity:0.4" onmouseover="this.style.opacity=\'1\'" onmouseout="this.style.opacity=\'0.4\'">✕</button>';
+    }
+    html += '</div>';
+  });
+  if (avoidItems.length < 4) {
+    html += '<button onclick="addPositioningAvoid()" style="background:transparent;border:none;cursor:pointer;font-size:10px;color:var(--n2);padding:2px 0;font-family:var(--font)">+ Add another</button>';
+  }
+  html += '</div>';
 
   html += '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">';
   if (hypotheses.length < 4) {
@@ -4550,6 +4612,12 @@ async function compileStrategyOutput() {
     if (_sd.provability_score) ctx += '- Provability: ' + _sd.provability_score + '/10 | Distinctiveness: ' + (_sd.distinctiveness_score || '?') + '/10\n';
     if (_sd.risk) ctx += '- Risk: ' + _sd.risk + '\n';
     if (_sd.what_changes_if_chosen) ctx += '- Impact: ' + _sd.what_changes_if_chosen + '\n';
+  }
+  if (st.positioning && st.positioning.positioning_to_avoid && st.positioning.positioning_to_avoid.length) {
+    var _avoidCompile = st.positioning.positioning_to_avoid.filter(function(a) { return a && a.trim(); });
+    if (_avoidCompile.length) {
+      ctx += '\nPOSITIONING TO AVOID:\n' + _avoidCompile.map(function(a) { return '- ' + a; }).join('\n') + '\n';
+    }
   }
   if (st.positioning && st.positioning.hypothesis_evaluations && st.positioning.hypothesis_evaluations.length) {
     ctx += '\nHYPOTHESIS EVALUATIONS:\n';
