@@ -1234,8 +1234,9 @@ function renderStrategyScorecard() {
   html += '<div>';
   html += '<div style="font-size:12px;color:var(--n2)">Strategy Score</div>';
   if (meta.current_version > 0) {
-    html += '<div style="font-size:10px;color:var(--n2)">v' + meta.current_version;
+    html += '<div style="font-size:10px;color:var(--n2);display:flex;align-items:center;gap:6px">v' + meta.current_version;
     if (meta.approved) html += ' <span style="color:var(--green)">Approved</span>';
+    if (meta.versions && meta.versions.length > 1) html += ' <a href="#" onclick="event.preventDefault();showStrategyHistory()" style="color:var(--blue);font-size:10px">History</a>';
     html += '</div>';
   }
   html += '</div></div>';
@@ -1823,6 +1824,194 @@ function _renderRisks(st) {
 // The Keywords tab in strategy mounts the existing keywords.js functionality.
 // D8 demand validation data is also accessible from the scorecard.
 // When keywords stage completes, demand_validation is populated from the keyword data.
+
+// ── Version History Viewer ─────────────────────────────────────────────
+
+function showStrategyHistory() {
+  var meta = (S.strategy || {})._meta;
+  if (!meta || !meta.versions || meta.versions.length === 0) return;
+
+  var versions = meta.versions.slice().reverse(); // newest first
+  var sections = Object.keys(STRATEGY_SECTION_WEIGHTS);
+
+  var html = '<div style="max-height:70vh;overflow-y:auto;padding:4px">';
+
+  // ── Score trend chart (simple sparkline table) ──
+  html += '<div style="margin-bottom:18px">';
+  html += '<div style="font-size:12px;font-weight:600;margin-bottom:8px">Score Trend</div>';
+  html += '<div style="display:flex;align-items:flex-end;gap:6px;height:80px">';
+  meta.versions.forEach(function(v) {
+    var h = Math.round((v.overall_score / 10) * 72);
+    var c = v.overall_score >= 7 ? 'var(--green)' : v.overall_score >= 4 ? '#e6a23c' : '#f56c6c';
+    html += '<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:28px">';
+    html += '<span style="font-size:9px;font-weight:600;color:' + c + ';margin-bottom:2px">' + v.overall_score + '</span>';
+    html += '<div style="width:100%;max-width:32px;height:' + Math.max(h, 4) + 'px;background:' + c + ';border-radius:3px 3px 0 0;transition:height .3s"></div>';
+    html += '<span style="font-size:8px;color:var(--n2);margin-top:3px">v' + v.version + '</span>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // ── Per-version cards ──
+  versions.forEach(function(v, idx) {
+    var isCurrent = v.version === meta.current_version;
+    var border = isCurrent ? 'border:1px solid var(--blue)' : 'border:1px solid var(--border)';
+    var c = v.overall_score >= 7 ? 'var(--green)' : v.overall_score >= 4 ? '#e6a23c' : '#f56c6c';
+
+    html += '<div style="' + border + ';border-radius:8px;padding:14px;margin-bottom:10px">';
+
+    // Header row
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<span style="font-size:16px;font-weight:600;color:' + c + '">' + v.overall_score + '</span>';
+    html += '<div>';
+    html += '<span style="font-size:13px;font-weight:500">Version ' + v.version + '</span>';
+    if (isCurrent) html += ' <span style="font-size:9px;color:var(--blue);border:1px solid var(--blue);padding:1px 5px;border-radius:3px">Current</span>';
+    if (v.approved) html += ' <span style="font-size:9px;color:var(--green);border:1px solid var(--green);padding:1px 5px;border-radius:3px">Approved</span>';
+    html += '<div style="font-size:10px;color:var(--n2)">' + _fmtVersionDate(v.created) + ' \u2014 ' + _fmtTrigger(v.trigger) + '</div>';
+    html += '</div></div>';
+
+    // Revert button (only for non-current, non-first versions)
+    if (!isCurrent && meta.versions.length > 1) {
+      html += '<div id="strat-revert-wrap-' + v.version + '"></div>';
+    }
+    html += '</div>';
+
+    // Section score comparison
+    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+    sections.forEach(function(sec) {
+      var ss = (v.section_scores && v.section_scores[sec]) || 0;
+      var prevV = _getPrevVersion(meta.versions, v.version);
+      var prevSs = prevV && prevV.section_scores ? (prevV.section_scores[sec] || 0) : null;
+      var sc = ss >= 7 ? 'var(--green)' : ss >= 4 ? '#e6a23c' : '#f56c6c';
+      var delta = '';
+      if (prevSs !== null) {
+        var diff = +(ss - prevSs).toFixed(1);
+        if (diff > 0) delta = ' <span style="color:var(--green);font-size:8px">+' + diff + '</span>';
+        else if (diff < 0) delta = ' <span style="color:#f56c6c;font-size:8px">' + diff + '</span>';
+      }
+      html += '<div style="flex:1;min-width:80px;padding:4px 6px;border-radius:4px;background:var(--bg2)">';
+      html += '<div style="font-size:9px;color:var(--n2)">' + (STRATEGY_SECTION_LABELS[sec] || sec) + '</div>';
+      html += '<div style="font-size:12px;font-weight:600;color:' + sc + '">' + ss + delta + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+
+    // Gaps at time of version
+    if (v.gaps_identified && v.gaps_identified.length > 0) {
+      html += '<div style="font-size:10px;color:var(--n2);margin-top:4px">';
+      html += '<span style="font-weight:500">Gaps:</span> ' + v.gaps_identified.slice(0, 4).map(function(g) { return esc(g); }).join(', ');
+      if (v.gaps_identified.length > 4) html += ' +' + (v.gaps_identified.length - 4) + ' more';
+      html += '</div>';
+    }
+
+    // Known limitations
+    if (v.known_limitations && v.known_limitations.length > 0) {
+      html += '<div style="font-size:10px;color:#e6a23c;margin-top:3px">';
+      html += v.known_limitations.map(function(l) { return '<i class="ti ti-alert-triangle" style="font-size:10px"></i> ' + esc(l); }).join(' \u00b7 ');
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+
+  html += '</div>';
+
+  // Use the existing modal system
+  var overlay = document.createElement('div');
+  overlay.id = 'strategy-history-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:550;display:flex;align-items:center;justify-content:center';
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg);border-radius:12px;padding:20px;width:640px;max-width:92vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,0.15)';
+
+  // Modal header
+  var header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-shrink:0';
+  header.innerHTML = '<div style="font-size:15px;font-weight:600"><i class="ti ti-history" style="margin-right:6px"></i>Strategy Version History</div>';
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn btn-ghost sm';
+  closeBtn.innerHTML = '<i class="ti ti-x"></i>';
+  closeBtn.onclick = function() { overlay.remove(); };
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  var body = document.createElement('div');
+  body.style.cssText = 'overflow-y:auto;flex:1';
+  body.innerHTML = html;
+  modal.appendChild(body);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Wire revert buttons via createElement (no inline onclick concat)
+  versions.forEach(function(v) {
+    if (v.version === meta.current_version) return;
+    var wrap = document.getElementById('strat-revert-wrap-' + v.version);
+    if (!wrap) return;
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-ghost sm';
+    btn.style.fontSize = '10px';
+    btn.innerHTML = '<i class="ti ti-arrow-back-up"></i> Revert';
+    btn.onclick = function() { _revertToVersion(v.version); overlay.remove(); };
+    wrap.appendChild(btn);
+  });
+}
+
+function _fmtVersionDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function _fmtTrigger(trigger) {
+  var map = { auto_draft: 'Initial generation', auto_improve: 'AI improvement', manual: 'Manual edit', revert: 'Reverted' };
+  return map[trigger] || trigger || 'Unknown';
+}
+
+function _getPrevVersion(versions, ver) {
+  for (var i = 0; i < versions.length; i++) {
+    if (versions[i].version === ver && i > 0) return versions[i - 1];
+  }
+  return null;
+}
+
+function _revertToVersion(targetVer) {
+  var meta = (S.strategy || {})._meta;
+  if (!meta || !meta.versions) return;
+
+  // Find the target version snapshot
+  var target = null;
+  for (var i = 0; i < meta.versions.length; i++) {
+    if (meta.versions[i].version === targetVer) { target = meta.versions[i]; break; }
+  }
+  if (!target) return;
+
+  // Create a revert version entry (we do not delete history)
+  var revertVersion = {
+    version: meta.current_version + 1,
+    created: new Date().toISOString(),
+    trigger: 'revert',
+    overall_score: target.overall_score,
+    section_scores: Object.assign({}, target.section_scores),
+    gaps_identified: (target.gaps_identified || []).slice(),
+    changes_from_previous: 'Reverted to v' + targetVer,
+    strategist_overrides: [],
+    approved: false,
+    known_limitations: (target.known_limitations || []).slice()
+  };
+
+  meta.current_version = revertVersion.version;
+  meta.overall_score = revertVersion.overall_score;
+  meta.approved = false;
+  meta.versions.push(revertVersion);
+
+  scheduleSave();
+  renderStrategyScorecard();
+  renderStrategyTabContent();
+  aiBarNotify('Reverted to version ' + targetVer + ' (now v' + revertVersion.version + ')');
+}
 
 // ── Strategy helpers for downstream consumers ─────────────────────────
 
