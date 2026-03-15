@@ -2885,8 +2885,11 @@ async function _pipelineFetchVolumes() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ seeds: seeds, country: country })
   });
+  if (!res.ok) throw new Error('Volume API returned ' + res.status + ': ' + (await res.text()).slice(0, 200));
   var data = await res.json();
+  console.log('[kwPipeline] Volume response:', { keywordCount: (data.keywords || []).length, error: data.error, debug: data.debug });
   if (!data.keywords || data.error) throw new Error(data.error || 'No keyword data returned');
+  if (!data.keywords.length) throw new Error('API returned 0 keywords for ' + seeds.length + ' seeds (debug: ' + JSON.stringify(data.debug || {}) + ')');
 
   var scored = data.keywords.map(function(k) {
     var kd = k.difficulty > 0 ? k.difficulty : 30;
