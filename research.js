@@ -88,6 +88,113 @@ var RESEARCH_FIELD_META = {
   competitors:               { tab:'competitors', label:'Competitors',              importance:'critical', source:'ai' },
 };
 
+// ── Economics Field Validation ────────────────────────────────────
+// Validates and normalises manual economics inputs that feed D1 Unit Economics.
+
+var ECON_FIELD_VALIDATORS = {
+  monthly_marketing_budget: {
+    type: 'currency',
+    min: 100, max: 500000,
+    hint: 'Enter as a number or with $ (e.g. $5,000)',
+    warnLow: 'Budget under $500/mo limits paid media viability',
+    warnHigh: 'Very high budget — double-check this is monthly, not annual'
+  },
+  average_deal_size: {
+    type: 'currency',
+    min: 10, max: 1000000,
+    hint: 'Average revenue per deal (e.g. $3,500)',
+    warnLow: 'Very low deal size — consider if this is per transaction or per contract',
+    warnHigh: 'Very high deal size — confirm this is per deal, not annual contract value'
+  },
+  customer_lifetime_value: {
+    type: 'currency',
+    min: 50, max: 10000000,
+    hint: 'Total revenue from one customer over their lifetime (e.g. $12,000)',
+    warnLow: 'LTV below deal size — customer only buys once?',
+    warnHigh: null
+  },
+  lead_quality_percentage: {
+    type: 'percentage',
+    min: 1, max: 100,
+    hint: 'What percent of leads become sales-qualified (e.g. 40%)',
+    warnLow: 'Under 10% suggests a lead quality problem upstream',
+    warnHigh: 'Over 80% is unusual — only count leads that go through full qualification'
+  },
+  current_lead_volume: {
+    type: 'number',
+    min: 0, max: 50000,
+    hint: 'Leads received per month (e.g. 25)',
+    warnLow: null,
+    warnHigh: 'Over 1,000 leads/mo is unusual for SMB — confirm this is monthly'
+  },
+  close_rate_estimate: {
+    type: 'percentage',
+    min: 1, max: 100,
+    hint: 'What percent of qualified leads become customers (e.g. 30%)',
+    warnLow: 'Under 5% is very low — may indicate lead quality or sales issues',
+    warnHigh: 'Over 70% close rate is rare — confirm this is from qualified leads only'
+  }
+};
+
+function validateEconField(key, rawValue) {
+  var validator = ECON_FIELD_VALIDATORS[key];
+  if (!validator) return { valid: true, normalised: rawValue, hint: '', warning: '' };
+
+  var str = String(rawValue || '').trim();
+  if (!str) return { valid: true, normalised: '', hint: validator.hint, warning: '' };
+
+  // Parse numeric value from the string
+  var numStr = str.replace(/[$,\s%]/g, '');
+  // Handle K/k suffix (e.g. "5k" = 5000)
+  if (/\d[kK]$/.test(numStr)) {
+    numStr = String(parseFloat(numStr) * 1000);
+  }
+  var num = parseFloat(numStr);
+
+  if (isNaN(num)) {
+    return { valid: false, normalised: str, hint: validator.hint, warning: 'Could not parse a number from "' + str + '"' };
+  }
+
+  // Normalise to clean string format
+  var normalised = '';
+  if (validator.type === 'currency') {
+    normalised = '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  } else if (validator.type === 'percentage') {
+    normalised = num + '%';
+  } else {
+    normalised = String(Math.round(num));
+  }
+
+  // Range warnings
+  var warning = '';
+  if (num < validator.min) {
+    warning = validator.warnLow || 'Value seems unusually low';
+  } else if (validator.type === 'currency' && num > validator.max) {
+    warning = validator.warnHigh || 'Value seems unusually high';
+  } else if (validator.type === 'percentage' && num > validator.max) {
+    warning = 'Percentage cannot exceed 100%';
+  } else if (validator.type === 'number' && num > validator.max) {
+    warning = validator.warnHigh || 'Value seems unusually high';
+  }
+  // Cross-field warnings
+  if (key === 'customer_lifetime_value' && S.research) {
+    var dealSize = parseEconNum(S.research.average_deal_size);
+    if (dealSize > 0 && num < dealSize) {
+      warning = 'LTV ($' + num.toLocaleString() + ') is less than deal size ($' + dealSize.toLocaleString() + ') — customer only buys once?';
+    }
+  }
+
+  return { valid: true, normalised: normalised, hint: validator.hint, warning: warning };
+}
+
+function parseEconNum(val) {
+  if (!val) return 0;
+  var s = String(val).replace(/[$,\s%]/g, '');
+  if (/\d[kK]$/.test(s)) s = String(parseFloat(s) * 1000);
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 // ── Completeness Calculation ──────────────────────────────────────
 
 function calcResearchCompleteness() {
@@ -376,7 +483,17 @@ function rField(key, label, value, type, opts) {
   } else {
     input = `<input id="${id}" type="text" value="${esc(value||'')}" style="${base}" onchange="setRF('${key}',this.value)">`;
   }
-  return `<div style="${span}">${lHtml}${input}</div>`;
+  // Add validation hint and warning for economics fields
+  var econExtra = '';
+  if (ECON_FIELD_VALIDATORS[key]) {
+    var vr = validateEconField(key, value);
+    var hintText = vr.hint || '';
+    econExtra = `<div style="font-size:10px;color:var(--n2);margin-top:2px">${esc(hintText)}</div>`;
+    var warnDisplay = vr.warning ? 'block' : 'none';
+    var warnText = vr.warning || '';
+    econExtra += `<div id="rf-warn-${key}" style="display:${warnDisplay};font-size:10px;color:#e6a23c;margin-top:2px;padding:3px 6px;background:#e6a23c10;border-radius:4px">${esc(warnText)}</div>`;
+  }
+  return `<div style="${span}">${lHtml}${input}${econExtra}</div>`;
 }
 
 function rSec(title, fieldsHtml) {
@@ -384,6 +501,70 @@ function rSec(title, fieldsHtml) {
     <div class="eyebrow" style="margin-bottom:14px">${title}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${fieldsHtml}</div>
   </div>`;
+}
+
+function renderEconReadiness(r) {
+  var fields = [
+    { key: 'monthly_marketing_budget', label: 'Budget', impact: 'Controls D1 lead volume estimates, D4 budget allocation, D3 cost analysis' },
+    { key: 'average_deal_size', label: 'Deal Size', impact: 'Drives CPL thresholds, LTV calculation, paid viability' },
+    { key: 'customer_lifetime_value', label: 'LTV', impact: 'Determines LTV:CAC ratio health, investment ceiling' },
+    { key: 'close_rate_estimate', label: 'Close Rate', impact: 'Converts leads to deals — AI estimates if missing (lower confidence)' },
+    { key: 'lead_quality_percentage', label: 'Lead Quality %', impact: 'Adjusts CPL to CPQL — AI assumes 30% if missing' },
+    { key: 'current_lead_volume', label: 'Lead Volume', impact: 'Gap analysis between current and target lead volume' }
+  ];
+  var filled = 0;
+  var missing = [];
+  var warnings = [];
+  for (var i = 0; i < fields.length; i++) {
+    var val = r[fields[i].key];
+    if (val && String(val).trim()) {
+      filled++;
+      var vr = validateEconField(fields[i].key, val);
+      if (vr.warning) warnings.push({ label: fields[i].label, warning: vr.warning });
+    } else {
+      missing.push(fields[i]);
+    }
+  }
+  var pct = Math.round((filled / fields.length) * 100);
+  var colour = pct >= 80 ? 'var(--green)' : pct >= 50 ? '#e6a23c' : '#f56c6c';
+  var confidenceLabel = filled >= 5 ? 'High' : filled >= 3 ? 'Medium' : 'Low';
+  var confidenceColour = filled >= 5 ? 'var(--green)' : filled >= 3 ? '#e6a23c' : '#f56c6c';
+
+  var html = '<div class="card" style="margin-bottom:10px;border-left:3px solid ' + colour + '">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<div class="eyebrow" style="margin:0">Strategy Economics Readiness</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  html += '<span style="font-size:10px;color:var(--n2)">D1 Confidence:</span>';
+  html += '<span style="font-size:11px;font-weight:600;color:' + confidenceColour + '">' + confidenceLabel + '</span>';
+  html += '<span style="font-size:18px;font-weight:700;color:' + colour + '">' + filled + '/' + fields.length + '</span>';
+  html += '</div></div>';
+
+  // Progress bar
+  html += '<div style="height:4px;background:var(--panel);border-radius:2px;overflow:hidden;margin-bottom:10px">';
+  html += '<div style="height:100%;width:' + pct + '%;background:' + colour + ';border-radius:2px;transition:width .3s"></div></div>';
+
+  if (missing.length) {
+    html += '<div style="font-size:11px;color:var(--n3);margin-bottom:6px">Missing inputs (AI will estimate with lower confidence):</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">';
+    missing.forEach(function(m) {
+      html += '<div style="font-size:10px;padding:3px 8px;background:#f56c6c10;color:#f56c6c;border-radius:4px;cursor:pointer" '
+        + 'onclick="document.getElementById(\'rf-' + m.key + '\').focus()" title="' + esc(m.impact) + '">'
+        + esc(m.label) + ' <i class="ti ti-arrow-right" style="font-size:9px"></i></div>';
+    });
+    html += '</div>';
+  }
+  if (warnings.length) {
+    html += '<div style="font-size:11px;color:#e6a23c;margin-top:4px">';
+    warnings.forEach(function(w) {
+      html += '<div style="margin-bottom:2px"><strong>' + esc(w.label) + ':</strong> ' + esc(w.warning) + '</div>';
+    });
+    html += '</div>';
+  }
+  if (filled === fields.length && !warnings.length) {
+    html += '<div style="font-size:11px;color:var(--green)"><i class="ti ti-circle-check" style="margin-right:4px"></i>All economics inputs provided — D1 will run at full confidence.</div>';
+  }
+  html += '</div>';
+  return html;
 }
 
 function rRepGroup(key, label, columns, addLabel) {
@@ -416,6 +597,26 @@ function rRepGroup(key, label, columns, addLabel) {
 
 function setRF(key, value) {
   if (!S.research) S.research = researchDefaults();
+  // Validate and normalise economics fields
+  if (ECON_FIELD_VALIDATORS[key] && typeof value === 'string' && value.trim()) {
+    var vResult = validateEconField(key, value);
+    if (vResult.normalised) value = vResult.normalised;
+    // Update inline warning if visible
+    var warnEl = document.getElementById('rf-warn-' + key);
+    if (warnEl) {
+      if (vResult.warning) {
+        warnEl.textContent = vResult.warning;
+        warnEl.style.display = 'block';
+      } else {
+        warnEl.style.display = 'none';
+      }
+    }
+    // Update the input value to show normalised format
+    var inputEl = document.getElementById('rf-' + key);
+    if (inputEl && vResult.normalised && inputEl.value !== vResult.normalised) {
+      inputEl.value = vResult.normalised;
+    }
+  }
   const parts = key.split('.');
   let obj = S.research;
   for (let i = 0; i < parts.length - 1; i++) { obj[parts[i]] = obj[parts[i]] || {}; obj = obj[parts[i]]; }
@@ -516,6 +717,8 @@ function renderRAudience(r) {
     rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
     rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
   );
+  // Economics readiness panel
+  html += renderEconReadiness(r);
   html += rSec('Unit Economics',
     rField('monthly_marketing_budget','Monthly Marketing Budget (e.g. $5,000)', r.monthly_marketing_budget) +
     rField('average_deal_size','Average Deal Size (e.g. $3,500)', r.average_deal_size) +
