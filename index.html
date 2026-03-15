@@ -91,6 +91,8 @@ textarea.inp{resize:vertical}
 .btn-ghost{background:transparent;color:var(--dark);border:1px solid var(--border)}.btn-ghost:hover:not(:disabled){background:var(--n1);border-color:rgba(0,0,0,.18)}
 .btn-danger{background:transparent;color:var(--error);border:1px solid rgba(229,57,53,0.2)}.btn-danger:hover:not(:disabled){background:rgba(229,57,53,0.07)}
 .btn-dg{background:transparent;color:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.18)}.btn-dg:hover:not(:disabled){color:rgba(255,255,255,0.8);border-color:rgba(255,255,255,0.35)}
+#doc-drop-zone:hover,#doc-drop-zone.drag-over{border-color:var(--lime);background:rgba(205,232,0,.06)}
+#doc-drop-zone.drag-over i{color:var(--lime)}
 .btn.sm{font-size:12px;padding:5px 11px;min-height:28px}
 .btn.full{width:100%}
 
@@ -310,8 +312,8 @@ textarea.inp{resize:vertical}
   <div class="screen" id="screen-setup">
     <div style="max-width:680px">
       <div class="eyebrow stage-eyebrow" data-stage-num="1"></div>
-      <h2 class="ph">New project</h2>
-      <p class="psub">Fill in client details and paste the full strategy document.</p>
+      <h2 class="ph" id="setup-title">New project</h2>
+      <p class="psub" id="setup-subtitle">Fill in client details to get started.</p>
 
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client</span><div class="section-mark-line"></div></div>
@@ -324,16 +326,47 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Discovery Notes</span><div class="section-mark-line"></div></div>
-        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Upload call transcripts, discovery notes, questionnaire responses, or any docs. These feed Research enrichment and Strategy diagnostics. Use Reference Documents below, or paste directly here for quick projects.</p>
-      </div>
-      <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Reference Documents</span><div class="section-mark-line"></div></div>
-        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Upload brand guides, call transcripts, discovery notes, or any docs for AI to use during enrichment. Supports .txt, .md, .pdf or paste directly.</p>
+        <div class="section-mark"><span class="section-mark-label">Discovery &amp; Reference</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Call transcripts, Fathom recordings, discovery notes, brand guides — anything that feeds Research enrichment and Strategy diagnostics.</p>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Quick Notes</label>
+        <textarea class="inp" id="f-discovery-notes" rows="4" placeholder="Paste raw call notes, key takeaways, or anything the AI should know about this client..." style="margin-bottom:12px"></textarea>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Documents</label>
         <div id="docs-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label class="btn btn-ghost" style="cursor:pointer"><i class="ti ti-upload"></i> Upload File<input type="file" accept=".txt,.md,.pdf" multiple style="display:none" onchange="handleDocUpload(this)"></label>
-          <button class="btn btn-ghost" onclick="addDocPaste()"><i class="ti ti-clipboard-text"></i> Paste Text</button>
+        <div id="doc-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:10px">
+          <input type="file" id="doc-drop-input" accept=".txt,.md,.pdf,.csv,.doc,.docx" multiple style="display:none" onchange="handleDocUpload(this)">
+          <i class="ti ti-cloud-upload" style="font-size:24px;color:var(--n2);display:block;margin-bottom:6px"></i>
+          <span style="font-size:13px;color:var(--dark);font-weight:500">Drop files here or click to browse</span>
+          <span style="font-size:11px;color:var(--n2);display:block;margin-top:4px">.txt, .md, .pdf, .csv, .doc, .docx — auto-extracted by AI for large files</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-ghost" onclick="showDocPasteModal()"><i class="ti ti-clipboard-text"></i> Paste Text</button>
+        </div>
+        <details style="cursor:pointer">
+          <summary style="font-size:11px;color:var(--n2);list-style:none;display:flex;align-items:center;gap:4px;user-select:none"><i class="ti ti-info-circle" style="font-size:12px"></i> Best practices for uploads</summary>
+          <div style="font-size:11px;color:var(--n2);margin-top:8px;line-height:1.6;padding-left:16px">
+            <div style="display:flex;gap:6px;margin-bottom:4px"><span style="min-width:12px">·</span><span><strong>No size worries:</strong> Upload full transcripts, even 50+ pages. AI automatically extracts structured data (facts, quotes, goals, etc.) so every stage gets what it needs.</span></div>
+            <div style="display:flex;gap:6px;margin-bottom:4px"><span style="min-width:12px">·</span><span><strong>Auto-extraction:</strong> Documents over 5K characters are processed by AI into 9 categories (facts, decisions, requirements, quotes, objections, competitors, audience, services, goals). A green checkmark appears when done.</span></div>
+            <div style="display:flex;gap:6px;margin-bottom:4px"><span style="min-width:12px">·</span><span><strong>Nothing is lost:</strong> The original text is always preserved. Extraction compresses format, not content — every fact, number, and quote is kept.</span></div>
+            <div style="display:flex;gap:6px;margin-bottom:4px"><span style="min-width:12px">·</span><span><strong>Multiple files welcome:</strong> One per call or doc type is fine. Each gets extracted and tracked separately.</span></div>
+            <div style="display:flex;gap:6px"><span style="min-width:12px">·</span><span><strong>Quick Notes vs Documents:</strong> Use Quick Notes for short bullet points or gut-feel context. Use Documents for anything longer than a paragraph.</span></div>
+          </div>
+        </details>
+      </div>
+      <!-- DOC PASTE MODAL -->
+      <div id="doc-paste-modal" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center">
+        <div style="background:var(--white);border-radius:12px;padding:24px;width:90%;max-width:600px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <span style="font-size:15px;font-weight:600">Paste Document</span>
+            <button onclick="closeDocPasteModal()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--n2);line-height:1">×</button>
+          </div>
+          <label style="font-size:12px;display:block;margin-bottom:5px">Document Name *</label>
+          <input class="inp" id="doc-paste-name" placeholder='e.g. "Discovery Call — Mar 10" or "Brand Guide"' style="margin-bottom:10px">
+          <label style="font-size:12px;display:block;margin-bottom:5px">Content</label>
+          <textarea class="inp" id="doc-paste-content" rows="14" placeholder="Paste transcript, notes, or document text here..." style="flex:1;min-height:200px;resize:vertical;margin-bottom:14px;font-size:12px"></textarea>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-ghost" onclick="closeDocPasteModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitDocPaste()">Add Document</button>
+          </div>
         </div>
       </div>
       <details class="card" style="cursor:pointer">
@@ -445,6 +478,7 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
         <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
         <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
+          <button id="research-enrich-btn" class="btn btn-primary" onclick="enrichAll()" style="white-space:nowrap"><i class="ti ti-sparkles"></i> Enrich All</button>
           <button class="btn btn-ghost" onclick="goTo('strategy');strategyInit()" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Strategy</button>
         </div>
       </div>
@@ -1037,10 +1071,14 @@ async function resumeProject(id) {
     document.getElementById('client-name-nav').textContent = S.setup.client;
     document.getElementById('nav-meta-wrap').style.display = '';
     renderProjSwitcher();
+    // Update setup screen title for existing project
+    var _st = document.getElementById('setup-title'); if(_st) _st.textContent = S.setup.client;
+    var _ss = document.getElementById('setup-subtitle'); if(_ss) _ss.textContent = 'Edit client details and project settings.';
   }
 
   // Pre-fill setup form if returning there
   if (S.stage === 'setup' && S.setup) prefillSetup();
+  _initDocDropZone();
 
   goTo(S.stage);
 
@@ -1080,12 +1118,19 @@ function prefillSetup() {
   document.getElementById('f-client').value = s.client || '';
   document.getElementById('f-url').value = s.url || '';
   document.getElementById('f-geo').value = s.geo || '';
+  // Discovery notes
+  var fdn = document.getElementById('f-discovery-notes'); if(fdn) fdn.value = s.discoveryNotes || '';
   // Sales qualification
   var fdl = document.getElementById('f-deal-likelihood'); if(fdl) fdl.value = s.deal_likelihood || '';
   var fes = document.getElementById('f-engagement-size'); if(fes) fes.value = s.estimated_engagement_size || '';
   var fdm = document.getElementById('f-decision-maker'); if(fdm) fdm.value = s.decision_maker_on_call || '';
   var fdt = document.getElementById('f-decision-timeline'); if(fdt) fdt.value = s.decision_timeline || '';
   var fsn = document.getElementById('f-sales-notes'); if(fsn) fsn.value = s.sales_notes || '';
+  // Update title for existing projects
+  if (s.client) {
+    var _st = document.getElementById('setup-title'); if(_st) _st.textContent = s.client;
+    var _ss = document.getElementById('setup-subtitle'); if(_ss) _ss.textContent = 'Edit client details and project settings.';
+  }
   renderDocsList();
 }
 
@@ -1127,7 +1172,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup' && S.setup) prefillSetup();
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); }
   if (stage === 'briefs') initBriefs();
   if (stage === 'sitemap') {
     if (S.pages && S.pages.length) {
@@ -1361,13 +1406,12 @@ function renderSidebar(current) {
   STAGES.forEach((s, i) => {
     const done = i < idx;
     const active = i === idx;
-    const canClick = active || done || (i > idx && S.pages && S.pages.length > 0);
-    const cls = 'sb-item' + (active ? ' sb-active' : done ? ' sb-done' : !canClick ? ' sb-locked' : '');
+    const cls = 'sb-item' + (active ? ' sb-active' : done ? ' sb-done' : '');
     const iconHtml = done
       ? '<span class="sb-check"><i class="ti ti-check"></i></span>'
       : '<span class="sb-icon"><i class="ti ' + s.icon + '"></i></span>';
     const stepNum = '<span style="font-size:10px;opacity:' + (active ? '.5' : '0') + ';margin-left:auto">S' + (i+1) + '</span>';
-    html += '<button class="' + cls + '"' + (canClick && !active ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + '>'
+    html += '<button class="' + cls + '"' + (!active ? ' onclick="navToStage(\'' + s.id + '\')"' : '') + '>'
       + iconHtml + s.label + stepNum + '</button>';
   });
   el.innerHTML = html;
@@ -1708,18 +1752,57 @@ function renderMobileStageList() {
 // ── REFERENCE DOCUMENTS ───────────────────────────────────────────
 
 function renderDocsList() {
-  const el = document.getElementById('docs-list');
+  var el = document.getElementById('docs-list');
   if (!el) return;
-  const docs = (S.setup && S.setup.docs) ? S.setup.docs : [];
+  var docs = (S.setup && S.setup.docs) ? S.setup.docs : [];
   if (!docs.length) { el.innerHTML = ''; return; }
-  el.innerHTML = docs.map(function(d, i) {
-    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">'
-      +'<i class="ti ti-file-text" style="color:var(--n2);font-size:14px;flex-shrink:0"></i>'
-      +'<span style="font-size:12px;color:var(--dark);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span>'
-      +'<span style="font-size:11px;color:var(--n2)">'+Math.round(d.content.length/1000)+'k chars</span>'
-      +'<button onclick="removeDoc('+i+')" style="border:none;background:none;color:var(--n2);cursor:pointer;font-size:16px;padding:0 2px;line-height:1" title="Remove">×</button>'
-      +'</div>';
-  }).join('');
+  el.innerHTML = '';
+  docs.forEach(function(d, i) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px';
+    var icon = document.createElement('i');
+    icon.className = 'ti ti-file-text';
+    icon.style.cssText = 'color:var(--n2);font-size:14px;flex-shrink:0';
+    var nameSpan = document.createElement('span');
+    nameSpan.style.cssText = 'font-size:12px;color:var(--dark);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    nameSpan.textContent = d.name;
+    var sizeSpan = document.createElement('span');
+    sizeSpan.style.cssText = 'font-size:11px;color:var(--n2);white-space:nowrap';
+    sizeSpan.textContent = Math.round(d.content.length / 1000) + 'k chars';
+    // Extract status indicator
+    var statusSpan = document.createElement('span');
+    statusSpan.style.cssText = 'font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px';
+    if (d.extractStatus === 'processing') {
+      statusSpan.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span><span style="color:var(--n2)">Extracting</span>';
+    } else if (d.extractStatus === 'done') {
+      statusSpan.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green);font-size:13px"></i><span style="color:var(--green)">Extracted</span>';
+    } else if (d.extractStatus === 'error') {
+      statusSpan.innerHTML = '<i class="ti ti-alert-triangle" style="color:var(--error);font-size:13px"></i><span style="color:var(--error)">Failed</span>';
+    } else if (d.content.length >= 5000) {
+      statusSpan.innerHTML = '<span style="color:var(--n2)">Not extracted</span>';
+    }
+    // Re-extract button (for done, error, or unextracted long docs)
+    var reextBtn = null;
+    if (d.content.length >= 5000 && d.extractStatus !== 'processing') {
+      reextBtn = document.createElement('button');
+      reextBtn.style.cssText = 'border:none;background:none;color:var(--n2);cursor:pointer;font-size:13px;padding:0 2px;line-height:1';
+      reextBtn.title = d.extractStatus === 'done' ? 'Re-extract' : 'Extract';
+      reextBtn.innerHTML = '<i class="ti ti-refresh"></i>';
+      reextBtn.onclick = function() { _queueDocExtract(i); };
+    }
+    var removeBtn = document.createElement('button');
+    removeBtn.style.cssText = 'border:none;background:none;color:var(--n2);cursor:pointer;font-size:16px;padding:0 2px;line-height:1';
+    removeBtn.title = 'Remove';
+    removeBtn.textContent = '\u00d7';
+    removeBtn.onclick = function() { removeDoc(i); };
+    row.appendChild(icon);
+    row.appendChild(nameSpan);
+    row.appendChild(sizeSpan);
+    row.appendChild(statusSpan);
+    if (reextBtn) row.appendChild(reextBtn);
+    row.appendChild(removeBtn);
+    el.appendChild(row);
+  });
 }
 
 function removeDoc(idx) {
@@ -1729,6 +1812,97 @@ function removeDoc(idx) {
   renderDocsList();
 }
 
+// ── DOCUMENT EXTRACTION ─────────────────────────────────────────────
+var _docExtractQueue = [];
+var _docExtracting = false;
+var DOC_EXTRACT_THRESHOLD = 5000; // skip extraction for short docs
+
+function _queueDocExtract(docIdx) {
+  var d = (S.setup && S.setup.docs) ? S.setup.docs[docIdx] : null;
+  if (!d || d.content.length < DOC_EXTRACT_THRESHOLD) return;
+  d.extractStatus = 'processing';
+  renderDocsList();
+  _docExtractQueue.push(docIdx);
+  if (!_docExtracting) _processDocExtractQueue();
+}
+
+async function _processDocExtractQueue() {
+  if (_docExtracting || !_docExtractQueue.length) return;
+  _docExtracting = true;
+  while (_docExtractQueue.length) {
+    var idx = _docExtractQueue.shift();
+    var d = (S.setup && S.setup.docs) ? S.setup.docs[idx] : null;
+    if (!d) continue;
+    try {
+      d.extractStatus = 'processing';
+      renderDocsList();
+      var result = await _extractDocSync(d.content, d.name);
+      if (result) {
+        d.extract = result;
+        d.extractStatus = 'done';
+      } else {
+        d.extractStatus = 'error';
+      }
+    } catch(e) {
+      d.extractStatus = 'error';
+    }
+    renderDocsList();
+    scheduleSave();
+  }
+  _docExtracting = false;
+}
+
+async function _extractDocSync(content, docName) {
+  var systemPrompt = 'You are a document analyst for a marketing agency. Extract ALL factual information from the provided document into these categories. Each category is an array of concise strings. Preserve every fact, number, name, quote, and detail — compress format, not content. If a category has no relevant content, return an empty array.\n\nOutput ONLY valid JSON with these keys:\n- facts: business facts, history, metrics, pricing, team size, years in operation\n- decisions: decisions made, agreements, approvals, rejections\n- requirements: stated requirements, must-haves, constraints, dealbreakers\n- quotes: notable direct quotes preserving exact client language (attribute speaker if known)\n- objections: concerns, hesitations, pushback, red flags raised\n- competitors: competitor names, comparisons, market positioning\n- audience: target audience, demographics, customer types, pain points, personas\n- services: services, products, offerings, pricing, differentiators\n- goals: goals, objectives, desired outcomes, KPIs, timelines, success metrics';
+  var userPrompt = 'Document: "' + docName + '"\n\n' + content;
+  try {
+    var resp = await fetch('/api/claude-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      })
+    });
+    if (!resp.ok) return null;
+    var data = await resp.json();
+    var text = '';
+    if (data.content && data.content[0]) text = data.content[0].text || '';
+    // Parse JSON from response
+    var jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    var parsed = JSON.parse(jsonMatch[0]);
+    // Validate structure
+    var cats = ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals'];
+    var valid = {};
+    cats.forEach(function(c) { valid[c] = Array.isArray(parsed[c]) ? parsed[c] : []; });
+    return valid;
+  } catch(e) {
+    return null;
+  }
+}
+
+// Helper: build context from doc extracts for downstream stages
+function _docExtractCtx(docs, categories) {
+  if (!docs || !docs.length) return '';
+  var ctx = '';
+  docs.forEach(function(d) {
+    if (d.extract) {
+      ctx += '\n--- ' + d.name + ' (extracted) ---\n';
+      categories.forEach(function(cat) {
+        if (d.extract[cat] && d.extract[cat].length) {
+          ctx += cat.toUpperCase() + ':\n' + d.extract[cat].map(function(item) { return '- ' + item; }).join('\n') + '\n';
+        }
+      });
+    } else if (d.content) {
+      ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 10000);
+    }
+  });
+  return ctx;
+}
+
 async function handleDocUpload(input) {
   if (!S.setup) S.setup = {};
   if (!S.setup.docs) S.setup.docs = [];
@@ -1736,6 +1910,7 @@ async function handleDocUpload(input) {
   for (const file of files) {
     const text = await readFileAsText(file);
     S.setup.docs.push({ name: file.name, content: text });
+    _queueDocExtract(S.setup.docs.length - 1);
   }
   input.value = '';
   scheduleSave();
@@ -1746,23 +1921,76 @@ function readFileAsText(file) {
   return new Promise(function(resolve) {
     const reader = new FileReader();
     reader.onload = function(e) {
-      resolve(e.target.result.replace(/ /g, '').slice(0, 80000));
+      resolve(e.target.result.replace(/ /g, '').slice(0, 200000));
     };
     reader.onerror = function() { resolve('[Could not read: ' + file.name + ']'); };
     reader.readAsText(file);
   });
 }
 
-function addDocPaste() {
+function addDocPaste() { showDocPasteModal(); }
+
+function showDocPasteModal() {
+  var m = document.getElementById('doc-paste-modal');
+  if (m) { m.style.display = 'flex'; document.getElementById('doc-paste-name').value = ''; document.getElementById('doc-paste-content').value = ''; document.getElementById('doc-paste-name').focus(); }
+}
+function closeDocPasteModal() {
+  var m = document.getElementById('doc-paste-modal');
+  if (m) m.style.display = 'none';
+}
+function submitDocPaste() {
+  var name = (document.getElementById('doc-paste-name').value||'').trim();
+  var content = (document.getElementById('doc-paste-content').value||'').trim();
+  if (!name) { document.getElementById('doc-paste-name').style.borderColor = 'var(--error)'; return; }
+  if (!content) { document.getElementById('doc-paste-content').style.borderColor = 'var(--error)'; return; }
   if (!S.setup) S.setup = {};
   if (!S.setup.docs) S.setup.docs = [];
-  const name = prompt('Document name (e.g. "Brand Guide", "Call Transcript")');
-  if (!name) return;
-  const content = prompt('Paste the document text here:');
-  if (!content) return;
-  S.setup.docs.push({ name: name.trim(), content: content.trim() });
+  S.setup.docs.push({ name: name, content: content.slice(0, 200000) });
+  _queueDocExtract(S.setup.docs.length - 1);
   scheduleSave();
   renderDocsList();
+  closeDocPasteModal();
+  aiBarNotify('Added "' + name + '" (' + Math.round(content.length/1000) + 'k chars)', { duration: 3000 });
+}
+
+// Drag-and-drop zone
+function _initDocDropZone() {
+  var zone = document.getElementById('doc-drop-zone');
+  if (!zone || zone._wired) return;
+  zone._wired = true;
+  zone.addEventListener('click', function() { document.getElementById('doc-drop-input').click(); });
+  zone.addEventListener('dragenter', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', function(e) { e.preventDefault(); zone.classList.remove('drag-over'); });
+  zone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    var files = Array.from(e.dataTransfer.files);
+    if (!files.length) return;
+    _processDroppedFiles(files);
+  });
+}
+async function _processDroppedFiles(files) {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.docs) S.setup.docs = [];
+  var added = 0;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var ext = (f.name.split('.').pop()||'').toLowerCase();
+    if (!['txt','md','pdf','csv','doc','docx'].includes(ext)) {
+      aiBarNotify('Skipped "' + f.name + '" — unsupported file type', { isError: true, duration: 3000 });
+      continue;
+    }
+    var text = await readFileAsText(f);
+    S.setup.docs.push({ name: f.name, content: text });
+    _queueDocExtract(S.setup.docs.length - 1);
+    added++;
+  }
+  if (added) {
+    scheduleSave();
+    renderDocsList();
+    aiBarNotify('Added ' + added + ' document' + (added > 1 ? 's' : ''), { duration: 3000 });
+  }
 }
 
 function buildEnrichCtx() {
@@ -1772,12 +2000,13 @@ function buildEnrichCtx() {
   if (s.pricing)     ctx += '\nPRICING: '+s.pricing;
   if (s.voice)       ctx += '\nBRAND VOICE: '+s.voice;
   if (s.competitors) ctx += '\nKNOWN COMPETITORS:\n'+s.competitors;
-  const docs = s.docs || [];
+  if (s.discoveryNotes && s.discoveryNotes.trim()) {
+    ctx += '\n\nDISCOVERY NOTES:\n'+s.discoveryNotes.trim();
+  }
+  var docs = s.docs || [];
   if (docs.length) {
     ctx += '\n\nREFERENCE DOCUMENTS:';
-    docs.forEach(function(d) {
-      ctx += '\n\n--- '+d.name+' ---\n'+d.content.slice(0, 10000);
-    });
+    ctx += _docExtractCtx(docs, ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals']);
   }
   return ctx;
 }
@@ -1791,6 +2020,7 @@ function setupNext() {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
     strategy: prev.strategy || '', // preserved for backward compat but no longer editable in Setup
+    discoveryNotes: (document.getElementById('f-discovery-notes')?.value||'').trim(),
     docs: prev.docs || [],
     // preserved from previous save or downstream stages
     pricing: prev.pricing || '', voice: prev.voice || '',
@@ -2136,7 +2366,7 @@ function copyToClip(elId){const el=document.getElementById(elId);if(el)copyToCli
 function copyToClip2(text){navigator.clipboard.writeText(text).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();});}
 
 // ── INIT ───────────────────────────────────────────────────────────
-initAuth().then(function() { showProjects(); _wireAiFloatTip('ai-bar-label'); _wireAiFloatTip('ai-tip-line'); });
+initAuth().then(function() { showProjects(); _wireAiFloatTip('ai-bar-label'); _wireAiFloatTip('ai-tip-line'); _initDocDropZone(); });
 
 // ── TABLE ROW HOVER ─────────────────────────────────────────────────
 // Event delegation — handles dynamically rendered rows
@@ -2576,7 +2806,7 @@ async function deleteAdminUser() {
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--n2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Interface</div>
       <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-        <p><strong>Left sidebar</strong> — shows all 11 pipeline stages. Green checkmark = done. Active stage highlighted dark. Locked stages (grey) require completing earlier steps first. Click any accessible stage to jump directly.</p>
+        <p><strong>Left sidebar</strong> — shows all 11 pipeline stages. Green checkmark = done. Active stage highlighted dark. Click any stage to jump directly — no stage locking, all stages are always accessible.</p>
         <p><strong>Top bar centre — AI bar</strong> — four modes: (1) <em>Generating</em>: indeterminate pulse + elapsed timer + Stop button while a Claude call is running. (2) <em>Stopped</em>: shows Resume and Dismiss buttons when a bulk operation is paused — Resume continues from exactly where it stopped. (3) <em>Notification</em>: success or error message after an action (hover to see full text if truncated). (4) <em>Tips</em>: stage-specific workflow tips rotate every 7s when idle — pauses during generation, resumes after.</p>
         <p><strong>Project switcher</strong> — click the project name in the top bar to switch between projects without going back to the projects screen.</p>
         <p><strong>Admin panel</strong> — click your name (top right) → Admin. Manage team members: name, email, role (Admin / Strategist / Viewer), and project access (specific project IDs or blank = all). Edit your own name from the same panel. Log out via the same dropdown.</p>

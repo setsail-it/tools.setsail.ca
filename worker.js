@@ -1035,6 +1035,98 @@ export default {
       }
     }
 
+    // ── BRAND ASSET EXTRACTION (colours, fonts, logo from website HTML) ────
+    if (url.pathname === '/api/brand-extract' && request.method === 'POST') {
+      try {
+        const { url: siteUrl } = await request.json();
+        if (!siteUrl) return new Response(JSON.stringify({ error: 'url required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        let fetchUrl = siteUrl.trim().replace(/\/+$/, '');
+        if (!fetchUrl.startsWith('http')) fetchUrl = 'https://' + fetchUrl;
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        let html = '';
+        try {
+          const res = await fetch(fetchUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetSailOS/1.0; +https://setsail.ca)' },
+            redirect: 'follow', signal: controller.signal, cf: { cacheTtl: 300 }
+          });
+          clearTimeout(timer);
+          if (res.ok) html = await res.text();
+        } catch(e) { clearTimeout(timer); }
+
+        if (!html) {
+          return new Response(JSON.stringify({ colours: [], fonts: [], logo_url: '' }), { headers: { 'Content-Type': 'application/json', ...cors } });
+        }
+
+        // Extract colours — hex codes from CSS/inline styles
+        const colourSet = new Set();
+        // CSS custom properties and inline hex values
+        const hexMatches = html.match(/#(?:[0-9a-fA-F]{3}){1,2}\b/g) || [];
+        hexMatches.forEach(h => {
+          const lower = h.toLowerCase();
+          // Skip common non-brand colours (pure black, white, grey)
+          if (['#fff','#ffffff','#000','#000000','#333','#333333','#666','#666666','#999','#999999',
+               '#ccc','#cccccc','#ddd','#dddddd','#eee','#eeeeee','#f5f5f5','#fafafa','#f0f0f0',
+               '#111','#111111','#222','#222222','#444','#444444','#555','#555555','#777','#777777',
+               '#888','#888888','#aaa','#aaaaaa','#bbb','#bbbbbb'].indexOf(lower) === -1) {
+            colourSet.add(lower);
+          }
+        });
+
+        // Extract fonts — Google Fonts URL and font-family declarations
+        const fontSet = new Set();
+        // Google Fonts
+        const gfMatches = html.match(/fonts\.googleapis\.com\/css2?\?[^"'>\s]+/g) || [];
+        gfMatches.forEach(gf => {
+          const familyMatches = gf.match(/family=([^&"'>\s]+)/g) || [];
+          familyMatches.forEach(fm => {
+            const name = decodeURIComponent(fm.replace('family=', '').split(':')[0]).replace(/\+/g, ' ');
+            if (name) fontSet.add(name);
+          });
+        });
+        // font-family in CSS
+        const ffMatches = html.match(/font-family\s*:\s*['"]?([^;}{'"]+)/gi) || [];
+        ffMatches.forEach(ff => {
+          const val = ff.replace(/font-family\s*:\s*/i, '').trim();
+          // Take first font in the stack
+          const first = val.split(',')[0].replace(/['"\s]/g, '').trim();
+          if (first && first.length > 1 && first.length < 40
+            && ['inherit','initial','unset','serif','sans-serif','monospace','cursive','fantasy','system-ui','-apple-system','BlinkMacSystemFont','Segoe UI','Arial','Helvetica','Times','Courier','Verdana','Georgia','Tahoma','Trebuchet MS'].map(s=>s.toLowerCase()).indexOf(first.toLowerCase()) === -1) {
+            fontSet.add(first);
+          }
+        });
+
+        // Extract logo URL — look for common patterns
+        let logoUrl = '';
+        // <link rel="icon"> or <link rel="shortcut icon">
+        const iconMatch = html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["']/i)
+          || html.match(/<link[^>]*href=["']([^"']+)["'][^>]+rel=["'](?:shortcut )?icon["']/i);
+        // <img> with logo in class/id/alt
+        const logoImgMatch = html.match(/<img[^>]*(?:class|id|alt)=["'][^"']*logo[^"']*["'][^>]*src=["']([^"']+)["']/i)
+          || html.match(/<img[^>]*src=["']([^"']+)["'][^>]*(?:class|id|alt)=["'][^"']*logo[^"']*["']/i);
+        // <a class="logo"> containing <img>
+        const logoLinkMatch = html.match(/<a[^>]*(?:class|id)=["'][^"']*logo[^"']*["'][^>]*>[\s\S]*?<img[^>]*src=["']([^"']+)["']/i);
+
+        const rawLogo = (logoImgMatch && logoImgMatch[1]) || (logoLinkMatch && logoLinkMatch[1]) || (iconMatch && iconMatch[1]) || '';
+        if (rawLogo) {
+          // Resolve relative URLs
+          if (rawLogo.startsWith('//')) logoUrl = 'https:' + rawLogo;
+          else if (rawLogo.startsWith('/')) logoUrl = fetchUrl + rawLogo;
+          else if (rawLogo.startsWith('http')) logoUrl = rawLogo;
+          else logoUrl = fetchUrl + '/' + rawLogo;
+        }
+
+        return new Response(JSON.stringify({
+          colours: Array.from(colourSet).slice(0, 12),
+          fonts: Array.from(fontSet).slice(0, 6),
+          logo_url: logoUrl
+        }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message, colours: [], fonts: [], logo_url: '' }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── CLAUDE SYNC (non-streaming, for large JSON responses) ──────────────
     if (url.pathname === '/api/claude-sync' && request.method === 'POST') {
       try {

@@ -156,7 +156,7 @@ function buildCopyPrompt(page) {
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
       + cpProofBlock + cpCtaBlock
-      + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||S.setup.webStrategy) : '')
+      + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)) : '')
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
       + '\n\n' + blogBriefInstruction;
@@ -184,7 +184,7 @@ function buildCopyPrompt(page) {
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
     + cpProofBlock + cpCtaBlock
-    + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||S.setup.webStrategy) : '')
+    + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)) : '')
     + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
     + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
     + '\n\n' + briefInstruction;

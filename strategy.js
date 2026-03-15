@@ -13,7 +13,8 @@ var STRATEGY_TABS = [
   { id:'execution',    label:'Execution',    icon:'ti-checklist' },
   { id:'brand',        label:'Brand',        icon:'ti-palette' },
   { id:'risks',        label:'Risks',        icon:'ti-alert-triangle' },
-  { id:'keywords',     label:'Keywords',     icon:'ti-tags' }
+  { id:'keywords',     label:'Keywords',     icon:'ti-tags' },
+  { id:'output',       label:'Output',       icon:'ti-file-text' }
 ];
 
 var STRATEGY_SECTION_WEIGHTS = {
@@ -45,7 +46,7 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'best_customer_examples', path:'S.research.best_customer_examples', check:'string' },
     { key:'existing_proof',       path:'S.research.existing_proof',         check:'array' },
     { key:'competitor_deep_dive', path:'S.strategy._enrichment.competitor_deep_dive', check:'truthy' },
-    { key:'strategy_doc',         path:'S.setup.strategy||S.setup.docs',    check:'any_doc' },
+    { key:'strategy_doc',         path:'S.setup.strategy||S.setup.discoveryNotes||S.setup.docs', check:'any_doc' },
     { key:'industry',             path:'S.research.industry',               check:'string' }
   ],
   economics: [
@@ -125,6 +126,166 @@ var ANTI_INFLATION_CAPS = [
     } }
 ];
 
+// ── Audit Checks (per diagnostic) ─────────────────────────────────────
+// Programmatic quality checks run after each diagnostic generation.
+// Each check returns true (pass) or false (fail).
+
+var STRATEGY_AUDIT_CHECKS = {
+  1: [ // D1: Unit Economics
+    { id:'has_max_cpl',       label:'Max allowable CPL calculated',           check: function(d) { return d.max_allowable_cpl > 0; } },
+    { id:'has_ltv_cac',       label:'LTV:CAC ratio calculated',               check: function(d) { return !!d.ltv_cac_ratio; } },
+    { id:'has_cac',           label:'Customer acquisition cost estimated',     check: function(d) { return d.estimated_cac > 0; } },
+    { id:'budget_real',       label:'Uses client-provided budget (not assumed)', check: function(d) { var r = S.research || {}; return !!r.monthly_marketing_budget && (!d.assumptions || !d.assumptions.some(function(a) { return a.toLowerCase().indexOf('budget') >= 0; })); } },
+    { id:'has_recommendation',label:'Actionable recommendation provided',      check: function(d) { return d.recommendation && d.recommendation.length > 50; } },
+    { id:'paid_assessed',     label:'Paid media viability assessed',           check: function(d) { return d.paid_media_viable !== undefined; } },
+    { id:'health_assessed',   label:'LTV:CAC health rated',                    check: function(d) { return !!d.ltv_cac_health; } }
+  ],
+  2: [ // D2: Competitive Position
+    { id:'names_competitors', label:'Names specific competitors',              check: function(d) { return d.competitive_counter && d.competitive_counter.length > 20; } },
+    { id:'has_differentiators',label:'Validated differentiators identified',   check: function(d) { return d.validated_differentiators && d.validated_differentiators.length >= 2; } },
+    { id:'has_positioning',   label:'Positioning angle defined',               check: function(d) { return d.recommended_positioning_angle && d.recommended_positioning_angle.length > 10; } },
+    { id:'has_value_prop',    label:'Core value proposition written',          check: function(d) { return d.core_value_proposition && d.core_value_proposition.length > 20; } },
+    { id:'has_voice',         label:'Brand voice direction specified',         check: function(d) { return d.brand_voice_direction && d.brand_voice_direction.style; } },
+    { id:'has_messaging',     label:'Messaging hierarchy defined',            check: function(d) { return d.messaging_hierarchy && d.messaging_hierarchy.primary_message; } },
+    { id:'rejected_tested',   label:'Rejected differentiators analysed',      check: function(d) { return d.rejected_differentiators && d.rejected_differentiators.length >= 1; } },
+    { id:'proof_plan',        label:'Proof-building strategy included',       check: function(d) { return d.proof_strategy && d.proof_strategy.length >= 1; } }
+  ],
+  3: [ // D3: Subtraction
+    { id:'has_cuts',          label:'Activities to cut identified',            check: function(d) { return d.activities_to_cut && d.activities_to_cut.length >= 1; } },
+    { id:'has_keeps',         label:'Activities to keep identified',          check: function(d) { return d.activities_to_keep && d.activities_to_keep.length >= 1; } },
+    { id:'has_recoverable',   label:'Recoverable budget estimated',           check: function(d) { return !!d.recoverable_budget; } },
+    { id:'has_redirect',      label:'Budget redirect recommendation',         check: function(d) { return !!d.redirect_recommendation; } },
+    { id:'confidence_set',    label:'Confidence level assessed',              check: function(d) { return !!d.confidence; } }
+  ],
+  4: [ // D4: Channel & Lever Viability
+    { id:'all_levers',        label:'All 13 levers scored',                   check: function(d) { return d.levers && d.levers.length >= 12; } },
+    { id:'priority_order',    label:'Priority order specified',               check: function(d) { return d.priority_order && d.priority_order.length >= 3; } },
+    { id:'budget_alloc',      label:'Budget allocation provided',             check: function(d) { return d.budget_allocation && d.budget_allocation.total_monthly > 0; } },
+    { id:'budget_sums',       label:'Budget percentages sum to ~100%',        check: function(d) { if (!d.levers) return false; var sum = d.levers.reduce(function(s, l) { return s + (l.budget_allocation_pct || 0); }, 0); return sum >= 90 && sum <= 110; } },
+    { id:'funnel_complete',   label:'All funnel stages covered',             check: function(d) { if (!d.funnel_coverage) return false; return ['awareness','consideration','conversion'].every(function(s) { return d.funnel_coverage[s] && d.funnel_coverage[s].covered; }); } },
+    { id:'gaps_flagged',      label:'Funnel gaps identified',                check: function(d) { return d.funnel_gaps_flagged && d.funnel_gaps_flagged.length >= 0; } },
+    { id:'not_recommended',   label:'Not-recommended levers explained',      check: function(d) { return d.levers_not_recommended && d.levers_not_recommended.length >= 1; } }
+  ],
+  5: [ // D5: Website & CRO
+    { id:'build_type',        label:'Build type determined',                  check: function(d) { return !!d.build_type; } },
+    { id:'primary_cta',       label:'Primary CTA defined',                   check: function(d) { return !!d.primary_cta; } },
+    { id:'form_strategy',     label:'Form strategy included',                check: function(d) { return d.form_strategy && d.form_strategy.primary_form_purpose; } },
+    { id:'architecture',      label:'Page architecture specified',           check: function(d) { return d.architecture_direction && d.architecture_direction.page_types_needed && d.architecture_direction.page_types_needed.length >= 2; } },
+    { id:'tracking',          label:'Tracking requirements listed',          check: function(d) { return d.tracking_requirements && d.tracking_requirements.length >= 1; } },
+    { id:'secondary_ctas',    label:'Secondary CTAs defined',                check: function(d) { return d.secondary_ctas && d.secondary_ctas.length >= 1; } }
+  ],
+  6: [ // D6: Content & Authority
+    { id:'pillars',           label:'Content pillars defined',               check: function(d) { return d.content_pillars && d.content_pillars.length >= 2; } },
+    { id:'velocity',          label:'Content velocity recommended',          check: function(d) { return !!d.content_velocity; } },
+    { id:'formats',           label:'Preferred formats specified',           check: function(d) { return d.preferred_formats && d.preferred_formats.length >= 2; } },
+    { id:'authority',         label:'Authority-building strategy included',  check: function(d) { return d.authority_building && d.authority_building.length > 20; } },
+    { id:'local_seo',         label:'Local SEO priority assessed',           check: function(d) { return !!d.local_seo_priority; } },
+    { id:'geo_strategy',      label:'Geo-targeting strategy included',       check: function(d) { return d.geo_targeting_strategy && d.geo_targeting_strategy.length > 10; } }
+  ],
+  7: [ // D7: Risk Assessment
+    { id:'all_risks',         label:'All 8 risk categories scored',          check: function(d) { return d.risks && d.risks.length >= 7; } },
+    { id:'high_mitigated',    label:'High-severity risks have mitigations',  check: function(d) { if (!d.risks) return false; var high = d.risks.filter(function(r) { return r.severity >= 7; }); return high.every(function(r) { return r.mitigation && r.mitigation.length > 10; }); } },
+    { id:'owners_assigned',   label:'Risk owners assigned',                  check: function(d) { if (!d.risks) return false; return d.risks.every(function(r) { return !!r.owner; }); } },
+    { id:'confidence_set',    label:'Overall confidence assessed',           check: function(d) { return !!d.overall_confidence; } },
+    { id:'reasoning',         label:'Confidence reasoning provided',         check: function(d) { return d.confidence_reasoning && d.confidence_reasoning.length > 20; } }
+  ]
+};
+
+// ── Audit Runner ──────────────────────────────────────────────────────
+
+function auditDiagnostic(num) {
+  var checks = STRATEGY_AUDIT_CHECKS[num];
+  if (!checks) return null;
+
+  // Get the diagnostic output
+  var st = S.strategy || {};
+  var data = null;
+  if (num === 1) data = st.unit_economics;
+  else if (num === 2) data = st.positioning;
+  else if (num === 3) data = st.subtraction;
+  else if (num === 4) data = st.channel_strategy;
+  else if (num === 5) data = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.website : null;
+  else if (num === 6) data = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
+  else if (num === 7) data = st.risks;
+
+  if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+    return { diagnostic: num, pass: 0, fail: checks.length, total: checks.length, items: checks.map(function(c) { return { id: c.id, label: c.label, passed: false }; }) };
+  }
+
+  var items = [];
+  var pass = 0;
+  for (var i = 0; i < checks.length; i++) {
+    var passed = false;
+    try { passed = checks[i].check(data); } catch (e) { passed = false; }
+    items.push({ id: checks[i].id, label: checks[i].label, passed: passed });
+    if (passed) pass++;
+  }
+
+  return { diagnostic: num, pass: pass, fail: checks.length - pass, total: checks.length, items: items, timestamp: new Date().toISOString() };
+}
+
+function auditAllDiagnostics() {
+  if (!S.strategy) return;
+  if (!S.strategy._audit) S.strategy._audit = {};
+  for (var d = 1; d <= 7; d++) {
+    var result = auditDiagnostic(d);
+    if (result) S.strategy._audit[d] = result;
+  }
+}
+
+// ── Keyword Pipeline Audit ─────────────────────────────────────────────
+// Audits each stage of the keyword research pipeline.
+
+var KEYWORD_AUDIT_CHECKS = {
+  seeds: [
+    { id:'has_seeds',       label:'Seeds generated',                    check: function(kw) { return kw.seeds && kw.seeds.length >= 10; } },
+    { id:'seed_diversity',  label:'Seeds cover multiple services',      check: function(kw) { if (!kw.seeds || !kw.seeds.length) return false; var r = S.research || {}; var svcs = (r.primary_services || []).slice(0, 5); if (svcs.length < 2) return true; var covered = 0; svcs.forEach(function(svc) { var sL = svc.toLowerCase().split(' ')[0]; if (kw.seeds.some(function(s) { return s.toLowerCase().indexOf(sL) >= 0; })) covered++; }); return covered >= Math.min(svcs.length, 3); } },
+    { id:'ai_seeds',        label:'AI seeds generated',                 check: function(kw) { return kw.seedSources && kw.seedSources.ai && kw.seedSources.ai.length >= 5; } },
+    { id:'competitor_seeds', label:'Competitor seeds included',          check: function(kw) { return kw.seedSources && kw.seedSources.competitor && kw.seedSources.competitor.length >= 3; } },
+    { id:'geo_seeds',       label:'Seeds include geo modifiers',        check: function(kw) { var geo = ((S.research || {}).geography || {}).primary || (S.setup || {}).geo || ''; var geoL = geo.replace(/,.*$/, '').trim().toLowerCase(); if (!geoL) return true; return kw.seeds && kw.seeds.some(function(s) { return s.toLowerCase().indexOf(geoL) >= 0; }); } }
+  ],
+  opportunities: [
+    { id:'has_keywords',    label:'Keywords fetched with volume data',   check: function(kw) { return kw.keywords && kw.keywords.length >= 20; } },
+    { id:'volume_spread',   label:'Keywords span multiple volume ranges', check: function(kw) { if (!kw.keywords || kw.keywords.length < 10) return false; var hi = kw.keywords.filter(function(k) { return k.vol >= 500; }).length; var mid = kw.keywords.filter(function(k) { return k.vol >= 50 && k.vol < 500; }).length; var lo = kw.keywords.filter(function(k) { return k.vol > 0 && k.vol < 50; }).length; return hi >= 1 && mid >= 3 && lo >= 2; } },
+    { id:'quick_wins',      label:'Quick wins identified (vol>100, KD<20)', check: function(kw) { if (!kw.keywords) return false; return kw.keywords.filter(function(k) { return k.vol >= 100 && k.kd < 20; }).length >= 2; } },
+    { id:'selected',        label:'Keywords selected for clustering',   check: function(kw) { return kw.selected && kw.selected.length >= 15; } },
+    { id:'not_over_selected', label:'Selection is focused (under 100)',  check: function(kw) { return !kw.selected || kw.selected.length <= 100; } }
+  ],
+  clusters: [
+    { id:'has_clusters',    label:'Clusters generated',                 check: function(kw) { return kw.clusters && kw.clusters.length >= 3; } },
+    { id:'has_service_pages', label:'Service page clusters exist',      check: function(kw) { if (!kw.clusters) return false; return kw.clusters.some(function(c) { return c.pageType === 'service' && c.qualifies !== false; }); } },
+    { id:'has_homepage',    label:'Homepage cluster defined',           check: function(kw) { if (!kw.clusters) return false; return kw.clusters.some(function(c) { return c.pageType === 'home'; }); } },
+    { id:'qualified_pages', label:'At least 5 qualified pages',         check: function(kw) { if (!kw.clusters) return false; return kw.clusters.filter(function(c) { return c.qualifies !== false; }).length >= 5; } },
+    { id:'no_thin_new',     label:'No thin build-new pages (vol<50)',   check: function(kw) { if (!kw.clusters) return true; return !kw.clusters.some(function(c) { return c.recommendation === 'build_new' && c.qualifies !== false && c.primaryVol < 50; }); } },
+    { id:'page_type_mix',   label:'Multiple page types (not just service)', check: function(kw) { if (!kw.clusters) return false; var types = {}; kw.clusters.forEach(function(c) { if (c.qualifies !== false) types[c.pageType] = true; }); return Object.keys(types).length >= 3; } }
+  ]
+};
+
+function auditKeywordPipeline() {
+  var kwR = S.kwResearch || {};
+  var results = {};
+  var totalPass = 0;
+  var totalChecks = 0;
+
+  ['seeds', 'opportunities', 'clusters'].forEach(function(stage) {
+    var checks = KEYWORD_AUDIT_CHECKS[stage];
+    var items = [];
+    var pass = 0;
+    checks.forEach(function(c) {
+      var passed = false;
+      try { passed = c.check(kwR); } catch (e) { passed = false; }
+      items.push({ id: c.id, label: c.label, passed: passed });
+      if (passed) pass++;
+    });
+    results[stage] = { pass: pass, fail: checks.length - pass, total: checks.length, items: items };
+    totalPass += pass;
+    totalChecks += checks.length;
+  });
+
+  results.overall = { pass: totalPass, total: totalChecks, rate: totalChecks > 0 ? Math.round((totalPass / totalChecks) * 100) : 0 };
+  return results;
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────
 
 function strategyDefaults() {
@@ -136,6 +297,7 @@ function strategyDefaults() {
       overall_score: 0
     },
     _enrichment: {},
+    _audit: {},
     positioning: {},
     unit_economics: {},
     channel_strategy: {},
@@ -146,7 +308,8 @@ function strategyDefaults() {
     risks: {},
     subtraction: {},
     targets: {},
-    demand_validation: {}
+    demand_validation: {},
+    compiled_output: ''
   };
 }
 
@@ -233,7 +396,7 @@ function scoreSection(section) {
   // Specificity: higher if enrichment data is present, strategy doc exists
   var specificityScore = hasContent ? 6 : 0;
   if ((S.setup || {}).strategy) specificityScore += 1;
-  if ((S.setup || {}).docs && S.setup.docs.length) specificityScore += 1.5;
+  if ((S.setup || {}).docs && S.setup.docs.length || (S.setup || {}).discoveryNotes) specificityScore += 1.5;
   if (st._enrichment && st._enrichment.competitor_deep_dive) specificityScore += 1;
   if (specificityScore > 10) specificityScore = 10;
 
@@ -326,8 +489,8 @@ function createStrategyVersion(trigger, overrides) {
   if (!S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) {
     version.known_limitations.push('Keyword demand validation (D8) has not run yet');
   }
-  if (!(S.setup || {}).docs || !S.setup.docs.length) {
-    version.known_limitations.push('No reference documents uploaded — specificity may be limited');
+  if ((!(S.setup || {}).docs || !S.setup.docs.length) && !(S.setup || {}).discoveryNotes) {
+    version.known_limitations.push('No reference documents or discovery notes — specificity may be limited');
   }
 
   meta.current_version = version.version;
@@ -514,65 +677,104 @@ var strategyEnrich = {
   },
 
   // Keyword demand validation (D8 data source)
+  // If full keyword research exists (S.kwResearch), derives validation from real data.
+  // Falls back to quick API check only if no keyword research has been done.
   keywordDemandCheck: async function(vertical, geography, services) {
     var geo = (geography || '').replace(/,.*$/, '').trim().toLowerCase();
-    var seeds = [];
-    (services || []).slice(0, 5).forEach(function(svc) {
-      var svcL = svc.toLowerCase().replace(/\s+(services?|management)$/i, '').trim();
-      seeds.push(svcL + ' ' + geo);
-      seeds.push(svcL + ' agency ' + geo);
-    });
-    seeds.push(vertical.toLowerCase() + ' agency ' + geo);
-    seeds.push(geo + ' marketing agency');
+    var kwR = S.kwResearch || {};
+    var kws = [];
+    var dataSource = 'dataforseo';
 
-    try {
-      var res = await fetch('/api/kw-expand', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seeds: seeds.slice(0, 10), limit: 100 })
-      });
-      var data = await res.json();
-      if (!data.keywords) return { overall_verdict: 'insufficient', keyword_data_confidence: 'low' };
-
-      var kws = data.keywords;
-      var totalVol = kws.reduce(function(s, k) { return s + (k.vol || 0); }, 0);
-      var kwsWithVol = kws.filter(function(k) { return k.vol > 50; });
-      var avgKD = kws.length ? kws.reduce(function(s, k) { return s + (k.kd || 0); }, 0) / kws.length : 0;
-
-      var verdict = 'viable';
-      if (totalVol < 100) verdict = 'insufficient';
-      else if (totalVol < 500) verdict = 'marginal';
-
-      var quickWins = kws.filter(function(k) { return k.vol >= 100 && k.kd < 20; });
-      var highValue = kws.filter(function(k) { return k.vol >= 500; });
-
-      // Per-service demand
-      var serviceDemand = [];
+    // Prefer existing keyword research data over a fresh shallow lookup
+    if (kwR.keywords && kwR.keywords.length >= 10) {
+      kws = kwR.keywords.map(function(k) { return { kw: k.kw, vol: k.vol || 0, kd: k.kd || 0, cpc: k.cpc || 0 }; });
+      dataSource = 'keyword_research';
+    } else {
+      // Fallback: quick API lookup (only if no keyword research done yet)
+      var seeds = [];
       (services || []).slice(0, 5).forEach(function(svc) {
-        var svcL = svc.toLowerCase();
-        var svcKws = kws.filter(function(k) { return k.kw.toLowerCase().indexOf(svcL.split(' ')[0]) >= 0; });
-        var svcVol = svcKws.reduce(function(s, k) { return s + (k.vol || 0); }, 0);
-        serviceDemand.push({ service: svc, total_vol: svcVol, keyword_count: svcKws.length, assessment: svcVol > 200 ? 'strong' : svcVol > 50 ? 'moderate' : 'weak' });
+        var svcL = svc.toLowerCase().replace(/\s+(services?|management)$/i, '').trim();
+        seeds.push(svcL + ' ' + geo);
+        seeds.push(svcL + ' agency ' + geo);
       });
+      seeds.push(vertical.toLowerCase() + ' agency ' + geo);
+      seeds.push(geo + ' marketing agency');
 
-      return {
-        overall_verdict: verdict,
-        vertical_demand: { total_vol: totalVol, keywords_with_volume: kwsWithVol.length, avg_kd: Math.round(avgKD), assessment: verdict },
-        service_demand: serviceDemand,
-        geography_demand: { total_vol: totalVol, assessment: verdict },
-        quick_wins: quickWins.slice(0, 10).map(function(k) { return { keyword: k.kw, volume: k.vol, kd: k.kd }; }),
-        high_value_targets: highValue.slice(0, 10).map(function(k) { return { keyword: k.kw, volume: k.vol, kd: k.kd }; }),
-        organic_traffic_ceiling: totalVol > 1000 ? 'high' : totalVol > 300 ? 'medium' : 'low',
-        time_to_meaningful_organic: avgKD > 40 ? '9-12 months' : avgKD > 20 ? '4-8 months' : '2-4 months',
-        seo_viability_score: Math.min(10, Math.round((totalVol / 200) + (10 - avgKD / 10))),
-        keyword_data_confidence: kws.length > 30 ? 'high' : kws.length > 10 ? 'medium' : 'low',
-        keyword_data_source: 'dataforseo',
-        strategic_revisions_needed: []
-      };
-    } catch (e) {
-      console.error('keywordDemandCheck error:', e);
-      return { overall_verdict: 'insufficient', keyword_data_confidence: 'low', error: e.message };
+      try {
+        var res = await fetch('/api/kw-expand', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seeds: seeds.slice(0, 10), limit: 100 })
+        });
+        var data = await res.json();
+        if (!data.keywords) return { overall_verdict: 'insufficient', keyword_data_confidence: 'low', keyword_data_source: 'fallback_api' };
+        kws = data.keywords.map(function(k) { return { kw: k.keyword || k.kw, vol: k.volume || k.vol || 0, kd: k.difficulty || k.kd || 0, cpc: k.cpc || 0 }; });
+      } catch (e) {
+        console.error('keywordDemandCheck API error:', e);
+        return { overall_verdict: 'insufficient', keyword_data_confidence: 'low', error: e.message };
+      }
     }
+
+    var totalVol = kws.reduce(function(s, k) { return s + (k.vol || 0); }, 0);
+    var kwsWithVol = kws.filter(function(k) { return k.vol > 50; });
+    var avgKD = kws.length ? kws.reduce(function(s, k) { return s + (k.kd || 0); }, 0) / kws.length : 0;
+
+    var verdict = 'viable';
+    if (totalVol < 100) verdict = 'insufficient';
+    else if (totalVol < 500) verdict = 'marginal';
+
+    var quickWins = kws.filter(function(k) { return k.vol >= 100 && k.kd < 20; });
+    var highValue = kws.filter(function(k) { return k.vol >= 500; });
+
+    // Per-service demand
+    var serviceDemand = [];
+    (services || []).slice(0, 5).forEach(function(svc) {
+      var svcL = svc.toLowerCase();
+      var svcKws = kws.filter(function(k) { return (k.kw || '').toLowerCase().indexOf(svcL.split(' ')[0]) >= 0; });
+      var svcVol = svcKws.reduce(function(s, k) { return s + (k.vol || 0); }, 0);
+      serviceDemand.push({ service: svc, total_vol: svcVol, keyword_count: svcKws.length, assessment: svcVol > 200 ? 'strong' : svcVol > 50 ? 'moderate' : 'weak' });
+    });
+
+    // Cluster analysis (if clusters exist from keyword research)
+    var clusterAnalysis = null;
+    if (kwR.clusters && kwR.clusters.length) {
+      var qualified = kwR.clusters.filter(function(c) { return c.qualifies !== false; });
+      var buildNew = qualified.filter(function(c) { return c.recommendation === 'build_new'; });
+      var improve = qualified.filter(function(c) { return c.recommendation === 'improve_existing'; });
+      var disqualified = kwR.clusters.filter(function(c) { return c.qualifies === false; });
+      clusterAnalysis = {
+        total_clusters: kwR.clusters.length,
+        qualified: qualified.length,
+        build_new: buildNew.length,
+        improve_existing: improve.length,
+        disqualified: disqualified.length,
+        page_types: {}
+      };
+      kwR.clusters.forEach(function(c) {
+        var pt = c.pageType || 'other';
+        clusterAnalysis.page_types[pt] = (clusterAnalysis.page_types[pt] || 0) + 1;
+      });
+    }
+
+    // Keyword pipeline audit
+    var kwAudit = auditKeywordPipeline();
+
+    return {
+      overall_verdict: verdict,
+      vertical_demand: { total_vol: totalVol, keywords_with_volume: kwsWithVol.length, avg_kd: Math.round(avgKD), assessment: verdict },
+      service_demand: serviceDemand,
+      geography_demand: { total_vol: totalVol, assessment: verdict },
+      quick_wins: quickWins.slice(0, 10).map(function(k) { return { keyword: k.kw, volume: k.vol, kd: k.kd }; }),
+      high_value_targets: highValue.slice(0, 10).map(function(k) { return { keyword: k.kw, volume: k.vol, kd: k.kd }; }),
+      organic_traffic_ceiling: totalVol > 1000 ? 'high' : totalVol > 300 ? 'medium' : 'low',
+      time_to_meaningful_organic: avgKD > 40 ? '9-12 months' : avgKD > 20 ? '4-8 months' : '2-4 months',
+      seo_viability_score: Math.min(10, Math.round((totalVol / 200) + (10 - avgKD / 10))),
+      keyword_data_confidence: kws.length > 30 ? 'high' : kws.length > 10 ? 'medium' : 'low',
+      keyword_data_source: dataSource,
+      cluster_analysis: clusterAnalysis,
+      keyword_audit: kwAudit,
+      strategic_revisions_needed: []
+    };
   },
 
   // Current site performance check
@@ -621,16 +823,66 @@ function _stratCtx() {
   ctx += 'URL: ' + (s.url || '') + '\n';
   ctx += 'GEO: ' + (s.geo || '') + '\n';
   ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
+  if (r.sub_industry) ctx += 'SUB-INDUSTRY: ' + r.sub_industry + '\n';
   ctx += 'BUSINESS MODEL: ' + (r.business_model || '') + '\n';
   ctx += 'BUSINESS OVERVIEW: ' + (r.business_overview || '') + '\n';
+  if (r.years_in_business) ctx += 'YEARS IN BUSINESS: ' + r.years_in_business + '\n';
+  if (r.locations_count) ctx += 'LOCATIONS: ' + r.locations_count + '\n';
   if (r.primary_services && r.primary_services.length) ctx += 'SERVICES: ' + r.primary_services.join(', ') + '\n';
   if (r.primary_audience_description) ctx += 'AUDIENCE: ' + r.primary_audience_description + '\n';
+  if (r.buyer_roles_titles && r.buyer_roles_titles.length) ctx += 'BUYER ROLES: ' + (Array.isArray(r.buyer_roles_titles) ? r.buyer_roles_titles.join(', ') : r.buyer_roles_titles) + '\n';
   if (r.geography && r.geography.primary) ctx += 'PRIMARY GEO: ' + r.geography.primary + '\n';
+  if (r.geography && r.geography.secondary) ctx += 'SECONDARY GEO: ' + (Array.isArray(r.geography.secondary) ? r.geography.secondary.join(', ') : r.geography.secondary) + '\n';
+  if (r.target_geography) ctx += 'TARGET GEO SCOPE: ' + r.target_geography + '\n';
   if (r.primary_goal) ctx += 'PRIMARY GOAL: ' + r.primary_goal + '\n';
+  if (r.secondary_goals && r.secondary_goals.length) ctx += 'SECONDARY GOALS: ' + (Array.isArray(r.secondary_goals) ? r.secondary_goals.join(', ') : r.secondary_goals) + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'TOP PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  if (r.objections_top5 && r.objections_top5.length) ctx += 'TOP OBJECTIONS: ' + (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5) + '\n';
+  if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || c.name || 'Client') + ': ' + (c.result || c.outcome || ''); }).join('; ') + '\n';
+  if (r.notable_clients && r.notable_clients.length) ctx += 'NOTABLE CLIENTS: ' + (Array.isArray(r.notable_clients) ? r.notable_clients.join(', ') : r.notable_clients) + '\n';
+  if (r.awards_certifications && r.awards_certifications.length) ctx += 'AWARDS/CERTS: ' + (Array.isArray(r.awards_certifications) ? r.awards_certifications.join(', ') : r.awards_certifications) + '\n';
+  if (r.seasonality_notes) ctx += 'SEASONALITY: ' + r.seasonality_notes + '\n';
+  if (s.discoveryNotes && s.discoveryNotes.trim()) {
+    ctx += '\nDISCOVERY NOTES:\n' + s.discoveryNotes.trim() + '\n';
+  }
   if (s.docs && s.docs.length) {
     ctx += '\nREFERENCE DOCUMENTS:\n';
-    s.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 6000); });
+    ctx += _docExtractCtx(s.docs, ['facts','decisions','requirements','competitors','audience','services','goals']);
   }
+  return ctx;
+}
+
+function _versionLearningCtx(num) {
+  var st = S.strategy || {};
+  var audit = st._audit || {};
+  var prevAudit = audit[num];
+  if (!prevAudit || !prevAudit.items) return '';
+
+  // Get previous output
+  var prevOutput = null;
+  if (num === 1) prevOutput = st.unit_economics;
+  else if (num === 2) prevOutput = st.positioning;
+  else if (num === 3) prevOutput = st.subtraction;
+  else if (num === 4) prevOutput = st.channel_strategy;
+  else if (num === 5) prevOutput = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.website : null;
+  else if (num === 6) prevOutput = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
+  else if (num === 7) prevOutput = st.risks;
+
+  if (!prevOutput || (typeof prevOutput === 'object' && Object.keys(prevOutput).length === 0)) return '';
+
+  var failedChecks = prevAudit.items.filter(function(it) { return !it.passed; });
+  if (failedChecks.length === 0 && prevAudit.pass === prevAudit.total) return '';
+
+  var ctx = '\n\nVERSION LEARNING — IMPROVE ON PREVIOUS OUTPUT:\n';
+  ctx += 'The previous version scored ' + prevAudit.pass + '/' + prevAudit.total + ' quality checks.\n';
+  if (failedChecks.length > 0) {
+    ctx += 'FAILED CHECKS (fix these in this version):\n';
+    failedChecks.forEach(function(fc) {
+      ctx += '- ' + fc.label + '\n';
+    });
+  }
+  ctx += '\nPREVIOUS OUTPUT (improve on this, do not just copy it):\n';
+  ctx += JSON.stringify(prevOutput, null, 0).slice(0, 4000) + '\n';
   return ctx;
 }
 
@@ -885,6 +1137,8 @@ async function runDiagnostic(num) {
   try {
     var prompt = buildDiagnosticPrompt(num);
     if (!prompt) { aiBarEnd('No prompt for D' + num); return; }
+    // Append version learning context if re-running
+    prompt += _versionLearningCtx(num);
 
     var result = await callClaude(DIAGNOSTIC_SYSTEM, prompt, null, 8000, label);
     var parsed = parseEnrichResult(result);
@@ -940,8 +1194,17 @@ async function runDiagnostic(num) {
       S.strategy.risks = parsed;
     }
 
-    scheduleSave();
-    aiBarEnd(label + ' complete');
+    // Run audit checks on the diagnostic output
+    if (!S.strategy._audit) S.strategy._audit = {};
+    var auditResult = auditDiagnostic(num);
+    if (auditResult) S.strategy._audit[num] = auditResult;
+
+    // Force immediate save — do not rely on debounce so data survives reloads
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd(label + ' complete (' + (auditResult ? auditResult.pass + '/' + auditResult.total + ' checks passed' : '') + ')');
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('D' + num + ' error: ' + e.message, { duration: 5000 });
@@ -1039,7 +1302,7 @@ async function generateStrategy() {
       await new Promise(function(res) { setTimeout(res, 2000); });
     }
 
-    scheduleSave();
+    await saveProject();
 
     // Step 2: Run diagnostics D1-D7 sequentially
     for (var d = 1; d <= 7; d++) {
@@ -1057,7 +1320,7 @@ async function generateStrategy() {
 
     // Step 3: Score and create version
     createStrategyVersion('auto_draft');
-    scheduleSave();
+    await saveProject();
     renderStrategyScorecard();
     _sTab = Object.keys(STRATEGY_SECTION_WEIGHTS)[0];
     renderStrategyNav();
@@ -1086,10 +1349,66 @@ async function _resumeDiagnostics(startFrom) {
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
     createStrategyVersion('auto_draft');
-    scheduleSave();
+    await saveProject();
     renderStrategyScorecard();
     renderStrategyTabContent();
     aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+async function runAllDiagnostics() {
+  if (!S.strategy) S.strategy = strategyDefaults();
+  window._aiStopAll = false;
+  aiBarStart('Running all diagnostics (1/7)');
+  try {
+    for (var d = 1; d <= 7; d++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Diagnostics paused (' + d + '/7)',
+          fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
+          args: { startFrom: d }
+        };
+        return;
+      }
+      await runDiagnostic(d);
+      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    createStrategyVersion('rerun_all');
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('All diagnostics complete \u2014 v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+async function _resumeAllDiagnostics(startFrom) {
+  window._aiStopAll = false;
+  try {
+    for (var d = startFrom; d <= 7; d++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Diagnostics paused (' + d + '/7)',
+          fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
+          args: { startFrom: d }
+        };
+        return;
+      }
+      await runDiagnostic(d);
+      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    createStrategyVersion('rerun_all');
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('All diagnostics complete \u2014 v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
   } catch (e) {
     if (e.name === 'AbortError') return;
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -1160,7 +1479,7 @@ async function improveStrategy() {
     }
 
     createStrategyVersion('auto_improve');
-    scheduleSave();
+    await saveProject();
     renderStrategyScorecard();
     renderStrategyTabContent();
     aiBarEnd('Strategy improved to v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
@@ -1170,12 +1489,12 @@ async function improveStrategy() {
   }
 }
 
-function approveStrategy() {
+async function approveStrategy() {
   if (!S.strategy) return;
   S.strategy._meta.approved = true;
   var v = S.strategy._meta.versions[S.strategy._meta.versions.length - 1];
   if (v) v.approved = true;
-  scheduleSave();
+  await saveProject();
   renderStrategyScorecard();
   renderStrategyTabContent();
   aiBarNotify('Strategy approved', { duration: 3000 });
@@ -1227,7 +1546,7 @@ async function synthesiseWebStrategy() {
   // Include reference docs
   if (s.docs && s.docs.length) {
     ctx += '\nREFERENCE DOCUMENTS:\n';
-    s.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 6000); });
+    ctx += _docExtractCtx(s.docs, ['facts','decisions','requirements','competitors','audience','services','goals']);
   }
 
   var sys = 'You are a senior brand strategist. Using the completed strategy analysis below, write a focused 600-800 word website-specific strategy brief. Output exactly these 5 sections:\n'
@@ -1323,33 +1642,37 @@ function renderStrategyScorecard() {
   // Action buttons
   html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
   if (meta.current_version === 0) {
-    html += '<button class="btn btn-primary" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Strategy</button>';
+    html += '<button class="btn btn-primary" data-tip="Runs enrichment then all 7 diagnostics sequentially" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Strategy</button>';
   } else {
-    html += '<button class="btn btn-ghost" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate</button>';
-    html += '<button class="btn btn-primary" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Improve Weakest</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs all enrichment and all 7 diagnostics from scratch" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate All</button>';
+    html += '<button class="btn btn-primary" data-tip="Re-runs the 3 weakest sections plus keyword demand validation" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Improve Weakest</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs all 7 diagnostics without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
   }
   if (meta.current_version > 0 && !meta.approved) {
     html += '<button class="btn btn-dark" onclick="approveStrategy()"><i class="ti ti-check"></i> Approve</button>';
   }
   html += '</div></div>';
 
-  // Per-section progress bars
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-  Object.keys(STRATEGY_SECTION_WEIGHTS).forEach(function(sec) {
-    var secScore = scores.sections[sec] ? scores.sections[sec].score : 0;
-    var sc = secScore >= 7 ? 'var(--green)' : secScore >= 4 ? '#e6a23c' : '#f56c6c';
-    html += '<div style="flex:1;min-width:90px;cursor:pointer" onclick="_sTab=\'' + sec + '\';renderStrategyNav();renderStrategyTabContent()">';
-    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--n2);margin-bottom:3px">';
-    html += '<span>' + (STRATEGY_SECTION_LABELS[sec] || sec) + '</span><span>' + secScore + '</span></div>';
-    html += '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
-    html += '<div style="height:100%;width:' + (secScore * 10) + '%;background:' + sc + ';border-radius:2px;transition:width .3s"></div>';
-    html += '</div></div>';
-  });
-  html += '</div>';
+  // Keyword pipeline audit (quick summary)
+  var kwAudit = auditKeywordPipeline();
+  if (kwAudit.overall.total > 0) {
+    var kwRate = kwAudit.overall.rate;
+    var kwC = kwRate >= 80 ? 'var(--green)' : kwRate >= 50 ? '#e6a23c' : '#f56c6c';
+    html += '<div style="font-size:11px;margin-top:6px;display:flex;align-items:center;gap:6px">';
+    html += '<span style="color:' + kwC + '">Keyword pipeline: ' + kwAudit.overall.pass + '/' + kwAudit.overall.total + ' checks (' + kwRate + '%)</span>';
+    if (kwRate < 80) {
+      html += '<span style="color:var(--n2)">— ';
+      if (kwAudit.seeds.pass < kwAudit.seeds.total) html += 'seeds ';
+      if (kwAudit.opportunities.pass < kwAudit.opportunities.total) html += 'opportunities ';
+      if (kwAudit.clusters.pass < kwAudit.clusters.total) html += 'clusters ';
+      html += 'need work</span>';
+    }
+    html += '</div>';
+  }
 
   // D8 status
   if (!S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) {
-    html += '<div style="font-size:11px;color:#e6a23c;margin-top:6px"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Keyword demand validation has not run yet \u2014 score capped at 6.5</div>';
+    html += '<div style="font-size:11px;color:#e6a23c;margin-top:6px"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Keyword demand validation has not run yet (click Improve Weakest to include it) \u2014 overall score capped at 6.5 until validated</div>';
   } else {
     var verdict = S.strategy.demand_validation.overall_verdict;
     var vc = verdict === 'viable' ? 'var(--green)' : verdict === 'marginal' ? '#e6a23c' : '#f56c6c';
@@ -1378,7 +1701,7 @@ function renderStrategyScorecard() {
       html += '<button class="btn btn-primary sm" onclick="goTo(\'sitemap\')"><i class="ti ti-arrow-right"></i> Proceed</button>';
     } else if (!S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) {
       html += '<span style="font-size:11px;color:#e6a23c">Run keyword demand validation before proceeding</span>';
-      html += '<button class="btn btn-ghost sm" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Run D8</button>';
+      html += '<button class="btn btn-ghost sm" data-tip="Validates keyword demand for your services and uncaps the score" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Validate Demand</button>';
     } else if (overall < 7.0 && !meta.approved) {
       html += '<span style="font-size:11px;color:var(--n2)">Score: ' + overall + ' / 7.0 threshold</span>';
       html += '<div style="display:flex;gap:4px"><button class="btn btn-ghost sm" onclick="improveStrategy()">Improve</button>';
@@ -1412,6 +1735,10 @@ function renderStrategyNav() {
       var sc = secScore >= 7 ? 'var(--green)' : secScore >= 4 ? '#e6a23c' : '#f56c6c';
       html += ' <span style="font-size:9px;color:' + sc + ';font-weight:600">' + secScore + '</span>';
     }
+    // Output tab: show checkmark if compiled
+    if (t.id === 'output' && S.strategy && S.strategy.compiled_output) {
+      html += ' <span style="font-size:9px;color:var(--green)"><i class="ti ti-check" style="font-size:10px"></i></span>';
+    }
     html += '</button>';
   });
   el.innerHTML = html;
@@ -1426,10 +1753,17 @@ function renderStrategyTabContent() {
   if (_sTab === 'keywords') {
     // Mount keywords.js into this container
     el.innerHTML = '<div id="strategy-kw-wrap">'
+      + (typeof renderPipelineStatusContainer === 'function' ? renderPipelineStatusContainer() : '')
       + '<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>'
       + '<div id="kw-tab-content"></div>'
       + '</div>';
     initKeywords();
+    if (typeof _renderPipelineStatus === 'function') _renderPipelineStatus();
+    return;
+  }
+
+  if (_sTab === 'output') {
+    el.innerHTML = _renderOutput(S.strategy || {});
     return;
   }
 
@@ -1438,10 +1772,34 @@ function renderStrategyTabContent() {
 
   // Re-run diagnostic button
   var diagMap = { positioning: 2, economics: 1, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagLabels = {
+    1: 'Unit Economics',
+    2: 'Competitive Position',
+    3: 'Subtraction',
+    4: 'Channel Viability',
+    5: 'Website & CRO',
+    6: 'Content & Authority',
+    7: 'Risk Assessment'
+  };
+  var diagTips = {
+    1: 'Re-analyse CPL, CAC, LTV and budget viability',
+    2: 'Re-assess competitive positioning and differentiators',
+    3: 'Re-evaluate which activities to cut or restructure',
+    4: 'Re-score all 13 marketing levers and budget allocation',
+    5: 'Re-assess website build type, forms and conversion strategy',
+    6: 'Re-analyse content gaps, pillars and authority plan',
+    7: 'Re-score risk categories and update mitigations'
+  };
   var diagNum = diagMap[_sTab];
   if (diagNum) {
-    html += '<div style="display:flex;gap:6px;margin-bottom:14px">';
-    html += '<button class="btn btn-ghost sm" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run D' + diagNum + '</button>';
+    var meta = (S.strategy && S.strategy._meta) ? S.strategy._meta : { current_version: 0 };
+    html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+    html += '<button class="btn btn-ghost sm" data-tip="' + (diagTips[diagNum] || '') + '" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
+    if (meta.current_version > 0) {
+      html += '<button class="btn btn-primary sm" data-tip="Runs all 7 diagnostics in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
+    } else {
+      html += '<button class="btn btn-primary sm" data-tip="Runs enrichment then all 7 diagnostics in sequence" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Full Strategy</button>';
+    }
     html += '</div>';
   }
 
@@ -1451,6 +1809,11 @@ function renderStrategyTabContent() {
     if (sScore.gaps.length > 0 && sScore.score < 7) {
       html += _renderGapPanel(sScore);
     }
+  }
+
+  // Audit panel (show quality checks for the relevant diagnostic)
+  if (diagNum) {
+    html += _renderAuditPanel(diagNum);
   }
 
   // Section content
@@ -1912,6 +2275,388 @@ function _renderRisks(st) {
   return html;
 }
 
+// ── Audit Panel (shown per tab) ────────────────────────────────────────
+
+function _renderAuditPanel(diagNum) {
+  var audit = (S.strategy && S.strategy._audit) ? S.strategy._audit[diagNum] : null;
+  if (!audit || !audit.items) return '';
+
+  var passRate = audit.total > 0 ? Math.round((audit.pass / audit.total) * 100) : 0;
+  var colour = passRate >= 80 ? 'var(--green)' : passRate >= 50 ? '#e6a23c' : '#f56c6c';
+
+  var html = '<div class="card" style="margin-bottom:14px;padding:12px 16px;border-left:3px solid ' + colour + '">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<div style="font-size:12px;font-weight:500">Quality Audit</div>';
+  html += '<div style="font-size:11px;color:' + colour + ';font-weight:600">' + audit.pass + '/' + audit.total + ' passed (' + passRate + '%)</div>';
+  html += '</div>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px">';
+  audit.items.forEach(function(item) {
+    var icon = item.passed
+      ? '<i class="ti ti-circle-check-filled" style="color:var(--green);font-size:14px"></i>'
+      : '<i class="ti ti-circle-x-filled" style="color:#f56c6c;font-size:14px"></i>';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px">';
+    html += icon + '<span style="color:' + (item.passed ? 'var(--n3)' : 'var(--dark)') + '">' + esc(item.label) + '</span>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  return html;
+}
+
+// ── Output Tab — Compiled Strategy Document ────────────────────────────
+
+async function compileStrategyOutput() {
+  if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version === 0) {
+    aiBarNotify('Generate strategy diagnostics first', { isError: true, duration: 3000 });
+    return;
+  }
+
+  var st = S.strategy;
+  var r = S.research || {};
+  var s = S.setup || {};
+
+  // Build comprehensive context from ALL diagnostic outputs
+  var ctx = 'CLIENT: ' + (s.client || r.client_name || '') + '\n';
+  ctx += 'URL: ' + (s.url || '') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  ctx += 'GEO: ' + (r.geography && r.geography.primary ? r.geography.primary : s.geo || '') + '\n';
+  ctx += 'AUDIENCE: ' + (r.primary_audience_description || '') + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+
+  // D1: Unit Economics
+  if (st.unit_economics && st.unit_economics.recommendation) {
+    ctx += '\nUNIT ECONOMICS:\n';
+    ctx += '- Max CPL: $' + (st.unit_economics.max_allowable_cpl || '?') + '\n';
+    ctx += '- LTV:CAC: ' + (st.unit_economics.ltv_cac_ratio || '?') + ' (' + (st.unit_economics.ltv_cac_health || '?') + ')\n';
+    ctx += '- Paid viable: ' + (st.unit_economics.paid_media_viable ? 'Yes' : 'No') + '\n';
+    ctx += '- Recommendation: ' + st.unit_economics.recommendation + '\n';
+  }
+
+  // D2: Positioning
+  if (st.positioning && st.positioning.core_value_proposition) {
+    ctx += '\nPOSITIONING:\n';
+    ctx += '- Value Prop: ' + st.positioning.core_value_proposition + '\n';
+    ctx += '- Angle: ' + (st.positioning.recommended_positioning_angle || '') + '\n';
+    ctx += '- Tagline: ' + (st.positioning.recommended_tagline || '') + '\n';
+    if (st.positioning.validated_differentiators) ctx += '- Differentiators: ' + st.positioning.validated_differentiators.join('; ') + '\n';
+    if (st.positioning.messaging_hierarchy) {
+      ctx += '- Primary Message: ' + (st.positioning.messaging_hierarchy.primary_message || '') + '\n';
+      if (st.positioning.messaging_hierarchy.proof_points) ctx += '- Proof: ' + st.positioning.messaging_hierarchy.proof_points.join('; ') + '\n';
+    }
+    if (st.positioning.brand_voice_direction) {
+      ctx += '- Voice: ' + (st.positioning.brand_voice_direction.style || '') + ' / ' + (st.positioning.brand_voice_direction.tone_detail || '') + '\n';
+    }
+  }
+
+  // D3: Subtraction
+  if (st.subtraction && (st.subtraction.activities_to_cut || st.subtraction.redirect_recommendation)) {
+    ctx += '\nSUBTRACTION:\n';
+    if (st.subtraction.activities_to_cut) ctx += '- Cut: ' + st.subtraction.activities_to_cut.map(function(a) { return a.activity; }).join(', ') + '\n';
+    if (st.subtraction.recoverable_budget) ctx += '- Recoverable: ' + st.subtraction.recoverable_budget + '\n';
+    if (st.subtraction.redirect_recommendation) ctx += '- Redirect: ' + st.subtraction.redirect_recommendation + '\n';
+  }
+
+  // D4: Channel Strategy
+  if (st.channel_strategy && st.channel_strategy.priority_order) {
+    ctx += '\nCHANNEL STRATEGY:\n';
+    ctx += '- Priority: ' + st.channel_strategy.priority_order.join(', ') + '\n';
+    if (st.channel_strategy.budget_allocation) ctx += '- Budget: $' + (st.channel_strategy.budget_allocation.total_monthly || '?') + '/mo\n';
+    if (st.channel_strategy.funnel_gaps_flagged) ctx += '- Funnel Gaps: ' + st.channel_strategy.funnel_gaps_flagged.join('; ') + '\n';
+  }
+
+  // D5: Website & CRO
+  var web = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.website : null;
+  if (web && web.build_type) {
+    ctx += '\nWEBSITE & CRO:\n';
+    ctx += '- Build type: ' + web.build_type + '\n';
+    if (web.primary_cta) ctx += '- Primary CTA: ' + web.primary_cta + '\n';
+    if (web.conversion_strategy) ctx += '- Conversion: ' + web.conversion_strategy + '\n';
+    if (web.architecture_direction && web.architecture_direction.page_types_needed) ctx += '- Pages needed: ' + web.architecture_direction.page_types_needed.join(', ') + '\n';
+  }
+  if (st.execution_plan && st.execution_plan.primary_cta && !web) {
+    ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
+  }
+
+  // D6: Content & Authority
+  var content = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
+  if (content && content.content_pillars) {
+    ctx += '\nCONTENT & AUTHORITY:\n';
+    ctx += '- Pillars: ' + content.content_pillars.join(', ') + '\n';
+    if (content.content_velocity) ctx += '- Velocity: ' + content.content_velocity + '\n';
+    if (content.geo_targeting_strategy) ctx += '- Geo Strategy: ' + content.geo_targeting_strategy + '\n';
+    if (content.local_seo_priority) ctx += '- Local SEO: ' + content.local_seo_priority + '\n';
+  }
+
+  // D7: Risks
+  if (st.risks && st.risks.risks) {
+    var highRisks = st.risks.risks.filter(function(rk) { return rk.severity >= 6; });
+    if (highRisks.length) {
+      ctx += '\nHIGH RISKS:\n';
+      highRisks.forEach(function(rk) {
+        ctx += '- ' + (rk.risk || '').replace(/_/g, ' ') + ' (sev:' + rk.severity + '): ' + (rk.mitigation || '') + '\n';
+      });
+    }
+  }
+
+  // D8: Demand
+  if (st.demand_validation && st.demand_validation.overall_verdict) {
+    ctx += '\nDEMAND VALIDATION: ' + st.demand_validation.overall_verdict + '\n';
+    if (st.demand_validation.seo_viability_score) ctx += '- SEO viability: ' + st.demand_validation.seo_viability_score + '/10\n';
+    if (st.demand_validation.time_to_meaningful_organic) ctx += '- Time to organic: ' + st.demand_validation.time_to_meaningful_organic + '\n';
+  }
+
+  // Real competitor names from research
+  var comps = r.competitors || [];
+  if (comps.length) {
+    ctx += '\nCOMPETITORS:\n';
+    comps.slice(0, 8).forEach(function(c) {
+      var name = c.name || c;
+      var url = c.url || '';
+      ctx += '- ' + name + (url ? ' (' + url + ')' : '');
+      if (c.why_they_win) ctx += ' — Strength: ' + c.why_they_win;
+      if (c.weaknesses) ctx += ' | Weakness: ' + c.weaknesses;
+      if (c.what_we_do_better) ctx += ' | Our edge: ' + c.what_we_do_better;
+      ctx += '\n';
+    });
+  }
+
+  // Real keyword clusters with volumes
+  var kwClusters = (S.kwResearch && S.kwResearch.clusters) || [];
+  if (kwClusters.length) {
+    var qualifiedClusters = kwClusters.filter(function(c) { return c.qualifies !== false; });
+    var totalVol = 0;
+    qualifiedClusters.forEach(function(c) { totalVol += (c.primaryVol || 0); });
+    ctx += '\nKEYWORD CLUSTERS (' + qualifiedClusters.length + ' qualified, ' + totalVol.toLocaleString() + ' total monthly volume):\n';
+    qualifiedClusters.slice(0, 25).forEach(function(c) {
+      ctx += '- ' + (c.name || c.primaryKw || '') + ' [' + (c.pageType || '?') + ']';
+      ctx += ' — "' + (c.primaryKw || '') + '" (' + (c.primaryVol || 0).toLocaleString() + '/mo, KD:' + (c.primaryKd || '?') + ')';
+      ctx += ' → ' + (c.recommendation === 'improve_existing' ? 'improve /' + (c.existingSlug || '') : 'build /' + (c.suggestedSlug || ''));
+      if (c.supportingKws && c.supportingKws.length) {
+        ctx += ' + ' + c.supportingKws.length + ' supporting kws';
+      }
+      ctx += '\n';
+    });
+    if (qualifiedClusters.length > 25) ctx += '... and ' + (qualifiedClusters.length - 25) + ' more clusters\n';
+  }
+
+  // Budget breakdown from channel strategy
+  var budgetAlloc = (st.channel_strategy && st.channel_strategy.budget_allocation) || (st.growth_plan && st.growth_plan.budget_allocation) || null;
+  if (budgetAlloc) {
+    ctx += '\nBUDGET BREAKDOWN:\n';
+    if (budgetAlloc.total_monthly) ctx += '- Total monthly: $' + budgetAlloc.total_monthly.toLocaleString() + '\n';
+    if (budgetAlloc.by_lever && typeof budgetAlloc.by_lever === 'object') {
+      Object.keys(budgetAlloc.by_lever).forEach(function(lever) {
+        ctx += '- ' + lever + ': $' + (budgetAlloc.by_lever[lever] || 0).toLocaleString() + '/mo\n';
+      });
+    }
+  }
+  // Per-lever budget percentages from channel strategy levers
+  if (st.channel_strategy && st.channel_strategy.levers && st.channel_strategy.levers.length) {
+    ctx += '\nCHANNEL LEVER DETAILS:\n';
+    st.channel_strategy.levers.forEach(function(lev) {
+      ctx += '- ' + (lev.lever || lev.name || '') + ': ' + (lev.budget_allocation_pct || 0) + '% of budget';
+      if (lev.timeline_to_results) ctx += ', results in ' + lev.timeline_to_results;
+      if (lev.recommendation) ctx += ' — ' + lev.recommendation;
+      ctx += '\n';
+    });
+  }
+
+  // Audit summary
+  var auditSummary = [];
+  for (var d = 1; d <= 7; d++) {
+    var au = (st._audit || {})[d];
+    if (au) auditSummary.push('D' + d + ': ' + au.pass + '/' + au.total);
+  }
+  if (auditSummary.length) ctx += '\nAUDIT SCORES: ' + auditSummary.join(', ') + '\n';
+
+  // Reference docs
+  if (s.docs && s.docs.length) {
+    ctx += '\nREFERENCE DOCUMENTS:\n';
+    ctx += _docExtractCtx(s.docs, ['facts','decisions','requirements','competitors','audience','services','goals']);
+  }
+  if (s.discoveryNotes && s.discoveryNotes.trim()) {
+    ctx += '\nDISCOVERY NOTES:\n' + s.discoveryNotes.trim() + '\n';
+  }
+
+  var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
+    + 'Write in these 8 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers.\n\n'
+    + '## 1. EXECUTIVE SUMMARY\n'
+    + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition.\n\n'
+    + '## 2. COMPETITIVE LANDSCAPE\n'
+    + 'Name the actual competitors from the data. For each major competitor, state their specific strength and the gap we exploit. Identify the unoccupied territory we are claiming.\n\n'
+    + '## 3. KEYWORD & DEMAND STRATEGY\n'
+    + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the realistic organic timeline from demand validation.\n\n'
+    + '## 4. CONTENT STRATEGY\n'
+    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue.\n\n'
+    + '## 5. WEBSITE & CONVERSION\n'
+    + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. CTA strategy (primary, secondary, low-commitment), form strategy, and tracking requirements.\n\n'
+    + '## 6. CHANNEL ALLOCATION\n'
+    + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever.\n\n'
+    + '## 7. GEO & LOCAL STRATEGY\n'
+    + 'Geographic targeting approach, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
+    + '## 8. RISKS & CONSTRAINTS\n'
+    + 'Top risks with mitigations. Hard rules and constraints the team must follow.\n\n'
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 1200-1800 words total.';
+
+  aiBarStart('Compiling strategy document...');
+  try {
+    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 20000), null, 6000, 'Strategy output');
+    S.strategy.compiled_output = result;
+    // Also update the webStrategy brief (shorter version for downstream)
+    if (!S.strategy.webStrategy || S.strategy.webStrategy.length < 100) {
+      await synthesiseWebStrategy();
+    }
+    await saveProject();
+    renderStrategyTabContent();
+    aiBarEnd('Strategy document compiled');
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Compilation failed: ' + e.message, { isError: true, duration: 4000 });
+  }
+}
+
+function _renderOutput(st) {
+  var html = '';
+  var output = st.compiled_output || '';
+  var meta = st._meta || {};
+
+  // Action buttons
+  html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+  if (meta.current_version > 0) {
+    if (output) {
+      html += '<button class="btn btn-ghost sm" data-tip="Regenerates the compiled strategy document from current diagnostics" onclick="compileStrategyOutput()"><i class="ti ti-refresh"></i> Recompile</button>';
+    } else {
+      html += '<button class="btn btn-primary sm" data-tip="Compiles all diagnostic outputs into a single strategy document" onclick="compileStrategyOutput()"><i class="ti ti-sparkles"></i> Compile Strategy Document</button>';
+    }
+    if (!st.webStrategy || st.webStrategy.length < 100) {
+      html += '<button class="btn btn-ghost sm" data-tip="Generates a shorter website-focused brief for downstream stages" onclick="synthesiseWebStrategy()"><i class="ti ti-file-description"></i> Generate Website Brief</button>';
+    }
+  } else {
+    html += '<div class="card" style="color:var(--n2);text-align:center;padding:20px"><p>Generate strategy diagnostics first, then compile the output document here.</p></div>';
+    return html;
+  }
+  html += '</div>';
+
+  // Audit summary across all diagnostics
+  var audit = st._audit || {};
+  var hasAudit = Object.keys(audit).length > 0;
+  if (hasAudit) {
+    var diagLabelsShort = { 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks' };
+    html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
+    html += '<div style="font-size:12px;font-weight:500;margin-bottom:8px">Diagnostic Audit Summary</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    for (var d = 1; d <= 7; d++) {
+      var au = audit[d];
+      if (!au) {
+        html += '<div style="flex:1;min-width:80px;padding:6px 8px;border-radius:6px;background:var(--bg2);text-align:center">';
+        html += '<div style="font-size:9px;color:var(--n2)">' + diagLabelsShort[d] + '</div>';
+        html += '<div style="font-size:11px;color:var(--n2)">Not run</div>';
+        html += '</div>';
+        continue;
+      }
+      var rate = au.total > 0 ? Math.round((au.pass / au.total) * 100) : 0;
+      var ac = rate >= 80 ? 'var(--green)' : rate >= 50 ? '#e6a23c' : '#f56c6c';
+      html += '<div style="flex:1;min-width:80px;padding:6px 8px;border-radius:6px;background:var(--bg2);text-align:center">';
+      html += '<div style="font-size:9px;color:var(--n2)">' + diagLabelsShort[d] + '</div>';
+      html += '<div style="font-size:14px;font-weight:600;color:' + ac + '">' + au.pass + '/' + au.total + '</div>';
+      html += '<div style="font-size:9px;color:' + ac + '">' + rate + '%</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // Keyword pipeline audit
+  var kwAudit2 = auditKeywordPipeline();
+  if (kwAudit2.overall.total > 0) {
+    var kwStages = ['seeds', 'opportunities', 'clusters'];
+    var kwStageLabels = { seeds: 'Seeds', opportunities: 'Opportunities', clusters: 'Clusters' };
+    html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
+    html += '<div style="font-size:12px;font-weight:500;margin-bottom:8px">Keyword Pipeline Audit</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+    kwStages.forEach(function(stage) {
+      var au2 = kwAudit2[stage];
+      var rate2 = au2.total > 0 ? Math.round((au2.pass / au2.total) * 100) : 0;
+      var ac2 = rate2 >= 80 ? 'var(--green)' : rate2 >= 50 ? '#e6a23c' : '#f56c6c';
+      html += '<div style="flex:1;min-width:100px;padding:6px 8px;border-radius:6px;background:var(--bg2);text-align:center">';
+      html += '<div style="font-size:9px;color:var(--n2)">' + kwStageLabels[stage] + '</div>';
+      html += '<div style="font-size:14px;font-weight:600;color:' + ac2 + '">' + au2.pass + '/' + au2.total + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    // Show failed checks
+    var kwFailed = [];
+    kwStages.forEach(function(stage) {
+      kwAudit2[stage].items.forEach(function(item) {
+        if (!item.passed) kwFailed.push({ stage: kwStageLabels[stage], label: item.label });
+      });
+    });
+    if (kwFailed.length > 0) {
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 16px">';
+      kwFailed.forEach(function(f) {
+        html += '<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0">';
+        html += '<i class="ti ti-circle-x-filled" style="color:#f56c6c;font-size:12px"></i>';
+        html += '<span style="color:var(--n2)">' + esc(f.stage) + ':</span> ' + esc(f.label);
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Compiled output document
+  if (output) {
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:12px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Compiled Strategy Document</div>';
+    if (meta.current_version > 0) html += '<div style="font-size:10px;color:var(--n2)">v' + meta.current_version + '</div>';
+    html += '</div>';
+    html += '<div class="card" style="padding:24px 28px;margin-bottom:14px">';
+    html += '<div style="font-size:13px;line-height:1.7;font-family:var(--font)">' + sanitiseHTML(_markdownToHtml(output)) + '</div>';
+    html += '</div>';
+  }
+
+  // Website strategy brief (shorter version)
+  if (st.webStrategy && st.webStrategy.trim()) {
+    html += '<div style="margin-top:14px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:12px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Website Strategy Brief</div>';
+    html += '<button class="btn btn-ghost sm" style="font-size:10px" onclick="synthesiseWebStrategy()"><i class="ti ti-refresh"></i> Regenerate</button>';
+    html += '</div>';
+    html += '<div class="card" style="padding:16px">';
+    html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap">' + esc(st.webStrategy) + '</div>';
+    html += '</div></div>';
+  }
+
+  return html;
+}
+
+// Simple markdown to HTML for compiled output
+function _markdownToHtml(md) {
+  if (!md) return '';
+  return md
+    // H1 — document title
+    .replace(/^# (.+)$/gm, '<h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--dark);letter-spacing:-0.02em">$1</h2>')
+    // H2 with numbered sections — major section headers
+    .replace(/^## (\d+)\.\s+(.+)$/gm, '<div style="border-top:2px solid var(--border);margin:24px 0 12px;padding-top:16px"><h3 style="font-size:13px;font-weight:600;color:var(--dark);margin:0;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--dark);color:white;font-size:10px;font-weight:700;flex-shrink:0">$1</span>$2</h3></div>')
+    // H2 — other headings
+    .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:600;margin:20px 0 8px;color:var(--dark)">$1</h3>')
+    // H3 — sub-headings
+    .replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:600;margin:14px 0 6px;color:var(--n3)">$1</h4>')
+    // Horizontal rule
+    .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--dark)">$1</strong>')
+    // Unordered list items
+    .replace(/^- (.+)$/gm, '<li style="margin-left:16px;margin-bottom:3px;color:var(--n3)">$1</li>')
+    // Numbered list items
+    .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-left:16px;margin-bottom:3px;list-style-type:decimal;color:var(--n3)">$1</li>')
+    // Paragraphs
+    .replace(/\n\n/g, '</p><p style="margin:8px 0;color:var(--n3)">')
+    .replace(/\n/g, '<br>');
+}
+
 // ── Demand Tab (rendered via Keywords tab) ─────────────────────────────
 
 // The Keywords tab in strategy mounts the existing keywords.js functionality.
@@ -2059,7 +2804,7 @@ function _fmtVersionDate(iso) {
 }
 
 function _fmtTrigger(trigger) {
-  var map = { auto_draft: 'Initial generation', auto_improve: 'AI improvement', manual: 'Manual edit', revert: 'Reverted' };
+  var map = { auto_draft: 'Initial generation', auto_improve: 'AI improvement', rerun_all: 'Full re-run', manual: 'Manual edit', revert: 'Reverted' };
   return map[trigger] || trigger || 'Unknown';
 }
 

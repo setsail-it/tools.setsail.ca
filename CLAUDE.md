@@ -22,18 +22,18 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 ## File Map
 
 ```
-worker.js        — All backend API routes + queue consumer (~1935 lines)
-index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~2700 lines)
-strategy.js      — Stage 4: strategy engine + scoring + diagnostics (~1854 lines)
-keywords.js      — Keyword research (tab within Strategy stage) (~2445 lines)
-sitemap.js       — Stage 5: sitemap generation (~1566 lines)
-briefs.js        — Stage 6: brief generation + queue (~1542 lines)
-copy.js          — Stage 7: copy generation + audit (~1144 lines)
-research.js      — Stage 3: AI enrichment (~689 lines)
+worker.js        — All backend API routes + queue consumer (~2038 lines)
+index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~2924 lines)
+strategy.js      — Stage 4: strategy engine + scoring + diagnostics + web strategy brief (~2136 lines)
+keywords.js      — Keyword research (tab within Strategy stage) (~2591 lines)
+sitemap.js       — Stage 5: sitemap generation (~1666 lines)
+briefs.js        — Stage 6: brief generation + queue (~1645 lines)
+copy.js          — Stage 7: copy generation + audit (~1171 lines)
+research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1123 lines)
 layout.js        — Stage 9: wireframe generation (~558 lines)
 images.js        — Stage 8: image generation (~490 lines)
-schema.js        — Stage 10: schema markup (~250 lines)
-prompts.js       — Shared AI prompt templates (~112 lines)
+schema.js        — Stage 10: schema markup (~260 lines)
+prompts.js       — Shared AI prompt templates (~121 lines)
 export.js        — Stage 11: export packaging (~76 lines)
 wrangler.toml    — Cloudflare deployment config
 .dev.vars        — Local dev secrets (gitignored)
@@ -48,7 +48,7 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 **Key `S` properties:**
 - `S.projectId`, `S.stage` — current project and stage
 - `S._version` — optimistic locking counter (incremented on each save)
-- `S.setup` — client info, strategy, voice, competitors
+- `S.setup` — client info, docs, voice, competitors, sales qualification
 - `S.snapshot` — DataForSEO domain metrics
 - `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
 - `S.strategy` — strategy engine output (positioning, unit economics, channels, brand, risks, targets, demand validation)
@@ -63,7 +63,8 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 - **Auth routes:** `/api/whoami`, `/api/admin/users`
 - **Project CRUD:** `/api/projects[/:id]`
 - **AI proxy:** `/api/claude` (streaming), `/api/claude-sync` (non-streaming) — model-locked and token-capped
-- **DataForSEO:** `/api/snapshot`, `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
+- **DataForSEO:** `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
+- **Ahrefs:** `/api/snapshot`, `/api/ahrefs`
 - **Queue:** `/api/queue-submit`, `/api/queue-status`
 - **Image gen:** `/api/generate-image`
 - **Per-slug storage:** `/api/copy/:projectId/:slug`, `/api/images/:projectId/:slug`
@@ -91,6 +92,7 @@ These are defined once and used across all routes:
 - `orderedPages()` — display-sorted page list
 - `storePrompt(key, system, user, title, subtitle)` / `showPromptModal(key)` — prompt viewer
 - `getStrategyField(stratPath, researchFallback)` — reads from `S.strategy` with automatic `S.research` fallback (defined in strategy.js, used by all downstream stages)
+- `synthesiseWebStrategy()` — generates website strategy brief from completed strategy + research (defined in strategy.js, output stored in `S.strategy.webStrategy`)
 
 ## Security Model
 
@@ -172,6 +174,9 @@ async function generateAll(startFrom) {
 }
 ```
 Already implemented in: `generateAllBriefs` (briefs.js), `enrichAll` (research.js), `generateAllPageGoals` (sitemap.js), `generateStrategy`/`improveStrategy` (strategy.js).
+
+### Stage navigation
+All 11 pipeline stages are always clickable in the sidebar — no stage locking or dependency gating. This is an internal tool for professionals; users can jump to any stage at any time. `navToStage(stage)` calls `goTo(stage)` + `renderStageContent(stage)`.
 
 ### Stage eyebrows
 Stage counts use `data-stage-num` attributes populated by `STAGES.length` via `_updateStageEyebrows()`. Never hardcode "Stage X of Y" — use `<div class="eyebrow stage-eyebrow" data-stage-num="N"></div>`.

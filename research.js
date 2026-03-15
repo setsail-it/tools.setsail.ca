@@ -51,6 +51,7 @@ var RESEARCH_FIELD_META = {
   fonts:                     { tab:'brand',       label:'Fonts',                    importance:'optional', source:'manual' },
   brand_guidelines_link:     { tab:'brand',       label:'Brand Guidelines Link',    importance:'optional', source:'manual' },
   logo_files_link:           { tab:'brand',       label:'Logo Files Link',          importance:'optional', source:'manual' },
+  logo_url:                  { tab:'brand',       label:'Logo URL (from website)',   importance:'optional', source:'ai' },
   photo_library_link:        { tab:'brand',       label:'Photo Library Link',       importance:'optional', source:'manual' },
   video_library_link:        { tab:'brand',       label:'Video Library Link',       importance:'optional', source:'manual' },
   existing_ad_creatives_link:{ tab:'brand',       label:'Ad Creatives Link',        importance:'optional', source:'manual' },
@@ -73,6 +74,7 @@ var RESEARCH_FIELD_META = {
   schema_region:             { tab:'schema',      label:'Province / State',         importance:'normal',   source:'ai' },
   schema_postal_code:        { tab:'schema',      label:'Postal Code',              importance:'normal',   source:'ai' },
   schema_country:            { tab:'schema',      label:'Country',                  importance:'normal',   source:'ai' },
+  schema_phone:              { tab:'schema',      label:'Phone Number',             importance:'normal',   source:'ai' },
   social_profiles:           { tab:'schema',      label:'Social Profiles',          importance:'normal',   source:'ai' },
   schema_services:           { tab:'schema',      label:'Schema Services',          importance:'normal',   source:'ai' },
   has_location_pages:        { tab:'schema',      label:'Location Pages',           importance:'normal',   source:'ai' },
@@ -251,7 +253,7 @@ function researchDefaults() {
     brand_name:'', current_slogan:'',
     existing_proof:[],
     brand_colours:[], fonts:[],
-    brand_guidelines_link:'', logo_files_link:'',
+    brand_guidelines_link:'', logo_files_link:'', logo_url:'',
     photo_library_link:'', video_library_link:'',
     existing_ad_creatives_link:'', do_not_use_assets_notes:'',
     reference_brands:[],
@@ -264,6 +266,7 @@ function researchDefaults() {
     schema_has_physical_locations:false,
     schema_street_address:'', schema_city:'', schema_region:'',
     schema_postal_code:'', schema_country:'',
+    schema_phone:'',
     social_profiles:[], schema_services:[],
     has_location_pages:'', has_service_pages:'',
     has_blog:'', has_faq_section:'',
@@ -537,6 +540,7 @@ function renderRBrand(r) {
   html += rSec('Visual Assets',
     rField('brand_colours','Brand Colours — hex codes (comma-separated)', r.brand_colours, 'text-csv') +
     rField('fonts','Fonts (comma-separated)', r.fonts, 'text-csv') +
+    rField('logo_url','Logo URL (auto-detected from website)', r.logo_url) +
     rField('brand_guidelines_link','Brand Guidelines Link', r.brand_guidelines_link) +
     rField('logo_files_link','Logo Files Link', r.logo_files_link) +
     rField('photo_library_link','Photo Library Link', r.photo_library_link) +
@@ -584,6 +588,7 @@ async function pullGMB() {
       return;
     }
     const g = data.result;
+    _cachedGMBData = g;
     if (!S.research) S.research = researchDefaults();
     const rd = S.research;
     const ap = g.address_parts || {};
@@ -594,8 +599,14 @@ async function pullGMB() {
     if (ap.country_code) rd.schema_country = ap.country_code;
     if (g.category && !rd.schema_primary_category) rd.schema_primary_category = g.category;
     if (g.price_level && !rd.schema_price_range) rd.schema_price_range = g.price_level;
+    if (g.phone && !rd.schema_phone) rd.schema_phone = g.phone;
     if (g.social_profiles && g.social_profiles.length > 0) rd.social_profiles = g.social_profiles;
     if (g.reviews && g.reviews.length > 0) rd.reviews = g.reviews;
+    // Fill geography from GMB address if empty
+    if (!rd.geography) rd.geography = { primary: '', secondary: [] };
+    if (!rd.geography.primary && (ap.city || ap.borough) && ap.region) {
+      rd.geography.primary = (ap.city || ap.borough) + ', ' + ap.region;
+    }
     scheduleSave();
     _rTab = 'schema';
     renderResearchTabContent();
@@ -628,7 +639,8 @@ function renderRSchema(r) {
     rField('schema_city','City', r.schema_city) +
     rField('schema_region','Province / State', r.schema_region) +
     rField('schema_postal_code','Postal Code', r.schema_postal_code) +
-    rField('schema_country','Country', r.schema_country)
+    rField('schema_country','Country', r.schema_country) +
+    rField('schema_phone','Phone Number', r.schema_phone)
   );
   html += rSec('Site Structure',
     rField('has_location_pages','Location Pages', r.has_location_pages, 'select', {options:['Yes','Planned','No']}) +
@@ -675,8 +687,10 @@ function renderRKeywords(el) {
 // ── AI Enrichment ─────────────────────────────────────────────────
 
 async function enrichOneTab(tab) {
-  // Clear website cache so re-enrich fetches fresh data from all pages
+  // Clear caches so re-enrich fetches fresh data
   _cachedWebsiteText = null;
+  _cachedGMBData = null;
+  _cachedBrandAssets = null;
   if (!S.research) S.research = researchDefaults();
   var _s = S.setup || {};
   if (_s.client && !S.research.client_name) S.research.client_name = _s.client;
@@ -699,7 +713,8 @@ async function enrichOneTab(tab) {
 }
 
 async function enrichAll(forceAll, startFrom) {
-  const tabs = ['business','audience','brand','schema','competitors'];
+  const steps = ['gmb','website','brand-assets','business','audience','brand','schema','competitors'];
+  const stepLabels = { gmb:'Google Business Profile', website:'Website Scrape', 'brand-assets':'Brand Assets', business:'Business', audience:'Audience', brand:'Brand', schema:'Schema & Local', competitors:'Competitors' };
   const btn = document.getElementById('research-enrich-btn');
   const statusEl = document.getElementById('research-enrich-status');
   const msgEl = document.getElementById('research-enrich-msg');
@@ -712,10 +727,10 @@ async function enrichAll(forceAll, startFrom) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Enriching...'; }
   if (statusEl) statusEl.style.display = 'flex';
   var start = startFrom || 0;
-  for (let i = start; i < tabs.length; i++) {
+  for (let i = start; i < steps.length; i++) {
     if (window._aiStopAll) {
       window._aiStopResumeCtx = {
-        label: 'Enrichment paused (' + i + '/' + tabs.length + ' tabs)',
+        label: 'Enrichment paused (' + i + '/' + steps.length + ' steps)',
         fn: function(args) { enrichAll(args.forceAll, args.startFrom); },
         args: { forceAll: forceAll, startFrom: i }
       };
@@ -723,20 +738,81 @@ async function enrichAll(forceAll, startFrom) {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; }
       return;
     }
-    const tab = tabs[i];
-    const label = tab.charAt(0).toUpperCase()+tab.slice(1);
-    _enriching = tab;
-    _rTab = tab;
+    var step = steps[i];
+    var label = stepLabels[step] || step;
+    if (msgEl) msgEl.textContent = 'Fetching ' + label + '...';
+    if (progEl) progEl.textContent = (i+1) + ' / ' + steps.length;
+
+    // Step 0: Google Business Profile pull
+    if (step === 'gmb') {
+      try {
+        _cachedGMBData = null; // reset cache so we get fresh data
+        var gmbResult = await _autoGMB(true);
+        if (gmbResult) {
+          _enrichDone.add('gmb');
+          if (msgEl) msgEl.textContent = 'Google Business Profile pulled ✓';
+        } else {
+          if (msgEl) msgEl.textContent = 'No Google Business Profile found — continuing';
+        }
+      } catch(e) {
+        if (msgEl) msgEl.textContent = 'GMB pull skipped — ' + (e.message || '').slice(0,40);
+      }
+      await new Promise(function(res){ setTimeout(res, 800); });
+      continue;
+    }
+
+    // Step 1: Website scrape (pre-fetch for all AI tabs)
+    if (step === 'website') {
+      try {
+        _cachedWebsiteText = '';
+        await _fetchWebsiteText();
+        if (_cachedWebsiteText) {
+          _enrichDone.add('website');
+          if (msgEl) msgEl.textContent = 'Website content scraped ✓';
+        } else {
+          if (msgEl) msgEl.textContent = 'No website content found — continuing';
+        }
+      } catch(e) {
+        if (msgEl) msgEl.textContent = 'Website scrape skipped — ' + (e.message || '').slice(0,40);
+      }
+      await new Promise(function(res){ setTimeout(res, 800); });
+      continue;
+    }
+
+    // Step 2: Brand asset extraction (colours, fonts, logo from CSS/HTML)
+    if (step === 'brand-assets') {
+      try {
+        _cachedBrandAssets = null;
+        var brandResult = await _fetchBrandAssets(true);
+        if (brandResult && (brandResult.colours.length || brandResult.fonts.length || brandResult.logo_url)) {
+          _enrichDone.add('brand-assets');
+          var _parts = [];
+          if (brandResult.colours.length) _parts.push(brandResult.colours.length + ' colours');
+          if (brandResult.fonts.length) _parts.push(brandResult.fonts.length + ' fonts');
+          if (brandResult.logo_url) _parts.push('logo');
+          if (msgEl) msgEl.textContent = 'Brand assets extracted: ' + _parts.join(', ') + ' ✓';
+        } else {
+          if (msgEl) msgEl.textContent = 'No brand assets detected — continuing';
+        }
+      } catch(e) {
+        if (msgEl) msgEl.textContent = 'Brand asset extraction skipped — ' + (e.message || '').slice(0,40);
+      }
+      await new Promise(function(res){ setTimeout(res, 800); });
+      continue;
+    }
+
+    // AI enrichment tabs
+    _enriching = step;
+    _rTab = step;
     if (msgEl) msgEl.textContent = 'Enriching ' + label + '...';
-    if (progEl) progEl.textContent = (i+1)+' / '+tabs.length;
     renderResearchNav();
     renderResearchTabContent();
     try {
-      await enrichRTab(tab, forceAll);
+      await enrichRTab(step, forceAll);
     } catch(e) { if (e.name === 'AbortError') return; }
-    _enrichDone.add(tab);
-    // Pause between tabs to avoid Anthropic rate limits
-    if (i < tabs.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
+    _enrichDone.add(step);
+    // Pause between AI tabs to avoid Anthropic rate limits
+    if (i < steps.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
   }
   _enriching = false;
   if (msgEl) msgEl.textContent = 'All sections enriched ✓';
@@ -754,6 +830,9 @@ async function enrichAll(forceAll, startFrom) {
 }
 
 // Smart merge: only fill empty/null/empty-array fields unless forceAll=true
+// For array-of-objects fields, appends new unique items instead of skipping
+var _MERGE_APPEND_FIELDS = ['case_studies','reference_brands','services_detail','notable_clients','social_profiles','publications_media','current_customer_profile'];
+
 function mergeEnriched(target, source, forceAll) {
   Object.keys(source).forEach(function(key) {
     if (key === 'geography') return;
@@ -770,6 +849,19 @@ function mergeEnriched(target, source, forceAll) {
 
     if (!forceAll) {
       if (typeof existing === 'string' && existing.trim()) return;
+      // For appendable array fields: merge new unique items into existing
+      if (Array.isArray(existing) && existing.length > 0 && Array.isArray(incoming) && _MERGE_APPEND_FIELDS.indexOf(key) !== -1) {
+        incoming.forEach(function(newItem) {
+          // Deduplicate by first string value (name, client, url, platform, or the string itself)
+          var newId = typeof newItem === 'string' ? newItem.toLowerCase() : (newItem.name || newItem.client || newItem.url || newItem.platform || JSON.stringify(newItem)).toLowerCase();
+          var isDupe = existing.some(function(ex) {
+            var exId = typeof ex === 'string' ? ex.toLowerCase() : (ex.name || ex.client || ex.url || ex.platform || JSON.stringify(ex)).toLowerCase();
+            return exId === newId;
+          });
+          if (!isDupe) existing.push(newItem);
+        });
+        return;
+      }
       if (Array.isArray(existing) && existing.length > 0) return;
       // booleans: always allow enrichment to set them (false = unfilled)
     }
@@ -851,12 +943,21 @@ async function _fetchWebsiteText() {
   return _cachedWebsiteText;
 }
 
-async function _autoGMB() {
+// Cached GMB result for enrichment context
+var _cachedGMBData = null;
+
+async function _autoGMB(force) {
   var r = S.research || {};
-  // Skip if we already have GMB data (address filled)
-  if (r.schema_street_address || r.schema_city) return;
+  // Skip if we already have GMB data (address filled) and not forced
+  if (!force && (r.schema_street_address || r.schema_city)) {
+    // Still cache existing data for enrichment context
+    if (!_cachedGMBData && r.schema_street_address) {
+      _cachedGMBData = { address_parts: { address: r.schema_street_address, city: r.schema_city, region: r.schema_region, zip: r.schema_postal_code, country_code: r.schema_country }, category: r.schema_primary_category || '', price_level: r.schema_price_range || '' };
+    }
+    return _cachedGMBData;
+  }
   var keyword = (S.setup && S.setup.client) || r.client_name || '';
-  if (!keyword) return;
+  if (!keyword) return null;
   try {
     var res = await fetch('/api/gmb', {
       method: 'POST',
@@ -864,10 +965,12 @@ async function _autoGMB() {
       body: JSON.stringify({ keyword: keyword + ' ' + ((S.setup && S.setup.geo) || '') })
     });
     var data = await res.json();
-    if (!data.result) return;
+    if (!data.result) return null;
     var g = data.result;
+    _cachedGMBData = g;
     if (!S.research) S.research = researchDefaults();
     var rd = S.research;
+    // Schema fields (address, category, price)
     var ap = g.address_parts || {};
     if (ap.address) rd.schema_street_address = ap.address;
     if (ap.city || ap.borough) rd.schema_city = ap.city || ap.borough;
@@ -876,12 +979,99 @@ async function _autoGMB() {
     if (ap.country_code) rd.schema_country = ap.country_code;
     if (g.category && !rd.schema_primary_category) rd.schema_primary_category = g.category;
     if (g.price_level && !rd.schema_price_range) rd.schema_price_range = g.price_level;
+    // Social profiles + reviews
     if (g.social_profiles && g.social_profiles.length > 0 && !rd.social_profiles.length) rd.social_profiles = g.social_profiles;
     if (g.reviews && g.reviews.length > 0 && !rd.reviews.length) rd.reviews = g.reviews;
+    // Geography — fill primary from GMB address if empty
+    if (!rd.geography) rd.geography = { primary: '', secondary: [] };
+    if (!rd.geography.primary && (ap.city || ap.borough) && ap.region) {
+      rd.geography.primary = (ap.city || ap.borough) + ', ' + ap.region;
+    }
+    // Phone number — store for schema
+    if (g.phone && !rd.schema_phone) rd.schema_phone = g.phone;
     scheduleSave();
+    return g;
   } catch(e) {
     console.warn('Auto GMB pull failed:', e.message);
+    return null;
   }
+}
+
+// Build GMB context string for enrichment prompts
+function _gmbCtx() {
+  var g = _cachedGMBData;
+  if (!g) return '';
+  var parts = ['\nGOOGLE BUSINESS PROFILE DATA:'];
+  if (g.title) parts.push('Business name: ' + g.title);
+  if (g.category) parts.push('Category: ' + g.category);
+  if (g.address) parts.push('Address: ' + g.address);
+  if (g.phone) parts.push('Phone: ' + g.phone);
+  if (g.website) parts.push('Website: ' + g.website);
+  if (g.rating) parts.push('Rating: ' + g.rating + '/5 (' + (g.reviews_count || 0) + ' reviews)');
+  if (g.price_level) parts.push('Price level: ' + g.price_level);
+  if (g.work_hours && Object.keys(g.work_hours).length > 0) {
+    var wh = [];
+    for (var day in g.work_hours) { if (g.work_hours[day]) wh.push(day + ': ' + g.work_hours[day]); }
+    if (wh.length) parts.push('Hours: ' + wh.join(', '));
+  }
+  if (g.social_profiles && g.social_profiles.length > 0) {
+    parts.push('Social: ' + g.social_profiles.map(function(sp) { return sp.platform + ': ' + sp.url; }).join(', '));
+  }
+  if (g.reviews && g.reviews.length > 0) {
+    parts.push('Sample reviews:');
+    g.reviews.forEach(function(rv) {
+      parts.push('  - ' + (rv.author_name || 'Anonymous') + ' (' + (rv.rating_value || '?') + '/5): "' + (rv.review_body_short || '').slice(0, 120) + '"');
+    });
+  }
+  return parts.join('\n');
+}
+
+// Cached brand assets from website
+var _cachedBrandAssets = null;
+
+async function _fetchBrandAssets(force) {
+  if (!force && _cachedBrandAssets) return _cachedBrandAssets;
+  var siteUrl = (S.setup && S.setup.url) || '';
+  if (!siteUrl) return null;
+  try {
+    var res = await fetch('/api/brand-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: siteUrl })
+    });
+    var data = await res.json();
+    _cachedBrandAssets = data;
+    if (!S.research) S.research = researchDefaults();
+    var rd = S.research;
+    // Fill brand colours if empty
+    if (data.colours && data.colours.length > 0 && (!rd.brand_colours || !rd.brand_colours.length)) {
+      rd.brand_colours = data.colours;
+    }
+    // Fill fonts if empty
+    if (data.fonts && data.fonts.length > 0 && (!rd.fonts || !rd.fonts.length)) {
+      rd.fonts = data.fonts;
+    }
+    // Fill logo URL if empty
+    if (data.logo_url && !rd.logo_url) {
+      rd.logo_url = data.logo_url;
+    }
+    scheduleSave();
+    return data;
+  } catch(e) {
+    console.warn('Brand asset extraction failed:', e.message);
+    return null;
+  }
+}
+
+// Build brand assets context string for enrichment prompts
+function _brandAssetsCtx() {
+  var b = _cachedBrandAssets;
+  if (!b) return '';
+  var parts = ['\nBRAND ASSETS (extracted from website CSS/HTML):'];
+  if (b.colours && b.colours.length) parts.push('Colours found: ' + b.colours.join(', '));
+  if (b.fonts && b.fonts.length) parts.push('Fonts found: ' + b.fonts.join(', '));
+  if (b.logo_url) parts.push('Logo URL: ' + b.logo_url);
+  return parts.length > 1 ? parts.join('\n') : '';
 }
 
 async function enrichRTab(tab, forceAll) {
@@ -889,12 +1079,18 @@ async function enrichRTab(tab, forceAll) {
   var r = S.research;
   var s = S.setup || {};
 
-  // Pre-fetch website content and GMB data in parallel
-  var _preFetchDone = await Promise.allSettled([_fetchWebsiteText(), _autoGMB()]);
+  // Pre-fetch website content, GMB data, and brand assets if not already cached (enrichAll pre-fetches all)
+  if (!_cachedWebsiteText) await _fetchWebsiteText();
+  if (!_cachedGMBData) await _autoGMB();
+  if (!_cachedBrandAssets) await _fetchBrandAssets();
   var websiteText = _cachedWebsiteText || '';
 
   var ctx = buildEnrichCtx();
   if (websiteText) ctx += '\n\nWEBSITE CONTENT (scraped from ' + (s.url || '') + ' and inner pages):\n' + websiteText.slice(0, 14000);
+  // Inject Google Business Profile data into context
+  ctx += _gmbCtx();
+  // Inject brand assets (colours, fonts, logo) into context
+  ctx += _brandAssetsCtx();
 
   // Cross-tab context: pass already-enriched fields so later tabs can build on them
   var crossCtx = '';
@@ -957,7 +1153,7 @@ async function enrichRTab(tab, forceAll) {
       + b + '"current_marketing_activities": ["extract any mentioned marketing channels — Google Ads, SEO, social media, referrals, etc. — or empty array if not found"],\n'
       + b + '"previous_agency_experience": "one of: Good experience | Bad experience | No agency | Multiple agencies | empty string if unknown"\n}',
 
-    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours/fonts: only include values explicitly found in reference docs — use [] if not found. Do NOT invent values.\n- For case_studies: extract EVERY case study from the /our-work and /portfolio pages. Include ALL of them with specific results and metrics mentioned. Do NOT limit to 2-3.\n- For notable_clients: list EVERY client name mentioned on the website.\n- Do NOT include brand_voice_style, tone_and_voice, words_to_use, words_to_avoid, or key_differentiators — those are handled in the Strategy stage.\n- Return ONLY valid JSON, no preamble.\n{\n'
+    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours: extract actual hex colour codes used on the website from the WEBSITE CONTENT and BRAND ASSETS sections. If brand assets data is available, use those colours.\n- For fonts: extract actual font names used on the website from the WEBSITE CONTENT and BRAND ASSETS sections. If brand assets data is available, use those fonts.\n- For case_studies: extract EVERY project, case study, or client showcase from /our-work, /portfolio, /case-studies, /projects pages. Even if no metrics are stated, still include the client name and describe the work done. Use "ongoing" for timeframe if not specified. NEVER return an empty array — if the website shows any client work at all, include it.\n- For notable_clients: list EVERY client or brand name mentioned anywhere on the website — check /our-work, /portfolio, /about, testimonials, logos sections.\n- For reference_brands: ONLY include brands the client explicitly mentioned as inspiration in discovery notes or uploaded documents. Do NOT guess or suggest random brands. Return [] if not mentioned.\n- Do NOT include brand_voice_style, tone_and_voice, words_to_use, words_to_avoid, or key_differentiators — those are handled in the Strategy stage.\n- Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
       + b + '"current_slogan": "current tagline from docs or website, or empty string",\n'
       + b + '"existing_proof": ["real cert/award/stat/number from docs or website, e.g. 273 Projects, 10+ Years, B Corp Certified"],\n'
@@ -968,7 +1164,8 @@ async function enrichRTab(tab, forceAll) {
       + b + '"awards_certifications": ["real award or certification — check /about page for partnerships and certs"],\n'
       + b + '"team_credentials": "founder/team qualifications, years of experience, specialisations from /about page",\n'
       + b + '"founder_bio": "founder background and expertise from /about page",\n'
-      + b + '"publications_media": ["media mention or publication from docs or website"]\n}',
+      + b + '"publications_media": ["media mention or publication from docs or website"],\n'
+      + b + '"reference_brands": [{"url": "https://example.com", "what_you_like": "specific element the client admires — ONLY include if the client explicitly mentioned reference brands in discovery notes or uploaded documents. If not mentioned, return []"}]\n}',
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'
       + b + '"schema_business_type": "LocalBusiness or Organization",\n'

@@ -807,21 +807,15 @@ async function generateAISeeds() {
     ctx += '\nPEOPLE ALSO ASK (from Google — reveals real search intent):\n' + paaQs.slice(0, 20).map(function(q, i) { return (i+1) + '. ' + q; }).join('\n') + '\n';
   }
 
-  // Uploaded docs (truncated)
+  // Uploaded docs (extracted or truncated)
   if (setup.docs && setup.docs.length) {
-    ctx += '\nREFERENCE DOCUMENTS (excerpt):\n';
-    setup.docs.forEach(function(d) { ctx += '\n--- ' + d.name + ' ---\n' + d.content.slice(0, 3000); });
+    ctx += '\nREFERENCE DOCUMENTS:\n';
+    ctx += _docExtractCtx(setup.docs, ['services','audience','competitors','goals','facts']);
     ctx += '\n';
   }
   if (setup.voice && setup.voice.trim()) {
     ctx += 'BRAND VOICE: ' + setup.voice.slice(0, 300) + '\n';
   }
-  var docs = setup.docs || [];
-  docs.slice(0, 3).forEach(function(d) {
-    if (d.content && d.content.trim()) {
-      ctx += '\nDOC [' + (d.name || 'uploaded') + '] (excerpt):\n' + d.content.slice(0, 800) + '\n';
-    }
-  });
 
   // Existing top pages for context
   var topPages = (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).slice(0, 15);
@@ -2587,5 +2581,489 @@ function removeKeyword(pageIdx, kw) {
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
+}
+
+// ── FULL KEYWORD PIPELINE ─────────────────────────────────────────────────────
+// Chains: questions → AI seeds → mechanical seeds → competitor seeds → merge →
+//         fetch volumes → auto-select → cluster → audit
+// Follows the stop/resume pattern from CLAUDE.md
+
+var KW_PIPELINE_STEPS = [
+  { id: 'questions',   label: 'Generate Questions',       icon: 'ti-help-circle' },
+  { id: 'ai_seeds',    label: 'AI Generate Seeds',        icon: 'ti-sparkles' },
+  { id: 'mechanical',  label: 'Build Mechanical Seeds',   icon: 'ti-settings-2' },
+  { id: 'competitors', label: 'Pull Competitor Keywords',  icon: 'ti-building-store' },
+  { id: 'merge',       label: 'Merge All Sources',        icon: 'ti-git-merge' },
+  { id: 'volumes',     label: 'Fetch Volumes',            icon: 'ti-chart-bar' },
+  { id: 'select',      label: 'Auto-select Top Keywords', icon: 'ti-check' },
+  { id: 'cluster',     label: 'Cluster into Pages',       icon: 'ti-stack-2' },
+  { id: 'audit',       label: 'Run Audit',                icon: 'ti-clipboard-check' }
+];
+
+// Silent competitor seed fetch — no DOM dependency
+async function _autoCompetitorSeeds() {
+  var r = S.research || {};
+  var domains = (r.competitors || []).map(function(c) {
+    var url = c.url || c.domain || '';
+    if (url) {
+      url = url.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').trim();
+      if (url) return url;
+    }
+    return '';
+  }).filter(Boolean).slice(0, 10);
+  if (!domains.length) return { added: 0, skipped: 'no competitor domains in research' };
+
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : _autoDetectKwCountry();
+
+  try {
+    var res = await fetch('/api/competitor-gap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains: domains, country: country, ownKeywords: [] })
+    });
+    var data = await res.json();
+    if (data.error) return { added: 0, skipped: data.error };
+
+    // Build brand terms to filter out competitor branded keywords
+    var brandTerms = new Set();
+    domains.forEach(function(d) {
+      // Add full domain and domain without TLD
+      brandTerms.add(d.toLowerCase());
+      var noTld = d.replace(/\.\w+$/, '').toLowerCase();
+      if (noTld.length > 2) brandTerms.add(noTld);
+    });
+    // Also add own client brand to filter
+    var clientName = ((S.setup || {}).client || (r.client_name) || '').toLowerCase().trim();
+    if (clientName.length > 2) brandTerms.add(clientName);
+    var clientDomain = ((S.setup || {}).url || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').toLowerCase().trim();
+    if (clientDomain.length > 2) {
+      brandTerms.add(clientDomain);
+      var clientNoTld = clientDomain.replace(/\.\w+$/, '');
+      if (clientNoTld.length > 2) brandTerms.add(clientNoTld);
+    }
+    // Add competitor names from research
+    (r.competitors || []).forEach(function(c) {
+      var name = (c.name || '').toLowerCase().trim();
+      if (name.length > 2) brandTerms.add(name);
+    });
+
+    var newSeeds = (data.keywords || []).map(function(k) {
+      var s = (typeof k === 'string') ? k : (k.keyword || k.kw || '');
+      return s.toLowerCase().trim();
+    }).filter(function(s) {
+      if (!s) return false;
+      // Filter out any keyword containing a brand term
+      var isBranded = false;
+      brandTerms.forEach(function(bt) {
+        if (s.indexOf(bt) >= 0) isBranded = true;
+      });
+      return !isBranded;
+    });
+
+    if (!newSeeds.length) return { added: 0, skipped: 'no non-brand keywords returned' };
+
+    if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+    if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
+    var compSet = new Set((S.kwResearch.seedSources.competitor || []).map(function(s) { return s.toLowerCase(); }));
+    var added = 0;
+    newSeeds.forEach(function(s) {
+      if (s.length > 2 && !compSet.has(s)) { compSet.add(s); S.kwResearch.seedSources.competitor.push(s); added++; }
+    });
+    if (S.kwResearch.activeSources.indexOf('competitor') < 0) S.kwResearch.activeSources.push('competitor');
+    return { added: added };
+  } catch (e) {
+    return { added: 0, skipped: e.message };
+  }
+}
+
+async function runFullKeywordPipeline(startFrom) {
+  window._aiStopAll = false;
+  if (!S.kwResearch) {
+    S.kwResearch = { seeds: [], seedSources: { mechanical: [], ai: [], competitor: [], questions: [] }, activeSources: ['mechanical', 'ai', 'competitor', 'questions'], keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
+  }
+  // Track pipeline state
+  if (!S.kwResearch._pipeline) S.kwResearch._pipeline = {};
+  var pl = S.kwResearch._pipeline;
+
+  var steps = KW_PIPELINE_STEPS;
+  var startIdx = 0;
+  if (startFrom) {
+    for (var si = 0; si < steps.length; si++) {
+      if (steps[si].id === startFrom) { startIdx = si; break; }
+    }
+  }
+
+  if (typeof aiBarStart === 'function') aiBarStart('Running keyword pipeline…');
+
+  for (var i = startIdx; i < steps.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Keyword pipeline paused at ' + steps[i].label + ' (' + (i + 1) + '/' + steps.length + ')',
+        fn: function(args) { runFullKeywordPipeline(args.startFrom); },
+        args: { startFrom: steps[i].id }
+      };
+      pl.status = 'paused';
+      pl.pausedAt = steps[i].id;
+      scheduleSave();
+      _renderPipelineStatus();
+      return;
+    }
+
+    var step = steps[i];
+    pl.currentStep = step.id;
+    pl.status = 'running';
+    _renderPipelineStatus();
+
+    try {
+      if (step.id === 'questions') {
+        // Generate questions if none exist
+        var existingQs = _getQuestionsArray();
+        if (existingQs.length < 5) {
+          await _pipelineGenerateQuestions();
+        }
+        // Extract question-derived seeds and ensure 'questions' is an active source
+        var qAdded = _autoExtractQuestionSeeds();
+        if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
+        if (S.kwResearch.activeSources.indexOf('questions') < 0) S.kwResearch.activeSources.push('questions');
+        pl.questions = { done: true, count: _getQuestionsArray().length, seedsAdded: qAdded, at: Date.now() };
+
+      } else if (step.id === 'ai_seeds') {
+        // Generate AI seeds silently
+        await _pipelineAISeeds();
+        pl.ai_seeds = { done: true, count: (S.kwResearch.seedSources.ai || []).length, at: Date.now() };
+
+      } else if (step.id === 'mechanical') {
+        S.kwResearch.seedSources.mechanical = buildKwSeeds();
+        if (S.kwResearch.activeSources.indexOf('mechanical') < 0) S.kwResearch.activeSources.push('mechanical');
+        pl.mechanical = { done: true, count: S.kwResearch.seedSources.mechanical.length, at: Date.now() };
+
+      } else if (step.id === 'competitors') {
+        var compResult = await _autoCompetitorSeeds();
+        pl.competitors = { done: true, count: compResult.added, skipped: compResult.skipped || null, at: Date.now() };
+
+      } else if (step.id === 'merge') {
+        _rebuildSeeds();
+        // Log source counts for debugging
+        var _srcCounts = {};
+        var _ss = S.kwResearch.seedSources || {};
+        Object.keys(_ss).forEach(function(k) { _srcCounts[k] = (_ss[k] || []).length; });
+        console.log('[kwPipeline] Merge — sources:', JSON.stringify(_srcCounts), 'total seeds:', S.kwResearch.seeds.length);
+        pl.merge = { done: true, count: S.kwResearch.seeds.length, sources: _srcCounts, at: Date.now() };
+
+      } else if (step.id === 'volumes') {
+        await _pipelineFetchVolumes();
+        pl.volumes = { done: true, count: (S.kwResearch.keywords || []).length, at: Date.now() };
+
+      } else if (step.id === 'select') {
+        // Auto-select top keywords by score (already sorted by _pipelineFetchVolumes)
+        var kws = S.kwResearch.keywords || [];
+        if (!kws.length) {
+          console.warn('[kwPipeline] Select skipped — no keywords with volumes');
+        }
+        // Take top 50 sorted by score, filter out zero-volume
+        var selectable = kws.filter(function(k) { return k.vol > 0; });
+        S.kwResearch.selected = selectable.slice(0, 50).map(function(k) { return k.kw; });
+        console.log('[kwPipeline] Selected', S.kwResearch.selected.length, 'of', kws.length, 'keywords');
+        pl.select = { done: true, count: S.kwResearch.selected.length, at: Date.now() };
+
+      } else if (step.id === 'cluster') {
+        if (S.kwResearch.selected.length >= 5) {
+          await _pipelineCluster();
+        }
+        pl.cluster = { done: true, count: (S.kwResearch.clusters || []).length, at: Date.now() };
+
+      } else if (step.id === 'audit') {
+        if (typeof auditKeywordPipeline === 'function') {
+          var audit = auditKeywordPipeline();
+          pl.audit = { done: true, result: audit, at: Date.now() };
+          // Feed into demand validation
+          if (typeof keywordDemandCheck === 'function') {
+            await keywordDemandCheck();
+          }
+        }
+      }
+    } catch (e) {
+      pl[step.id] = { done: false, error: e.message, at: Date.now() };
+      console.error('[kwPipeline] Step ' + step.id + ' failed:', e);
+      // Continue to next step — do not halt entire pipeline
+    }
+
+    scheduleSave();
+    _renderPipelineStatus();
+  }
+
+  pl.status = 'complete';
+  pl.completedAt = Date.now();
+  scheduleSave();
+  _renderPipelineStatus();
+
+  // Refresh the tab content
+  renderKwTabContent();
+
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') {
+    var kwCount = (S.kwResearch.keywords || []).length;
+    var clCount = (S.kwResearch.clusters || []).length;
+    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + clCount + ' clusters', { duration: 8000 });
+  }
+}
+
+// ── Pipeline sub-steps (silent versions of existing functions) ─────────────
+
+async function _pipelineGenerateQuestions() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+  var services = (r.primary_services || []).slice(0, 6).join(', ');
+  var _qTa = r.current_customer_profile || r.target_audience || [];
+  var audience = (Array.isArray(_qTa) && _qTa.length ? (_qTa[0].persona || _qTa[0].primary || '') : '') || '';
+
+  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real business owners type into Google when evaluating or hiring this type of business. Bottom-of-funnel only. Return ONLY a JSON array of 20 question strings, no markdown.';
+  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nLocation: ' + (geo || 'N/A') + '\nServices: ' + (services || 'professional services') + '\nAudience: ' + (audience || 'business owners') + '\n\nGenerate 20 buyer-intent questions.';
+
+  var result = await callClaude(systemPrompt, userPrompt, null, 1000);
+  var raw = result.replace(/```json|```/g, '').trim();
+  var questions = safeParseJSON(raw);
+  if (!Array.isArray(questions) || !questions.length) return;
+
+  if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+  S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q }; }), fetchedAt: Date.now(), source: 'pipeline' };
+}
+
+async function _pipelineAISeeds() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+
+  var ctx = '';
+  ctx += 'CLIENT: ' + (setup.client || r.client_name || '') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || r.sub_industry || '') + '\n';
+  ctx += 'OVERVIEW: ' + (r.business_overview || '') + '\n';
+  ctx += 'GEO: ' + geo + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+
+  var paaQs = _getQuestionsArray();
+  if (paaQs.length) ctx += '\nPEOPLE ALSO ASK:\n' + paaQs.slice(0, 15).map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n';
+
+  var systemPrompt = 'You are an expert SEO strategist. Generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations. Output ONLY a JSON array of strings. No markdown.';
+  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. Output ONLY a JSON array.\n\n' + ctx;
+
+  var result = await callClaude(systemPrompt, userPrompt, null, 8000);
+  var repaired = result.trim().replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+  if (!repaired.startsWith('[')) repaired = '[' + repaired;
+  if (!repaired.endsWith(']')) repaired = repaired.replace(/,?\s*"[^"]*$/, '').replace(/,\s*$/, '') + ']';
+  var parsed = safeParseJSON(repaired) || safeParseJSON(result);
+  if (!Array.isArray(parsed) || !parsed.length) return;
+
+  var seen = new Set();
+  var cleaned = parsed
+    .map(function(k) { return String(k).toLowerCase().trim(); })
+    .filter(function(k) { return k.length > 3 && k.split(' ').length <= 7 && !seen.has(k) && seen.add(k); })
+    .slice(0, 300);
+
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [] };
+  if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
+  S.kwResearch.seedSources.ai = cleaned;
+  if (S.kwResearch.activeSources.indexOf('ai') < 0) S.kwResearch.activeSources.push('ai');
+  S.kwResearch.aiSeedsGeneratedAt = Date.now();
+}
+
+async function _pipelineFetchVolumes() {
+  var seeds = S.kwResearch.seeds || [];
+  if (!seeds.length) {
+    console.warn('[kwPipeline] Volumes skipped — no seeds available. Check merge step.');
+    throw new Error('No seeds to fetch volumes for — earlier seed steps may have failed');
+  }
+  console.log('[kwPipeline] Fetching volumes for', seeds.length, 'seeds');
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country : detectCountryLower(r.geography && r.geography.primary ? r.geography.primary : (setup.geo || ''));
+
+  var res = await fetch('/api/kw-expand', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seeds: seeds, country: country })
+  });
+  var data = await res.json();
+  if (!data.keywords || data.error) throw new Error(data.error || 'No keyword data returned');
+
+  var scored = data.keywords.map(function(k) {
+    var kd = k.difficulty > 0 ? k.difficulty : 30;
+    var vol = (k.volume != null && k.volume > 0) ? k.volume : 0;
+    var noData = k.volume == null;
+    var score = vol >= 10 ? Math.round((Math.log(vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+    return { kw: k.keyword, vol: vol, kd: k.difficulty, cpc: k.cpc || 0, score: score, noData: noData, monthly: k.monthly || [] };
+  }).sort(function(a, b) { return b.score - a.score; });
+
+  var seen = new Set();
+  var deduped = scored.filter(function(k) { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 300);
+  S.kwResearch.keywords = deduped;
+  S.kwResearch.fetchedAt = Date.now();
+  S.kwResearch.selected = deduped.slice(0, 50).map(function(k) { return k.kw; });
+}
+
+async function _pipelineCluster() {
+  var selected = S.kwResearch.selected || [];
+  if (selected.length < 5) return;
+  var kwMap = {};
+  (S.kwResearch.keywords || []).forEach(function(k) { kwMap[k.kw] = k; });
+  var selKws = selected.map(function(s) { return kwMap[s] || { kw: s, vol: 0, kd: 0, score: 0 }; });
+
+  var existingPages = (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).map(function(p) { return p.slug; }).filter(Boolean);
+  ['/', '/about', '/about-us', '/contact', '/contact-us'].forEach(function(slug) {
+    if (existingPages.indexOf(slug) < 0) existingPages.unshift(slug + ' [structural]');
+  });
+  if (S.pages && S.pages.length) {
+    S.pages.forEach(function(p) {
+      var slug = p.slug || p.path || '';
+      if (slug && !existingPages.some(function(ep) { return ep.startsWith(slug); })) existingPages.push(slug);
+    });
+  }
+
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
+
+  var userPrompt = 'KEYWORDS (' + selKws.length + '):\nkw | vol | kd | score\n';
+  selKws.forEach(function(k) { userPrompt += k.kw + ' | ' + k.vol + ' | ' + k.kd + ' | ' + k.score + '\n'; });
+  userPrompt += '\nCLIENT: ' + (setup.client || r.client_name || '') + ' | Geo: ' + geo;
+  userPrompt += '\nSERVICES: ' + (r.primary_services || []).join(', ');
+  if (existingPages.length) userPrompt += '\n\nEXISTING PAGES:\n' + existingPages.slice(0, 20).join('\n');
+
+  var _strategicServices = (r.services_detail || []).map(function(sd) { return sd.name || ''; }).filter(Boolean);
+  if (!_strategicServices.length) _strategicServices = (r.primary_services || []).slice(0, 8);
+  var _strategicLine = _strategicServices.length ? _strategicServices.join(', ') : '';
+
+  var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.'
+    + '\n\nRules:'
+    + '\n- Homepage(/): broadest brand keyword. Never a specific service term.'
+    + '\n- Service(/services/slug): specific service+city. vol>0 required.'
+    + '\n- Location(/locations/slug): city+marketing. vol>100 required.'
+    + '\n- Blog(/blog/slug): informational intent. vol>50 required.'
+    + '\n- Always include /about and /contact as structural.'
+    + '\n- If cluster maps to existing page: recommendation=improve_existing. Else build_new.'
+    + '\n- CRITICAL: If primaryVol < 50 AND recommendation is build_new — set qualifies:false.'
+    + (_strategicLine ? '\n- STRATEGIC OVERRIDE: Always qualify pages for: ' + _strategicLine : '')
+    + '\n\nSchema: [{"name":"","pageType":"service","suggestedSlug":"services/slug","primaryKw":"","primaryVol":0,"primaryKd":0,"score":0,"recommendation":"build_new","existingSlug":null,"qualifies":true,"disqualifyReason":null,"supportingKws":["kw1","kw2"]}]';
+
+  var clusterRes = await fetch('/api/claude-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] })
+  });
+  var clusterData = await clusterRes.json();
+  var result = (clusterData.content && clusterData.content[0] && clusterData.content[0].text) ? clusterData.content[0].text : '';
+  var parsed = safeParseJSON(result);
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('Invalid cluster response');
+  S.kwResearch.clusters = parsed;
+  S.kwResearch.clusteredAt = Date.now();
+}
+
+
+// ── Pipeline Status Panel ─────────────────────────────────────────────────────
+
+function _renderPipelineStatus() {
+  var el = document.getElementById('kw-pipeline-status');
+  if (!el) return;
+  var pl = (S.kwResearch && S.kwResearch._pipeline) || {};
+  var steps = KW_PIPELINE_STEPS;
+  var isRunning = pl.status === 'running';
+  var isComplete = pl.status === 'complete';
+  var isPaused = pl.status === 'paused';
+
+  var html = '<div style="border:1px solid ' + (isComplete ? 'var(--green)' : isRunning ? 'var(--lime,#D8FF29)' : 'var(--border)') + ';border-radius:10px;overflow:hidden;margin-bottom:16px;background:var(--bg)">';
+
+  // Header
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:' + (isComplete ? 'rgba(21,142,29,0.04)' : 'var(--panel)') + '">';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  if (isRunning) {
+    html += '<span class="spinner" style="width:12px;height:12px"></span>';
+  } else if (isComplete) {
+    html += '<i class="ti ti-circle-check-filled" style="color:var(--green);font-size:14px"></i>';
+  } else if (isPaused) {
+    html += '<i class="ti ti-player-pause-filled" style="color:var(--warn);font-size:14px"></i>';
+  } else {
+    html += '<i class="ti ti-bolt" style="color:var(--n2);font-size:14px"></i>';
+  }
+  html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">Keyword Pipeline</span>';
+
+  // Count completed steps
+  var doneCount = 0;
+  steps.forEach(function(s) { if (pl[s.id] && pl[s.id].done) doneCount++; });
+  if (doneCount > 0) {
+    html += '<span style="font-size:10px;color:var(--n2)">' + doneCount + '/' + steps.length + ' steps</span>';
+  }
+  html += '</div>';
+
+  // Buttons
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  if (!isRunning) {
+    var btnLabel = isComplete ? 'Re-run Pipeline' : isPaused ? 'Resume' : 'Run Full Pipeline';
+    var btnIcon = isComplete ? 'ti-refresh' : isPaused ? 'ti-player-play' : 'ti-bolt';
+    var resumeFrom = isPaused && pl.pausedAt ? pl.pausedAt : null;
+    html += '<button class="btn btn-primary sm" onclick="runFullKeywordPipeline(' + (resumeFrom ? "'" + resumeFrom + "'" : '') + ')" data-tip="' + (isComplete ? 'Run the entire keyword pipeline again from scratch' : isPaused ? 'Resume from where the pipeline was paused' : 'Run all keyword steps automatically: questions, seeds, volumes, clustering, and audit') + '"><i class="ti ' + btnIcon + '"></i> ' + btnLabel + '</button>';
+    if (isPaused) {
+      html += '<button class="btn btn-ghost sm" onclick="runFullKeywordPipeline()" data-tip="Restart the pipeline from the beginning"><i class="ti ti-refresh"></i> Restart</button>';
+    }
+  } else {
+    html += '<button class="btn btn-ghost sm" onclick="aiStopAll()" data-tip="Pause the pipeline after the current step finishes"><i class="ti ti-player-pause"></i> Pause</button>';
+  }
+  html += '</div></div>';
+
+  // Steps grid
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0">';
+  steps.forEach(function(s, idx) {
+    var stepData = pl[s.id];
+    var isDone = stepData && stepData.done;
+    var isCurrent = isRunning && pl.currentStep === s.id;
+    var hasError = stepData && stepData.error;
+
+    var bg = isDone ? 'rgba(21,142,29,0.04)' : isCurrent ? 'rgba(216,255,41,0.08)' : 'transparent';
+    var iconClr = isDone ? 'var(--green)' : isCurrent ? 'var(--dark)' : hasError ? 'var(--error)' : 'var(--n1)';
+    var statusIcon = isDone ? 'ti-circle-check-filled' : isCurrent ? '' : hasError ? 'ti-alert-circle' : 'ti-circle';
+    var labelClr = isDone || isCurrent ? 'var(--dark)' : 'var(--n2)';
+
+    html += '<div style="padding:8px 12px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);background:' + bg + ';display:flex;align-items:center;gap:8px">';
+    if (isCurrent) {
+      html += '<span class="spinner" style="width:10px;height:10px;flex-shrink:0"></span>';
+    } else {
+      html += '<i class="ti ' + statusIcon + '" style="font-size:12px;color:' + iconClr + ';flex-shrink:0"></i>';
+    }
+    html += '<div style="min-width:0">';
+    html += '<div style="font-size:11px;font-weight:500;color:' + labelClr + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + s.label + '</div>';
+    if (isDone && stepData.count != null) {
+      html += '<div style="font-size:10px;color:var(--n2)">' + stepData.count + ' items</div>';
+    }
+    if (hasError) {
+      html += '<div style="font-size:10px;color:var(--error);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(stepData.error) + '">Error</div>';
+    }
+    html += '</div></div>';
+  });
+  html += '</div>';
+
+  // Audit summary (if done)
+  if (pl.audit && pl.audit.done && pl.audit.result) {
+    var audit = pl.audit.result;
+    var rate = audit.overall.rate;
+    var rateClr = rate >= 75 ? 'var(--green)' : rate >= 40 ? 'var(--warn)' : 'var(--error)';
+    html += '<div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    html += '<span style="font-size:11px;font-weight:600;color:' + rateClr + '">' + rate + '% audit pass rate</span>';
+    ['seeds', 'opportunities', 'clusters'].forEach(function(stage) {
+      var sd = audit[stage];
+      if (!sd) return;
+      var sClr = sd.fail === 0 ? 'var(--green)' : sd.pass >= sd.fail ? 'var(--warn)' : 'var(--error)';
+      html += '<span style="font-size:10px;color:' + sClr + '">' + stage.charAt(0).toUpperCase() + stage.slice(1) + ': ' + sd.pass + '/' + sd.total + '</span>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderPipelineStatusContainer() {
+  // Returns the container div HTML — inserted by renderStrategyTabContent
+  return '<div id="kw-pipeline-status"></div>';
 }
 
