@@ -643,6 +643,7 @@ function buildDiagnosticPrompt(num) {
 
   if (num === 1) {
     // D1: Unit Economics
+    var setup = S.setup || {};
     return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
@@ -652,7 +653,9 @@ function buildDiagnosticPrompt(num) {
       + '- Lead quality (% sales-qualified): ' + (r.lead_quality_percentage || 'UNKNOWN \u2014 assume 30%') + '\n'
       + '- Primary goal: ' + (r.primary_goal || '') + '\n'
       + '- Current lead volume: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
-      + '- Estimated CPC range: ' + (enrich.cpc_estimates ? '$' + enrich.cpc_estimates.min_cpc + ' - $' + enrich.cpc_estimates.max_cpc : 'UNKNOWN') + '\n\n'
+      + '- Estimated CPC range: ' + (enrich.cpc_estimates ? '$' + enrich.cpc_estimates.min_cpc + ' - $' + enrich.cpc_estimates.max_cpc : 'UNKNOWN') + '\n'
+      + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '')
+      + (setup.decision_timeline ? '- Decision timeline: ' + setup.decision_timeline + '\n' : '') + '\n'
       + 'TASK: Calculate unit economics. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "max_allowable_cpl": 0,\n'
@@ -726,6 +729,8 @@ function buildDiagnosticPrompt(num) {
     // D3: Subtraction Analysis
     return ctx + '\n\nDIAGNOSTIC: Subtraction Analysis\n\n'
       + 'CURRENT LEAD CHANNELS: ' + JSON.stringify(r.lead_channels_today || []) + '\n'
+      + 'CURRENT MARKETING ACTIVITIES: ' + JSON.stringify(r.current_marketing_activities || []) + '\n'
+      + 'PREVIOUS AGENCY EXPERIENCE: ' + (r.previous_agency_experience || 'UNKNOWN') + '\n'
       + 'CURRENT LEAD VOLUME: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
       + 'MONTHLY BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + 'SITE PERFORMANCE: ' + JSON.stringify(enrich.current_presence || 'NOT ASSESSED') + '\n\n'
@@ -832,13 +837,19 @@ function buildDiagnosticPrompt(num) {
 
   if (num === 7) {
     // D7: Risk Assessment
+    var setup7 = S.setup || {};
     return ctx + '\n\nDIAGNOSTIC: Risk Assessment\n\n'
       + 'UNIT ECONOMICS: ' + JSON.stringify(st.unit_economics || 'NOT CALCULATED') + '\n'
       + 'CHANNEL STRATEGY: ' + (st.channel_strategy && st.channel_strategy.priority_order ? st.channel_strategy.priority_order.join(', ') : 'NOT ASSESSED') + '\n'
       + 'SALES CYCLE: ' + (r.sales_cycle_length || 'unknown') + '\n'
       + 'TEAM SIZE: ' + (r.team_size || 'unknown') + '\n'
       + 'COMPETITORS: ' + (r.competitors ? r.competitors.length + ' identified' : 'none') + '\n'
-      + 'DEMAND VALIDATION: ' + (st.demand_validation && st.demand_validation.overall_verdict ? st.demand_validation.overall_verdict : 'NOT YET RUN') + '\n\n'
+      + 'DEMAND VALIDATION: ' + (st.demand_validation && st.demand_validation.overall_verdict ? st.demand_validation.overall_verdict : 'NOT YET RUN') + '\n'
+      + 'PREVIOUS AGENCY EXPERIENCE: ' + (r.previous_agency_experience || 'unknown') + '\n'
+      + (setup7.deal_likelihood ? 'DEAL LIKELIHOOD: ' + setup7.deal_likelihood + '\n' : '')
+      + (setup7.decision_maker_on_call ? 'DECISION MAKER ON CALL: ' + setup7.decision_maker_on_call + '\n' : '')
+      + (setup7.decision_timeline ? 'DECISION TIMELINE: ' + setup7.decision_timeline + '\n' : '')
+      + (setup7.sales_notes ? 'SALES NOTES: ' + setup7.sales_notes + '\n' : '') + '\n'
       + 'TASK: Score 8 risk categories on severity (1-10) x likelihood (1-10). Provide mitigation for each.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "risks": [\n'

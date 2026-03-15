@@ -35,12 +35,14 @@ var RESEARCH_FIELD_META = {
   current_customer_profile:  { tab:'audience',    label:'Current Customer Profiles', importance:'normal',  source:'ai' },
   'geography.primary':       { tab:'audience',    label:'Primary City / Region',    importance:'normal',   source:'ai' },
   'geography.secondary':     { tab:'audience',    label:'Secondary Cities',         importance:'optional', source:'ai' },
-  // Unit economics (manual inputs for Strategy diagnostics)
+  // Unit economics & marketing context (manual inputs for Strategy diagnostics)
   monthly_marketing_budget:  { tab:'audience',    label:'Monthly Marketing Budget', importance:'normal',   source:'manual' },
   average_deal_size:         { tab:'audience',    label:'Average Deal Size',        importance:'normal',   source:'manual' },
   customer_lifetime_value:   { tab:'audience',    label:'Customer Lifetime Value',  importance:'normal',   source:'manual' },
-  lead_quality_percentage:   { tab:'audience',    label:'Lead Quality %',           importance:'optional', source:'manual' },
-  current_lead_volume:       { tab:'audience',    label:'Current Monthly Leads',    importance:'optional', source:'manual' },
+  lead_quality_percentage:   { tab:'audience',    label:'Lead Quality %',           importance:'normal',   source:'manual' },
+  current_lead_volume:       { tab:'audience',    label:'Current Monthly Leads',    importance:'normal',   source:'manual' },
+  current_marketing_activities:{ tab:'audience',  label:'Current Marketing Activities', importance:'normal', source:'manual' },
+  previous_agency_experience:{ tab:'audience',    label:'Previous Agency Experience', importance:'optional', source:'manual' },
   // Brand — identity and proof (strategic brand fields moved to Strategy)
   brand_name:                { tab:'brand',       label:'Brand Name',               importance:'critical', source:'ai' },
   current_slogan:            { tab:'brand',       label:'Current Slogan / Tagline', importance:'normal',   source:'ai' },
@@ -244,6 +246,7 @@ function researchDefaults() {
     monthly_marketing_budget:'', average_deal_size:'',
     customer_lifetime_value:'', lead_quality_percentage:'',
     current_lead_volume:'',
+    current_marketing_activities:[], previous_agency_experience:'',
     // Brand
     brand_name:'', current_slogan:'',
     existing_proof:[],
@@ -516,6 +519,10 @@ function renderRAudience(r) {
     rField('customer_lifetime_value','Customer Lifetime Value (e.g. $12,000)', r.customer_lifetime_value) +
     rField('lead_quality_percentage','Lead Quality % (e.g. 40%)', r.lead_quality_percentage) +
     rField('current_lead_volume','Current Monthly Leads (e.g. 25)', r.current_lead_volume)
+  );
+  html += rSec('Marketing History',
+    rField('current_marketing_activities','Current Marketing Activities (one per line)', r.current_marketing_activities, 'textarea-array', {rows:4}) +
+    rField('previous_agency_experience','Previous Agency Experience', r.previous_agency_experience, 'select', {options:['','Good experience','Bad experience','No agency','Multiple agencies']})
   );
   return html;
 }
@@ -941,7 +948,14 @@ async function enrichRTab(tab, forceAll) {
       + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
       + b + '"secondary_goals": ["secondary goal 1", "secondary goal 2"],\n'
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
-      + b + '"current_customer_profile": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
+      + b + '"current_customer_profile": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}],\n'
+      + b + '"monthly_marketing_budget": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
+      + b + '"average_deal_size": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
+      + b + '"customer_lifetime_value": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
+      + b + '"lead_quality_percentage": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
+      + b + '"current_lead_volume": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
+      + b + '"current_marketing_activities": ["extract any mentioned marketing channels — Google Ads, SEO, social media, referrals, etc. — or empty array if not found"],\n'
+      + b + '"previous_agency_experience": "one of: Good experience | Bad experience | No agency | Multiple agencies | empty string if unknown"\n}',
 
     brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours/fonts: only include values explicitly found in reference docs — use [] if not found. Do NOT invent values.\n- For case_studies: extract EVERY case study from the /our-work and /portfolio pages. Include ALL of them with specific results and metrics mentioned. Do NOT limit to 2-3.\n- For notable_clients: list EVERY client name mentioned on the website.\n- Do NOT include brand_voice_style, tone_and_voice, words_to_use, words_to_avoid, or key_differentiators — those are handled in the Strategy stage.\n- Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
