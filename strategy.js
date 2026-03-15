@@ -2691,15 +2691,53 @@ function _ganttParseWeeks(dur) {
 
 function _ganttResetOverrides() {
   if (!S.strategy) return;
-  S.strategy.growth_plan = S.strategy.growth_plan || {};
-  S.strategy.growth_plan.timeline_overrides = {};
-  S.strategy.growth_plan.deleted_items = [];
-  S.strategy.growth_plan.custom_items = [];
-  S.strategy.growth_plan.accepted_timeline = null;
-  S.strategy.growth_plan.accepted_at = null;
-  scheduleSave();
-  renderStrategyTabContent();
-  aiBarNotify('Timeline reset to AI-generated defaults', { type: 'info', duration: 2000 });
+
+  // Confirmation modal
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:600;display:flex;align-items:center;justify-content:center';
+
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;width:400px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.15)';
+
+  card.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+    + '<i class="ti ti-alert-triangle" style="color:#e6a23c;font-size:18px"></i>'
+    + '<span style="font-size:13px;font-weight:600">Reset to original AI version?</span>'
+    + '</div>'
+    + '<p style="font-size:12px;color:var(--n2);margin:0 0 16px;line-height:1.5">'
+    + 'This will discard all your manual edits, removed items, and custom additions. '
+    + 'The timeline will revert to the AI-generated version from the Channel Viability diagnostic.</p>';
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = function() { overlay.remove(); };
+  btnRow.appendChild(cancelBtn);
+
+  var confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn sm';
+  confirmBtn.style.cssText = 'background:#f56c6c;color:white;border:none';
+  confirmBtn.textContent = 'Yes, reset';
+  confirmBtn.onclick = function() {
+    overlay.remove();
+    S.strategy.growth_plan = S.strategy.growth_plan || {};
+    S.strategy.growth_plan.timeline_overrides = {};
+    S.strategy.growth_plan.deleted_items = [];
+    S.strategy.growth_plan.custom_items = [];
+    S.strategy.growth_plan.accepted_timeline = null;
+    S.strategy.growth_plan.accepted_at = null;
+    scheduleSave();
+    renderStrategyTabContent();
+    aiBarNotify('Timeline reset to AI-generated defaults', { type: 'info', duration: 2000 });
+  };
+  btnRow.appendChild(confirmBtn);
+
+  card.appendChild(btnRow);
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 }
 
 function _ganttAcceptOverrides() {
@@ -2745,19 +2783,94 @@ function _ganttSaveOverride(id, field, value) {
 
 function _ganttDeleteItem(id) {
   if (!S.strategy) return;
-  var gp = S.strategy.growth_plan = S.strategy.growth_plan || {};
-  gp.deleted_items = gp.deleted_items || [];
-  if (gp.deleted_items.indexOf(id) < 0) gp.deleted_items.push(id);
-  // Also remove from custom items if it was user-added
-  if (gp.custom_items) {
-    gp.custom_items = gp.custom_items.filter(function(ci) { return ci.id !== id; });
+
+  // Check if this is an AI-recommended lever (not a custom addition)
+  var isCustom = id.indexOf('custom_') === 0;
+  var isFoundation = id === '_tracking' || id === '_website';
+
+  // Look up the lever in channel strategy for context
+  var leverLabel = id.replace(/_/g, ' ');
+  var leverScore = null;
+  var cs = S.strategy.channel_strategy || {};
+  if (cs.levers) {
+    cs.levers.forEach(function(l) {
+      if ((l.lever || '').replace(/\s+/g, '_').toLowerCase() === id) {
+        leverLabel = (l.lever || '').replace(/_/g, ' ');
+        leverScore = l.priority_score;
+      }
+    });
   }
-  // Clean up any overrides for deleted item
-  if (gp.timeline_overrides && gp.timeline_overrides[id]) {
-    delete gp.timeline_overrides[id];
+
+  var doDelete = function() {
+    var gp = S.strategy.growth_plan = S.strategy.growth_plan || {};
+    gp.deleted_items = gp.deleted_items || [];
+    if (gp.deleted_items.indexOf(id) < 0) gp.deleted_items.push(id);
+    if (gp.custom_items) {
+      gp.custom_items = gp.custom_items.filter(function(ci) { return ci.id !== id; });
+    }
+    if (gp.timeline_overrides && gp.timeline_overrides[id]) {
+      delete gp.timeline_overrides[id];
+    }
+    scheduleSave();
+    renderStrategyTabContent();
+  };
+
+  // Custom items delete immediately — no warning needed
+  if (isCustom) { doDelete(); return; }
+
+  // AI-recommended items get a warning
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:600;display:flex;align-items:center;justify-content:center';
+
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:20px;width:400px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.15)';
+
+  var warningText = '';
+  if (isFoundation) {
+    warningText = '<strong>' + esc(leverLabel) + '</strong> is a foundation item. '
+      + 'Removing it may break dependencies for other levers in your timeline.';
+  } else if (leverScore && leverScore >= 7) {
+    warningText = '<strong>' + esc(leverLabel) + '</strong> is a high-priority lever (score ' + leverScore + '/10) '
+      + 'recommended by the AI strategy. Removing it changes your recommended service scope and may affect projected results.';
+  } else if (leverScore) {
+    warningText = '<strong>' + esc(leverLabel) + '</strong> (score ' + leverScore + '/10) '
+      + 'is part of the AI-recommended strategy. Removing it narrows the service scope.';
+  } else {
+    warningText = '<strong>' + esc(leverLabel) + '</strong> is part of the AI-recommended timeline. '
+      + 'Removing it changes the recommended service scope.';
   }
-  scheduleSave();
-  renderStrategyTabContent();
+
+  card.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+    + '<i class="ti ti-alert-triangle" style="color:#e6a23c;font-size:18px"></i>'
+    + '<span style="font-size:13px;font-weight:600">Remove from timeline?</span>'
+    + '</div>'
+    + '<p style="font-size:12px;color:var(--n2);margin:0 0 6px;line-height:1.5">' + warningText + '</p>'
+    + '<p style="font-size:11px;color:var(--n3);margin:0 0 16px;line-height:1.4">'
+    + 'You can always restore it by clicking Reset to return to the original AI version.</p>';
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost sm';
+  cancelBtn.textContent = 'Keep';
+  cancelBtn.onclick = function() { overlay.remove(); };
+  btnRow.appendChild(cancelBtn);
+
+  var confirmBtn = document.createElement('button');
+  confirmBtn.className = 'btn sm';
+  confirmBtn.style.cssText = 'background:#f56c6c;color:white;border:none';
+  confirmBtn.textContent = 'Remove';
+  confirmBtn.onclick = function() {
+    overlay.remove();
+    doDelete();
+  };
+  btnRow.appendChild(confirmBtn);
+
+  card.appendChild(btnRow);
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 }
 
 function _ganttAddItem() {
