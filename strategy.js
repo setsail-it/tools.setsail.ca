@@ -8,6 +8,7 @@
 var STRATEGY_TABS = [
   { id:'positioning',  label:'Positioning',  icon:'ti-target' },
   { id:'economics',    label:'Economics',    icon:'ti-calculator' },
+  { id:'subtraction',  label:'Subtraction',  icon:'ti-scissors' },
   { id:'channels',     label:'Channels',     icon:'ti-chart-dots-3' },
   { id:'growth',       label:'Growth Plan',  icon:'ti-trending-up' },
   { id:'execution',    label:'Execution',    icon:'ti-checklist' },
@@ -18,23 +19,25 @@ var STRATEGY_TABS = [
 ];
 
 var STRATEGY_SECTION_WEIGHTS = {
-  positioning: 0.20,
-  economics:   0.15,
-  channels:    0.20,
-  growth:      0.15,
-  execution:   0.10,
-  brand:       0.10,
-  risks:       0.10
+  positioning:  0.18,
+  economics:    0.14,
+  subtraction:  0.12,
+  channels:     0.18,
+  growth:       0.12,
+  execution:    0.08,
+  brand:        0.08,
+  risks:        0.10
 };
 
 var STRATEGY_SECTION_LABELS = {
-  positioning: 'Positioning',
-  economics:   'Unit Economics',
-  channels:    'Channel Strategy',
-  growth:      'Growth Plan',
-  execution:   'Website & CRO',
-  brand:       'Content & Authority',
-  risks:       'Risk Assessment'
+  positioning:  'Positioning',
+  economics:    'Unit Economics',
+  subtraction:  'Subtraction Analysis',
+  channels:     'Channel Strategy',
+  growth:       'Growth Plan',
+  execution:    'Website & CRO',
+  brand:        'Content & Authority',
+  risks:        'Risk Assessment'
 };
 
 // Required inputs per section — for data completeness scoring
@@ -57,6 +60,14 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'lead_quality',         path:'S.research.lead_quality_percentage', check:'string' },
     { key:'goal',                 path:'S.research.primary_goal',            check:'string' },
     { key:'cpc_estimates',        path:'S.strategy._enrichment.cpc_estimates', check:'truthy' }
+  ],
+  subtraction: [
+    { key:'current_activities',   path:'S.research.current_marketing_activities', check:'array' },
+    { key:'budget',               path:'S.research.monthly_marketing_budget', check:'string' },
+    { key:'pain_points',          path:'S.research.pain_points_top5',         check:'array' },
+    { key:'lead_channels',        path:'S.research.lead_channels_today',      check:'array' },
+    { key:'unit_economics',       path:'S.strategy.unit_economics',           check:'truthy' },
+    { key:'current_pricing',      path:'S.research.current_pricing',          check:'string' }
   ],
   channels: [
     { key:'unit_economics',       path:'S.strategy.unit_economics',          check:'truthy' },
@@ -117,6 +128,14 @@ var ANTI_INFLATION_CAPS = [
     test: function() { return true; /* no GA/GSC integration yet */ } },
   { condition:'website_only_voice', section:'brand', dimension:'confidence', cap:5,
     test: function() { var s=S.setup||{}; return !s.strategy && (!s.docs || !s.docs.length); } },
+  { condition:'no_dr_data', section:'brand', dimension:'data', cap:5,
+    test: function() { var bs=S.strategy&&S.strategy.brand_strategy||{}; return !bs.dr_gap_analysis || !bs.dr_gap_analysis.client_dr; } },
+  { condition:'team_size_unknown_brand', section:'brand', dimension:'confidence', cap:6,
+    test: function() { var r=S.research||{}; return !r.team_size; } },
+  { condition:'no_activities_data', section:'subtraction', dimension:'data', cap:4,
+    test: function() { var r=S.research||{}; return !r.current_marketing_activities || !r.current_marketing_activities.length; } },
+  { condition:'no_subtraction', section:'_overall', dimension:'_cap', cap:7.0,
+    test: function() { return !S.strategy || !S.strategy.subtraction || !S.strategy.subtraction.current_activities_audit || !S.strategy.subtraction.current_activities_audit.length; } },
   { condition:'d8_insufficient', section:'channels', dimension:'confidence', cap:5,
     test: function() { return S.strategy && S.strategy.demand_validation && S.strategy.demand_validation.overall_verdict === 'insufficient'; } },
   { condition:'d8_high_severity', section:'_overall', dimension:'_cap', cap:6.5,
@@ -150,12 +169,15 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'rejected_tested',   label:'Rejected differentiators analysed',      check: function(d) { return d.rejected_differentiators && d.rejected_differentiators.length >= 1; } },
     { id:'proof_plan',        label:'Proof-building strategy included',       check: function(d) { return d.proof_strategy && d.proof_strategy.length >= 1; } }
   ],
-  3: [ // D3: Subtraction
-    { id:'has_cuts',          label:'Activities to cut identified',            check: function(d) { return d.activities_to_cut && d.activities_to_cut.length >= 1; } },
-    { id:'has_keeps',         label:'Activities to keep identified',          check: function(d) { return d.activities_to_keep && d.activities_to_keep.length >= 1; } },
-    { id:'has_recoverable',   label:'Recoverable budget estimated',           check: function(d) { return !!d.recoverable_budget; } },
-    { id:'has_redirect',      label:'Budget redirect recommendation',         check: function(d) { return !!d.redirect_recommendation; } },
-    { id:'confidence_set',    label:'Confidence level assessed',              check: function(d) { return !!d.confidence; } }
+  3: [ // D3: Subtraction Analysis
+    { id:'has_audit',         label:'Current activities audited with costs',   check: function(d) { return d.current_activities_audit && d.current_activities_audit.length >= 1; } },
+    { id:'has_verdicts',      label:'Each activity has a verdict',            check: function(d) { return d.current_activities_audit && d.current_activities_audit.every(function(a) { return a.verdict === 'cut' || a.verdict === 'keep' || a.verdict === 'restructure'; }); } },
+    { id:'has_costs',         label:'Cost estimates for activities',          check: function(d) { return d.current_activities_audit && d.current_activities_audit.some(function(a) { return a.monthly_cost > 0; }); } },
+    { id:'has_recoverable',   label:'Recoverable budget calculated',          check: function(d) { return d.total_recoverable_monthly > 0; } },
+    { id:'has_redirects',     label:'Redirect recommendations provided',      check: function(d) { return d.redirect_recommendations && d.redirect_recommendations.length >= 1; } },
+    { id:'has_assumptions',   label:'Assumptions stated explicitly',          check: function(d) { return d.recovery_assumptions && d.recovery_assumptions.length >= 1; } },
+    { id:'has_summary',       label:'Subtraction summary written',           check: function(d) { return d.subtraction_summary && d.subtraction_summary.length > 30; } },
+    { id:'confidence_set',    label:'Confidence level assessed',              check: function(d) { return d.total_recoverable_confidence === 'high' || d.total_recoverable_confidence === 'medium' || d.total_recoverable_confidence === 'low'; } }
   ],
   4: [ // D4: Channel & Lever Viability
     { id:'all_levers',        label:'All 13 levers scored',                   check: function(d) { return d.levers && d.levers.length >= 12; } },
@@ -177,7 +199,11 @@ var STRATEGY_AUDIT_CHECKS = {
   6: [ // D6: Content & Authority
     { id:'pillars',           label:'Content pillars defined',               check: function(d) { return d.content_pillars && d.content_pillars.length >= 2; } },
     { id:'velocity',          label:'Content velocity recommended',          check: function(d) { return !!d.content_velocity; } },
-    { id:'formats',           label:'Preferred formats specified',           check: function(d) { return d.preferred_formats && d.preferred_formats.length >= 2; } },
+    { id:'content_mix',       label:'Content mix breakdown provided',        check: function(d) { return d.content_mix && d.content_mix.length >= 2; } },
+    { id:'dr_gap',            label:'Domain authority gap analysed',         check: function(d) { return d.dr_gap_analysis && d.dr_gap_analysis.dr_gap; } },
+    { id:'dr_competitors',    label:'Competitor DR data included',           check: function(d) { return d.dr_gap_analysis && d.dr_gap_analysis.competitor_drs && d.dr_gap_analysis.competitor_drs.length >= 1; } },
+    { id:'authority_timeline',label:'Authority building timeline defined',   check: function(d) { return d.authority_timeline && d.authority_timeline.length >= 2; } },
+    { id:'quick_wins',        label:'Quick wins identified',                check: function(d) { return d.quick_wins && d.quick_wins.length >= 2; } },
     { id:'authority',         label:'Authority-building strategy included',  check: function(d) { return d.authority_building && d.authority_building.length > 20; } },
     { id:'local_seo',         label:'Local SEO priority assessed',           check: function(d) { return !!d.local_seo_priority; } },
     { id:'geo_strategy',      label:'Geo-targeting strategy included',       check: function(d) { return d.geo_targeting_strategy && d.geo_targeting_strategy.length > 10; } }
@@ -381,6 +407,7 @@ function scoreSection(section) {
   var sectionData = null;
   if (section === 'positioning') sectionData = st.positioning;
   else if (section === 'economics') sectionData = st.unit_economics;
+  else if (section === 'subtraction') sectionData = st.subtraction;
   else if (section === 'channels') sectionData = st.channel_strategy;
   else if (section === 'growth') sectionData = st.growth_plan;
   else if (section === 'execution') sectionData = st.execution_plan;
@@ -458,6 +485,10 @@ function scoreStrategy() {
   // High severity revision cap
   var d8Cap = ANTI_INFLATION_CAPS.find(function(c) { return c.condition === 'd8_high_severity'; });
   if (d8Cap && d8Cap.test() && overall > 6.5) overall = 6.5;
+
+  // Subtraction cap — strategy without subtraction analysis is incomplete
+  var subCap = ANTI_INFLATION_CAPS.find(function(c) { return c.condition === 'no_subtraction'; });
+  if (subCap && subCap.test() && overall > 7.0) overall = 7.0;
 
   return { overall: overall, sections: sections, gaps: allGaps };
 }
@@ -978,20 +1009,51 @@ function buildDiagnosticPrompt(num) {
 
   if (num === 3) {
     // D3: Subtraction Analysis
+    var econCtx = st.unit_economics ? '\nUNIT ECONOMICS (from D1):\n- Max CPL: $' + (st.unit_economics.max_allowable_cpl || '?')
+      + '\n- Estimated CAC: $' + (st.unit_economics.estimated_cac || '?')
+      + '\n- LTV:CAC: ' + (st.unit_economics.ltv_cac_ratio || '?')
+      + '\n- Paid viable: ' + (st.unit_economics.paid_media_viable ? 'Yes' : 'No') + '\n' : '';
     return ctx + '\n\nDIAGNOSTIC: Subtraction Analysis\n\n'
-      + 'CURRENT LEAD CHANNELS: ' + JSON.stringify(r.lead_channels_today || []) + '\n'
+      + 'This is the signature Setsail diagnostic. Identify what the client should STOP doing BEFORE recommending what to build.\n\n'
       + 'CURRENT MARKETING ACTIVITIES: ' + JSON.stringify(r.current_marketing_activities || []) + '\n'
+      + 'CURRENT LEAD CHANNELS: ' + JSON.stringify(r.lead_channels_today || []) + '\n'
+      + 'MONTHLY BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
+      + 'CURRENT PRICING/VENDOR COSTS: ' + (r.current_pricing || r.pricing_notes || 'UNKNOWN') + '\n'
+      + 'PAIN POINTS: ' + JSON.stringify(r.pain_points_top5 || []) + '\n'
       + 'PREVIOUS AGENCY EXPERIENCE: ' + (r.previous_agency_experience || 'UNKNOWN') + '\n'
       + 'CURRENT LEAD VOLUME: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
-      + 'MONTHLY BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
-      + 'SITE PERFORMANCE: ' + JSON.stringify(enrich.current_presence || 'NOT ASSESSED') + '\n\n'
-      + 'TASK: Analyse current marketing. For each activity: is it producing? CPL viable? Contributing to revenue?\n\n'
+      + 'SITE PERFORMANCE: ' + JSON.stringify(enrich.current_presence || 'NOT ASSESSED') + '\n'
+      + econCtx + '\n'
+      + 'TASK: Audit every current marketing activity. For each one: estimate monthly cost, determine verdict (cut/keep/restructure), explain why. '
+      + 'Calculate total recoverable budget. Recommend where to redirect recovered budget (reference channels from the business context). '
+      + 'State all assumptions explicitly — distinguish estimated costs from confirmed ones.\n\n'
       + 'JSON SCHEMA:\n{\n'
-      + '  "activities_to_cut": [{"activity": "string", "current_spend": "string", "reason": "string", "confidence": "high | medium | low"}],\n'
-      + '  "activities_to_restructure": [{"activity": "string", "issue": "string", "fix": "string"}],\n'
-      + '  "activities_to_keep": [{"activity": "string", "reason": "string", "optimize": "string"}],\n'
-      + '  "recoverable_budget": "string",\n'
-      + '  "redirect_recommendation": "string",\n'
+      + '  "current_activities_audit": [\n'
+      + '    {\n'
+      + '      "activity": "description of the marketing activity",\n'
+      + '      "monthly_cost": 0,\n'
+      + '      "monthly_cost_source": "estimated from team time | from client ad spend data | from contractor invoices | unknown",\n'
+      + '      "verdict": "cut | keep | restructure",\n'
+      + '      "reason": "why this verdict — reference economics if relevant",\n'
+      + '      "confidence": "high | medium | low"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "total_recoverable_monthly": 0,\n'
+      + '  "total_recoverable_confidence": "high | medium | low",\n'
+      + '  "recovery_assumptions": ["assumption about cost source or team allocation"],\n'
+      + '  "redirect_recommendations": [\n'
+      + '    {\n'
+      + '      "from": "activity being cut or restructured",\n'
+      + '      "to": "recommended replacement channel or activity",\n'
+      + '      "rationale": "why this redirect makes sense"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "subtraction_summary": "2-3 sentence executive summary of waste found and recovery potential",\n'
+      + '  "score": {\n'
+      + '    "data_completeness": 0,\n'
+      + '    "analytical_confidence": 0,\n'
+      + '    "specificity": 0\n'
+      + '  },\n'
       + '  "confidence": "high | medium | low"\n}';
   }
 
@@ -1069,18 +1131,80 @@ function buildDiagnosticPrompt(num) {
         + ', Avg difficulty: ' + enrich.keyword_pre_scan.avg_difficulty
         + ', Landscape: ' + enrich.keyword_pre_scan.estimated_difficulty_landscape;
     }
+    // Pull DR data from snapshot if available
+    var snap = S.snapshot || {};
+    var dm = snap.domainMetrics || {};
+    var clientDR = dm.dr || snap.domain_rating || null;
+    var drData = clientDR ? 'Client DR: ' + clientDR : 'Client DR: UNKNOWN';
+    if (dm.orgTraffic) drData += ', Organic traffic: ' + dm.orgTraffic;
+    else if (snap.organic_traffic) drData += ', Organic traffic: ' + snap.organic_traffic;
+    if (dm.liveRefdomains) drData += ', Referring domains: ' + dm.liveRefdomains;
+    else if (snap.referring_domains) drData += ', Referring domains: ' + snap.referring_domains;
+    if (dm.liveBacklinks) drData += ', Live backlinks: ' + dm.liveBacklinks;
+    // Pull competitor DR data from enrichment deep-dive AND full competitor list
+    var compDRs = '';
+    var deepDive = enrich.competitor_deep_dive || [];
+    var allComps = r.competitors || [];
+    // Build a merged competitor list: deep-dive data first (has DR), then remaining competitors
+    var deepDiveUrls = {};
+    deepDive.forEach(function(c) { if (c.url) deepDiveUrls[c.url.replace(/\/+$/, '')] = true; });
+    var mergedComps = deepDive.map(function(c) {
+      return (c.name || c.url) + ' (DR: ' + (c.domain_rating || c.dr || '?') + ', traffic: ' + (c.organic_traffic || '?') + ')';
+    });
+    allComps.forEach(function(c) {
+      var normUrl = (c.url || '').replace(/\/+$/, '');
+      if (normUrl && !deepDiveUrls[normUrl]) {
+        mergedComps.push((c.name || c.url) + ' (URL: ' + c.url + ', DR: unknown)');
+      }
+    });
+    compDRs = mergedComps.join('; ');
     return ctx + '\n\nDIAGNOSTIC: Content & Authority Gap Analysis\n\n'
-      + 'COMPETITORS: ' + JSON.stringify((r.competitors || []).map(function(c) { return c.name + ' (' + c.url + ')'; })) + '\n'
+      + 'DOMAIN AUTHORITY: ' + drData + '\n'
+      + 'ALL COMPETITORS WITH DR DATA: ' + (compDRs || 'NOT YET AVAILABLE') + '\n'
+      + 'IMPORTANT: Include ALL competitors listed above in dr_gap_analysis.competitor_drs, not just the ones with known DR. Estimate DR for competitors where it is unknown based on their domain age, backlink profile, and industry position.\n'
       + 'COMPETITOR DEEP-DIVE: ' + JSON.stringify(enrich.competitor_deep_dive || 'NOT YET AVAILABLE') + '\n'
       + 'KEYWORD LANDSCAPE: ' + (kwData || 'NOT YET SCANNED') + '\n'
-      + 'TEAM SIZE: ' + (r.team_size || 'unknown') + '\n\n'
-      + 'TASK: Assess content and authority gap. Recommend content pillars, velocity, formats.\n\n'
+      + 'TEAM SIZE: ' + (r.team_size || 'unknown') + '\n'
+      + 'INDUSTRY: ' + (r.industry || 'unknown') + '\n\n'
+      + 'TASK: Produce a full content and authority gap analysis with these sections:\n'
+      + '1. Content pillars and velocity\n'
+      + '2. Domain authority gap analysis with competitor comparison\n'
+      + '3. Authority building timeline in 3 phases\n'
+      + '4. Quick wins (low-effort, high-impact content actions)\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "content_pillars": ["topic pillar"],\n'
       + '  "content_priority": [{"topic": "string", "rationale": "string", "format": "string"}],\n'
       + '  "preferred_formats": ["blog | video | case_study | whitepaper | tool"],\n'
       + '  "content_velocity": "posts per month recommendation",\n'
-      + '  "authority_building": "strategy for building domain authority",\n'
+      + '  "content_mix": [{"type": "content type", "monthly": 0, "purpose": "why this type"}],\n'
+      + '  "team_capacity_check": "assessment of whether team can handle recommended velocity",\n'
+      + '  "team_size_input_needed": true,\n'
+      + '  "dr_gap_analysis": {\n'
+      + '    "client_dr": 0,\n'
+      + '    "client_dr_source": "from snapshot data | estimated",\n'
+      + '    "competitor_drs": [{"name": "string", "dr": 0}],\n'
+      + '    "dr_gap": "X points below competitor average",\n'
+      + '    "realistic_dr_target_12mo": 0,\n'
+      + '    "dr_growth_strategy": "how to close the gap",\n'
+      + '    "backlink_gap_summary": "referring domain comparison"\n'
+      + '  },\n'
+      + '  "authority_timeline": [\n'
+      + '    {\n'
+      + '      "phase": "Foundation (Months 1-3)",\n'
+      + '      "milestones": ["milestone"],\n'
+      + '      "expected_dr_gain": "+X points",\n'
+      + '      "measurement": "how to track progress"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "quick_wins": [\n'
+      + '    {\n'
+      + '      "opportunity": "what to do",\n'
+      + '      "effort": "Low | Medium | High",\n'
+      + '      "timeline": "Week 1-2",\n'
+      + '      "expected_impact": "what this achieves"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "authority_building": "overall strategy summary",\n'
       + '  "local_seo_priority": "high | medium | low | not_applicable",\n'
       + '  "geo_targeting_strategy": "string",\n'
       + '  "confidence": "high | medium | low"\n}';
@@ -1120,6 +1244,30 @@ function buildDiagnosticPrompt(num) {
   return '';
 }
 
+// Append strategist notes to any diagnostic prompt
+function _appendStrategistNotes(prompt, diagNum) {
+  // D4 feeds both channels and growth tabs
+  var diagToTabs = { 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels', 'growth'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
+  var tabs = diagToTabs[diagNum];
+  if (!tabs) return prompt;
+  var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
+  var allNotes = [];
+  tabs.forEach(function(tabId) {
+    var tabOverride = overrides[tabId] || {};
+    if (tabOverride.notes && tabOverride.notes.trim()) {
+      allNotes.push('[' + (STRATEGY_SECTION_LABELS[tabId] || tabId) + ']: ' + tabOverride.notes.trim());
+    }
+  });
+  if (allNotes.length) {
+    prompt += '\n\nSTRATEGIST NOTES:\n'
+      + 'The strategist has provided the following corrections or additions. '
+      + 'Incorporate this into your analysis. If the strategist data contradicts your estimates, '
+      + 'use the strategist data and note the source as "strategist-provided".\n\n'
+      + allNotes.join('\n\n');
+  }
+  return prompt;
+}
+
 // ── Diagnostic Execution ──────────────────────────────────────────────
 
 async function runDiagnostic(num) {
@@ -1139,6 +1287,8 @@ async function runDiagnostic(num) {
     if (!prompt) { aiBarEnd('No prompt for D' + num); return; }
     // Append version learning context if re-running
     prompt += _versionLearningCtx(num);
+    // Append strategist notes if present
+    prompt = _appendStrategistNotes(prompt, num);
 
     var result = await callClaude(DIAGNOSTIC_SYSTEM, prompt, null, 8000, label);
     var parsed = parseEnrichResult(result);
@@ -1190,6 +1340,17 @@ async function runDiagnostic(num) {
       S.strategy.execution_plan.lever_details.seo = S.strategy.execution_plan.lever_details.seo || {};
       if (parsed.local_seo_priority) S.strategy.execution_plan.lever_details.seo.local_seo_priority = parsed.local_seo_priority;
       if (parsed.geo_targeting_strategy) S.strategy.execution_plan.lever_details.seo.geo_targeting_strategy = parsed.geo_targeting_strategy;
+      // Write content/authority data to brand_strategy for the Brand tab
+      S.strategy.brand_strategy = S.strategy.brand_strategy || {};
+      if (parsed.dr_gap_analysis) S.strategy.brand_strategy.dr_gap_analysis = parsed.dr_gap_analysis;
+      if (parsed.content_mix) S.strategy.brand_strategy.content_mix = parsed.content_mix;
+      if (parsed.content_velocity) S.strategy.brand_strategy.content_velocity = parsed.content_velocity;
+      if (parsed.team_capacity_check) S.strategy.brand_strategy.team_capacity_check = parsed.team_capacity_check;
+      if (parsed.team_size_input_needed) S.strategy.brand_strategy.team_size_input_needed = parsed.team_size_input_needed;
+      if (parsed.authority_timeline) S.strategy.brand_strategy.authority_timeline = parsed.authority_timeline;
+      if (parsed.quick_wins) S.strategy.brand_strategy.quick_wins = parsed.quick_wins;
+      if (parsed.content_pillars) S.strategy.brand_strategy.content_pillars = parsed.content_pillars;
+      if (parsed.content_priority) S.strategy.brand_strategy.content_priority = parsed.content_priority;
     } else if (num === 7) {
       S.strategy.risks = parsed;
     }
@@ -1430,7 +1591,7 @@ async function improveStrategy() {
 
   // Re-run diagnostics for weakest 3 sections
   var weakest = sorted.slice(0, 3);
-  var diagMap = { positioning: 2, economics: 1, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
 
   var diagsToRun = [];
   weakest.forEach(function(w) {
@@ -1771,7 +1932,7 @@ function renderStrategyTabContent() {
   var html = '';
 
   // Re-run diagnostic button
-  var diagMap = { positioning: 2, economics: 1, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
   var diagLabels = {
     1: 'Unit Economics',
     2: 'Competitive Position',
@@ -1819,13 +1980,100 @@ function renderStrategyTabContent() {
   // Section content
   if (_sTab === 'positioning') html += _renderPositioning(st);
   else if (_sTab === 'economics') html += _renderEconomics(st);
+  else if (_sTab === 'subtraction') html += _renderSubtraction(st);
   else if (_sTab === 'channels') html += _renderChannels(st);
   else if (_sTab === 'growth') html += _renderGrowth(st);
   else if (_sTab === 'execution') html += _renderExecution(st);
   else if (_sTab === 'brand') html += _renderBrand(st);
   else if (_sTab === 'risks') html += _renderRisks(st);
 
+  // Strategist override panel (all scored tabs)
+  if (diagNum) {
+    html += _renderStrategistOverride(_sTab, diagNum);
+  }
+
   el.innerHTML = html;
+
+  // Wire up strategist notes buttons via createElement pattern
+  if (diagNum) {
+    var saveBtn = document.getElementById('strat-notes-save-' + _sTab);
+    var rerunBtn = document.getElementById('strat-notes-rerun-' + _sTab);
+    if (saveBtn) {
+      (function(tab) {
+        saveBtn.onclick = function() { _saveStrategistNotes(tab); };
+      })(_sTab);
+    }
+    if (rerunBtn) {
+      (function(tab, dNum) {
+        rerunBtn.onclick = function() { _rerunWithNotes(tab, dNum); };
+      })(_sTab, diagNum);
+    }
+  }
+}
+
+// ── UI: Strategist Override Panel ─────────────────────────────────────
+
+function _renderStrategistOverride(tabId, diagNum) {
+  var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
+  var tabOverride = overrides[tabId] || {};
+  var notes = tabOverride.notes || '';
+  var updatedAt = tabOverride.updated_at || null;
+
+  var html = '<div style="margin-top:24px;border-top:2px solid var(--border);padding-top:16px">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+  html += '<i class="ti ti-pencil" style="color:var(--n2)"></i>';
+  html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">Strategist Notes</span>';
+  if (updatedAt) {
+    var d = new Date(updatedAt);
+    var dateStr = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    html += '<span style="font-size:10px;color:var(--n2);margin-left:auto">Last saved: ' + dateStr + '</span>';
+  }
+  html += '</div>';
+
+  html += '<textarea id="strat-notes-textarea-' + tabId + '" '
+    + 'style="width:100%;min-height:80px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;line-height:1.5;resize:vertical;color:var(--dark);background:var(--panel)" '
+    + 'placeholder="Add context, corrections, or overrides here. These persist and feed into the next re-run of this diagnostic.">'
+    + esc(notes) + '</textarea>';
+
+  html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center">';
+  html += '<button class="btn btn-ghost sm" id="strat-notes-save-' + tabId + '"><i class="ti ti-device-floppy"></i> Save Notes</button>';
+  html += '<button class="btn btn-primary sm" id="strat-notes-rerun-' + tabId + '"><i class="ti ti-sparkles"></i> Re-run with Notes</button>';
+
+  // Show preview of last saved note
+  if (notes && notes.length > 0) {
+    var preview = notes.length > 80 ? notes.substring(0, 80) + '...' : notes;
+    html += '<span style="font-size:10px;color:var(--n2);margin-left:auto;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"' + esc(preview) + '"</span>';
+  }
+  html += '</div></div>';
+
+  return html;
+}
+
+function _saveStrategistNotes(tabId) {
+  var textarea = document.getElementById('strat-notes-textarea-' + tabId);
+  if (!textarea) return;
+  var notes = textarea.value.trim();
+
+  if (!S.strategy) S.strategy = strategyDefaults();
+  if (!S.strategy.strategist_overrides) S.strategy.strategist_overrides = {};
+  S.strategy.strategist_overrides[tabId] = {
+    notes: notes,
+    updated_at: new Date().toISOString()
+  };
+
+  scheduleSave();
+  aiBarNotify('Strategist notes saved for ' + (STRATEGY_SECTION_LABELS[tabId] || tabId), { duration: 2000 });
+  renderStrategyTabContent();
+}
+
+async function _rerunWithNotes(tabId, diagNum) {
+  // Save notes first
+  _saveStrategistNotes(tabId);
+
+  // Then re-run the diagnostic (notes will be picked up by buildDiagnosticPrompt)
+  await runDiagnostic(diagNum);
+  renderStrategyScorecard();
+  renderStrategyTabContent();
 }
 
 // ── UI: Gap Panel ─────────────────────────────────────────────────────
@@ -1907,15 +2155,44 @@ async function _autoResolveGap(gapKey) {
 function _stratField(label, value, opts) {
   opts = opts || {};
   if (value === undefined || value === null) value = '';
-  if (Array.isArray(value)) value = value.join(', ');
-  if (typeof value === 'object') value = JSON.stringify(value, null, 2);
-  var isLong = String(value).length > 100 || opts.textarea;
+  // Format arrays as bullet lists or comma-separated
+  if (Array.isArray(value)) {
+    if (value.length > 2 || value.some(function(v) { return String(v).length > 40; })) {
+      value = '<ul style="margin:0;padding-left:16px">' + value.map(function(v) {
+        return '<li style="margin-bottom:2px">' + esc(String(v)) + '</li>';
+      }).join('') + '</ul>';
+      opts._html = true;
+    } else {
+      value = value.join(', ');
+    }
+  }
+  // Format objects as a clean key-value list
+  if (typeof value === 'object' && value !== null) {
+    var keys = Object.keys(value);
+    if (keys.length) {
+      value = '<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px">'
+        + keys.map(function(k) {
+          var v = value[k];
+          if (typeof v === 'object') v = Array.isArray(v) ? v.join(', ') : JSON.stringify(v);
+          return '<span style="color:var(--n2);text-transform:capitalize">' + esc(k.replace(/_/g, ' ')) + '</span>'
+            + '<span style="color:var(--dark)">' + esc(String(v)) + '</span>';
+        }).join('')
+        + '</div>';
+      opts._html = true;
+    } else {
+      value = '\u2014';
+    }
+  }
+  var strVal = String(value);
+  var isLong = strVal.length > 100 || opts.textarea;
   var h = '<div style="margin-bottom:10px;' + (opts.span ? 'grid-column:1/-1;' : '') + '">';
   h += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">' + esc(label) + '</div>';
-  if (isLong) {
-    h += '<div style="font-size:13px;color:var(--dark);background:var(--panel);border-radius:6px;padding:8px 10px;white-space:pre-wrap;max-height:200px;overflow-y:auto">' + esc(String(value)) + '</div>';
+  if (opts._html) {
+    h += '<div style="font-size:13px;color:var(--dark)">' + value + '</div>';
+  } else if (isLong) {
+    h += '<div style="font-size:13px;color:var(--dark);background:var(--panel);border-radius:6px;padding:8px 10px;white-space:pre-wrap;max-height:200px;overflow-y:auto">' + esc(strVal) + '</div>';
   } else {
-    h += '<div style="font-size:13px;color:var(--dark)">' + esc(String(value) || '\u2014') + '</div>';
+    h += '<div style="font-size:13px;color:var(--dark)">' + esc(strVal || '\u2014') + '</div>';
   }
   h += '</div>';
   return h;
@@ -2040,7 +2317,7 @@ function _renderChannels(st) {
         var fc = cs.funnel_coverage[stage];
         var covered = fc.covered ? '<span style="color:var(--green)">Covered</span>' : '<span style="color:#f56c6c">Gap</span>';
         return _stratField(stage.charAt(0).toUpperCase() + stage.slice(1),
-          covered + (fc.by && fc.by.length ? ' by ' + fc.by.join(', ') : '') + (fc.gap ? ' \u2014 ' + fc.gap : ''));
+          covered + (fc.by && fc.by.length ? ' by ' + fc.by.join(', ') : '') + (fc.gap ? ' \u2014 ' + esc(fc.gap) : ''), { _html: true });
       }).join('')
     );
   }
@@ -2171,8 +2448,7 @@ function _renderExecution(st) {
         Object.keys(lever).map(function(k) {
           if (k === 'confidence') return '';
           var val = lever[k];
-          if (typeof val === 'object' && val !== null) val = JSON.stringify(val, null, 2);
-          return _stratField(k.replace(/_/g, ' '), val, { textarea: String(val).length > 80 });
+          return _stratField(k.replace(/_/g, ' '), val, { textarea: typeof val === 'string' && val.length > 80 });
         }).join('')
       );
     }
@@ -2190,40 +2466,144 @@ function _renderExecution(st) {
   return html;
 }
 
+function _renderSubtraction(st) {
+  var sub = st.subtraction || {};
+
+  // Support both old format (activities_to_cut) and new format (current_activities_audit)
+  var audit = sub.current_activities_audit || [];
+  // Migrate old format into audit array for display
+  if (!audit.length) {
+    (sub.activities_to_cut || []).forEach(function(a) {
+      audit.push({ activity: a.activity, monthly_cost: 0, monthly_cost_source: a.current_spend || 'unknown', verdict: 'cut', reason: a.reason, confidence: a.confidence || 'medium' });
+    });
+    (sub.activities_to_restructure || []).forEach(function(a) {
+      audit.push({ activity: a.activity, monthly_cost: 0, monthly_cost_source: 'unknown', verdict: 'restructure', reason: a.issue + ' \u2192 ' + a.fix, confidence: 'medium' });
+    });
+    (sub.activities_to_keep || []).forEach(function(a) {
+      audit.push({ activity: a.activity, monthly_cost: 0, monthly_cost_source: 'unknown', verdict: 'keep', reason: a.reason, confidence: 'medium' });
+    });
+  }
+
+  if (!audit.length) {
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No subtraction data yet. Generate strategy to populate.</p></div>';
+  }
+
+  var html = '';
+
+  // Summary
+  if (sub.subtraction_summary) {
+    html += '<div class="card" style="padding:14px 16px;margin-bottom:14px;border-left:3px solid var(--dark)">';
+    html += '<div style="font-size:13px;line-height:1.6;color:var(--dark)">' + esc(sub.subtraction_summary) + '</div>';
+    html += '</div>';
+  }
+
+  // Activities Audit Table
+  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Current Activities Audit</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<tr style="border-bottom:1px solid var(--border)">'
+    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Activity</th>'
+    + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Monthly Cost</th>'
+    + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Verdict</th>'
+    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Reason</th>'
+    + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Confidence</th></tr>';
+
+  var verdictColours = { cut: '#f56c6c', keep: 'var(--green)', restructure: '#e6a23c' };
+  var verdictIcons = { cut: 'ti-x', keep: 'ti-check', restructure: 'ti-arrows-exchange' };
+  audit.forEach(function(a) {
+    var vc = verdictColours[a.verdict] || 'var(--n2)';
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:6px 8px;font-weight:500">' + esc(a.activity || '') + '</td>';
+    html += '<td style="padding:6px 4px;text-align:center">' + (a.monthly_cost ? '$' + Number(a.monthly_cost).toLocaleString() : '\u2014') + '</td>';
+    html += '<td style="padding:6px 4px;text-align:center"><span style="color:' + vc + ';font-weight:600;display:inline-flex;align-items:center;gap:3px">'
+      + '<i class="ti ' + (verdictIcons[a.verdict] || '') + '" style="font-size:12px"></i>' + (a.verdict || '').toUpperCase() + '</span></td>';
+    html += '<td style="padding:6px 8px;font-size:11px;color:var(--n3)">' + esc(a.reason || '') + '</td>';
+    html += '<td style="padding:6px 4px;text-align:center;font-size:10px;color:var(--n2)">' + esc(a.confidence || '') + '</td>';
+    html += '</tr>';
+  });
+  html += '</table></div>';
+
+  // Recovery Summary
+  var totalRecoverable = sub.total_recoverable_monthly || 0;
+  if (totalRecoverable || sub.recoverable_budget) {
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Recovery Summary</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
+    // Recoverable
+    html += '<div class="card" style="padding:14px;text-align:center">';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;margin-bottom:4px">Recoverable/month</div>';
+    html += '<div style="font-size:22px;font-weight:700;color:var(--green)">' + (totalRecoverable ? '$' + Number(totalRecoverable).toLocaleString() : esc(sub.recoverable_budget || '\u2014')) + '</div>';
+    html += '</div>';
+    // Confidence
+    html += '<div class="card" style="padding:14px;text-align:center">';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;margin-bottom:4px">Confidence</div>';
+    html += '<div style="font-size:22px;font-weight:700;color:var(--dark)">' + esc(sub.total_recoverable_confidence || sub.confidence || '\u2014') + '</div>';
+    html += '</div>';
+    // Activities to cut
+    var cutCount = audit.filter(function(a) { return a.verdict === 'cut'; }).length;
+    var restructureCount = audit.filter(function(a) { return a.verdict === 'restructure'; }).length;
+    html += '<div class="card" style="padding:14px;text-align:center">';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;margin-bottom:4px">Actions</div>';
+    html += '<div style="font-size:14px;font-weight:600"><span style="color:#f56c6c">' + cutCount + ' cut</span> &middot; <span style="color:#e6a23c">' + restructureCount + ' restructure</span></div>';
+    html += '</div>';
+    html += '</div></div>';
+  }
+
+  // Redirect Recommendations
+  var redirects = sub.redirect_recommendations || [];
+  if (redirects.length) {
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Redirect Recommendations</div>';
+    html += '<div style="display:grid;gap:8px">';
+    redirects.forEach(function(rd) {
+      html += '<div class="card" style="padding:12px 14px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+      html += '<span style="font-size:12px;font-weight:500;color:#f56c6c;text-decoration:line-through">' + esc(rd.from || '') + '</span>';
+      html += '<i class="ti ti-arrow-right" style="color:var(--n2)"></i>';
+      html += '<span style="font-size:12px;font-weight:500;color:var(--green)">' + esc(rd.to || '') + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--n3)">' + esc(rd.rationale || '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Assumptions
+  var assumptions = sub.recovery_assumptions || [];
+  if (assumptions.length) {
+    html += _stratSection('Assumptions',
+      '<div style="grid-column:1/-1"><ul style="margin:0;padding-left:16px;font-size:12px;color:var(--n3)">'
+      + assumptions.map(function(a) { return '<li style="margin-bottom:3px">' + esc(a) + '</li>'; }).join('')
+      + '</ul></div>'
+    );
+  }
+
+  // Legacy format: redirect_recommendation (string)
+  if (!redirects.length && sub.redirect_recommendation) {
+    html += _stratSection('Redirect Recommendation', _stratField('Recommendation', sub.redirect_recommendation, {span:true}));
+  }
+
+  return html;
+}
+
 function _renderBrand(st) {
   var bs = st.brand_strategy || {};
-  if (!bs.brand_work_needed && !bs.voice_direction) {
-    // Show subtraction data if available
-    var sub = st.subtraction || {};
-    if (sub.activities_to_cut || sub.activities_to_restructure) {
-      var html = '';
-      if (sub.activities_to_cut && sub.activities_to_cut.length) {
-        html += _stratSection('Activities to Cut',
-          sub.activities_to_cut.map(function(a) {
-            return _stratField(a.activity, a.reason + (a.current_spend ? ' (spend: ' + a.current_spend + ')' : ''));
-          }).join('')
-        );
-      }
-      if (sub.activities_to_restructure && sub.activities_to_restructure.length) {
-        html += _stratSection('Activities to Restructure',
-          sub.activities_to_restructure.map(function(a) {
-            return _stratField(a.activity, a.issue + ' \u2192 ' + a.fix);
-          }).join('')
-        );
-      }
-      if (sub.recoverable_budget) {
-        html += _stratField('Recoverable Budget', sub.recoverable_budget);
-      }
-      return html;
-    }
-    return '<div class="card" style="color:var(--n2);text-align:centre"><p>No brand/content data yet. Generate strategy to populate.</p></div>';
+  // Also pull content data from execution_plan.lever_details.content_marketing
+  var cm = (st.execution_plan && st.execution_plan.lever_details) ? st.execution_plan.lever_details.content_marketing || {} : {};
+
+  if (!bs.brand_work_needed && !bs.voice_direction && !bs.dr_gap_analysis && !cm.content_pillars) {
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No brand/content data yet. Generate strategy to populate.</p></div>';
   }
+
   var html2 = '';
-  html2 += _stratSection('Brand Assessment',
-    _stratField('Brand Work Needed', bs.brand_work_needed) +
-    _stratField('Rationale', bs.rationale, {textarea:true}) +
-    _stratField('Brand as Bottleneck', bs.brand_as_bottleneck)
-  );
+
+  // Brand Assessment
+  if (bs.brand_work_needed) {
+    html2 += _stratSection('Brand Assessment',
+      _stratField('Brand Work Needed', bs.brand_work_needed) +
+      _stratField('Rationale', bs.rationale, {textarea:true}) +
+      _stratField('Brand as Bottleneck', bs.brand_as_bottleneck)
+    );
+  }
+
+  // Voice Direction
   if (bs.voice_direction) {
     html2 += _stratSection('Voice Direction',
       _stratField('Style', bs.voice_direction.style) +
@@ -2232,6 +2612,8 @@ function _renderBrand(st) {
       _stratField('Words to Avoid', bs.voice_direction.words_to_avoid)
     );
   }
+
+  // Design Direction
   if (bs.design_direction) {
     html2 += _stratSection('Design Direction',
       Object.keys(bs.design_direction).map(function(k) {
@@ -2239,6 +2621,159 @@ function _renderBrand(st) {
       }).join('')
     );
   }
+
+  // ── 3a. Domain Authority Gap Analysis ──
+  var drGap = bs.dr_gap_analysis || cm.dr_gap_analysis;
+  if (drGap) {
+    html2 += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Domain Authority Gap</div>';
+    html2 += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+
+    // Left: Client DR with progress bar
+    var clientDR = drGap.client_dr || 0;
+    var targetDR = drGap.realistic_dr_target_12mo || 0;
+    var maxDR = Math.max(targetDR, 100);
+    html2 += '<div>';
+    html2 += '<div style="text-align:center;margin-bottom:8px">';
+    html2 += '<div style="font-size:28px;font-weight:700;color:var(--dark)">' + clientDR + '</div>';
+    html2 += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase">Client DR</div>';
+    if (drGap.client_dr_source) html2 += '<div style="font-size:9px;color:var(--n2);margin-top:2px">' + esc(drGap.client_dr_source) + '</div>';
+    html2 += '</div>';
+    if (targetDR) {
+      html2 += '<div style="margin-top:8px">';
+      html2 += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--n2);margin-bottom:3px"><span>Current: ' + clientDR + '</span><span>12-mo target: ' + targetDR + '</span></div>';
+      html2 += '<div style="height:8px;background:var(--panel);border-radius:4px;overflow:hidden">';
+      html2 += '<div style="height:100%;width:' + Math.round((clientDR / maxDR) * 100) + '%;background:var(--green);border-radius:4px;position:relative">';
+      html2 += '</div></div>';
+      html2 += '</div>';
+    }
+    if (drGap.dr_gap) html2 += '<div style="font-size:11px;color:#e6a23c;margin-top:6px">' + esc(drGap.dr_gap) + '</div>';
+    html2 += '</div>';
+
+    // Right: Competitor DR bars
+    html2 += '<div>';
+    var compDRs = drGap.competitor_drs || [];
+    if (compDRs.length) {
+      var maxCompDR = Math.max.apply(null, compDRs.map(function(c) { return c.dr || 0; }).concat([clientDR]));
+      compDRs.sort(function(a, b) { return (b.dr || 0) - (a.dr || 0); });
+      compDRs.forEach(function(c) {
+        var pct = maxCompDR > 0 ? Math.round(((c.dr || 0) / maxCompDR) * 100) : 0;
+        html2 += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+        html2 += '<span style="font-size:11px;width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--n3)">' + esc(c.name || '') + '</span>';
+        html2 += '<div style="flex:1;height:6px;background:var(--panel);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--n3);border-radius:3px"></div></div>';
+        html2 += '<span style="font-size:11px;font-weight:600;width:28px;text-align:right">' + (c.dr || 0) + '</span>';
+        html2 += '</div>';
+      });
+      // Client bar for comparison
+      var clientPct = maxCompDR > 0 ? Math.round((clientDR / maxCompDR) * 100) : 0;
+      html2 += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">';
+      html2 += '<span style="font-size:11px;width:100px;font-weight:600;color:var(--dark)">You</span>';
+      html2 += '<div style="flex:1;height:6px;background:var(--panel);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + clientPct + '%;background:var(--green);border-radius:3px"></div></div>';
+      html2 += '<span style="font-size:11px;font-weight:600;width:28px;text-align:right;color:var(--green)">' + clientDR + '</span>';
+      html2 += '</div>';
+    }
+    html2 += '</div>';
+    html2 += '</div>';
+
+    // DR strategy
+    if (drGap.dr_growth_strategy) html2 += _stratField('DR Growth Strategy', drGap.dr_growth_strategy, {span:true, textarea:true});
+    if (drGap.backlink_gap_summary) html2 += _stratField('Backlink Gap', drGap.backlink_gap_summary, {span:true});
+    html2 += '</div>';
+  }
+
+  // ── 3b. Content Velocity & Mix ──
+  var contentPillars = bs.content_pillars || cm.content_pillars;
+  var contentVelocity = bs.content_velocity || cm.content_velocity;
+  var contentMix = bs.content_mix || cm.content_mix;
+  if (contentPillars || contentVelocity) {
+    html2 += _stratSection('Content Strategy',
+      _stratField('Content Pillars', contentPillars) +
+      _stratField('Velocity', contentVelocity) +
+      _stratField('Preferred Formats', cm.preferred_formats)
+    );
+  }
+
+  if (contentMix && contentMix.length) {
+    html2 += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Content Mix</div>';
+    html2 += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html2 += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Type</th>'
+      + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Monthly</th>'
+      + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Purpose</th></tr>';
+    contentMix.forEach(function(item) {
+      html2 += '<tr style="border-bottom:1px solid var(--border)">';
+      html2 += '<td style="padding:6px 8px;font-weight:500">' + esc(item.type || '') + '</td>';
+      html2 += '<td style="padding:6px 4px;text-align:center;font-weight:600">' + (item.monthly || 0) + '</td>';
+      html2 += '<td style="padding:6px 8px;font-size:11px;color:var(--n3)">' + esc(item.purpose || '') + '</td>';
+      html2 += '</tr>';
+    });
+    html2 += '</table></div>';
+  }
+
+  // Team capacity
+  var teamCheck = bs.team_capacity_check || cm.team_capacity_check;
+  var teamNeeded = bs.team_size_input_needed || cm.team_size_input_needed;
+  if (teamCheck) {
+    var teamColour = teamNeeded ? '#e6a23c' : 'var(--green)';
+    html2 += '<div class="card" style="padding:10px 14px;margin-bottom:14px;border-left:3px solid ' + teamColour + ';font-size:12px;color:var(--n3)">';
+    if (teamNeeded) html2 += '<span style="color:#e6a23c;font-weight:500"><i class="ti ti-alert-triangle" style="font-size:12px"></i> Team size unknown</span> \u2014 ';
+    html2 += esc(teamCheck);
+    html2 += '</div>';
+  }
+
+  // ── 3c. Authority Building Timeline ──
+  var timeline = bs.authority_timeline || cm.authority_timeline;
+  if (timeline && timeline.length) {
+    html2 += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Authority Building Timeline</div>';
+    var phaseColours = ['#e6a23c', '#409eff', 'var(--green)'];
+    timeline.forEach(function(phase, idx) {
+      html2 += '<div class="card" style="padding:12px 14px;margin-bottom:8px;border-left:3px solid ' + (phaseColours[idx] || 'var(--n2)') + '">';
+      html2 += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+      html2 += '<span style="font-size:12px;font-weight:600;color:var(--dark)">' + esc(phase.phase || '') + '</span>';
+      if (phase.expected_dr_gain) html2 += '<span style="font-size:10px;color:var(--green);font-weight:500">' + esc(phase.expected_dr_gain) + '</span>';
+      html2 += '</div>';
+      if (phase.milestones && phase.milestones.length) {
+        html2 += '<ul style="margin:0 0 6px;padding-left:16px;font-size:11px;color:var(--n3)">';
+        phase.milestones.forEach(function(m) { html2 += '<li style="margin-bottom:2px">' + esc(m) + '</li>'; });
+        html2 += '</ul>';
+      }
+      if (phase.measurement) html2 += '<div style="font-size:10px;color:var(--n2)"><i class="ti ti-chart-bar" style="font-size:10px"></i> ' + esc(phase.measurement) + '</div>';
+      html2 += '</div>';
+    });
+    html2 += '</div>';
+  }
+
+  // ── 3d. Quick Wins ──
+  var quickWins = bs.quick_wins || cm.quick_wins;
+  if (quickWins && quickWins.length) {
+    html2 += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Quick Wins</div>';
+    html2 += '<div style="display:grid;gap:8px">';
+    var effortColours = { Low: 'var(--green)', Medium: '#e6a23c', High: '#f56c6c' };
+    quickWins.forEach(function(qw) {
+      html2 += '<div class="card" style="padding:10px 14px">';
+      html2 += '<div style="font-size:12px;font-weight:500;color:var(--dark);margin-bottom:4px">' + esc(qw.opportunity || '') + '</div>';
+      html2 += '<div style="display:flex;gap:8px;font-size:10px">';
+      var ec = effortColours[qw.effort] || 'var(--n2)';
+      html2 += '<span style="background:' + ec + ';color:white;padding:1px 6px;border-radius:3px">' + esc(qw.effort || '') + '</span>';
+      html2 += '<span style="color:var(--n2)">' + esc(qw.timeline || '') + '</span>';
+      html2 += '</div>';
+      if (qw.expected_impact) html2 += '<div style="font-size:11px;color:var(--n3);margin-top:4px">' + esc(qw.expected_impact) + '</div>';
+      html2 += '</div>';
+    });
+    html2 += '</div></div>';
+  }
+
+  // Authority building strategy (legacy text field)
+  if (cm.authority_building && !timeline) {
+    html2 += _stratSection('Authority Building', _stratField('Strategy', cm.authority_building, {span:true, textarea:true}));
+  }
+
+  // Local SEO
+  if (cm.local_seo_priority || cm.geo_targeting_strategy) {
+    html2 += _stratSection('Local & Geo Strategy',
+      _stratField('Local SEO Priority', cm.local_seo_priority) +
+      _stratField('Geo-Targeting Strategy', cm.geo_targeting_strategy, {textarea:true})
+    );
+  }
+
   return html2;
 }
 
@@ -2350,12 +2885,27 @@ async function compileStrategyOutput() {
     }
   }
 
-  // D3: Subtraction
-  if (st.subtraction && (st.subtraction.activities_to_cut || st.subtraction.redirect_recommendation)) {
-    ctx += '\nSUBTRACTION:\n';
-    if (st.subtraction.activities_to_cut) ctx += '- Cut: ' + st.subtraction.activities_to_cut.map(function(a) { return a.activity; }).join(', ') + '\n';
-    if (st.subtraction.recoverable_budget) ctx += '- Recoverable: ' + st.subtraction.recoverable_budget + '\n';
-    if (st.subtraction.redirect_recommendation) ctx += '- Redirect: ' + st.subtraction.redirect_recommendation + '\n';
+  // D3: Subtraction Analysis
+  if (st.subtraction) {
+    ctx += '\nSUBTRACTION ANALYSIS:\n';
+    var subAudit = st.subtraction.current_activities_audit || [];
+    if (subAudit.length) {
+      subAudit.forEach(function(a) {
+        ctx += '- ' + (a.verdict || '').toUpperCase() + ': ' + a.activity + ' ($' + (a.monthly_cost || '?') + '/mo) \u2014 ' + (a.reason || '') + '\n';
+      });
+    } else if (st.subtraction.activities_to_cut) {
+      ctx += '- Cut: ' + st.subtraction.activities_to_cut.map(function(a) { return a.activity; }).join(', ') + '\n';
+    }
+    if (st.subtraction.total_recoverable_monthly) ctx += '- Total recoverable: $' + st.subtraction.total_recoverable_monthly + '/mo\n';
+    else if (st.subtraction.recoverable_budget) ctx += '- Recoverable: ' + st.subtraction.recoverable_budget + '\n';
+    if (st.subtraction.subtraction_summary) ctx += '- Summary: ' + st.subtraction.subtraction_summary + '\n';
+    if (st.subtraction.redirect_recommendations && st.subtraction.redirect_recommendations.length) {
+      st.subtraction.redirect_recommendations.forEach(function(rd) {
+        ctx += '- Redirect: ' + rd.from + ' \u2192 ' + rd.to + ' (' + rd.rationale + ')\n';
+      });
+    } else if (st.subtraction.redirect_recommendation) {
+      ctx += '- Redirect: ' + st.subtraction.redirect_recommendation + '\n';
+    }
   }
 
   // D4: Channel Strategy
@@ -2625,7 +3175,7 @@ function _renderOutput(st) {
     html += '<button class="btn btn-ghost sm" style="font-size:10px" onclick="synthesiseWebStrategy()"><i class="ti ti-refresh"></i> Regenerate</button>';
     html += '</div>';
     html += '<div class="card" style="padding:16px">';
-    html += '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap">' + esc(st.webStrategy) + '</div>';
+    html += '<div style="font-size:13px;line-height:1.7;font-family:var(--font)">' + sanitiseHTML(_markdownToHtml(st.webStrategy)) + '</div>';
     html += '</div></div>';
   }
 

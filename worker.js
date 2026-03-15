@@ -1669,7 +1669,7 @@ export default {
           capturedAt: Date.now(),
           domain,
           domainMetrics: {
-            dr: null,
+            dr: backlinksResult?.rank ?? null,
             orgTraffic: Math.round(overviewResult?.items?.[0]?.metrics?.organic?.etv || 0),
             orgKeywords: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0)+(orgMetrics.pos_4_10||0)+(orgMetrics.pos_11_20||0)+(orgMetrics.pos_21_30||0)+(orgMetrics.pos_31_40||0)+(orgMetrics.pos_41_50||0)+(orgMetrics.pos_51_60||0)+(orgMetrics.pos_61_70||0)+(orgMetrics.pos_71_80||0)+(orgMetrics.pos_81_90||0)+(orgMetrics.pos_91_100||0),
             orgKeywords1_3: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0),
