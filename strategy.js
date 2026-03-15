@@ -59,7 +59,8 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'ltv',                  path:'S.research.customer_lifetime_value', check:'string' },
     { key:'lead_quality',         path:'S.research.lead_quality_percentage', check:'string' },
     { key:'goal',                 path:'S.research.primary_goal',            check:'string' },
-    { key:'cpc_estimates',        path:'S.strategy._enrichment.cpc_estimates', check:'truthy' }
+    { key:'cpc_data',             path:'S.strategy._enrichment.cpc_estimates', check:'truthy',
+      altPath:'S.kwResearch.keywords', altCheck:'array' }
   ],
   subtraction: [
     { key:'current_activities',   path:'S.research.current_marketing_activities', check:'array' },
@@ -118,6 +119,8 @@ var ANTI_INFLATION_CAPS = [
     test: function() { return !S.strategy || !S.strategy.positioning || !S.strategy.positioning.validated_differentiators || !S.strategy.positioning.validated_differentiators.length; } },
   { condition:'estimated_close_rate', section:'economics', dimension:'data', cap:7,
     test: function() { var r=S.research||{}; return !r.close_rate_estimate || r.close_rate_estimate.indexOf('estimate')>=0 || r.close_rate_estimate.indexOf('~')>=0; } },
+  { condition:'no_cpc_data_econ', section:'economics', dimension:'confidence', cap:6,
+    test: function() { var e=S.strategy&&S.strategy._enrichment||{}; var kw=S.kwResearch||{}; return !e.cpc_estimates && (!kw.keywords || kw.keywords.filter(function(k){return k.cpc>0;}).length < 3); } },
   { condition:'no_cpc_data', section:'channels', dimension:'confidence', cap:6,
     test: function() { return !S.strategy || !S.strategy._enrichment || !S.strategy._enrichment.cpc_estimates; } },
   { condition:'no_fathom_transcript', section:'_all', dimension:'specificity', cap:6,
@@ -157,7 +160,8 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'budget_real',       label:'Uses client-provided budget (not assumed)', check: function(d) { var r = S.research || {}; return !!r.monthly_marketing_budget && (!d.assumptions || !d.assumptions.some(function(a) { return a.toLowerCase().indexOf('budget') >= 0; })); } },
     { id:'has_recommendation',label:'Actionable recommendation provided',      check: function(d) { return d.recommendation && d.recommendation.length > 50; } },
     { id:'paid_assessed',     label:'Paid media viability assessed',           check: function(d) { return d.paid_media_viable !== undefined; } },
-    { id:'health_assessed',   label:'LTV:CAC health rated',                    check: function(d) { return !!d.ltv_cac_health; } }
+    { id:'health_assessed',   label:'LTV:CAC health rated',                    check: function(d) { return !!d.ltv_cac_health; } },
+    { id:'cpc_grounded',      label:'CPC data used to ground estimates',       check: function(d) { return d.market_cpc_summary && d.market_cpc_summary.data_source && d.market_cpc_summary.data_source !== 'assumption'; } }
   ],
   2: [ // D2: Competitive Position
     { id:'names_competitors', label:'Names specific competitors',              check: function(d) { return d.competitive_counter && d.competitive_counter.length > 20; } },
@@ -379,14 +383,28 @@ function _stratResolveInput(inputDef) {
 
 function _stratCheckInput(inputDef) {
   var val = _stratResolveInput(inputDef);
-  switch (inputDef.check) {
-    case 'string':     return typeof val === 'string' && val.trim().length > 0;
-    case 'array':      return Array.isArray(val) && val.length > 0;
-    case 'array_min_2': return Array.isArray(val) && val.length >= 2;
-    case 'truthy':     return !!val && (typeof val !== 'object' || Object.keys(val).length > 0);
-    case 'any_doc':    return !!val;
-    default:           return !!val;
+  var checkType = inputDef.check;
+  var passed = false;
+  switch (checkType) {
+    case 'string':     passed = typeof val === 'string' && val.trim().length > 0; break;
+    case 'array':      passed = Array.isArray(val) && val.length > 0; break;
+    case 'array_min_2': passed = Array.isArray(val) && val.length >= 2; break;
+    case 'truthy':     passed = !!val && (typeof val !== 'object' || Object.keys(val).length > 0); break;
+    case 'any_doc':    passed = !!val; break;
+    default:           passed = !!val;
   }
+  // Try alternate path if primary fails
+  if (!passed && inputDef.altPath) {
+    var altVal = _stratResolveInput({ path: inputDef.altPath, check: inputDef.altCheck || checkType });
+    var altType = inputDef.altCheck || checkType;
+    switch (altType) {
+      case 'string':     return typeof altVal === 'string' && altVal.trim().length > 0;
+      case 'array':      return Array.isArray(altVal) && altVal.length > 0;
+      case 'truthy':     return !!altVal && (typeof altVal !== 'object' || Object.keys(altVal).length > 0);
+      default:           return !!altVal;
+    }
+  }
+  return passed;
 }
 
 function scoreSection(section) {
@@ -926,6 +944,47 @@ function buildDiagnosticPrompt(num) {
   if (num === 1) {
     // D1: Unit Economics
     var setup = S.setup || {};
+
+    // Build CPC intelligence from best available source
+    var cpcBlock = '';
+    var kwR = S.kwResearch || {};
+    if (kwR.keywords && kwR.keywords.length >= 10) {
+      // Real keyword research CPC data (best source)
+      var kwsWithCpc = kwR.keywords.filter(function(k) { return k.cpc && k.cpc > 0; });
+      if (kwsWithCpc.length >= 3) {
+        var totalCpc = kwsWithCpc.reduce(function(s, k) { return s + k.cpc; }, 0);
+        var kwAvgCpc = Math.round((totalCpc / kwsWithCpc.length) * 100) / 100;
+        var kwMaxCpc = Math.round(Math.max.apply(null, kwsWithCpc.map(function(k) { return k.cpc; })) * 100) / 100;
+        var kwMinCpc = Math.round(Math.min.apply(null, kwsWithCpc.map(function(k) { return k.cpc; })) * 100) / 100;
+        var sortedForMedian = kwsWithCpc.slice().sort(function(a, b) { return a.cpc - b.cpc; });
+        var kwMedianCpc = Math.round(sortedForMedian[Math.floor(sortedForMedian.length / 2)].cpc * 100) / 100;
+        // Top 10 keywords by CPC for context
+        var topByCpc = kwsWithCpc.slice().sort(function(a, b) { return b.cpc - a.cpc; }).slice(0, 10);
+        // CPC by intent bucket
+        var highIntentKws = kwsWithCpc.filter(function(k) { var kw = (k.kw||'').toLowerCase(); return kw.indexOf('near me')>=0 || kw.indexOf('cost')>=0 || kw.indexOf('pricing')>=0 || kw.indexOf('hire')>=0 || kw.indexOf('quote')>=0 || kw.indexOf('buy')>=0; });
+        var highIntentAvg = highIntentKws.length ? Math.round((highIntentKws.reduce(function(s,k){return s+k.cpc;},0) / highIntentKws.length) * 100) / 100 : null;
+        cpcBlock = '\nMARKET CPC DATA (from ' + kwsWithCpc.length + ' keywords with CPC data, source: full keyword research):\n'
+          + '- Average CPC: $' + kwAvgCpc + '\n'
+          + '- Median CPC: $' + kwMedianCpc + '\n'
+          + '- CPC range: $' + kwMinCpc + ' - $' + kwMaxCpc + '\n'
+          + (highIntentAvg ? '- High-intent keyword avg CPC: $' + highIntentAvg + ' (from ' + highIntentKws.length + ' transactional keywords)\n' : '')
+          + '- Top keywords by CPC:\n'
+          + topByCpc.map(function(k) { return '  * "' + k.kw + '" \u2014 CPC: $' + k.cpc + ', vol: ' + (k.vol || 0) + '/mo'; }).join('\n') + '\n'
+          + '- CPC data confidence: HIGH (from full keyword research with ' + kwR.keywords.length + ' keywords)\n';
+      } else {
+        cpcBlock = '- CPC data: Limited \u2014 only ' + kwsWithCpc.length + ' keywords have CPC data\n';
+      }
+    } else if (enrich.cpc_estimates) {
+      // Fallback to shallow CPC estimates
+      cpcBlock = '\nMARKET CPC DATA (from shallow estimate, ' + (enrich.cpc_estimates.keyword_cpcs || []).length + ' keywords):\n'
+        + '- Average CPC: $' + enrich.cpc_estimates.avg_cpc + '\n'
+        + '- CPC range: $' + enrich.cpc_estimates.min_cpc + ' - $' + enrich.cpc_estimates.max_cpc + '\n'
+        + '- Estimated CPL range: ' + enrich.cpc_estimates.estimated_cpl_range + '\n'
+        + '- CPC data confidence: MEDIUM (from shallow keyword lookup)\n';
+    } else {
+      cpcBlock = '- CPC data: NOT AVAILABLE \u2014 estimates will be assumptions\n';
+    }
+
     return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
@@ -935,10 +994,10 @@ function buildDiagnosticPrompt(num) {
       + '- Lead quality (% sales-qualified): ' + (r.lead_quality_percentage || 'UNKNOWN \u2014 assume 30%') + '\n'
       + '- Primary goal: ' + (r.primary_goal || '') + '\n'
       + '- Current lead volume: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
-      + '- Estimated CPC range: ' + (enrich.cpc_estimates ? '$' + enrich.cpc_estimates.min_cpc + ' - $' + enrich.cpc_estimates.max_cpc : 'UNKNOWN') + '\n'
+      + cpcBlock
       + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '')
       + (setup.decision_timeline ? '- Decision timeline: ' + setup.decision_timeline + '\n' : '') + '\n'
-      + 'TASK: Calculate unit economics. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
+      + 'TASK: Calculate unit economics. Use the MARKET CPC DATA above to ground your estimated_market_cpl and paid_media_viable assessment \u2014 do not guess CPC when real data is available. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "max_allowable_cpl": 0,\n'
       + '  "estimated_market_cpl": 0,\n'
@@ -951,6 +1010,15 @@ function buildDiagnosticPrompt(num) {
       + '  "ltv_cac_ratio": "e.g. 4.2:1",\n'
       + '  "ltv_cac_health": "unsustainable | healthy | under-investing",\n'
       + '  "paid_media_viable": true,\n'
+      + '  "market_cpc_summary": {\n'
+      + '    "avg_cpc": 0,\n'
+      + '    "median_cpc": 0,\n'
+      + '    "cpc_range": "$X - $Y",\n'
+      + '    "high_intent_avg_cpc": 0,\n'
+      + '    "data_source": "keyword_research | shallow_estimate | assumption",\n'
+      + '    "cpc_to_cpl_multiplier": 0,\n'
+      + '    "rationale": "how CPC data informed the CPL estimate"\n'
+      + '  },\n'
       + '  "pricing_strategy": "recommendation",\n'
       + '  "recommendation": "narrative recommendation",\n'
       + '  "assumptions": ["each assumption made"],\n'
@@ -1065,7 +1133,20 @@ function buildDiagnosticPrompt(num) {
       + 'BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + 'AUDIENCE: ' + (r.primary_audience_description || '') + '\n'
       + 'SALES CYCLE: ' + (r.sales_cycle_length || 'UNKNOWN') + '\n'
-      + 'CPC DATA: ' + JSON.stringify(enrich.cpc_estimates || 'UNKNOWN') + '\n\n'
+      + 'CPC DATA: ' + JSON.stringify(enrich.cpc_estimates || 'UNKNOWN') + '\n'
+      + (function() {
+        var kwR = S.kwResearch || {};
+        if (kwR.keywords && kwR.keywords.length >= 10) {
+          var kwsC = kwR.keywords.filter(function(k) { return k.cpc > 0; });
+          if (kwsC.length >= 3) {
+            var avg = Math.round((kwsC.reduce(function(s,k){return s+k.cpc;},0)/kwsC.length)*100)/100;
+            return 'KEYWORD RESEARCH CPC (more accurate, ' + kwsC.length + ' keywords): avg $' + avg
+              + ', range $' + Math.round(Math.min.apply(null,kwsC.map(function(k){return k.cpc;}))*100)/100
+              + ' - $' + Math.round(Math.max.apply(null,kwsC.map(function(k){return k.cpc;}))*100)/100 + '\n';
+          }
+        }
+        return '';
+      })() + '\n'
       + 'TASK: Score ALL 13 levers on fit (1-10), economics (1-10), competitive_reality (1-10), goal_impact (1-10). '
       + 'Calculate priority scores. Check funnel coverage. Produce budget allocation.\n\n'
       + 'LEVERS: google_ads_search, google_display, meta_ads, seo, website, cro, email, remarketing, social_media, video, content_marketing, branding, local_seo\n\n'
@@ -2272,6 +2353,57 @@ function _renderEconomics(st) {
     _stratField('Pricing Strategy', ue.pricing_strategy, {span:true, textarea:true}) +
     _stratField('Recommendation', ue.recommendation, {span:true, textarea:true})
   );
+  // Market CPC Intelligence section
+  var cpcSummary = ue.market_cpc_summary;
+  if (cpcSummary) {
+    var srcLabel = cpcSummary.data_source === 'keyword_research' ? 'Full Keyword Research' : cpcSummary.data_source === 'shallow_estimate' ? 'Shallow API Estimate' : 'Assumption';
+    var srcColour = cpcSummary.data_source === 'keyword_research' ? 'var(--green)' : cpcSummary.data_source === 'shallow_estimate' ? '#e6a23c' : '#f56c6c';
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Market CPC Intelligence</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px">';
+    // Avg CPC card
+    html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:20px;font-weight:700;color:var(--dark)">$' + (cpcSummary.avg_cpc || 0) + '</div>';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase">Avg CPC</div></div>';
+    // Median CPC card
+    html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:20px;font-weight:700;color:var(--dark)">$' + (cpcSummary.median_cpc || 0) + '</div>';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase">Median CPC</div></div>';
+    // High-intent avg CPC card
+    html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">';
+    html += '<div style="font-size:20px;font-weight:700;color:var(--dark)">' + (cpcSummary.high_intent_avg_cpc ? '$' + cpcSummary.high_intent_avg_cpc : '\u2014') + '</div>';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase">High-Intent CPC</div></div>';
+    html += '</div>';
+    html += _stratField('CPC Range', cpcSummary.cpc_range || '');
+    html += _stratField('Data Source', '<span style="color:' + srcColour + ';font-weight:500">' + esc(srcLabel) + '</span>', { _html: true });
+    if (cpcSummary.cpc_to_cpl_multiplier) html += _stratField('CPC to CPL Multiplier', cpcSummary.cpc_to_cpl_multiplier + 'x');
+    if (cpcSummary.rationale) html += _stratField('How CPC informed CPL', cpcSummary.rationale, {span:true});
+    html += '</div>';
+  }
+
+  // Also show live keyword CPC data if available from keyword research
+  var kwR = S.kwResearch || {};
+  if (kwR.keywords && kwR.keywords.length >= 10) {
+    var kwsWithCpc = kwR.keywords.filter(function(k) { return k.cpc && k.cpc > 0; });
+    if (kwsWithCpc.length >= 3) {
+      var topCpcKws = kwsWithCpc.slice().sort(function(a, b) { return b.cpc - a.cpc; }).slice(0, 8);
+      html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Top Keywords by CPC <span style="font-weight:400;color:var(--n2)">(' + kwsWithCpc.length + ' keywords with CPC data)</span></div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Keyword</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">CPC</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">Vol/mo</th>'
+        + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">KD</th></tr>';
+      topCpcKws.forEach(function(k) {
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:6px 8px">' + esc(k.kw || '') + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right;font-weight:600;color:var(--dark)">$' + k.cpc + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + ((k.vol || 0).toLocaleString()) + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right">' + (k.kd || '\u2014') + '</td>';
+        html += '</tr>';
+      });
+      html += '</table></div>';
+    }
+  }
+
   if (ue.assumptions && ue.assumptions.length) {
     html += _stratSection('Assumptions', _stratField('Assumptions', ue.assumptions, {span:true}));
   }
