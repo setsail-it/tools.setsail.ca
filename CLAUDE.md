@@ -2,7 +2,21 @@
 
 ## What This Is
 
-SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It takes a client through 11 stages — Setup → Snapshot → Research → Strategy → Sitemap → Briefs → Copy → Images → Layout → Schema → Export — producing keyword research, page architecture, briefs, and full SEO copy.
+SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It is a single-page application that takes a client engagement from initial intake through to a fully export-ready website — producing audience intelligence, competitive strategy, keyword research, page architecture, SEO briefs, full copy, wireframes, structured data, and image assets across 11 sequential stages.
+
+**The 11-stage pipeline:**
+
+1. **Setup** — Client name, URL, primary market, industry, uploaded strategy docs, discovery notes, sales qualification, competitor URLs
+2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison
+3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
+4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline, and compiled 14-section strategy document
+5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, market overrides, and active page import from Snapshot
+6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), and AI evaluation scorecards
+7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection), human QC checklists, and version tabs
+8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
+9. **Layout** — Wireframe generation with section-level structure and responsive grid suggestions
+10. **Schema** — Structured data markup (JSON-LD) per page type with validation
+11. **Export** — Final packaging of all assets for handoff to development
 
 **Not a framework.** No React, no bundler, no build step. `worker.js` is the backend. `index.html` + external `.js` files are the frontend, served as static assets.
 
@@ -16,20 +30,21 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 | Auth | Cloudflare Access (Google SSO, `@setsail.ca`) + JWT validation |
 | AI | Anthropic Claude (`claude-sonnet-4-20250514`) via `/api/claude` proxy |
 | Keyword data | DataForSEO REST API |
+| Domain data | Ahrefs (via DataForSEO proxy) |
 | Images | Gemini API (via `/api/generate-image`) |
 | Frontend | Vanilla JS, Geist font, Tabler Icons |
 
 ## File Map
 
 ```
-worker.js        — All backend API routes + queue consumer (~2038 lines)
-index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~2924 lines)
-strategy.js      — Stage 4: strategy engine + scoring + diagnostics + web strategy brief (~2136 lines)
-keywords.js      — Keyword research (tab within Strategy stage) (~2591 lines)
-sitemap.js       — Stage 5: sitemap generation (~1666 lines)
+worker.js        — All backend API routes + queue consumer (~2141 lines)
+index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~3249 lines)
+strategy.js      — Stage 4: strategy engine + scoring + diagnostics + web strategy brief (~5961 lines)
+keywords.js      — Keyword research (tab within Strategy stage) (~3072 lines)
+sitemap.js       — Stage 5: sitemap generation (~1928 lines)
 briefs.js        — Stage 6: brief generation + queue (~1645 lines)
 copy.js          — Stage 7: copy generation + audit (~1171 lines)
-research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1123 lines)
+research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1523 lines)
 layout.js        — Stage 9: wireframe generation (~558 lines)
 images.js        — Stage 8: image generation (~490 lines)
 schema.js        — Stage 10: schema markup (~260 lines)
@@ -51,7 +66,11 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 - `S.setup` — client info, docs, voice, competitors, sales qualification
 - `S.snapshot` — DataForSEO domain metrics
 - `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
-- `S.strategy` — strategy engine output (positioning, unit economics, channels, brand, risks, targets, demand validation)
+- `S.strategy` — strategy engine output (audience, positioning, unit economics, channels, brand, risks, targets, demand validation)
+- `S.strategy.audience` — D0 output: segments, personas, buying motions, triggers, objections, parked segments
+- `S.strategy.positioning` — D2 output: hypotheses, evaluations, selected direction, messaging, voice
+- `S.strategy.unit_economics` — D1 output: CPL, CAC, LTV, sensitivity analysis, CPC intelligence
+- `S.strategy.channel_strategy` — D4 output: lever scores, budget tiers, funnel coverage
 - `S.pages[]` — sitemap pages with keywords, briefs, metadata
 - `S.kwResearch` — seeds, keywords, clusters, selected
 - `S.copy{}` — per-slug copy data (HTML stored in separate KV keys)
@@ -70,6 +89,33 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 - **Per-slug storage:** `/api/copy/:projectId/:slug`, `/api/images/:projectId/:slug`
 
 **Queue consumer** (`worker.queue()`): processes `brief` and `copy` job types. Loads project → fetches SERP data → calls Claude → writes back with version increment.
+
+### Strategy Engine (strategy.js)
+
+The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequentially, scores each section on three dimensions, and enforces anti-inflation caps to prevent score gaming.
+
+**Diagnostic pipeline:**
+- **D0 — Audience Intelligence:** Segments, personas (archetype labels, not fictional names), buying motions, purchase triggers, objection maps, vertical coverage (active + parked segments)
+- **D1 — Unit Economics:** CPL, CAC, LTV, LTV:CAC ratio, sensitivity analysis (conservative/base/optimistic), CPC intelligence, paid viability
+- **D2 — Competitive Position:** Positioning directions (never auto-selects), validated differentiators, messaging hierarchy, brand voice direction with vertical overlays
+- **D3 — Subtraction Analysis:** Current activity audit with stop/keep/restructure verdicts, recoverable budget
+- **D4 — Channel & Lever Viability:** 13 levers scored, three budget tiers (current/growth/optimal), funnel coverage analysis
+- **D5 — Website & CRO:** Build type, CTAs, form strategy, page architecture, tracking requirements
+- **D6 — Content & Authority:** DR gap analysis, content pillars (vertical-aware), publishing cadence, E-E-A-T strategy
+- **D7 — Risk Assessment:** Risks with severity scores, mitigations, dependencies
+
+**D0 runs first** (separate call before the D1–D7 loop). This is because D0=0 is falsy in JavaScript — all `if (diagNum)` checks must use `diagNum !== undefined && diagNum !== null` instead.
+
+**Scoring engine:** Three dimensions per section:
+- Data Completeness (35%) — are all required inputs present?
+- Analytical Confidence (40%) — content depth + audit pass rate
+- Specificity (25%) — is the output specific to this client?
+
+**Section weights:** Positioning 18%, Channels 18%, Economics 14%, Subtraction 12%, Growth 12%, Audience 10%, Risks 10%, Execution 8%, Brand 8%. Sum is 1.10 — divided by `totalWeight` at runtime so a perfect score is still 10.0.
+
+**Anti-inflation caps** prevent score gaming — e.g. no validated differentiators caps positioning confidence at 6, audience score below 5.0 caps overall at 6.0, first-pass scores above 7.0 trigger a warning.
+
+**Positioning direction system:** Founder hypotheses → Evaluate Hypotheses (stress-tests against competitors/demand) → Select Direction → D2 generates full messaging. Without a selected direction, D2 generates competitive analysis but messaging fields are blocked with `direction_required: true`.
 
 ### Shared Helpers (worker.js, top of file)
 
@@ -106,6 +152,9 @@ These are defined once and used across all routes:
 - **Size monitoring:** server rejects >24MB saves (413), warns at 15MB+
 
 ## Critical Patterns — Never Break These
+
+### D0 (Audience) is diagnostic number 0 — falsy in JavaScript
+`diagNum === 0` is falsy. All checks must use `diagNum !== undefined && diagNum !== null` instead of `if (diagNum)`. This applies in: `scoreSection()` audit adjustment, `improveStrategy()` diagnostic selection, `renderStrategyTabContent()` tab routing, `_versionLearningCtx()` previous output lookup.
 
 ### String building in JS HTML
 Always use `createElement` + `.onclick = fn`. Never string-concat onclick with IDs:
@@ -148,6 +197,9 @@ Always use `getLocationCode(country, fallback)`. Never hardcode `2124` or `2840`
 
 ### DataForSEO credentials
 Always use `getDFSCreds(env)`. Never inline `btoa(login + ':' + password)`.
+
+### Prompt schema ↔ renderer field names must match
+When adding new fields to a diagnostic JSON schema in `buildDiagnosticPrompt()`, the field names in the schema must exactly match what the corresponding `_render*()` function reads. Mismatched names cause silent failures (empty cells, missing data). Always verify both sides when adding a new field.
 
 ### Stop/Resume system for AI generations
 All bulk AI loops must be stoppable and resumable. The system uses three globals in `index.html`:

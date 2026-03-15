@@ -6,6 +6,7 @@
 // ── Constants ─────────────────────────────────────────────────────────
 
 var STRATEGY_TABS = [
+  { id:'audience',     label:'Audience',     icon:'ti-users' },
   { id:'positioning',  label:'Positioning',  icon:'ti-target' },
   { id:'economics',    label:'Economics',    icon:'ti-calculator' },
   { id:'subtraction',  label:'Subtraction',  icon:'ti-scissors' },
@@ -19,6 +20,7 @@ var STRATEGY_TABS = [
 ];
 
 var STRATEGY_SECTION_WEIGHTS = {
+  audience:     0.10,
   positioning:  0.18,
   economics:    0.14,
   subtraction:  0.12,
@@ -30,6 +32,7 @@ var STRATEGY_SECTION_WEIGHTS = {
 };
 
 var STRATEGY_SECTION_LABELS = {
+  audience:     'Audience Intelligence',
   positioning:  'Positioning',
   economics:    'Unit Economics',
   subtraction:  'Subtraction Analysis',
@@ -42,6 +45,18 @@ var STRATEGY_SECTION_LABELS = {
 
 // Required inputs per section — for data completeness scoring
 var STRATEGY_REQUIRED_INPUTS = {
+  audience: [
+    { key:'audience_desc',        path:'S.research.primary_audience_description',  check:'string' },
+    { key:'buyer_roles',          path:'S.research.buyer_roles_titles',            check:'array' },
+    { key:'pain_points',          path:'S.research.pain_points_top5',              check:'array' },
+    { key:'objections',           path:'S.research.objections_top5',               check:'array' },
+    { key:'best_customers',       path:'S.research.best_customer_examples',        check:'string' },
+    { key:'geography',            path:'S.research.geography',                     check:'truthy' },
+    { key:'sales_cycle',          path:'S.research.sales_cycle_length',            check:'string' },
+    { key:'deal_size',            path:'S.research.average_deal_size',             check:'string' },
+    { key:'industry',             path:'S.research.industry',                      check:'string' },
+    { key:'strategy_doc',         path:'S.setup.strategy||S.setup.discoveryNotes||S.setup.docs', check:'any_doc' }
+  ],
   positioning: [
     { key:'competitors',          path:'S.research.competitors',            check:'array_min_2' },
     { key:'services_detail',      path:'S.research.services_detail',        check:'array' },
@@ -173,9 +188,45 @@ var ANTI_INFLATION_CAPS = [
     test: function() {
       var au = S.strategy && S.strategy._audit || {};
       var totalPass = 0; var totalChecks = 0;
+      if (au[0]) { totalPass += au[0].pass; totalChecks += au[0].total; }
       for (var d = 1; d <= 7; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
       if (totalChecks < 10) return false; // not enough data
       return (totalPass / totalChecks) < 0.6;
+    } },
+  // Hard caps — missing manual inputs
+  { condition:'no_close_rate_provided', section:'economics', dimension:'data', cap:6,
+    test: function() { var r = S.research || {}; return !r.close_rate_estimate || r.close_rate_estimate === 'UNKNOWN'; } },
+  { condition:'audience_below_5_overall', section:'_overall', dimension:'_cap', cap:6.0,
+    test: function() {
+      if (!S.strategy || !S.strategy.audience || !S.strategy.audience.segments) return false;
+      var audScore = scoreSection('audience');
+      return audScore.score < 5.0;
+    } },
+  // Audience caps — segment quality gate
+  { condition:'no_audience_data', section:'audience', dimension:'data', cap:5,
+    test: function() {
+      var a = S.strategy && S.strategy.audience || {};
+      return !a.segments || !a.segments.length;
+    } },
+  { condition:'no_buying_motions', section:'audience', dimension:'confidence', cap:6,
+    test: function() {
+      var a = S.strategy && S.strategy.audience || {};
+      return !a.buying_motions || !a.buying_motions.length;
+    } },
+  { condition:'generic_personas', section:'audience', dimension:'specificity', cap:5,
+    test: function() {
+      var a = S.strategy && S.strategy.audience || {};
+      if (!a.personas || a.personas.length < 2) return true;
+      // Check if persona names are too generic
+      var generic = ['Decision Maker', 'Buyer', 'Customer', 'User', 'Manager'];
+      return a.personas.every(function(p) {
+        return generic.some(function(g) { return (p.name || '').indexOf(g) >= 0; });
+      });
+    } },
+  { condition:'over_targeted_audience', section:'audience', dimension:'confidence', cap:6.5,
+    test: function() {
+      var a = S.strategy && S.strategy.audience || {};
+      return a.segments && a.segments.length > 6;
     } },
   // Positioning Direction caps — founder alignment gate
   { condition:'no_hypotheses_no_direction', section:'positioning', dimension:'data', cap:5,
@@ -208,6 +259,16 @@ var ANTI_INFLATION_CAPS = [
 // Each check returns true (pass) or false (fail).
 
 var STRATEGY_AUDIT_CHECKS = {
+  0: [ // D0: Audience Intelligence
+    { id:'has_segments',      label:'At least 2 audience segments identified',     check: function(d) { return d.segments && d.segments.length >= 2; } },
+    { id:'segment_sizing',    label:'Segments have estimated sizing',              check: function(d) { return d.segments && d.segments.some(function(s) { return s.market_size || s.estimated_size; }); } },
+    { id:'has_personas',      label:'Persona profiles defined',                    check: function(d) { return d.personas && d.personas.length >= 2; } },
+    { id:'persona_specificity',label:'Personas have specific job titles/roles',    check: function(d) { return d.personas && d.personas.every(function(p) { return p.role && p.role.length > 5; }); } },
+    { id:'has_buying_motions',label:'Buying motions mapped',                       check: function(d) { return d.buying_motions && d.buying_motions.length >= 2; } },
+    { id:'has_triggers',      label:'Purchase triggers identified',                check: function(d) { return d.purchase_triggers && d.purchase_triggers.length >= 2; } },
+    { id:'has_objections',    label:'Objection handling mapped to segments',       check: function(d) { return d.objection_map && d.objection_map.length >= 2; } },
+    { id:'has_validation',    label:'Segment validation criteria defined',         check: function(d) { return d.validation && (d.validation.primary_segment || d.validation.recommended_focus); } }
+  ],
   1: [ // D1: Unit Economics
     { id:'has_max_cpl',       label:'Max allowable CPL calculated',           check: function(d) { return d.max_allowable_cpl > 0; } },
     { id:'has_ltv_cac',       label:'LTV:CAC ratio calculated',               check: function(d) { return !!d.ltv_cac_ratio; } },
@@ -285,7 +346,8 @@ function auditDiagnostic(num) {
   // Get the diagnostic output
   var st = S.strategy || {};
   var data = null;
-  if (num === 1) data = st.unit_economics;
+  if (num === 0) data = st.audience;
+  else if (num === 1) data = st.unit_economics;
   else if (num === 2) data = st.positioning;
   else if (num === 3) data = st.subtraction;
   else if (num === 4) data = st.channel_strategy;
@@ -312,6 +374,9 @@ function auditDiagnostic(num) {
 function auditAllDiagnostics() {
   if (!S.strategy) return;
   if (!S.strategy._audit) S.strategy._audit = {};
+  // D0 (Audience) + D1-D7
+  var d0 = auditDiagnostic(0);
+  if (d0) S.strategy._audit[0] = d0;
   for (var d = 1; d <= 7; d++) {
     var result = auditDiagnostic(d);
     if (result) S.strategy._audit[d] = result;
@@ -383,6 +448,7 @@ function strategyDefaults() {
     },
     _enrichment: {},
     _audit: {},
+    audience: {},
     positioning: {},
     unit_economics: {},
     channel_strategy: {},
@@ -478,7 +544,8 @@ function scoreSection(section) {
   // Confidence: based on whether the section has been generated and has meaningful content
   var st = S.strategy || {};
   var sectionData = null;
-  if (section === 'positioning') sectionData = st.positioning;
+  if (section === 'audience') sectionData = st.audience;
+  else if (section === 'positioning') sectionData = st.positioning;
   else if (section === 'economics') sectionData = st.unit_economics;
   else if (section === 'subtraction') sectionData = st.subtraction;
   else if (section === 'channels') sectionData = st.channel_strategy;
@@ -503,9 +570,9 @@ function scoreSection(section) {
   }
 
   // Audit pass rate boosts or penalises confidence
-  var diagMap2 = { positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap2 = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
   var diagNum2 = diagMap2[section];
-  if (diagNum2 && st._audit && st._audit[diagNum2]) {
+  if (diagNum2 !== undefined && diagNum2 !== null && st._audit && st._audit[diagNum2]) {
     var auResult = st._audit[diagNum2];
     var auRate = auResult.total > 0 ? auResult.pass / auResult.total : 0;
     if (auRate >= 0.9 && confidenceScore < 9) confidenceScore = Math.min(confidenceScore + 1, 9);
@@ -586,10 +653,17 @@ function scoreStrategy() {
   var auditCap = ANTI_INFLATION_CAPS.find(function(c) { return c.condition === 'low_audit_pass_rate'; });
   if (auditCap && auditCap.test() && overall > auditCap.cap) overall = auditCap.cap;
 
+  // Audience below 5.0 caps overall at 6.0 — use pre-computed score to avoid redundant computation
+  if (sections.audience && sections.audience.score < 5.0 && overall > 6.0) overall = 6.0;
+
   // Collect active caps for transparency
   var activeCaps = [];
   ANTI_INFLATION_CAPS.forEach(function(cap) {
-    if (cap.section === '_overall' && cap.test()) {
+    if (cap.section !== '_overall') return;
+    // Use pre-computed audience score to avoid redundant scoreSection call
+    if (cap.condition === 'audience_below_5_overall') {
+      if (sections.audience && sections.audience.score < 5.0) activeCaps.push({ condition: cap.condition, cap: cap.cap });
+    } else if (cap.test()) {
       activeCaps.push({ condition: cap.condition, cap: cap.cap });
     }
   });
@@ -995,7 +1069,8 @@ function _versionLearningCtx(num) {
 
   // Get previous output
   var prevOutput = null;
-  if (num === 1) prevOutput = st.unit_economics;
+  if (num === 0) prevOutput = st.audience;
+  else if (num === 1) prevOutput = st.unit_economics;
   else if (num === 2) prevOutput = st.positioning;
   else if (num === 3) prevOutput = st.subtraction;
   else if (num === 4) prevOutput = st.channel_strategy;
@@ -1026,6 +1101,131 @@ function buildDiagnosticPrompt(num) {
   var st = S.strategy || {};
   var enrich = st._enrichment || {};
   var ctx = _stratCtx();
+
+  if (num === 0) {
+    // D0: Audience Intelligence
+    var setup0 = S.setup || {};
+    return ctx + '\n\nDIAGNOSTIC: Audience Intelligence\n\n'
+      + 'PRIMARY AUDIENCE: ' + (r.primary_audience_description || 'not specified') + '\n'
+      + 'BUYER ROLES: ' + (r.buyer_roles_titles ? (Array.isArray(r.buyer_roles_titles) ? r.buyer_roles_titles.join(', ') : r.buyer_roles_titles) : 'unknown') + '\n'
+      + 'PAIN POINTS: ' + (r.pain_points_top5 ? r.pain_points_top5.join('; ') : 'unknown') + '\n'
+      + 'OBJECTIONS: ' + (r.objections_top5 ? (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5) : 'unknown') + '\n'
+      + 'BEST CUSTOMERS: ' + (r.best_customer_examples || 'unknown') + '\n'
+      + 'SALES CYCLE: ' + (r.sales_cycle_length || 'unknown') + '\n'
+      + 'DEAL SIZE: ' + (r.average_deal_size || 'unknown') + '\n'
+      + 'LEAD CHANNELS TODAY: ' + (r.lead_channels_today ? r.lead_channels_today.join(', ') : 'unknown') + '\n'
+      + 'DECISION FACTORS: ' + (r.decision_factors ? (Array.isArray(r.decision_factors) ? r.decision_factors.join(', ') : r.decision_factors) : 'unknown') + '\n'
+      + 'COMPETITORS: ' + (r.competitors ? r.competitors.map(function(c) { return c.name || c.url; }).join(', ') : 'none') + '\n'
+      + (r.case_studies && r.case_studies.length ? 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || c.name || 'Client') + ': ' + (c.result || c.outcome || ''); }).join('; ') + '\n' : '')
+      + (setup0.strategy ? 'STRATEGY DOC: ' + setup0.strategy.slice(0, 3000) + '\n' : '')
+      + (setup0.discoveryNotes ? 'DISCOVERY NOTES: ' + setup0.discoveryNotes.slice(0, 2000) + '\n' : '')
+      + (enrich.doc_extraction ? 'DOC EXTRACTION: ' + JSON.stringify(enrich.doc_extraction).slice(0, 2000) + '\n' : '')
+      + '\nTASK: Build a complete audience intelligence profile. Identify distinct audience segments, map buying motions, '
+      + 'create detailed persona profiles, identify purchase triggers, map objections to segments, and validate which segments '
+      + 'deserve strategic priority.\n\n'
+      + 'CRITICAL PERSONA RULES:\n'
+      + '1. NEVER invent fictional persona names (Marcus, Jennifer, etc.). Use descriptive labels: "Construction Owner-Operator (DIY)" or "Professional Services Managing Partner (Agency Switcher)." Archetypes are the default structure.\n'
+      + '2. Archetypes are the BASE. Real client data is an ENRICHMENT LAYER:\n'
+      + '   a) CLIENT HAS EXISTING CLIENTS/CASE STUDIES: Map real clients to matching archetypes. Show them as proof references in the persona: "Clients matching this persona: [real client names from case studies]." This grounds the archetype in reality.\n'
+      + '   b) CLIENT IS A STARTUP / NO CLIENT DATA: Archetypes stand alone. Enrich with market research and competitor audience analysis. Flag as "archetype — not yet validated with client data."\n'
+      + '3. Pain points must use ACTUAL LANGUAGE from the intake/strategy document when available. If the founder said specific phrases, those exact phrases go into the persona. No generic marketing speak.\n'
+      + '4. If the intake document provides detailed persona work, ADOPT and REFINE those personas — do not replace them with AI-generated ones.\n'
+      + '5. Each persona must include at least one SPECIFIC detail proving it is tailored to THIS client market: industry-specific terminology, deal size ranges from this vertical, objections common in this specific market.\n'
+      + '6. The company-name-swap test applies to PAINS and LANGUAGE. If the pains read identically for any company in any industry, they are too generic.\n\n'
+      + 'VERTICAL COVERAGE RULES:\n'
+      + '1. Every vertical listed in the intake document or Research data MUST appear — either as an ACTIVE segment with personas, or as a DEPRIORITISED segment with explicit rationale in "parked_segments".\n'
+      + '2. Deprioritisation is valid when supported by data: e.g. "DTC eCommerce deprioritised for Phase 1 because: competitive density is 3x higher, no vertical-specific case studies exist, budget constraint limits coverage to 2 verticals."\n'
+      + '3. A deprioritised segment appears in "parked_segments" — it is sequenced, not deleted.\n'
+      + '4. Flag if a vertical from the intake is missing: "Warning: [vertical] was listed as a target but has no active persona or deprioritisation rationale."\n'
+      + '5. Downstream tabs reflect vertical decisions: if 2 verticals are active and 1 is parked, channel allocation and content should serve 2 verticals. Parked verticals appear in Growth Plan Phase 2+.\n\n'
+      + 'ADDITIONAL RULES:\n'
+      + '- Segments must be distinct and non-overlapping. 2-5 active segments is ideal.\n'
+      + '- Each segment needs a clear "why they buy" and "why they hesitate".\n'
+      + '- Buying motions describe HOW each segment purchases (research process, decision committee, timeline).\n'
+      + '- Purchase triggers are the events that move someone from "aware" to "actively looking".\n'
+      + '- Objection map ties each objection to specific segments and provides counter-messaging.\n'
+      + '- Validation must recommend which segment(s) to prioritise and why.\n'
+      + '- If data is limited, say so explicitly — do not fabricate specifics.\n\n'
+      + 'JSON SCHEMA:\n{\n'
+      + '  "segments": [\n'
+      + '    {\n'
+      + '      "name": "descriptive segment name",\n'
+      + '      "description": "who they are",\n'
+      + '      "vertical": "which vertical or industry this segment belongs to",\n'
+      + '      "status": "active | deprioritised",\n'
+      + '      "estimated_size": "small | medium | large relative to total market",\n'
+      + '      "revenue_potential": "low | medium | high",\n'
+      + '      "why_they_buy": "core motivation — use founder language when available",\n'
+      + '      "why_they_hesitate": "primary friction — use founder language when available",\n'
+      + '      "acquisition_difficulty": "low | medium | high",\n'
+      + '      "best_channels": ["channel1", "channel2"],\n'
+      + '      "key_messages": ["message that resonates"]\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "parked_segments": [\n'
+      + '    {\n'
+      + '      "name": "deprioritised segment name",\n'
+      + '      "vertical": "which vertical",\n'
+      + '      "rationale": "why deprioritised with specific evidence",\n'
+      + '      "revisit_trigger": "what must change to activate this segment",\n'
+      + '      "phase": "Phase 2 | Phase 3 | etc"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "buying_motions": [\n'
+      + '    {\n'
+      + '      "segment": "segment name",\n'
+      + '      "research_behaviour": "how they find and evaluate solutions",\n'
+      + '      "decision_process": "solo | committee | influencer-led",\n'
+      + '      "typical_timeline": "days to months",\n'
+      + '      "key_touchpoints": ["touchpoint1", "touchpoint2"],\n'
+      + '      "content_needs": ["what content they need at each stage"]\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "personas": [\n'
+      + '    {\n'
+      + '      "name": "Descriptive Archetype Label (e.g. Construction Owner-Operator (DIY))",\n'
+      + '      "role": "specific job title or business role",\n'
+      + '      "segment": "which segment they belong to",\n'
+      + '      "demographics": "age range, business size, industry vertical",\n'
+      + '      "goals": ["what they want to achieve"],\n'
+      + '      "frustrations": ["specific pains using founder/industry language"],\n'
+      + '      "decision_criteria": ["what they evaluate when choosing"],\n'
+      + '      "preferred_channels": ["where they consume content"],\n'
+      + '      "language_patterns": ["phrases they actually use — from intake when available"],\n'
+      + '      "objection_profile": ["their specific objections"],\n'
+      + '      "matching_clients": ["real client names from case studies that match this persona, or empty if none"],\n'
+      + '      "industry_specific_detail": "one concrete detail proving this persona is tailored to this market"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "purchase_triggers": [\n'
+      + '    {\n'
+      + '      "trigger": "event or situation",\n'
+      + '      "segments_affected": ["segment name"],\n'
+      + '      "urgency_level": "low | medium | high",\n'
+      + '      "messaging_angle": "how to address this trigger"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "objection_map": [\n'
+      + '    {\n'
+      + '      "objection": "the objection",\n'
+      + '      "segments": ["which segments raise this"],\n'
+      + '      "frequency": "rare | common | universal",\n'
+      + '      "counter_message": "how to address it",\n'
+      + '      "proof_needed": "what evidence overcomes this"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "vertical_coverage_check": ["Warning: [vertical] listed in intake but missing from strategy — add or deprioritise"],\n'
+      + '  "validation": {\n'
+      + '    "primary_segment": "recommended top-priority segment name",\n'
+      + '    "primary_rationale": "why this segment should be prioritised",\n'
+      + '    "secondary_segment": "second priority segment name",\n'
+      + '    "recommended_focus": "1-2 sentence strategic recommendation on audience targeting",\n'
+      + '    "data_gaps": ["what audience data is missing that would improve this analysis"],\n'
+      + '    "confidence_notes": "honest assessment of analysis quality"\n'
+      + '  },\n'
+      + '  "audience_summary": "2-3 sentence overview of the audience landscape",\n'
+      + '  "confidence": "high | medium | low"\n}';
+  }
 
   if (num === 1) {
     // D1: Unit Economics
@@ -1083,7 +1283,16 @@ function buildDiagnosticPrompt(num) {
       + cpcBlock
       + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '')
       + (setup.decision_timeline ? '- Decision timeline: ' + setup.decision_timeline + '\n' : '') + '\n'
-      + 'TASK: Calculate unit economics. Use the MARKET CPC DATA above to ground your estimated_market_cpl and paid_media_viable assessment \u2014 do not guess CPC when real data is available. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
+      + 'TASK: Calculate unit economics. Use the MARKET CPC DATA above to ground your estimated_market_cpl and paid_media_viable assessment — do not guess CPC when real data is available. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
+      + 'CRITICAL SENSITIVITY RULES:\n'
+      + '1. Always present THREE scenarios (conservative, base, optimistic) — not just the midpoint.\n'
+      + '   - CONSERVATIVE: Low end of deal size x low end of retention x lower close rate assumption\n'
+      + '   - BASE: Midpoint estimates (default)\n'
+      + '   - OPTIMISTIC: High end of deal size x high end of retention x current close rate\n'
+      + '2. If the client provided RANGES (e.g. "$2-5K/mo"), use the range endpoints for conservative/optimistic.\n'
+      + '3. Flag which scenario the strategy is built on. If the strategy depends on the optimistic scenario to work, that is a risk.\n'
+      + '4. Show what BREAKS the economics: "If close rate drops below X%, CAC exceeds conservative LTV."\n'
+      + '5. If the client provided ranges instead of exact numbers, flag it: "Deal size and retention are estimates. Confirm with CRM data."\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "max_allowable_cpl": 0,\n'
       + '  "estimated_market_cpl": 0,\n'
@@ -1096,6 +1305,14 @@ function buildDiagnosticPrompt(num) {
       + '  "ltv_cac_ratio": "e.g. 4.2:1",\n'
       + '  "ltv_cac_health": "unsustainable | healthy | under-investing",\n'
       + '  "paid_media_viable": true,\n'
+      + '  "sensitivity": [\n'
+      + '    {"scenario": "conservative", "close_rate": "X%", "avg_deal": 0, "max_cpl": 0, "leads_needed": 0, "ltv_cac": "X:1", "verdict": "tight but viable | unhealthy | etc"},\n'
+      + '    {"scenario": "base", "close_rate": "X%", "avg_deal": 0, "max_cpl": 0, "leads_needed": 0, "ltv_cac": "X:1", "verdict": "healthy | etc"},\n'
+      + '    {"scenario": "optimistic", "close_rate": "X%", "avg_deal": 0, "max_cpl": 0, "leads_needed": 0, "ltv_cac": "X:1", "verdict": "strong | etc"}\n'
+      + '  ],\n'
+      + '  "strategy_built_on": "conservative | base | optimistic",\n'
+      + '  "break_even_floor": "what breaks the economics — e.g. close rate below X%",\n'
+      + '  "input_quality": "client-provided | estimated | mixed — specify which inputs are estimated",\n'
       + '  "market_cpc_summary": {\n'
       + '    "avg_cpc": 0,\n'
       + '    "median_cpc": 0,\n'
@@ -1166,7 +1383,8 @@ function buildDiagnosticPrompt(num) {
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
       + hypCtx
-      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory.' + (posDir ? ' Align ALL outputs to the selected positioning direction.' : '') + '\n\n'
+      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory.'
+      + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "market_position": "where client sits vs competitors",\n'
       + '  "authority_gap": "DR/content/backlink gap description",\n'
@@ -1175,6 +1393,7 @@ function buildDiagnosticPrompt(num) {
       + '  "rejected_differentiators": [{"claim": "string", "reason": "which competitor contests this"}],\n'
       + '  "competitive_advantages": ["genuine advantages"],\n'
       + '  "biggest_threat": "string",\n'
+      + '  "direction_required": false,\n'
       + '  "recommended_positioning_angle": "territory to claim",\n'
       + '  "core_value_proposition": "validated value prop",\n'
       + '  "recommended_tagline": "short, punchy",\n'
@@ -1189,7 +1408,8 @@ function buildDiagnosticPrompt(num) {
       + '    "tone_detail": "string",\n'
       + '    "words_to_use": ["string"],\n'
       + '    "words_to_avoid": ["string"],\n'
-      + '    "voice_rationale": "string"\n'
+      + '    "voice_rationale": "string",\n'
+      + '    "vertical_overlays": [{"vertical": "segment or vertical name", "adjustments": "what changes for this vertical", "words_permitted": ["words OK in this vertical but banned globally"], "words_banned": ["additional bans for this vertical"]}]\n'
       + '  },\n'
       + '  "proof_strategy": ["proof to build that does not exist yet"],\n'
       + '  "confidence": "high | medium | low"\n}';
@@ -1268,7 +1488,14 @@ function buildDiagnosticPrompt(num) {
         return '';
       })() + '\n'
       + 'TASK: Score ALL 13 levers on fit (1-10), economics (1-10), competitive_reality (1-10), goal_impact (1-10). '
-      + 'Calculate priority scores. Check funnel coverage. Produce budget allocation.\n\n'
+      + 'Calculate priority scores. Check funnel coverage. Produce TIERED budget allocation.\n\n'
+      + 'CRITICAL BUDGET RULES:\n'
+      + '1. ALWAYS produce three budget tiers: current_budget (the client STATED budget — this is the actionable plan), growth_budget (2-3x stated — "when ready to scale"), optimal_budget (system recommendation for maximum ROI).\n'
+      + '2. The CURRENT BUDGET tier is PRIMARY. It appears first. Lever scores, percentages, and timelines reflect the actual available budget.\n'
+      + '3. For CURRENT BUDGET: if the budget only supports 2-3 channels, recommend ONLY 2-3. Do NOT spread thin across 9 channels. Rank by: (a) lowest cost to activate, (b) fastest time to results, (c) highest ROI at this budget level. Include $0 channels explicitly: referral systematisation, email to existing list, GBP optimisation, content refresh using team time.\n'
+      + '4. For GROWTH and OPTIMAL tiers: show what each budget increment UNLOCKS. Connect increases to specific revenue outcomes.\n'
+      + '5. NEVER recommend a budget 3x+ higher than stated without explicitly acknowledging the gap and providing a phased path.\n'
+      + '6. EDGE CASE — budget too low for any paid channel: If stated budget cannot support even one paid channel at minimum viable spend, recommend $0-budget activities ONLY and specify what threshold unlocks the first paid channel.\n\n'
       + 'LEVERS: google_ads_search, google_display, meta_ads, seo, website, cro, email, remarketing, social_media, video, content_marketing, branding, local_seo\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "levers": [{"lever": "string", "category": "paid | organic | owned | earned", "funnel_stage": "awareness | consideration | conversion | nurture | retention", '
@@ -1276,6 +1503,38 @@ function buildDiagnosticPrompt(num) {
       + '"recommendation": "string", "budget_allocation_pct": 0, "timeline_to_results": "string", "dependencies": ["string"]}],\n'
       + '  "priority_order": ["lever names in priority order"],\n'
       + '  "levers_not_recommended": [{"lever": "string", "reason": "string", "revisit_when": "string"}],\n'
+      + '  "budget_tiers": {\n'
+      + '    "current_budget": {\n'
+      + '      "total_monthly": 0,\n'
+      + '      "source": "client-stated budget",\n'
+      + '      "expected_leads": "X leads/mo",\n'
+      + '      "expected_cpl": 0,\n'
+      + '      "active_channels": ["only channels viable at this budget"],\n'
+      + '      "by_lever": {},\n'
+      + '      "zero_cost_activities": ["referral systematisation", "GBP optimisation", "etc"],\n'
+      + '      "rationale": "what this budget can realistically achieve",\n'
+      + '      "limitations": "what cannot be done at this budget"\n'
+      + '    },\n'
+      + '    "growth_budget": {\n'
+      + '      "total_monthly": 0,\n'
+      + '      "expected_leads": "X leads/mo",\n'
+      + '      "expected_cpl": 0,\n'
+      + '      "unlocks": ["what becomes possible at this budget"],\n'
+      + '      "by_lever": {},\n'
+      + '      "rationale": "why this tier unlocks meaningful growth",\n'
+      + '      "expected_impact": "specific revenue outcome"\n'
+      + '    },\n'
+      + '    "optimal_budget": {\n'
+      + '      "total_monthly": 0,\n'
+      + '      "expected_leads": "X leads/mo",\n'
+      + '      "expected_cpl": 0,\n'
+      + '      "rationale": "why this is the optimal spend level",\n'
+      + '      "by_lever": {},\n'
+      + '      "expected_impact": "specific revenue outcome"\n'
+      + '    },\n'
+      + '    "paid_viability_floor": "minimum budget needed for first paid channel and which channel"\n'
+      + '  },\n'
+      + '  "budget_allocation": {"total_monthly": 0, "by_lever": {}},\n'
       + '  "funnel_coverage": {\n'
       + '    "awareness": {"covered": false, "by": [], "gap": ""},\n'
       + '    "consideration": {"covered": false, "by": [], "gap": ""},\n'
@@ -1284,7 +1543,6 @@ function buildDiagnosticPrompt(num) {
       + '    "retention": {"covered": false, "by": [], "gap": ""}\n'
       + '  },\n'
       + '  "funnel_gaps_flagged": ["string"],\n'
-      + '  "budget_allocation": {"total_monthly": 0, "by_lever": {}},\n'
       + '  "confidence": "high | medium | low"\n}';
   }
 
@@ -1366,12 +1624,15 @@ function buildDiagnosticPrompt(num) {
       + 'COMPETITOR DEEP-DIVE: ' + JSON.stringify(enrich.competitor_deep_dive || 'NOT YET AVAILABLE') + '\n'
       + 'KEYWORD LANDSCAPE: ' + (kwData || 'NOT YET SCANNED') + '\n'
       + 'TEAM SIZE: ' + (r.team_size || 'unknown') + '\n'
-      + 'INDUSTRY: ' + (r.industry || 'unknown') + '\n\n'
+      + 'INDUSTRY: ' + (r.industry || 'unknown') + '\n'
+      + 'ACTIVE AUDIENCE SEGMENTS: ' + (st.audience && st.audience.segments ? st.audience.segments.filter(function(s){return s.status !== 'deprioritised';}).map(function(s){return s.name + ' (' + (s.vertical||'') + ')';}).join(', ') : 'not yet analysed') + '\n'
+      + 'PARKED SEGMENTS: ' + (st.audience && st.audience.parked_segments ? st.audience.parked_segments.map(function(s){return s.name + ' (phase: ' + (s.phase||'?') + ')';}).join(', ') : 'none') + '\n\n'
       + 'TASK: Produce a full content and authority gap analysis with these sections:\n'
-      + '1. Content pillars and velocity\n'
+      + '1. Content pillars and velocity — map pillars to active audience segments/verticals\n'
       + '2. Domain authority gap analysis with competitor comparison\n'
       + '3. Authority building timeline in 3 phases\n'
       + '4. Quick wins (low-effort, high-impact content actions)\n\n'
+      + 'VOICE RULES: Content pillars should specify which audience segment or vertical each pillar serves. If the client has 2+ active verticals, tag each content piece with its target vertical. Blog posts tagged by target vertical enable voice overlay matching.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "content_pillars": ["topic pillar"],\n'
       + '  "content_priority": [{"topic": "string", "rationale": "string", "format": "string"}],\n'
@@ -1448,7 +1709,7 @@ function buildDiagnosticPrompt(num) {
 // Append strategist notes to any diagnostic prompt
 function _appendStrategistNotes(prompt, diagNum) {
   // D4 feeds both channels and growth tabs
-  var diagToTabs = { 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels', 'growth'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
+  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels', 'growth'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
   var tabs = diagToTabs[diagNum];
   if (!tabs) return prompt;
   var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
@@ -1474,7 +1735,8 @@ function _appendStrategistNotes(prompt, diagNum) {
 async function runDiagnostic(num) {
   if (!S.strategy) S.strategy = strategyDefaults();
   var label = 'D' + num + ': ';
-  if (num === 1) label += 'Unit Economics';
+  if (num === 0) label += 'Audience Intelligence';
+  else if (num === 1) label += 'Unit Economics';
   else if (num === 2) label += 'Competitive Position';
   else if (num === 3) label += 'Subtraction';
   else if (num === 4) label += 'Channel Viability';
@@ -1500,7 +1762,9 @@ async function runDiagnostic(num) {
     }
 
     // Merge into S.strategy
-    if (num === 1) {
+    if (num === 0) {
+      S.strategy.audience = parsed;
+    } else if (num === 1) {
       S.strategy.unit_economics = parsed;
       // Derive targets
       S.strategy.targets = S.strategy.targets || {};
@@ -1676,7 +1940,15 @@ async function generateStrategy() {
 
     await saveProject();
 
-    // Step 2: Run diagnostics D1-D7 sequentially
+    // Step 2a: Run D0 (Audience Intelligence) first
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Strategy paused (pre-D0)', fn: function() { _resumeDiagnosticsWithD0(0); }, args: {} };
+      return;
+    }
+    await runDiagnostic(0);
+    await new Promise(function(res) { setTimeout(res, 2000); });
+
+    // Step 2b: Run diagnostics D1-D7 sequentially
     for (var d = 1; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
@@ -1702,6 +1974,42 @@ async function generateStrategy() {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Strategy generation error: ' + e.message, { duration: 5000 });
     console.error('generateStrategy error:', e);
+  }
+}
+
+async function _resumeDiagnosticsWithD0(startFrom) {
+  window._aiStopAll = false;
+  try {
+    // If startFrom is 0, run D0 first
+    if (startFrom === 0) {
+      await runDiagnostic(0);
+      await new Promise(function(res) { setTimeout(res, 2000); });
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = { label: 'Strategy paused (D0 done)', fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); }, args: { startFrom: 1 } };
+        return;
+      }
+      startFrom = 1;
+    }
+    for (var d = startFrom; d <= 7; d++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Strategy paused (D' + d + '/7)',
+          fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); },
+          args: { startFrom: d }
+        };
+        return;
+      }
+      await runDiagnostic(d);
+      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    createStrategyVersion('auto_draft');
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyTabContent();
+    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
   }
 }
 
@@ -1734,8 +2042,19 @@ async function _resumeDiagnostics(startFrom) {
 async function runAllDiagnostics() {
   if (!S.strategy) S.strategy = strategyDefaults();
   window._aiStopAll = false;
-  aiBarStart('Running all diagnostics (1/7)');
+  aiBarStart('Running all diagnostics (D0-D7)');
   try {
+    // D0 first
+    await runDiagnostic(0);
+    await new Promise(function(res) { setTimeout(res, 2000); });
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Diagnostics paused (D0 done, D1 pending)',
+        fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
+        args: { startFrom: 1 }
+      };
+      return;
+    }
     for (var d = 1; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
@@ -1802,12 +2121,12 @@ async function improveStrategy() {
 
   // Re-run diagnostics for weakest 3 sections
   var weakest = sorted.slice(0, 3);
-  var diagMap = { positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
 
   var diagsToRun = [];
   weakest.forEach(function(w) {
     var d = diagMap[w.section];
-    if (d && diagsToRun.indexOf(d) < 0) diagsToRun.push(d);
+    if (d !== undefined && d !== null && diagsToRun.indexOf(d) < 0) diagsToRun.push(d);
   });
   diagsToRun.sort();
 
@@ -2096,7 +2415,7 @@ function overrideStrategyField(section, path, value, reason) {
 
 // ── UI State ──────────────────────────────────────────────────────────
 
-var _sTab = 'positioning';
+var _sTab = 'audience';
 var _sSubLever = '';
 
 // ── UI: Init ──────────────────────────────────────────────────────────
@@ -2142,16 +2461,35 @@ function renderStrategyScorecard() {
   // Action buttons
   html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
   if (meta.current_version === 0) {
-    html += '<button class="btn btn-primary" data-tip="Runs enrichment then all 7 diagnostics sequentially" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Strategy</button>';
+    html += '<button class="btn btn-primary" data-tip="Runs enrichment then all diagnostics (D0-D7) sequentially" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Strategy</button>';
   } else {
-    html += '<button class="btn btn-ghost" data-tip="Re-runs all enrichment and all 7 diagnostics from scratch" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate All</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs all enrichment and all diagnostics (D0-D7) from scratch" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate All</button>';
     html += '<button class="btn btn-primary" data-tip="Re-runs the 3 weakest sections plus keyword demand validation" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Improve Weakest</button>';
-    html += '<button class="btn btn-ghost" data-tip="Re-runs all 7 diagnostics without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs all diagnostics (D0-D7) without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
   }
   if (meta.current_version > 0 && !meta.approved) {
     html += '<button class="btn btn-dark" onclick="approveStrategy()"><i class="ti ti-check"></i> Approve</button>';
   }
   html += '</div></div>';
+
+  // First-pass score warning (Correction 5)
+  if (meta.current_version === 1 && overall > 7.0) {
+    html += '<div style="font-size:11px;color:#b45309;margin-top:6px;padding:4px 8px;background:#fef3c7;border-radius:4px;border:1px solid #fde68a">'
+      + '<i class="ti ti-alert-triangle" style="font-size:12px"></i> First pass score unusually high (' + overall + ') — verify scoring accuracy. First passes rarely clear 7.0 without all manual inputs populated and 100% audit pass rate.</div>';
+  }
+
+  // Score history comparison (large jumps between versions)
+  if (meta.versions && meta.versions.length >= 2) {
+    var prevVersion = meta.versions[meta.versions.length - 2];
+    var currVersion = meta.versions[meta.versions.length - 1];
+    if (prevVersion && currVersion && prevVersion.overall_score && currVersion.overall_score) {
+      var jump = currVersion.overall_score - prevVersion.overall_score;
+      if (jump > 1.5) {
+        html += '<div style="font-size:11px;color:#6b7280;margin-top:4px">'
+          + '<i class="ti ti-info-circle" style="font-size:11px"></i> Score jumped +' + (Math.round(jump * 10) / 10) + ' between v' + (meta.versions.length - 1) + ' (' + prevVersion.overall_score + ') and v' + meta.versions.length + ' (' + currVersion.overall_score + ') — review changes to confirm.</div>';
+      }
+    }
+  }
 
   // Keyword pipeline audit (quick summary)
   var kwAudit = auditKeywordPipeline();
@@ -2283,8 +2621,9 @@ function renderStrategyTabContent() {
   var html = '';
 
   // Re-run diagnostic button
-  var diagMap = { positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
   var diagLabels = {
+    0: 'Audience Intelligence',
     1: 'Unit Economics',
     2: 'Competitive Position',
     3: 'Subtraction',
@@ -2294,6 +2633,7 @@ function renderStrategyTabContent() {
     7: 'Risk Assessment'
   };
   var diagTips = {
+    0: 'Re-analyse audience segments, personas and buying motions',
     1: 'Re-analyse CPL, CAC, LTV and budget viability',
     2: 'Re-assess competitive positioning and differentiators',
     3: 'Re-evaluate which activities to cut or restructure',
@@ -2303,14 +2643,14 @@ function renderStrategyTabContent() {
     7: 'Re-score risk categories and update mitigations'
   };
   var diagNum = diagMap[_sTab];
-  if (diagNum) {
+  if (diagNum !== undefined && diagNum !== null) {
     var meta = (S.strategy && S.strategy._meta) ? S.strategy._meta : { current_version: 0 };
     html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
     html += '<button class="btn btn-ghost sm" data-tip="' + (diagTips[diagNum] || '') + '" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
     if (meta.current_version > 0) {
-      html += '<button class="btn btn-primary sm" data-tip="Runs all 7 diagnostics in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
+      html += '<button class="btn btn-primary sm" data-tip="Runs all diagnostics (D0-D7) in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
     } else {
-      html += '<button class="btn btn-primary sm" data-tip="Runs enrichment then all 7 diagnostics in sequence" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Full Strategy</button>';
+      html += '<button class="btn btn-primary sm" data-tip="Runs enrichment then all diagnostics (D0-D7) in sequence" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Full Strategy</button>';
     }
     html += '</div>';
   }
@@ -2342,12 +2682,13 @@ function renderStrategyTabContent() {
   }
 
   // Audit panel (show quality checks for the relevant diagnostic)
-  if (diagNum) {
+  if (diagNum !== undefined && diagNum !== null) {
     html += _renderAuditPanel(diagNum);
   }
 
   // Section content
-  if (_sTab === 'positioning') html += _renderPositioning(st);
+  if (_sTab === 'audience') html += _renderAudience(st);
+  else if (_sTab === 'positioning') html += _renderPositioning(st);
   else if (_sTab === 'economics') html += _renderEconomics(st);
   else if (_sTab === 'subtraction') html += _renderSubtraction(st);
   else if (_sTab === 'channels') html += _renderChannels(st);
@@ -2357,14 +2698,14 @@ function renderStrategyTabContent() {
   else if (_sTab === 'risks') html += _renderRisks(st);
 
   // Strategist override panel (all scored tabs)
-  if (diagNum) {
+  if (diagNum !== undefined && diagNum !== null) {
     html += _renderStrategistOverride(_sTab, diagNum);
   }
 
   el.innerHTML = html;
 
   // Wire up strategist notes buttons via createElement pattern
-  if (diagNum) {
+  if (diagNum !== undefined && diagNum !== null) {
     var saveBtn = document.getElementById('strat-notes-save-' + _sTab);
     var rerunBtn = document.getElementById('strat-notes-rerun-' + _sTab);
     if (saveBtn) {
@@ -2628,9 +2969,13 @@ async function evaluateHypotheses() {
 
   var sys = 'You are a senior brand strategist stress-testing positioning hypotheses against market reality.\n\n'
     + 'You receive the founder hypotheses alongside competitor data, validated/rejected differentiators, and demand signals.\n\n'
-    + 'For EACH hypothesis, evaluate rigorously — do not be polite. If a hypothesis is contested by competitors, say so. If it is unproven, say so.\n\n'
-    + 'The founder may also specify positioning they want to AVOID. If provided, no recommended direction should overlap with, imply, or resemble the avoided positioning. Flag any hypothesis that risks being perceived as the avoided positioning.\n\n'
-    + 'Then recommend 2-3 DIRECTIONS that represent the strongest positioning options available — these can combine, reframe, or improve upon the founder hypotheses, or propose something entirely new if the data warrants it.\n\n'
+    + 'CRITICAL POSITIONING RULES:\n'
+    + '1. Evaluate ALL founder hypotheses with honest scoring. Do not dismiss any with less than 3 sentences of specific evidence.\n'
+    + '2. After evaluating founder hypotheses, generate 2-3 SYSTEM-RECOMMENDED directions. These may incorporate founder hypotheses, combine elements from multiple, or propose entirely new angles — but they must be DISTINCT from each other, not variations of the same idea.\n'
+    + '3. Each recommended direction MUST include: what it gains (specific advantages), what it costs (specific trade-offs, audiences alienated, messages diluted), provability score with evidence, distinctiveness score with competitor comparison, what proof needs to be built to own this position.\n'
+    + '4. DO NOT auto-select a direction. Present all options with scores and trade-offs. End with a founder_decision_prompt that frames the core trade-off.\n'
+    + '5. If you strongly favour one direction, label it in system_recommendation and explain WHY, including what is wrong with the alternatives. The strategist still clicks to select.\n'
+    + '6. The founder may specify positioning to AVOID. No recommended direction should overlap with, imply, or resemble avoided positions. Flag any hypothesis that risks being perceived as avoided positioning.\n\n'
     + 'Respond with ONLY valid JSON matching this schema:\n'
     + '{\n'
     + '  "hypothesis_evaluations": [\n'
@@ -2639,8 +2984,8 @@ async function evaluateHypotheses() {
     + '      "verdict": "viable | partially_viable | contested",\n'
     + '      "verdict_label": "short human label",\n'
     + '      "scores": { "provability": 0, "distinctiveness": 0, "market_demand": 0, "risk": 0 },\n'
-    + '      "evidence_for": ["specific evidence from data"],\n'
-    + '      "evidence_against": ["specific evidence from data"],\n'
+    + '      "evidence_for": ["specific evidence from data — at least 2 items"],\n'
+    + '      "evidence_against": ["specific evidence from data — at least 2 items"],\n'
     + '      "reframing": "if not viable, how to reframe",\n'
     + '      "proof_requirements": ["what client needs to prove this"]\n'
     + '    }\n'
@@ -2652,13 +2997,16 @@ async function evaluateHypotheses() {
     + '      "combines": ["which hypotheses or elements it draws from"],\n'
     + '      "provability_score": 0,\n'
     + '      "distinctiveness_score": 0,\n'
+    + '      "what_it_gains": "specific advantages of this direction",\n'
+    + '      "what_it_costs": "specific trade-offs — audiences alienated, messages diluted",\n'
     + '      "rationale": "why this direction scores highest",\n'
     + '      "risk": "what could go wrong",\n'
+    + '      "proof_to_build": ["specific proof assets needed to own this position"],\n'
     + '      "what_changes_if_chosen": "how this shapes messaging, proof strategy, content"\n'
     + '    }\n'
     + '  ],\n'
-    + '  "system_recommendation": "which direction the system recommends and why",\n'
-    + '  "founder_decision_prompt": "the core trade-off the founder needs to resolve"\n'
+    + '  "system_recommendation": "which direction the system recommends and WHY — include what is wrong with the alternatives",\n'
+    + '  "founder_decision_prompt": "the core trade-off the founder needs to resolve — end with: Select a direction to align all downstream strategy outputs."\n'
     + '}\n\n'
     + 'All scores 1-10. Risk is inverted (lower = better = less risky).';
 
@@ -2837,6 +3185,202 @@ async function scanStrategyDocForHypotheses() {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Document scan failed: ' + e.message, { isError: true, duration: 4000 });
   }
+}
+
+// ── UI: Audience Tab ───────────────────────────────────────────────────
+
+function _renderAudience(st) {
+  var a = st.audience || {};
+  if (!a.segments && !a.personas && !a.buying_motions) {
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No audience data yet. Generate strategy to populate.</p></div>';
+  }
+
+  var html = '';
+
+  // Summary
+  if (a.audience_summary) {
+    html += '<div class="card" style="margin-bottom:16px;border-left:3px solid var(--acc)">'
+      + '<div style="font-size:11px;font-weight:600;color:var(--n2);margin-bottom:6px">AUDIENCE SUMMARY</div>'
+      + '<div style="font-size:13px;line-height:1.5">' + esc(a.audience_summary) + '</div>'
+      + '</div>';
+  }
+
+  // Validation / Recommended Focus
+  if (a.validation) {
+    var v = a.validation;
+    html += '<div class="card" style="margin-bottom:16px;background:#f0fdf4;border:1px solid #bbf7d0">';
+    html += '<div style="font-size:11px;font-weight:600;color:#15803d;margin-bottom:8px"><i class="ti ti-target" style="font-size:12px"></i> STRATEGIC FOCUS</div>';
+    if (v.primary_segment) {
+      html += '<div style="font-size:13px;margin-bottom:4px"><strong>Primary segment:</strong> ' + esc(v.primary_segment) + '</div>';
+      if (v.primary_rationale) html += '<div style="font-size:12px;color:var(--n2);margin-bottom:6px">' + esc(v.primary_rationale) + '</div>';
+    }
+    if (v.secondary_segment) {
+      html += '<div style="font-size:13px;margin-bottom:4px"><strong>Secondary:</strong> ' + esc(v.secondary_segment) + '</div>';
+    }
+    if (v.recommended_focus) {
+      html += '<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid #bbf7d0">' + esc(v.recommended_focus) + '</div>';
+    }
+    if (v.data_gaps && v.data_gaps.length) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #bbf7d0">';
+      html += '<div style="font-size:10px;font-weight:600;color:#b45309;margin-bottom:4px">DATA GAPS</div>';
+      v.data_gaps.forEach(function(g) {
+        html += '<div style="font-size:11px;color:#92400e;margin-bottom:2px"><i class="ti ti-alert-circle" style="font-size:10px"></i> ' + esc(g) + '</div>';
+      });
+      html += '</div>';
+    }
+    if (v.confidence_notes) {
+      html += '<div style="font-size:11px;color:var(--n2);margin-top:6px;font-style:italic">' + esc(v.confidence_notes) + '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Segments
+  if (a.segments && a.segments.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-layout-grid" style="font-size:12px"></i> AUDIENCE SEGMENTS (' + a.segments.length + ')</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:20px">';
+    a.segments.forEach(function(seg) {
+      var revColour = seg.revenue_potential === 'high' ? '#15803d' : seg.revenue_potential === 'medium' ? '#b45309' : '#6b7280';
+      var diffColour = seg.acquisition_difficulty === 'low' ? '#15803d' : seg.acquisition_difficulty === 'medium' ? '#b45309' : '#dc2626';
+      html += '<div class="card" style="margin-bottom:0">';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:6px">' + esc(seg.name) + '</div>';
+      if (seg.description) html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px">' + esc(seg.description) + '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      if (seg.estimated_size) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f3f4f6;color:#374151">Size: ' + esc(seg.estimated_size) + '</span>';
+      if (seg.revenue_potential) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f0fdf4;color:' + revColour + '">Revenue: ' + esc(seg.revenue_potential) + '</span>';
+      if (seg.acquisition_difficulty) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fef2f2;color:' + diffColour + '">Difficulty: ' + esc(seg.acquisition_difficulty) + '</span>';
+      html += '</div>';
+      if (seg.why_they_buy) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they buy:</strong> ' + esc(seg.why_they_buy) + '</div>';
+      if (seg.why_they_hesitate) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they hesitate:</strong> ' + esc(seg.why_they_hesitate) + '</div>';
+      if (seg.best_channels && seg.best_channels.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Best channels:</strong> ' + seg.best_channels.map(function(c) { return esc(c); }).join(', ') + '</div>';
+      }
+      if (seg.key_messages && seg.key_messages.length) {
+        html += '<div style="font-size:11px"><strong>Key messages:</strong></div>';
+        seg.key_messages.forEach(function(m) {
+          html += '<div style="font-size:11px;color:var(--n2);padding-left:8px">&bull; ' + esc(m) + '</div>';
+        });
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Buying Motions
+  if (a.buying_motions && a.buying_motions.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-arrows-right-left" style="font-size:12px"></i> BUYING MOTIONS</div>';
+    a.buying_motions.forEach(function(bm) {
+      html += '<div class="card" style="margin-bottom:8px">';
+      html += '<div style="font-size:12px;font-weight:600;color:var(--acc);margin-bottom:4px">' + esc(bm.segment) + '</div>';
+      if (bm.research_behaviour) html += '<div style="font-size:11px;margin-bottom:3px"><strong>Research:</strong> ' + esc(bm.research_behaviour) + '</div>';
+      if (bm.decision_process) html += '<div style="font-size:11px;margin-bottom:3px"><strong>Decision:</strong> ' + esc(bm.decision_process) + '</div>';
+      if (bm.typical_timeline) html += '<div style="font-size:11px;margin-bottom:3px"><strong>Timeline:</strong> ' + esc(bm.typical_timeline) + '</div>';
+      if (bm.key_touchpoints && bm.key_touchpoints.length) {
+        html += '<div style="font-size:11px;margin-bottom:3px"><strong>Key touchpoints:</strong> ' + bm.key_touchpoints.map(function(t) { return esc(t); }).join(', ') + '</div>';
+      }
+      if (bm.content_needs && bm.content_needs.length) {
+        html += '<div style="font-size:11px"><strong>Content needs:</strong> ' + bm.content_needs.map(function(c) { return esc(c); }).join('; ') + '</div>';
+      }
+      html += '</div>';
+    });
+  }
+
+  // Personas
+  if (a.personas && a.personas.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin:16px 0 8px"><i class="ti ti-user-circle" style="font-size:12px"></i> PERSONA PROFILES (' + a.personas.length + ')</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-bottom:20px">';
+    a.personas.forEach(function(p) {
+      html += '<div class="card" style="margin-bottom:0">';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px">' + esc(p.name) + '</div>';
+      if (p.role) html += '<div style="font-size:11px;color:var(--acc);margin-bottom:2px">' + esc(p.role) + '</div>';
+      if (p.segment) html += '<div style="font-size:10px;color:var(--n2);margin-bottom:6px">Segment: ' + esc(p.segment) + '</div>';
+      if (p.demographics) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Demo:</strong> ' + esc(p.demographics) + '</div>';
+      if (p.goals && p.goals.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Goals:</strong> ' + p.goals.map(function(g) { return esc(g); }).join('; ') + '</div>';
+      }
+      if (p.frustrations && p.frustrations.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Frustrations:</strong> ' + p.frustrations.map(function(f) { return esc(f); }).join('; ') + '</div>';
+      }
+      if (p.decision_criteria && p.decision_criteria.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Decision criteria:</strong> ' + p.decision_criteria.map(function(d) { return esc(d); }).join('; ') + '</div>';
+      }
+      if (p.preferred_channels && p.preferred_channels.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Channels:</strong> ' + p.preferred_channels.map(function(c) { return esc(c); }).join(', ') + '</div>';
+      }
+      if (p.language_patterns && p.language_patterns.length) {
+        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Language:</strong></div>';
+        p.language_patterns.forEach(function(lp) {
+          html += '<div style="font-size:11px;color:var(--n2);padding-left:8px;font-style:italic">"' + esc(lp) + '"</div>';
+        });
+      }
+      if (p.objection_profile && p.objection_profile.length) {
+        html += '<div style="font-size:11px;margin-top:4px"><strong>Objections:</strong></div>';
+        p.objection_profile.forEach(function(o) {
+          html += '<div style="font-size:11px;color:#b45309;padding-left:8px">&bull; ' + esc(o) + '</div>';
+        });
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Purchase Triggers
+  if (a.purchase_triggers && a.purchase_triggers.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-bolt" style="font-size:12px"></i> PURCHASE TRIGGERS</div>';
+    html += '<div class="card" style="margin-bottom:16px"><table style="width:100%;font-size:11px;border-collapse:collapse">';
+    html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;font-weight:600">Trigger</th><th style="text-align:left;padding:4px 8px;font-weight:600">Segments</th><th style="text-align:left;padding:4px 8px;font-weight:600">Urgency</th><th style="text-align:left;padding:4px 8px;font-weight:600">Messaging Angle</th></tr>';
+    a.purchase_triggers.forEach(function(t) {
+      var urgColour = t.urgency_level === 'high' ? '#dc2626' : t.urgency_level === 'medium' ? '#b45309' : '#6b7280';
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:4px 8px;font-weight:500">' + esc(t.trigger) + '</td>';
+      html += '<td style="padding:4px 8px">' + (t.segments_affected ? t.segments_affected.map(function(s) { return esc(s); }).join(', ') : '') + '</td>';
+      html += '<td style="padding:4px 8px;color:' + urgColour + '">' + esc(t.urgency_level || '') + '</td>';
+      html += '<td style="padding:4px 8px">' + esc(t.messaging_angle || '') + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  // Objection Map
+  if (a.objection_map && a.objection_map.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-shield" style="font-size:12px"></i> OBJECTION MAP</div>';
+    a.objection_map.forEach(function(obj) {
+      var freqColour = obj.frequency === 'universal' ? '#dc2626' : obj.frequency === 'common' ? '#b45309' : '#6b7280';
+      html += '<div class="card" style="margin-bottom:6px;padding:8px 12px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+      html += '<span style="font-size:12px;font-weight:600">' + esc(obj.objection) + '</span>';
+      if (obj.frequency) html += '<span style="font-size:10px;color:' + freqColour + ';padding:1px 6px;border-radius:3px;background:#f9fafb">' + esc(obj.frequency) + '</span>';
+      html += '</div>';
+      if (obj.segments && obj.segments.length) html += '<div style="font-size:11px;color:var(--n2);margin-bottom:2px">Segments: ' + obj.segments.map(function(s) { return esc(s); }).join(', ') + '</div>';
+      if (obj.counter_message) html += '<div style="font-size:11px;margin-bottom:2px"><strong>Counter:</strong> ' + esc(obj.counter_message) + '</div>';
+      if (obj.proof_needed) html += '<div style="font-size:11px;color:var(--n2)"><strong>Proof:</strong> ' + esc(obj.proof_needed) + '</div>';
+      html += '</div>';
+    });
+  }
+
+  // Parked Segments
+  if (a.parked_segments && a.parked_segments.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--n2);margin:16px 0 8px"><i class="ti ti-clock-pause" style="font-size:12px"></i> PARKED SEGMENTS (deprioritised)</div>';
+    a.parked_segments.forEach(function(ps) {
+      html += '<div class="card" style="margin-bottom:6px;padding:8px 12px;background:#f9fafb;border:1px dashed var(--border)">';
+      html += '<div style="font-size:12px;font-weight:600;color:var(--n2)">' + esc(ps.name) + (ps.vertical ? ' <span style="font-size:10px;color:var(--mid)">(' + esc(ps.vertical) + ')</span>' : '') + '</div>';
+      if (ps.rationale) html += '<div style="font-size:11px;color:var(--n2);margin-top:3px"><strong>Rationale:</strong> ' + esc(ps.rationale) + '</div>';
+      if (ps.revisit_trigger) html += '<div style="font-size:11px;color:var(--n2)"><strong>Revisit when:</strong> ' + esc(ps.revisit_trigger) + '</div>';
+      if (ps.phase) html += '<div style="font-size:10px;color:var(--acc);margin-top:3px">' + esc(ps.phase) + '</div>';
+      html += '</div>';
+    });
+  }
+
+  // Vertical Coverage Warnings
+  if (a.vertical_coverage_check && a.vertical_coverage_check.length) {
+    html += '<div style="margin-top:12px">';
+    a.vertical_coverage_check.forEach(function(w) {
+      html += '<div style="font-size:11px;color:#b45309;padding:4px 8px;background:#fef3c7;border-radius:4px;margin-bottom:4px;border:1px solid #fde68a">'
+        + '<i class="ti ti-alert-triangle" style="font-size:11px"></i> ' + esc(w) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  return html;
 }
 
 function _renderPositioning(st) {
@@ -3041,7 +3585,19 @@ function _renderPositioning(st) {
 
   // ── Existing positioning outputs ──
   if (!p.core_value_proposition && !p.recommended_positioning_angle) {
-    return html; // no D2 output yet, just show direction section
+    if (p.market_position || p.validated_differentiators) {
+      // D2 ran but without direction — show competitive analysis but flag messaging as pending
+      html += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#1e40af">'
+        + '<i class="ti ti-info-circle" style="font-size:13px"></i> <strong>Select a positioning direction above</strong> to generate messaging hierarchy, value proposition, brand voice, and proof strategy. '
+        + 'Competitive analysis is shown below — messaging outputs require a direction.</div>';
+    } else {
+      return html; // no D2 output at all
+    }
+  }
+  if (p.direction_required && !p.selected_direction) {
+    // D2 explicitly flagged that direction is needed
+    html += '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#92400e">'
+      + '<i class="ti ti-lock" style="font-size:12px"></i> Messaging, value proposition, and proof strategy are placeholders. Select a positioning direction above, then re-run D2 to generate finalised outputs.</div>';
   }
 
   html += _stratSection('Positioning',
@@ -3158,6 +3714,46 @@ function _renderEconomics(st) {
     }
   }
 
+  // Sensitivity analysis (Correction 7)
+  if (ue.sensitivity && ue.sensitivity.length) {
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Sensitivity Analysis</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html += '<tr style="border-bottom:1px solid var(--border)">'
+      + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Scenario</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Close Rate</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Avg Deal</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Max CPL</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Leads Needed</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">LTV:CAC</th>'
+      + '</tr>';
+    ue.sensitivity.forEach(function(s) {
+      var rowBg = s.scenario === 'base' ? 'background:var(--panel)' : '';
+      var scenLabel = s.scenario === 'conservative' ? '\u26a0\ufe0f Conservative' : s.scenario === 'base' ? '\u2705 Base' : '\ud83d\ude80 Optimistic';
+      html += '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">';
+      html += '<td style="padding:6px 8px;font-weight:500">' + scenLabel + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right">' + (s.close_rate || '\u2014') + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right">' + (s.avg_deal ? '$' + Number(s.avg_deal).toLocaleString() : '\u2014') + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right;font-weight:600">' + (s.max_cpl ? '$' + s.max_cpl : '\u2014') + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right">' + (s.leads_needed || '\u2014') + '</td>';
+      html += '<td style="padding:6px 8px;text-align:right">' + (s.ltv_cac || '\u2014') + '</td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+    if (ue.strategy_built_on) {
+      html += '<div style="margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--panel);font-size:11px;color:var(--n2)">'
+        + '<strong style="color:var(--dark)">Strategy built on:</strong> ' + esc(ue.strategy_built_on) + '</div>';
+    }
+    if (ue.break_even_floor) {
+      html += '<div style="margin-top:6px;padding:8px 10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px;color:var(--dark)">'
+        + '<strong>Break-even floor:</strong> ' + esc(ue.break_even_floor) + '</div>';
+    }
+    if (ue.input_quality) {
+      var iqColour = ue.input_quality === 'client_provided' ? 'var(--green)' : ue.input_quality === 'ai_estimated' ? '#e6a23c' : 'var(--n2)';
+      html += '<div style="margin-top:6px;font-size:10px;color:var(--n2)">Input quality: <span style="color:' + iqColour + ';font-weight:600">' + esc(ue.input_quality.replace(/_/g, ' ')) + '</span></div>';
+    }
+    html += '</div>';
+  }
+
   if (ue.assumptions && ue.assumptions.length) {
     html += _stratSection('Assumptions', _stratField('Assumptions', ue.assumptions, {span:true}));
   }
@@ -3170,6 +3766,38 @@ function _renderChannels(st) {
     return '<div class="card" style="color:var(--n2);text-align:centre"><p>No channel data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
+
+  // Budget tiers (Correction 2)
+  var bt = cs.budget_tiers;
+  if (bt) {
+    var tiers = [
+      { key: 'current_budget', label: 'Current Budget', icon: 'ti-wallet', colour: 'var(--dark)' },
+      { key: 'growth_budget', label: 'Growth (2\u20133x)', icon: 'ti-trending-up', colour: '#e6a23c' },
+      { key: 'optimal_budget', label: 'Optimal', icon: 'ti-star', colour: 'var(--green)' }
+    ];
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Budget Tiers</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">';
+    tiers.forEach(function(t) {
+      var tier = bt[t.key];
+      if (!tier) return;
+      var total = tier.total_monthly || tier.total || 0;
+      html += '<div style="background:var(--panel);border-radius:8px;padding:14px;border:1px solid var(--border)">';
+      html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+      html += '<i class="ti ' + t.icon + '" style="color:' + t.colour + ';font-size:15px"></i>';
+      html += '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--n3)">' + t.label + '</span></div>';
+      html += '<div style="font-size:22px;font-weight:700;color:var(--dark);margin-bottom:6px">$' + Number(total).toLocaleString() + '<span style="font-size:11px;font-weight:400;color:var(--n2)">/mo</span></div>';
+      if (tier.expected_leads) html += '<div style="font-size:11px;color:var(--n2)">' + tier.expected_leads + ' leads/mo expected</div>';
+      if (tier.expected_cpl) html += '<div style="font-size:11px;color:var(--n2)">~$' + tier.expected_cpl + ' CPL</div>';
+      if (tier.rationale) html += '<div style="font-size:11px;color:var(--n2);margin-top:6px;line-height:1.4">' + esc(tier.rationale) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    if (bt.paid_viability_floor) {
+      html += '<div style="padding:8px 10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px;color:var(--dark);margin-bottom:4px">'
+        + '<strong>Paid viability floor:</strong> ' + esc(bt.paid_viability_floor) + '</div>';
+    }
+    html += '</div>';
+  }
 
   // Priority order table
   html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Channel Priority</div>';
@@ -4580,6 +5208,30 @@ async function compileStrategyOutput() {
   if (r.founder_bio) ctx += 'FOUNDER: ' + r.founder_bio + '\n';
   if (r.publications_media && r.publications_media.length) ctx += 'MEDIA/PUBLICATIONS: ' + r.publications_media.join(', ') + '\n';
 
+  // D0: Audience Intelligence
+  if (st.audience && st.audience.segments && st.audience.segments.length) {
+    ctx += '\nAUDIENCE INTELLIGENCE:\n';
+    ctx += 'Segments:\n';
+    st.audience.segments.forEach(function(seg) {
+      ctx += '- ' + seg.name + ': ' + (seg.description || '') + ' (revenue: ' + (seg.revenue_potential || '?') + ', difficulty: ' + (seg.acquisition_difficulty || '?') + ')\n';
+    });
+    if (st.audience.personas && st.audience.personas.length) {
+      ctx += 'Personas:\n';
+      st.audience.personas.forEach(function(p) {
+        ctx += '- ' + p.name + ' (' + (p.role || '') + '): ' + (p.goals ? p.goals.join('; ') : '') + '\n';
+      });
+    }
+    if (st.audience.buying_motions && st.audience.buying_motions.length) {
+      ctx += 'Buying motions:\n';
+      st.audience.buying_motions.forEach(function(bm) {
+        ctx += '- ' + bm.segment + ': ' + (bm.decision_process || '') + ', timeline ' + (bm.typical_timeline || '?') + '\n';
+      });
+    }
+    if (st.audience.validation) {
+      ctx += 'Focus: ' + (st.audience.validation.recommended_focus || st.audience.validation.primary_segment || '') + '\n';
+    }
+  }
+
   // D1: Unit Economics
   if (st.unit_economics && st.unit_economics.recommendation) {
     ctx += '\nUNIT ECONOMICS:\n';
@@ -4877,6 +5529,8 @@ async function compileStrategyOutput() {
   }
   // Audit summary
   var auditSummary = [];
+  var au0 = (st._audit || {})[0];
+  if (au0) auditSummary.push('D0: ' + au0.pass + '/' + au0.total);
   for (var d = 1; d <= 7; d++) {
     var au = (st._audit || {})[d];
     if (au) auditSummary.push('D' + d + ': ' + au.pass + '/' + au.total);
@@ -4893,35 +5547,37 @@ async function compileStrategyOutput() {
   }
 
   var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 13 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'Write in these 14 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
     + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores, real case study results, real proof points. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers. If strategist notes were provided, incorporate their direction.\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
     + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition. Reference the strategy score and any active scoring caps that represent known limitations.\n\n'
-    + '## 2. MARKET ECONOMICS\n'
+    + '## 2. AUDIENCE INTELLIGENCE\n'
+    + 'Who the client serves and how they buy. Summarise the primary and secondary audience segments with their revenue potential and acquisition difficulty. Profile the key personas — name, role, goals, frustrations, and the language they use. Explain the buying motions: how each segment researches, decides, and purchases. List the top purchase triggers and how to leverage them. Map the key objections to segments with counter-messaging.\n\n'
+    + '## 3. MARKET ECONOMICS\n'
     + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability, pricing model. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
-    + '## 3. SUBTRACTION ANALYSIS\n'
+    + '## 4. SUBTRACTION ANALYSIS\n'
     + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any redirect recommendations.\n\n'
-    + '## 4. POSITIONING DIRECTION\n'
+    + '## 5. POSITIONING DIRECTION\n'
     + 'If founder hypotheses were evaluated, briefly summarise each hypothesis and its verdict (viable/partially viable/contested). State which direction was selected and why — include the headline and rationale. Acknowledge the trade-offs. List the proof that needs to be built to fully own this positioning. If no direction was evaluated, note that positioning was system-generated without founder alignment.\n\n'
-    + '## 5. COMPETITIVE LANDSCAPE\n'
+    + '## 6. COMPETITIVE LANDSCAPE\n'
     + 'Name the actual competitors from the data. For each major competitor, state their specific strength, their weakness, and what we do better. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap and each competitor DR.\n\n'
-    + '## 6. POSITIONING & MESSAGING\n'
+    + '## 7. POSITIONING & MESSAGING\n'
     + 'The value proposition, positioning angle, validated differentiators, and messaging hierarchy (primary message + supporting messages). Include the brand voice direction (style, tone, words to use, words to avoid). Reference specific proof points that support each differentiator. This section must align with the selected positioning direction.\n\n'
-    + '## 7. KEYWORD & DEMAND STRATEGY\n'
+    + '## 8. KEYWORD & DEMAND STRATEGY\n'
     + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the demand validation verdict, SEO viability score, and realistic organic timeline. If strategic revisions were flagged, state them.\n\n'
-    + '## 8. CONTENT & AUTHORITY STRATEGY\n'
+    + '## 9. CONTENT & AUTHORITY STRATEGY\n'
     + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins and content mix.\n\n'
-    + '## 9. WEBSITE & CONVERSION\n'
+    + '## 10. WEBSITE & CONVERSION\n'
     + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. Full CTA architecture (primary, secondary, low-commitment), conversion pathway, funnel architecture, form strategy, and tracking requirements. Reference the KPIs that will measure website success.\n\n'
-    + '## 10. CHANNEL ALLOCATION\n'
+    + '## 11. CHANNEL ALLOCATION\n'
     + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever and its rationale. Explain the website role in the overall channel mix.\n\n'
-    + '## 11. GROWTH PLAN & EXECUTION TIMELINE\n'
+    + '## 12. GROWTH PLAN & EXECUTION TIMELINE\n'
     + 'Phased execution timeline showing what gets built when. Reference the growth plan timeline items with their phases and durations. Include funnel architecture and how the execution phases build on each other.\n\n'
-    + '## 12. GEO & LOCAL STRATEGY\n'
+    + '## 13. GEO & LOCAL STRATEGY\n'
     + 'Geographic targeting approach, primary and secondary markets, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
-    + '## 13. RISKS, PROOF & CONSTRAINTS\n'
+    + '## 14. RISKS, PROOF & CONSTRAINTS\n'
     + 'Top risks with severity scores and specific mitigations. E-E-A-T proof inventory: list actual case studies (client, result, timeframe), notable clients, awards/certifications, team credentials, and founder bio. Hard rules and constraints the team must follow — including words to avoid and tone boundaries.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2200-3000 words total.';
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2400-3200 words total.';
 
   aiBarStart('Compiling strategy document...');
   try {
@@ -4966,11 +5622,13 @@ function _renderOutput(st) {
   var audit = st._audit || {};
   var hasAudit = Object.keys(audit).length > 0;
   if (hasAudit) {
-    var diagLabelsShort = { 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks' };
+    var diagLabelsShort = { 0:'Audience', 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks' };
     html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
     html += '<div style="font-size:12px;font-weight:500;margin-bottom:8px">Diagnostic Audit Summary</div>';
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-    for (var d = 1; d <= 7; d++) {
+    var diagNums = [0,1,2,3,4,5,6,7];
+    for (var di = 0; di < diagNums.length; di++) {
+      var d = diagNums[di];
       var au = audit[d];
       if (!au) {
         html += '<div style="flex:1;min-width:80px;padding:6px 8px;border-radius:6px;background:var(--bg2);text-align:center">';
