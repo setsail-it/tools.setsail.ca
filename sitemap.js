@@ -257,7 +257,7 @@ async function runSitemap(withRevisions) {
   prompt += 'Primary geo: ' + (r.geography?.primary || S.setup.geo || 'N/A') + '\n';
   prompt += 'Secondary geos: ' + ((r.geography?.secondary || []).join(', ') || 'none') + '\n';
   prompt += 'Services: ' + ((r.primary_services || []).join(', ') || 'N/A') + '\n';
-  prompt += 'Value prop: ' + (r.value_proposition || r.business_overview || '') + '\n';
+  prompt += 'Value prop: ' + (getStrategyField('positioning.value_proposition', 'value_proposition') || r.business_overview || '') + '\n';
   var _ws = (S.setup&&S.setup.webStrategy||'').trim();
   if (_ws) prompt += '\n## WEBSITE STRATEGY (use this to derive page_goal for each page)\n' + _ws.slice(0, 3000) + '\n\n';
   else prompt += '\n';
@@ -468,7 +468,7 @@ async function generatePageGoal(idx) {
     + 'Intent: '+(p.search_intent||'')+'\n'
     + 'Geo: '+(getPageGeo(p)||'')+'\n'
     + (ws ? '\nWebsite strategy:\n'+ws.slice(0,2000)+'\n' : '')
-    + (R.value_proposition ? '\nValue prop: '+R.value_proposition+'\n' : '')
+    + ((getStrategyField('positioning.value_proposition', 'value_proposition')) ? '\nValue prop: '+(getStrategyField('positioning.value_proposition', 'value_proposition'))+'\n' : '')
     + (R.primary_audience_description ? '\nAudience: '+R.primary_audience_description+'\n' : '')
     + '\nOutput ONLY the 1-2 sentence goal. No labels, no bullets, no preamble.';
   try {

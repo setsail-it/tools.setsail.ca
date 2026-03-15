@@ -452,8 +452,8 @@ SEARCH INTENT: ${page.search_intent}
 WORD COUNT TARGET: ${page.word_count_target}
 
 BUSINESS: ${research.client_name||S.setup?.client||''}
-VALUE PROP: ${research.value_proposition||''}
-KEY DIFFERENTIATORS: ${(research.key_differentiators||[]).slice(0,3).join(' | ')}
+VALUE PROP: ${getStrategyField('positioning.value_proposition', 'value_proposition')||''}
+KEY DIFFERENTIATORS: ${(getStrategyField('positioning.key_differentiators', 'key_differentiators')||[]).slice(0,3).join(' | ')}
 
 COPY CONTENT (use this to populate wireframe headings and outlines):
 ${copyHtml ? copyHtml.replace(/<[^>]*>/g,'').slice(0,3000) : 'No copy generated yet — infer from keyword and page type.'}

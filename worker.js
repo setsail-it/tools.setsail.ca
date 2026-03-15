@@ -1921,14 +1921,26 @@ export default {
           // ── Build brief prompt (same logic as client generatePageBrief) ──
           const addlKws = (p.supporting_keywords || []).map(k => typeof k === 'object' ? (k.kw || '') : String(k)).filter(Boolean);
           const assignedQs = p.assignedQuestions || [];
+          // Read strategic fields from S.strategy with fallback to S.research
+          const ST = S.strategy || {};
+          const _wVp = (ST.positioning && ST.positioning.value_proposition) || R.value_proposition || '';
+          const _wKd = (ST.positioning && ST.positioning.key_differentiators) || R.key_differentiators || [];
+          const _wEp = R.existing_proof || R.proof_points || [];
+          const _wBv = (ST.brand_strategy && ST.brand_strategy.voice_style) || R.brand_voice_style || '';
+          const _wTv = (ST.brand_strategy && ST.brand_strategy.tone_and_voice) || R.tone_and_voice || '';
+          const _wSl = R.current_slogan || R.slogan_or_tagline || '';
+          const _wWa = (ST.brand_strategy && ST.brand_strategy.words_to_avoid) || R.words_to_avoid || [];
+          const _wPcta = (ST.positioning && ST.positioning.primary_cta) || R.primary_cta || '';
+          const _wScta = (ST.positioning && ST.positioning.secondary_cta) || R.secondary_cta || '';
+          const _wLcta = (ST.positioning && ST.positioning.low_commitment_cta) || R.low_commitment_cta || '';
           const ctxBusiness = [
             'Client: ' + (R.client_name || setup.client_name || 'Unknown'),
-            'Value proposition: ' + (R.value_proposition || ''),
-            'Key differentiators: ' + ((R.key_differentiators || []).join('; ') || 'none'),
-            'Proof points: ' + ((R.proof_points || []).join('; ') || 'none'),
-            'Brand voice: ' + (R.brand_voice_style || R.tone_and_voice || 'professional'),
-            (R.slogan_or_tagline ? 'Slogan: ' + R.slogan_or_tagline : ''),
-            (R.words_to_avoid && R.words_to_avoid.length ? 'Words to avoid: ' + R.words_to_avoid.join(', ') : ''),
+            'Value proposition: ' + _wVp,
+            'Key differentiators: ' + (_wKd.length ? _wKd.join('; ') : 'none'),
+            'Proof points: ' + (_wEp.length ? _wEp.join('; ') : 'none'),
+            'Brand voice: ' + (_wBv || _wTv || 'professional'),
+            (_wSl ? 'Slogan: ' + _wSl : ''),
+            (_wWa.length ? 'Words to avoid: ' + _wWa.join(', ') : ''),
             (R.booking_flow_description ? 'Booking flow: ' + R.booking_flow_description : ''),
           ].filter(l => l && l.split(': ')[1]).join('\n');
           // Proof & E-E-A-T context
@@ -1941,9 +1953,9 @@ export default {
           const ctxProof = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS\n' + _proofLines.join('\n') : '';
           // CTA architecture
           const _ctaLines = [];
-          if (R.primary_cta) _ctaLines.push('Primary CTA: ' + R.primary_cta);
-          if (R.secondary_cta) _ctaLines.push('Secondary CTA: ' + R.secondary_cta);
-          if (R.low_commitment_cta) _ctaLines.push('Low-commitment CTA: ' + R.low_commitment_cta);
+          if (_wPcta) _ctaLines.push('Primary CTA: ' + _wPcta);
+          if (_wScta) _ctaLines.push('Secondary CTA: ' + _wScta);
+          if (_wLcta) _ctaLines.push('Low-commitment CTA: ' + _wLcta);
           const ctxCTA = _ctaLines.length ? '\n\n## CTA ARCHITECTURE\n' + _ctaLines.join('\n') : '';
           const ctxAudience = [
             'Primary audience: ' + (R.primary_audience_description || ''),

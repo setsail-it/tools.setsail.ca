@@ -2,10 +2,9 @@
 // Maps every research field to tab, label, importance, and source.
 // source: 'ai' = AI-enrichable, 'manual' = human-only, 'auto' = auto-populated
 var RESEARCH_FIELD_META = {
-  // Business
+  // Business — factual data about the company (strategic fields moved to Strategy stage)
   client_name:               { tab:'business',    label:'Client Name',              importance:'critical', source:'auto' },
   business_overview:         { tab:'business',    label:'Business Overview',        importance:'critical', source:'ai' },
-  value_proposition:         { tab:'business',    label:'Value Proposition',        importance:'critical', source:'ai' },
   industry:                  { tab:'business',    label:'Industry',                 importance:'critical', source:'manual' },
   sub_industry:              { tab:'business',    label:'Sub-Industry / Niche',     importance:'normal',   source:'ai' },
   business_model:            { tab:'business',    label:'Business Model',           importance:'normal',   source:'ai' },
@@ -13,14 +12,12 @@ var RESEARCH_FIELD_META = {
   team_size:                 { tab:'business',    label:'Team Size',                importance:'optional', source:'ai' },
   locations_count:           { tab:'business',    label:'Number of Locations',      importance:'optional', source:'ai' },
   primary_services:          { tab:'business',    label:'Primary Services',         importance:'normal',   source:'auto' },
-  top_offers:                { tab:'business',    label:'Top Offers',               importance:'normal',   source:'ai' },
   services_detail:           { tab:'business',    label:'Services (Detailed)',      importance:'critical', source:'ai' },
-  pricing_notes:             { tab:'business',    label:'Pricing Notes',            importance:'normal',   source:'ai' },
+  current_pricing:           { tab:'business',    label:'Current Pricing',          importance:'normal',   source:'ai' },
   pricing_model:             { tab:'business',    label:'Pricing Model',            importance:'normal',   source:'ai' },
   capacity_constraints:      { tab:'business',    label:'Capacity Constraints',     importance:'optional', source:'ai' },
   seasonality_notes:         { tab:'business',    label:'Seasonality Notes',        importance:'optional', source:'manual' },
-  strategic_recommendations: { tab:'business',    label:'Strategic Recommendations',importance:'normal',   source:'ai' },
-  // Audience
+  // Audience — who buys and how the sales process works
   primary_audience_description: { tab:'audience', label:'Audience Description',     importance:'critical', source:'ai' },
   buyer_roles_titles:        { tab:'audience',    label:'Buyer Roles / Titles',     importance:'normal',   source:'ai' },
   target_geography:          { tab:'audience',    label:'Target Geography Scope',   importance:'normal',   source:'ai' },
@@ -29,27 +26,25 @@ var RESEARCH_FIELD_META = {
   objections_top5:           { tab:'audience',    label:'Top Objections',           importance:'normal',   source:'ai' },
   lead_channels_today:       { tab:'audience',    label:'Current Lead Channels',    importance:'optional', source:'ai' },
   sales_cycle_length:        { tab:'audience',    label:'Sales Cycle Length',       importance:'optional', source:'ai' },
-  lead_qualification_criteria:{ tab:'audience',   label:'Lead Qualification',       importance:'optional', source:'ai' },
+  current_qualification:     { tab:'audience',    label:'Current Lead Qualification', importance:'optional', source:'ai' },
   close_rate_estimate:       { tab:'audience',    label:'Estimated Close Rate',     importance:'optional', source:'ai' },
   top_reasons_leads_dont_close:{ tab:'audience',  label:'Reasons Leads Do Not Close',importance:'optional',source:'ai' },
   booking_flow_description:  { tab:'audience',    label:'Booking / Intake Flow',    importance:'optional', source:'ai' },
   primary_goal:              { tab:'audience',    label:'Primary Goal',             importance:'critical', source:'ai' },
   secondary_goals:           { tab:'audience',    label:'Secondary Goals',          importance:'normal',   source:'ai' },
-  target_audience:           { tab:'audience',    label:'Target Audience Personas', importance:'normal',   source:'ai' },
+  current_customer_profile:  { tab:'audience',    label:'Current Customer Profiles', importance:'normal',  source:'ai' },
   'geography.primary':       { tab:'audience',    label:'Primary City / Region',    importance:'normal',   source:'ai' },
   'geography.secondary':     { tab:'audience',    label:'Secondary Cities',         importance:'optional', source:'ai' },
-  primary_cta:               { tab:'audience',    label:'Primary CTA',             importance:'critical', source:'ai' },
-  secondary_cta:             { tab:'audience',    label:'Secondary CTA',           importance:'normal',   source:'ai' },
-  low_commitment_cta:        { tab:'audience',    label:'Low-Commitment CTA',      importance:'normal',   source:'ai' },
-  // Brand
+  // Unit economics (manual inputs for Strategy diagnostics)
+  monthly_marketing_budget:  { tab:'audience',    label:'Monthly Marketing Budget', importance:'normal',   source:'manual' },
+  average_deal_size:         { tab:'audience',    label:'Average Deal Size',        importance:'normal',   source:'manual' },
+  customer_lifetime_value:   { tab:'audience',    label:'Customer Lifetime Value',  importance:'normal',   source:'manual' },
+  lead_quality_percentage:   { tab:'audience',    label:'Lead Quality %',           importance:'optional', source:'manual' },
+  current_lead_volume:       { tab:'audience',    label:'Current Monthly Leads',    importance:'optional', source:'manual' },
+  // Brand — identity and proof (strategic brand fields moved to Strategy)
   brand_name:                { tab:'brand',       label:'Brand Name',               importance:'critical', source:'ai' },
-  slogan_or_tagline:         { tab:'brand',       label:'Slogan / Tagline',         importance:'normal',   source:'ai' },
-  brand_voice_style:         { tab:'brand',       label:'Voice Style',              importance:'normal',   source:'ai' },
-  tone_and_voice:            { tab:'brand',       label:'Tone & Voice Notes',       importance:'normal',   source:'ai' },
-  words_to_use:              { tab:'brand',       label:'Words to Use',             importance:'normal',   source:'ai' },
-  words_to_avoid:            { tab:'brand',       label:'Words to Avoid',           importance:'normal',   source:'ai' },
-  key_differentiators:       { tab:'brand',       label:'Key Differentiators',      importance:'critical', source:'ai' },
-  proof_points:              { tab:'brand',       label:'Proof Points',             importance:'normal',   source:'ai' },
+  current_slogan:            { tab:'brand',       label:'Current Slogan / Tagline', importance:'normal',   source:'ai' },
+  existing_proof:            { tab:'brand',       label:'Existing Proof Points',    importance:'normal',   source:'ai' },
   brand_colours:             { tab:'brand',       label:'Brand Colours',            importance:'optional', source:'manual' },
   fonts:                     { tab:'brand',       label:'Fonts',                    importance:'optional', source:'manual' },
   brand_guidelines_link:     { tab:'brand',       label:'Brand Guidelines Link',    importance:'optional', source:'manual' },
@@ -65,7 +60,7 @@ var RESEARCH_FIELD_META = {
   founder_bio:               { tab:'brand',       label:'Founder Bio',              importance:'normal',   source:'ai' },
   publications_media:        { tab:'brand',       label:'Publications & Media',     importance:'optional', source:'ai' },
   reference_brands:          { tab:'brand',       label:'Reference Brands',         importance:'optional', source:'manual' },
-  // Schema
+  // Schema & Local
   schema_business_type:      { tab:'schema',      label:'Business Type',            importance:'critical', source:'ai' },
   schema_primary_category:   { tab:'schema',      label:'Primary Category',         importance:'critical', source:'ai' },
   schema_price_range:        { tab:'schema',      label:'Price Range',              importance:'optional', source:'ai' },
@@ -83,7 +78,7 @@ var RESEARCH_FIELD_META = {
   has_blog:                  { tab:'schema',      label:'Blog',                     importance:'normal',   source:'ai' },
   has_faq_section:           { tab:'schema',      label:'FAQ Section',              importance:'normal',   source:'ai' },
   schema_injection_method:   { tab:'schema',      label:'Schema Injection Method',  importance:'optional', source:'manual' },
-  faqs:                      { tab:'schema',      label:'FAQs',                     importance:'normal',   source:'ai' },
+  current_faqs:              { tab:'schema',      label:'Current FAQs',             importance:'normal',   source:'ai' },
   reviews:                   { tab:'schema',      label:'Reviews',                  importance:'optional', source:'manual' },
   // Competitors
   competitors:               { tab:'competitors', label:'Competitors',              importance:'critical', source:'ai' },
@@ -214,6 +209,7 @@ function jumpToResearchField(key, tab) {
 
 function initResearch() {
   if (!S.research) S.research = researchDefaults();
+  migrateResearchFields(S.research);
   _cachedWebsiteText = null; // reset website cache on project load
   // Auto-populate client_name from Setup
   if (!S.research.client_name && S.setup && S.setup.client) {
@@ -229,28 +225,28 @@ function initResearch() {
 function researchDefaults() {
   return {
     // Business
-    client_name:'', business_overview:'', value_proposition:'',
+    client_name:'', business_overview:'',
     industry:'', sub_industry:'', business_model:'',
     years_in_business:'', team_size:'', locations_count:'',
-    primary_services:[], top_offers:[], services_detail:[],
-    pricing_notes:'', pricing_model:'',
+    primary_services:[], services_detail:[],
+    current_pricing:'', pricing_model:'',
     capacity_constraints:'', seasonality_notes:'',
-    strategic_recommendations:[],
     // Audience
     primary_audience_description:'', buyer_roles_titles:[],
     target_geography:'', best_customer_examples:'',
     pain_points_top5:[], objections_top5:[],
     lead_channels_today:[], sales_cycle_length:'',
-    lead_qualification_criteria:'', close_rate_estimate:'',
+    current_qualification:'', close_rate_estimate:'',
     top_reasons_leads_dont_close:'', booking_flow_description:'',
-    primary_goal:'', secondary_goals:[], target_audience:[],
+    primary_goal:'', secondary_goals:[], current_customer_profile:[],
     geography:{ primary:'', secondary:[] },
-    // CTA Architecture
-    primary_cta:'', secondary_cta:'', low_commitment_cta:'',
+    // Unit economics (manual)
+    monthly_marketing_budget:'', average_deal_size:'',
+    customer_lifetime_value:'', lead_quality_percentage:'',
+    current_lead_volume:'',
     // Brand
-    brand_name:'', slogan_or_tagline:'', brand_voice_style:'',
-    tone_and_voice:'', words_to_use:[], words_to_avoid:[],
-    key_differentiators:[], proof_points:[],
+    brand_name:'', current_slogan:'',
+    existing_proof:[],
     brand_colours:[], fonts:[],
     brand_guidelines_link:'', logo_files_link:'',
     photo_library_link:'', video_library_link:'',
@@ -269,10 +265,39 @@ function researchDefaults() {
     has_location_pages:'', has_service_pages:'',
     has_blog:'', has_faq_section:'',
     schema_injection_method:'',
-    faqs:[], reviews:[],
+    current_faqs:[], reviews:[],
     // Competitors
     competitors:[],
   };
+}
+
+// ── KV Migration — rename old field keys to new ones ─────────────
+function migrateResearchFields(r) {
+  if (!r) return r;
+  // Rename map: old key → new key
+  var renames = {
+    pricing_notes: 'current_pricing',
+    slogan_or_tagline: 'current_slogan',
+    lead_qualification_criteria: 'current_qualification',
+    proof_points: 'existing_proof',
+    faqs: 'current_faqs',
+    target_audience: 'current_customer_profile'
+  };
+  Object.keys(renames).forEach(function(oldKey) {
+    var newKey = renames[oldKey];
+    if (r[oldKey] !== undefined && r[newKey] === undefined) {
+      r[newKey] = r[oldKey];
+      delete r[oldKey];
+    } else if (r[oldKey] !== undefined && !r[newKey]) {
+      // New key exists but is empty — use old value
+      var oldVal = r[oldKey];
+      var hasValue = Array.isArray(oldVal) ? oldVal.length > 0 : (typeof oldVal === 'string' ? oldVal.trim().length > 0 : !!oldVal);
+      if (hasValue) r[newKey] = oldVal;
+      delete r[oldKey];
+    }
+  });
+  // Removed fields stay in S.research for backward compat but are no longer rendered/scored
+  return r;
 }
 
 function renderResearchNav() {
@@ -441,7 +466,6 @@ function renderRBusiness(r) {
   let html = rTabActions('business');
   html += rSec('Core Identity',
     rField('business_overview','Business Overview', r.business_overview, 'textarea', {rows:3}) +
-    rField('value_proposition','Value Proposition', r.value_proposition, 'textarea', {rows:3}) +
     rField('industry','Industry', r.industry) +
     rField('sub_industry','Sub-Industry / Niche', r.sub_industry) +
     rField('business_model','Business Model', r.business_model, 'select', {options:['','b2b','b2c','b2b2c','marketplace','saas','nonprofit']}) +
@@ -450,7 +474,7 @@ function renderRBusiness(r) {
     rField('locations_count','Number of Locations', r.locations_count)
   );
   html += rSec('Services & Pricing',
-    rField('pricing_notes','Pricing Notes', r.pricing_notes, 'textarea', {rows:3}) +
+    rField('current_pricing','Current Pricing', r.current_pricing, 'textarea', {rows:3}) +
     rField('pricing_model','Pricing Model', r.pricing_model, 'select', {options:['','quote_based','fixed_menu','subscription']}) +
     rField('capacity_constraints','Capacity Constraints', r.capacity_constraints) +
     rField('seasonality_notes','Seasonality Notes', r.seasonality_notes)
@@ -458,13 +482,6 @@ function renderRBusiness(r) {
   html += rRepGroup('services_detail','Services',
     [{key:'name',label:'Service Name',width:'150px'},{key:'description',label:'Description'},{key:'pricing',label:'Pricing',width:'120px'},{key:'target_audience',label:'Target Audience',width:'130px'},{key:'key_differentiator',label:'Differentiator',width:'130px'}],
     '+ Add Service'
-  );
-  html += rSec('Strategic Recommendations',
-    rField('strategic_recommendations','Recommendations (one per line)', r.strategic_recommendations, 'textarea-array', {rows:5})
-  );
-  html += rRepGroup('top_offers','Top Offers',
-    [{key:'offer_name',label:'Offer Name'},{key:'priority',label:'Priority',width:'80px'},{key:'notes',label:'Notes'}],
-    '+ Add Offer'
   );
   return html;
 }
@@ -489,14 +506,16 @@ function renderRAudience(r) {
     rField('lead_channels_today','Current Lead Channels (comma-separated)', r.lead_channels_today, 'text-csv') +
     rField('sales_cycle_length','Sales Cycle Length', r.sales_cycle_length, 'select', {options:['','same_day','1_7_days','14_30_days','30_plus_days']}) +
     rField('close_rate_estimate','Estimated Close Rate', r.close_rate_estimate) +
-    rField('lead_qualification_criteria','Lead Qualification Criteria', r.lead_qualification_criteria, 'textarea', {rows:2}) +
-    rField('top_reasons_leads_dont_close','Top Reasons Leads Don\'t Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
+    rField('current_qualification','Current Lead Qualification', r.current_qualification, 'textarea', {rows:2}) +
+    rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
     rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
   );
-  html += rSec('CTA Architecture',
-    rField('primary_cta','Primary CTA (e.g. Book a Discovery Call)', r.primary_cta) +
-    rField('secondary_cta','Secondary CTA (e.g. Download Free Guide)', r.secondary_cta) +
-    rField('low_commitment_cta','Low-Commitment CTA (e.g. Free Audit)', r.low_commitment_cta)
+  html += rSec('Unit Economics',
+    rField('monthly_marketing_budget','Monthly Marketing Budget (e.g. $5,000)', r.monthly_marketing_budget) +
+    rField('average_deal_size','Average Deal Size (e.g. $3,500)', r.average_deal_size) +
+    rField('customer_lifetime_value','Customer Lifetime Value (e.g. $12,000)', r.customer_lifetime_value) +
+    rField('lead_quality_percentage','Lead Quality % (e.g. 40%)', r.lead_quality_percentage) +
+    rField('current_lead_volume','Current Monthly Leads (e.g. 25)', r.current_lead_volume)
   );
   return html;
 }
@@ -505,15 +524,8 @@ function renderRBrand(r) {
   let html = rTabActions('brand');
   html += rSec('Brand Identity',
     rField('brand_name','Brand Name', r.brand_name) +
-    rField('slogan_or_tagline','Slogan / Tagline', r.slogan_or_tagline) +
-    rField('brand_voice_style','Voice Style', r.brand_voice_style, 'select', {options:['','direct','playful','premium','technical','warm','other']}) +
-    rField('tone_and_voice','Tone & Voice Notes', r.tone_and_voice, 'textarea', {rows:2}) +
-    rField('words_to_use','Words to Use (comma-separated)', r.words_to_use, 'text-csv') +
-    rField('words_to_avoid','Words to Avoid (comma-separated)', r.words_to_avoid, 'text-csv')
-  );
-  html += rSec('Positioning & Proof',
-    rField('key_differentiators','Key Differentiators (one per line)', r.key_differentiators, 'textarea-array', {rows:4}) +
-    rField('proof_points','Proof Points / Awards / Certs (one per line)', r.proof_points, 'textarea-array', {rows:4})
+    rField('current_slogan','Current Slogan / Tagline', r.current_slogan) +
+    rField('existing_proof','Existing Proof Points (one per line)', r.existing_proof, 'textarea-array', {rows:4})
   );
   html += rSec('Visual Assets',
     rField('brand_colours','Brand Colours — hex codes (comma-separated)', r.brand_colours, 'text-csv') +
@@ -621,7 +633,7 @@ function renderRSchema(r) {
     [{key:'platform',label:'Platform',type:'select',options:['Google Business Profile','Facebook','Instagram','LinkedIn','YouTube','TikTok','X','Pinterest','Other']},{key:'url',label:'URL'}],
     '+ Add Social Profile'
   );
-  html += rRepGroup('faqs','FAQs',
+  html += rRepGroup('current_faqs','Current FAQs',
     [{key:'question',label:'Question'},{key:'answer',label:'Answer'}],
     '+ Add FAQ'
   );
@@ -899,24 +911,21 @@ async function enrichRTab(tab, forceAll) {
 
   var b = '\n  ';
   var prompts = {
-    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the website and documents.\nRULES:\n- Include EVERY service from the /services page — do not summarise or skip any\n- For team_size: count every individual person named on /about or /team page\n- For pricing in services_detail: pull actual dollar amounts from the /pricing page\n- Prefer website data over strategy doc when they conflict\n{\n'
+    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the website and documents.\nRULES:\n- Include EVERY service from the /services page — do not summarise or skip any\n- For team_size: count every individual person named on /about or /team page\n- For pricing in services_detail: pull actual dollar amounts from the /pricing page\n- Prefer website data over strategy doc when they conflict\n- Do NOT include value_proposition, strategic_recommendations, or top_offers — those are handled in the Strategy stage\n{\n'
       + b + '"business_overview": "2-3 sentence factual description of what this business does",\n'
-      + b + '"value_proposition": "the core promise to customers in one sentence",\n'
       + b + '"industry": "e.g. Healthcare, Construction, Legal Services",\n'
       + b + '"sub_industry": "specific niche within that industry",\n'
       + b + '"business_model": "one of: b2b b2c b2b2c marketplace saas nonprofit",\n'
       + b + '"years_in_business": "number as string or empty string if unknown",\n'
       + b + '"team_size": "COUNT every individual team member name found on /about or /team pages and return that number as a string — if 12 people are listed, return 12",\n'
-      + b + '"pricing_notes": "how pricing works",\n'
+      + b + '"current_pricing": "how pricing works — actual dollar amounts from website if available",\n'
       + b + '"pricing_model": "one of: quote_based fixed_menu subscription",\n'
-      + b + '"top_offers": [{"offer_name": "specific offer name", "priority": "1", "notes": "why this is a top offer"}],\n'
       + b + '"locations_count": "number of physical locations as string, or empty string if unknown",\n'
       + b + '"capacity_constraints": "any limits on capacity, throughput, or availability — or empty string",\n'
       + b + '"seasonality_notes": "seasonal patterns in demand or revenue — or empty string",\n'
-      + b + '"services_detail": [{"name": "service name from website", "description": "1-2 sentence description", "pricing": "pricing from /pricing page e.g. $1800 setup + $2400/mo, or empty string if not found", "target_audience": "who buys this service", "key_differentiator": "what makes this unique"}],\n'
-      + b + '"strategic_recommendations": ["specific rec 1", "specific rec 2", "specific rec 3"]\n}',
+      + b + '"services_detail": [{"name": "service name from website", "description": "1-2 sentence description", "pricing": "pricing from /pricing page e.g. $1800 setup + $2400/mo, or empty string if not found", "target_audience": "who buys this service", "key_differentiator": "what makes this unique"}]\n}',
 
-    audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values:\n{\n'
+    audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values.\nDo NOT include CTAs (primary_cta, secondary_cta, low_commitment_cta) — those are handled in the Strategy stage.\n{\n'
       + b + '"primary_audience_description": "2-3 sentence profile of who buys from this business",\n'
       + b + '"buyer_roles_titles": ["decision maker title 1", "decision maker title 2"],\n'
       + b + '"target_geography": "one of: local regional national international",\n'
@@ -926,26 +935,18 @@ async function enrichRTab(tab, forceAll) {
       + b + '"lead_channels_today": ["current lead source 1", "current lead source 2"],\n'
       + b + '"sales_cycle_length": "one of: same_day 1_7_days 14_30_days 30_plus_days",\n'
       + b + '"close_rate_estimate": "percentage as string e.g. 30% or empty string if unknown",\n'
-      + b + '"lead_qualification_criteria": "what makes a lead qualified for this business",\n'
+      + b + '"current_qualification": "what makes a lead qualified for this business",\n'
       + b + '"top_reasons_leads_dont_close": "main reasons deals fall through",\n'
       + b + '"booking_flow_description": "how a prospect becomes a client - steps in the intake process",\n'
       + b + '"primary_goal": "one of: leads sales bookings traffic awareness",\n'
       + b + '"secondary_goals": ["secondary goal 1", "secondary goal 2"],\n'
       + b + '"geography": {"primary": "City, Province", "secondary": ["secondary city 1"]},\n'
-      + b + '"target_audience": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}],\n'
-      + b + '"primary_cta": "the main conversion action e.g. Book a Discovery Call",\n'
-      + b + '"secondary_cta": "secondary conversion action e.g. Download Free Guide",\n'
-      + b + '"low_commitment_cta": "low-friction entry point e.g. Free Website Audit"\n}',
+      + b + '"current_customer_profile": [{"persona": "persona label", "pain_points": ["pain 1"], "motivators": ["motivator 1"]}]\n}',
 
-    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours/fonts: only include values explicitly found in reference docs — use [] if not found. Do NOT invent values.\n- For tone, differentiators, voice: extract from strategy and brand docs.\n- For case_studies: extract EVERY case study from the /our-work and /portfolio pages. Include ALL of them with specific results and metrics mentioned. Do NOT limit to 2-3.\n- For notable_clients: list EVERY client name mentioned on the website.\n- Return ONLY valid JSON, no preamble.\n{\n'
+    brand: ctx + '\nBusiness: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n\nReturn a JSON object.\nRULES:\n- For brand_colours/fonts: only include values explicitly found in reference docs — use [] if not found. Do NOT invent values.\n- For case_studies: extract EVERY case study from the /our-work and /portfolio pages. Include ALL of them with specific results and metrics mentioned. Do NOT limit to 2-3.\n- For notable_clients: list EVERY client name mentioned on the website.\n- Do NOT include brand_voice_style, tone_and_voice, words_to_use, words_to_avoid, or key_differentiators — those are handled in the Strategy stage.\n- Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"brand_name": "' + ((S.setup && S.setup.client) || 'brand name') + '",\n'
-      + b + '"slogan_or_tagline": "tagline from docs or website, or empty string",\n'
-      + b + '"brand_voice_style": "one of: direct playful premium technical warm other",\n'
-      + b + '"tone_and_voice": "2-3 sentences on tone and personality from the docs and website copy",\n'
-      + b + '"words_to_use": ["power words fitting this brand voice"],\n'
-      + b + '"words_to_avoid": ["words that conflict with this brand voice"],\n'
-      + b + '"key_differentiators": ["real differentiator from the docs or website"],\n'
-      + b + '"proof_points": ["real cert/award/stat/number from docs or website, e.g. 273 Projects, 10+ Years, B Corp Certified"],\n'
+      + b + '"current_slogan": "current tagline from docs or website, or empty string",\n'
+      + b + '"existing_proof": ["real cert/award/stat/number from docs or website, e.g. 273 Projects, 10+ Years, B Corp Certified"],\n'
       + b + '"brand_colours": ["hex from brand guide only, or []"],\n'
       + b + '"fonts": ["font from brand guide only, or []"],\n'
       + b + '"case_studies": [{"client": "client name from /our-work page", "result": "specific measurable outcome with numbers", "timeframe": "e.g. 90 days or ongoing"}],\n'
@@ -968,7 +969,7 @@ async function enrichRTab(tab, forceAll) {
       + b + '"schema_payment_methods": ["Credit Card", "Invoice"],\n'
       + b + '"social_profiles": [{"platform": "Facebook", "url": "https://..."}],\n'
       + b + '"schema_services": [{"service_name": "actual service", "service_page_url": "/services/slug", "service_description_short": "one sentence"}],\n'
-      + b + '"faqs": [{"question": "real customer question 1", "answer": "direct answer"}, {"question": "real customer question 2", "answer": "direct answer"}],\n'
+      + b + '"current_faqs": [{"question": "real customer question 1", "answer": "direct answer"}, {"question": "real customer question 2", "answer": "direct answer"}],\n'
       + b + '"has_location_pages": "Yes or Planned or No",\n'
       + b + '"has_service_pages": "Yes or Planned or No",\n'
       + b + '"has_blog": "Yes or Planned or No",\n'

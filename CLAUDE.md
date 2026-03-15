@@ -2,7 +2,7 @@
 
 ## What This Is
 
-SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It takes a client through 11 stages — Setup → Snapshot → Research → Keywords → Sitemap → Briefs → Copy → Images → Layout → Schema → Export — producing keyword research, page architecture, briefs, and full SEO copy.
+SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It takes a client through 11 stages — Setup → Snapshot → Research → Strategy → Sitemap → Briefs → Copy → Images → Layout → Schema → Export — producing keyword research, page architecture, briefs, and full SEO copy.
 
 **Not a framework.** No React, no bundler, no build step. `worker.js` is the backend. `index.html` + external `.js` files are the frontend, served as static assets.
 
@@ -24,7 +24,8 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 ```
 worker.js        — All backend API routes + queue consumer (~1935 lines)
 index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~2700 lines)
-keywords.js      — Stage 4: keyword research (~2445 lines)
+strategy.js      — Stage 4: strategy engine + scoring + diagnostics (~1854 lines)
+keywords.js      — Keyword research (tab within Strategy stage) (~2445 lines)
 sitemap.js       — Stage 5: sitemap generation (~1566 lines)
 briefs.js        — Stage 6: brief generation + queue (~1542 lines)
 copy.js          — Stage 7: copy generation + audit (~1144 lines)
@@ -49,7 +50,8 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 - `S._version` — optimistic locking counter (incremented on each save)
 - `S.setup` — client info, strategy, voice, competitors
 - `S.snapshot` — DataForSEO domain metrics
-- `S.research` — AI-enriched ~130-field research object
+- `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
+- `S.strategy` — strategy engine output (positioning, unit economics, channels, brand, risks, targets, demand validation)
 - `S.pages[]` — sitemap pages with keywords, briefs, metadata
 - `S.kwResearch` — seeds, keywords, clusters, selected
 - `S.copy{}` — per-slug copy data (HTML stored in separate KV keys)
@@ -88,6 +90,7 @@ These are defined once and used across all routes:
 - `aiBarStart(label)` / `aiBarEnd()` / `aiBarNotify(msg, opts)` — AI progress bar
 - `orderedPages()` — display-sorted page list
 - `storePrompt(key, system, user, title, subtitle)` / `showPromptModal(key)` — prompt viewer
+- `getStrategyField(stratPath, researchFallback)` — reads from `S.strategy` with automatic `S.research` fallback (defined in strategy.js, used by all downstream stages)
 
 ## Security Model
 
@@ -168,7 +171,7 @@ async function generateAll(startFrom) {
   }
 }
 ```
-Already implemented in: `generateAllBriefs` (briefs.js), `enrichAll` (research.js), `generateAllPageGoals` (sitemap.js).
+Already implemented in: `generateAllBriefs` (briefs.js), `enrichAll` (research.js), `generateAllPageGoals` (sitemap.js), `generateStrategy`/`improveStrategy` (strategy.js).
 
 ### Stage eyebrows
 Stage counts use `data-stage-num` attributes populated by `STAGES.length` via `_updateStageEyebrows()`. Never hardcode "Stage X of Y" — use `<div class="eyebrow stage-eyebrow" data-stage-num="N"></div>`.
@@ -191,7 +194,7 @@ Every feature that changes workflow **must update**:
 
 ```bash
 # Syntax check all JS files
-node --check worker.js keywords.js briefs.js sitemap.js copy.js research.js layout.js schema.js images.js export.js prompts.js
+node --check worker.js strategy.js keywords.js briefs.js sitemap.js copy.js research.js layout.js schema.js images.js export.js prompts.js
 
 # Check index.html inline JS
 python3 -c "

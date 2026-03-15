@@ -1,6 +1,6 @@
 const P = {
 research:`You are a senior SEO and content strategist at Setsail Marketing — a B-Corp certified, 28-person digital marketing agency in Vancouver, Canada. Analyse the client strategy document and extract structured intelligence. Output ONLY valid JSON. No preamble. No markdown fences. No backticks. Raw JSON only:
-{"client_name":"","business_overview":"","value_proposition":"","target_audience":[{"persona":"","pain_points":[],"motivators":[]}],"key_differentiators":[],"tone_and_voice":"","primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"pricing_notes":"","strategic_recommendations":[]}`,
+{"client_name":"","business_overview":"","current_customer_profile":[{"persona":"","pain_points":[],"motivators":[]}],"primary_services":[],"geography":{"primary":"","secondary":[]},"competitors":[],"current_pricing":""}`,
 
 sitemap:`You are a senior SEO architect. Build a performance-first sitemap by mapping keyword clusters to pages based on strict intent matching rules.
 

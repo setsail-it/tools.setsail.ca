@@ -785,14 +785,15 @@ async function generateAISeeds() {
   ctx += 'INDUSTRY: ' + (r.industry || r.sub_industry || '') + '\n';
   ctx += 'BUSINESS MODEL: ' + (r.business_model || '') + '\n';
   ctx += 'OVERVIEW: ' + (r.business_overview || '') + '\n';
-  ctx += 'VALUE PROP: ' + (r.value_proposition || '') + '\n';
+  ctx += 'VALUE PROP: ' + (getStrategyField('positioning.value_proposition', 'value_proposition') || '') + '\n';
   ctx += 'PRIMARY GEO: ' + geo + '\n';
   if (secondaryGeos.length) ctx += 'SECONDARY GEOS: ' + secondaryGeos.join(', ') + '\n';
   ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
-  if (r.top_offers && r.top_offers.length) ctx += 'TOP OFFERS: ' + r.top_offers.join(', ') + '\n';
-  if (r.key_differentiators && r.key_differentiators.length) ctx += 'DIFFERENTIATORS: ' + r.key_differentiators.join(', ') + '\n';
+  var _kwKd = getStrategyField('positioning.key_differentiators', 'key_differentiators') || [];
+  if (_kwKd.length) ctx += 'DIFFERENTIATORS: ' + _kwKd.join(', ') + '\n';
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'AUDIENCE PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
-  if (r.target_audience && r.target_audience.length) ctx += 'TARGET AUDIENCE: ' + r.target_audience.join(', ') + '\n';
+  var _kwTa = r.current_customer_profile || r.target_audience || [];
+  if (_kwTa.length) ctx += 'TARGET AUDIENCE: ' + (Array.isArray(_kwTa) ? _kwTa.map(function(t){ return typeof t === 'object' ? (t.persona||'') : t; }).join(', ') : _kwTa) + '\n';
   if (r.buyer_roles_titles && r.buyer_roles_titles.length) ctx += 'BUYER ROLES: ' + r.buyer_roles_titles.join(', ') + '\n';
   if (r.competitors && r.competitors.length) {
     ctx += 'COMPETITORS: ' + r.competitors.slice(0,6).map(function(c) { return c.name || c; }).join(', ') + '\n';
@@ -1093,10 +1094,13 @@ async function clusterSelectedKws() {
   var _clusterCtx = '';
   _clusterCtx += '\nCLIENT: ' + (setup.client || r.client_name || '') + ' | Geo: ' + geo;
   _clusterCtx += '\nSERVICES: ' + (r.primary_services || []).join(', ');
-  if (r.value_proposition) _clusterCtx += '\nVALUE PROP: ' + r.value_proposition;
-  if ((r.key_differentiators || []).length) _clusterCtx += '\nDIFFERENTIATORS: ' + r.key_differentiators.join('; ');
+  var _clVp = getStrategyField('positioning.value_proposition', 'value_proposition') || '';
+  if (_clVp) _clusterCtx += '\nVALUE PROP: ' + _clVp;
+  var _clKd = getStrategyField('positioning.key_differentiators', 'key_differentiators') || [];
+  if (_clKd.length) _clusterCtx += '\nDIFFERENTIATORS: ' + _clKd.join('; ');
   if (r.business_model) _clusterCtx += '\nBUSINESS MODEL: ' + r.business_model;
-  if ((r.target_audience || []).length) _clusterCtx += '\nAUDIENCE: ' + (Array.isArray(r.target_audience) ? r.target_audience.join(', ') : r.target_audience);
+  var _clTa = r.current_customer_profile || r.target_audience || [];
+  if (_clTa.length) _clusterCtx += '\nAUDIENCE: ' + (Array.isArray(_clTa) ? _clTa.map(function(t){ return typeof t === 'object' ? (t.persona||'') : t; }).join(', ') : _clTa);
   if ((r.buyer_roles_titles || []).length) _clusterCtx += '\nBUYER ROLES: ' + r.buyer_roles_titles.join(', ');
   // Services detail — so AI knows which services are strategic priorities
   if ((r.services_detail || []).length) {
@@ -1623,9 +1627,10 @@ function _getQuestionsArray() {
   if (S.research && S.research.paa_questions && S.research.paa_questions.length) {
     return S.research.paa_questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
   }
-  // Fallback: research.brand.faqs
-  if (S.research && S.research.brand && S.research.brand.faqs) {
-    return S.research.brand.faqs.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
+  // Fallback: research FAQs
+  var _faqSrc = S.research && (S.research.current_faqs || S.research.faqs);
+  if (_faqSrc && _faqSrc.length) {
+    return _faqSrc.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
   }
   return [];
 }
@@ -1727,7 +1732,8 @@ async function fetchPAAFromKeywords() {
   var setup = S.setup || {};
   var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
   var services = (r.primary_services || []).slice(0, 6).join(', ');
-  var audience = (r.target_audience && r.target_audience.primary ? r.target_audience.primary : '') ||
+  var _qTa = r.current_customer_profile || r.target_audience || [];
+  var audience = (Array.isArray(_qTa) && _qTa.length ? (_qTa[0].persona || _qTa[0].primary || '') : (_qTa && _qTa.primary ? _qTa.primary : '')) ||
                  (r.buyer_personas && r.buyer_personas[0] ? r.buyer_personas[0].role || '' : '');
   var painPoints = (r.pain_points || []).slice(0, 4).join('; ');
   var industry = setup.industry || '';
@@ -1801,7 +1807,8 @@ async function generateMoreQuestions() {
   var setup = S.setup || {};
   var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
   var services = (r.primary_services || []).slice(0, 6).join(', ');
-  var audience = (r.target_audience && r.target_audience.primary ? r.target_audience.primary : '') ||
+  var _qTa = r.current_customer_profile || r.target_audience || [];
+  var audience = (Array.isArray(_qTa) && _qTa.length ? (_qTa[0].persona || _qTa[0].primary || '') : (_qTa && _qTa.primary ? _qTa.primary : '')) ||
                  (r.buyer_personas && r.buyer_personas[0] ? r.buyer_personas[0].role || '' : '');
   var industry = setup.industry || '';
 

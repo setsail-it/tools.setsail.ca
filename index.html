@@ -441,7 +441,7 @@ textarea.inp{resize:vertical}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;flex-wrap:wrap;gap:10px">
         <div id="research-tab-nav" style="display:flex;gap:0;flex-wrap:wrap"></div>
         <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px">
-          <button class="btn btn-ghost" onclick="goTo('keywords');initKeywords()" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Keywords</button>
+          <button class="btn btn-ghost" onclick="goTo('strategy');strategyInit()" style="white-space:nowrap"><i class="ti ti-arrow-right"></i> Proceed to Strategy</button>
         </div>
       </div>
       <div style="border-bottom:2px solid var(--border);margin-bottom:16px"></div>
@@ -454,24 +454,25 @@ textarea.inp{resize:vertical}
     </div>
   </div>
 
-  <!-- KEYWORDS -->
-  <div class="screen" id="screen-keywords">
+  <!-- STRATEGY -->
+  <div class="screen" id="screen-strategy">
     <div style="max-width:960px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:12px;flex-wrap:wrap">
         <div>
           <div class="eyebrow stage-eyebrow" data-stage-num="4"></div>
-          <h2 class="ph sm">Keyword Research</h2>
-          <p class="psub" style="margin-bottom:0">Validate seed keywords, select opportunities, and cluster into page groups that feed the sitemap.</p>
+          <h2 class="ph sm">Strategy Engine</h2>
+          <p class="psub" style="margin-bottom:0">Diagnose, position, and validate the marketing strategy before building the site.</p>
         </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <div id="strategy-top-actions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" onclick="goTo('research')" style="white-space:nowrap"><i class="ti ti-arrow-left"></i> Research</button>
-          <button class="btn btn-primary" id="kw-proceed-btn" onclick="goTo('sitemap')" style="display:none;white-space:nowrap"><i class="ti ti-sitemap"></i> Build Sitemap</button>
         </div>
       </div>
-      <!-- Tab nav -->
-      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>
-      <!-- Tab content -->
-      <div id="kw-tab-content"></div>
+      <!-- Strategy scorecard -->
+      <div id="strategy-scorecard"></div>
+      <!-- Strategy tab nav -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto" id="strategy-tab-nav"></div>
+      <!-- Strategy tab content -->
+      <div id="strategy-tab-content"></div>
     </div>
   </div>
 
@@ -1042,7 +1043,7 @@ async function resumeProject(id) {
   // Re-render stage content
   if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (S.stage === 'research') { initResearch(); }
-  if (S.stage === 'keywords') { initKeywords(); }
+  if (S.stage === 'strategy') { strategyInit(); }
   if (S.stage === 'sitemap') {
     var sitemapBtn = document.getElementById('sitemap-run-btn');
     if (S.pages && S.pages.length) {
@@ -1085,7 +1086,7 @@ const STAGES = [
   {id:'setup',label:'Setup',icon:'ti-settings'},
   {id:'snapshot',label:'Snapshot',icon:'ti-camera'},
   {id:'research',label:'Research',icon:'ti-search'},
-  {id:'keywords',label:'Keywords',icon:'ti-tags'},
+  {id:'strategy',label:'Strategy',icon:'ti-chess'},
   {id:'sitemap',label:'Sitemap',icon:'ti-sitemap'},
   {id:'briefs',label:'Briefs',icon:'ti-file-description'},
   {id:'copy',label:'Copy',icon:'ti-pencil'},
@@ -1172,13 +1173,13 @@ var STAGE_TIPS = {
     "Snapshot pulls domain authority, backlink count, and top organic pages from DataForSEO.",
     "Top organic pages are auto-imported into the Sitemap stage as 'Active Pages'.",
     "Check DA vs competitors before starting — it sets realistic ranking expectations.",
-    "Low DA (< 20) means prioritise long-tail, low-KD keywords in Stage 4.",
+    "Low DA (< 20) means prioritise long-tail, low-KD keywords in the Strategy Keywords tab.",
   ],
   research: [
     "Completeness scorecard at top shows overall percentage and per-tab progress bars — click any missing field to jump straight to it.",
     "Fields labelled AI can be filled by the Enrich button. Fields labelled MANUAL need human input (links, brand colours, reviews).",
     "Run all 5 tabs: Business, Audience, Brand, Schema and Local, Competitors.",
-    "CTA Architecture (Audience tab): primary, secondary, and low-commitment CTAs — all AI-enrichable and injected into every brief and copy prompt.",
+    "Unit Economics (Audience tab): budget, deal size, LTV, lead quality, lead volume — manual inputs that feed the Strategy diagnostics.",
     "Services Detail (Business tab): structured service descriptions with target audience and differentiators — feeds briefs, clusters, and copy.",
     "Proof and E-E-A-T (Brand tab): case studies, notable clients, awards, team credentials, founder bio — feeds copy Pass 3 and brief prompts.",
     "Competitors tab includes Weaknesses and What We Do Better — feeds competitor context in briefs and cluster strategy.",
@@ -1186,20 +1187,19 @@ var STAGE_TIPS = {
     "Stop button in the AI bar pauses enrichment mid-tab. Resume continues from the next unfinished tab.",
     "Client name auto-populates from Setup — no need to type it again.",
     "Enrichment scrapes up to 11 website pages (about, services, pricing, portfolio, team, contact) for context.",
+    "Strategic fields (value proposition, CTAs, brand voice, differentiators) have moved to the Strategy stage — Research focuses on factual data collection.",
   ],
-  keywords: [
-    "Start with Questions — they generate buyer-intent questions from Research data and auto-extract intent keywords into Seeds.",
-    "Questions now use services_detail, case studies, competitors, and pricing model for deeper, service-specific question generation.",
-    "Set country before Fetch Volumes — wrong country = wrong volumes. Check the dropdown in Seeds.",
-    "AI Generate Seeds produces tight head terms (2-4 words) for volume lookup, not long-tail.",
-    "Competitor Keywords mines non-brand organic terms from competitor domains into the Competitor seed bucket.",
-    "Run Fetch Volumes after adding seeds from any source — it expands via Google Suggest then gets DataForSEO volumes.",
-    "Site DR in Opportunities enables rankability badges (green check, yellow stretch, red out of range) per keyword.",
-    "Clusters now receive full research context: value proposition, differentiators, services detail, competitor weaknesses, and audience.",
-    "Strategic Override: core services from services_detail always qualify for pages even with volume under 50.",
-    "Clusters use page-title naming (e.g. SEO Services Vancouver) and prefer 3-6 blog pillars over many thin posts.",
-    "Question assignments (from Validate and Assign) flow into the cluster prompt so AEO page mapping stays aligned.",
-    "Validate and Assign checks search volumes and maps each question to a page — required before Briefs stage.",
+  strategy: [
+    "Strategy runs 7 diagnostics sequentially: Unit Economics, Competitive Position, Subtraction, Channel Viability, Website and CRO, Content and Authority, Risk Assessment.",
+    "Pass 1 auto-drafts the full strategy from Research data and enrichment. Pass 2+ targets the weakest sections for improvement.",
+    "The scoring engine evaluates data completeness (35%), analytical confidence (40%), and specificity (25%) — anti-inflation caps prevent score gaming.",
+    "The Keywords tab inside Strategy validates demand with real search volumes — D8 runs on Pass 2+ and caps overall score at 6.5 if demand is unvalidated.",
+    "Approve the strategy before proceeding to Sitemap — downstream stages read positioning, CTAs, brand voice, and differentiators from S.strategy.",
+    "Gap panels highlight missing inputs (e.g. no budget data for Unit Economics) with one-click auto-resolve.",
+    "Version control tracks every pass — you can review what changed between iterations.",
+    "Override any AI-generated field by editing it directly — overrides persist across re-generations.",
+    "The timeline table shows phased execution across levers with dependencies and duration estimates.",
+    "Enrichment runs automatically before diagnostics: competitor deep-dives, keyword pre-scan, CPC estimates, site performance checks.",
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
@@ -1230,7 +1230,7 @@ var STAGE_TIPS = {
     "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
     "Copy Audit checks word count, FAQ section, Canadian spelling, CTA presence, and more.",
     "Pass 3 (E-E-A-T) injects case studies, team credentials, awards, and notable clients from Research into existing copy — run after audit passes.",
-    "Proof, CTA architecture, slogan, words to avoid, and booking flow from Research are all injected into the copy prompt automatically.",
+    "Proof, CTA architecture, slogan, words to avoid, and booking flow from Strategy and Research are all injected into the copy prompt automatically.",
     "Human QC gate: verify brand voice, facts, and offers before approving.",
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
     "Copy is generated at 6,000 tokens — long pages may need a Pass 2 to complete thin sections.",
@@ -1373,7 +1373,7 @@ function navToStage(stage) {
 function renderStageContent(stage) {
   if (stage === 'snapshot' && S.snapshot) renderSnapshot();
   if (stage === 'research') { initResearch(); }
-  if (stage === 'keywords') { initKeywords(); }
+  if (stage === 'strategy') { strategyInit(); }
   if (stage === 'sitemap') {
     // Auto-populate import panel from snapshot top pages (if not already set)
     if (S.snapshot?.topPages?.length && !S.existingUrlsText) {
@@ -2542,6 +2542,7 @@ async function deleteAdminUser() {
 
 
 </script>
+<script src="strategy.js"></script>
 <script src="keywords.js"></script>
 <script src="briefs.js"></script>
 <script src="sitemap.js"></script>

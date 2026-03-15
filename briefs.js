@@ -1149,29 +1149,38 @@ async function generatePageBrief(pageIdx) {
   if (!assignedQs.length) {
     _warnings.push('No questions assigned — FAQ section will be generic');
   }
-  if (!R.business_overview && !R.value_proposition) {
+  if (!R.business_overview && !getStrategyField('positioning.value_proposition', 'value_proposition')) {
     _warnings.push('Research incomplete — no business overview or value proposition');
   }
-  if (!R.primary_cta) {
-    _warnings.push('No primary CTA defined in Research — CTA architecture will be generic');
+  if (!getStrategyField('positioning.primary_cta', 'primary_cta')) {
+    _warnings.push('No primary CTA defined in Strategy — CTA architecture will be generic');
   }
   if (_warnings.length && typeof aiBarNotify === 'function') {
     aiBarNotify('Brief warnings: ' + _warnings.join('. '), { duration: 6000 });
   }
 
   // ── SHARED CONTEXT ───────────────────────────────────────────────
+  var _vp = getStrategyField('positioning.value_proposition', 'value_proposition') || '';
+  var _kd = getStrategyField('positioning.key_differentiators', 'key_differentiators') || [];
+  var _ep = R.existing_proof || R.proof_points || [];
+  var _bv = getStrategyField('brand_strategy.voice_style', 'brand_voice_style') || '';
+  var _tv = getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice') || '';
+  var _sl = R.current_slogan || R.slogan_or_tagline || '';
+  var _wa = getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid') || [];
+  var _wu = getStrategyField('brand_strategy.words_to_use', 'words_to_use') || [];
+  var _pn = R.current_pricing || R.pricing_notes || '';
   var ctxBusiness = [
     'Client: '+(R.client_name||S.setup&&S.setup.client_name||'Unknown'),
     'Industry: '+(R.industry||''),
-    'Value proposition: '+(R.value_proposition||''),
-    'Key differentiators: '+((R.key_differentiators||[]).join('; ')||'none provided'),
-    'Proof points: '+((R.proof_points||[]).join('; ')||'none provided'),
-    'Brand voice: '+(R.brand_voice_style||R.tone_and_voice||'professional'),
-    (R.slogan_or_tagline ? 'Slogan: '+R.slogan_or_tagline : ''),
-    (R.words_to_avoid&&R.words_to_avoid.length ? 'Words to avoid: '+R.words_to_avoid.join(', ') : ''),
-    (R.words_to_use&&R.words_to_use.length ? 'Words to use: '+R.words_to_use.join(', ') : ''),
+    'Value proposition: '+_vp,
+    'Key differentiators: '+(_kd.length ? _kd.join('; ') : 'none provided'),
+    'Proof points: '+(_ep.length ? _ep.join('; ') : 'none provided'),
+    'Brand voice: '+(_bv||_tv||'professional'),
+    (_sl ? 'Slogan: '+_sl : ''),
+    (_wa.length ? 'Words to avoid: '+_wa.join(', ') : ''),
+    (_wu.length ? 'Words to use: '+_wu.join(', ') : ''),
     (R.booking_flow_description ? 'Booking flow: '+R.booking_flow_description : ''),
-    (R.pricing_notes ? 'Pricing notes: '+R.pricing_notes : ''),
+    (_pn ? 'Pricing notes: '+_pn : ''),
   ].filter(function(l){ return l && l.split(': ')[1]; }).join('\n');
   var _webStrategy = (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
   var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
@@ -1190,9 +1199,12 @@ async function generatePageBrief(pageIdx) {
 
   // CTA architecture context
   var _ctaLines = [];
-  if (R.primary_cta) _ctaLines.push('Primary CTA: '+R.primary_cta);
-  if (R.secondary_cta) _ctaLines.push('Secondary CTA: '+R.secondary_cta);
-  if (R.low_commitment_cta) _ctaLines.push('Low-commitment CTA: '+R.low_commitment_cta);
+  var _pCta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
+  var _sCta = getStrategyField('positioning.secondary_cta', 'secondary_cta') || '';
+  var _lCta = getStrategyField('positioning.low_commitment_cta', 'low_commitment_cta') || '';
+  if (_pCta) _ctaLines.push('Primary CTA: '+_pCta);
+  if (_sCta) _ctaLines.push('Secondary CTA: '+_sCta);
+  if (_lCta) _ctaLines.push('Low-commitment CTA: '+_lCta);
   var ctxCTA = _ctaLines.length ? '\n\n## CTA ARCHITECTURE\n'+_ctaLines.join('\n') : '';
 
   // Services detail context
@@ -1202,7 +1214,7 @@ async function generatePageBrief(pageIdx) {
   }
 
   var ctxAudience = [
-    'Primary audience: '+(R.primary_audience_description||((R.target_audience||[])[0])||''),
+    'Primary audience: '+(R.primary_audience_description||((R.current_customer_profile||R.target_audience||[])[0])||''),
     'Best customer example: '+(R.best_customer_examples||''),
     'Buyer roles: '+((R.buyer_roles_titles||[]).join(', ')||''),
     'Top pain points: '+((R.pain_points_top5||[]).slice(0,3).join('; ')||''),

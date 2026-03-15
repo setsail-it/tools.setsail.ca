@@ -134,9 +134,12 @@ function buildCopyPrompt(page) {
   if (r.founder_bio) _cpProof.push('Founder: '+r.founder_bio);
   var cpProofBlock = _cpProof.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n'+_cpProof.join('\n') : '';
   var _cpCta = [];
-  if (r.primary_cta) _cpCta.push('Primary CTA: '+r.primary_cta);
-  if (r.secondary_cta) _cpCta.push('Secondary CTA: '+r.secondary_cta);
-  if (r.low_commitment_cta) _cpCta.push('Low-commitment CTA: '+r.low_commitment_cta);
+  var _cpPcta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
+  var _cpScta = getStrategyField('positioning.secondary_cta', 'secondary_cta') || '';
+  var _cpLcta = getStrategyField('positioning.low_commitment_cta', 'low_commitment_cta') || '';
+  if (_cpPcta) _cpCta.push('Primary CTA: '+_cpPcta);
+  if (_cpScta) _cpCta.push('Secondary CTA: '+_cpScta);
+  if (_cpLcta) _cpCta.push('Low-commitment CTA: '+_cpLcta);
   var cpCtaBlock = _cpCta.length ? '\n\n## CTA ARCHITECTURE\n'+_cpCta.join('\n') : '';
 
   if (page.page_type === 'blog') {
@@ -147,9 +150,9 @@ function buildCopyPrompt(page) {
       + '\nTARGET WORD COUNT: ' + (page.word_count_target || 1200)
       + '\nBUSINESS OVERVIEW: ' + (r.business_overview||'')
       + '\nGEOGRAPHY: ' + getPageGeo(page)
-      + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
-      + ((r.slogan_or_tagline) ? '\nSLOGAN: '+r.slogan_or_tagline : '')
-      + ((r.words_to_avoid||[]).length ? '\nWORDS TO AVOID: '+r.words_to_avoid.join(', ') : '')
+      + '\nVOICE: ' + (getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice')||s.voice||'Confident, direct. Canadian spelling.')
+      + ((r.current_slogan||r.slogan_or_tagline) ? '\nSLOGAN: '+(r.current_slogan||r.slogan_or_tagline) : '')
+      + (((getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).length) ? '\nWORDS TO AVOID: '+(getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).join(', ') : '')
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
       + cpProofBlock + cpCtaBlock
@@ -166,17 +169,17 @@ function buildCopyPrompt(page) {
     + '\nINTENT: ' + (page.search_intent||'')
     + '\nWORD COUNT MIN: ' + (page.word_count_target||1500)
     + '\nOVERVIEW: ' + (r.business_overview||'')
-    + '\nVALUE PROP: ' + (r.value_proposition||'')
-    + '\nDIFFERENTIATORS: ' + (r.key_differentiators||[]).join('. ')
+    + '\nVALUE PROP: ' + (getStrategyField('positioning.value_proposition', 'value_proposition')||'')
+    + '\nDIFFERENTIATORS: ' + (getStrategyField('positioning.key_differentiators', 'key_differentiators')||[]).join('. ')
     + '\nGEOGRAPHY: ' + getPageGeo(page)
-    + '\nPRICING: ' + (s.pricing||r.pricing_notes||'')
-    + '\nVOICE: ' + (r.tone_and_voice||s.voice||'Confident, direct. Canadian spelling.')
-    + ((r.slogan_or_tagline) ? '\nSLOGAN: '+r.slogan_or_tagline : '')
-    + ((r.words_to_avoid||[]).length ? '\nWORDS TO AVOID: '+r.words_to_avoid.join(', ') : '')
-    + ((r.words_to_use||[]).length ? '\nWORDS TO USE: '+r.words_to_use.join(', ') : '')
+    + '\nPRICING: ' + (s.pricing||r.current_pricing||r.pricing_notes||'')
+    + '\nVOICE: ' + (getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice')||s.voice||'Confident, direct. Canadian spelling.')
+    + ((r.current_slogan||r.slogan_or_tagline) ? '\nSLOGAN: '+(r.current_slogan||r.slogan_or_tagline) : '')
+    + (((getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).length) ? '\nWORDS TO AVOID: '+(getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).join(', ') : '')
+    + (((getStrategyField('brand_strategy.words_to_use', 'words_to_use')||[]).length) ? '\nWORDS TO USE: '+(getStrategyField('brand_strategy.words_to_use', 'words_to_use')||[]).join(', ') : '')
     + (((r.pain_points_top5||[]).length) ? '\nAUDIENCE PAIN POINTS: ' + (r.pain_points_top5||[]).slice(0,3).join('; ') : '')
     + (((r.objections_top5||[]).length) ? '\nBUYER OBJECTIONS: ' + (r.objections_top5||[]).slice(0,3).join('; ') : '')
-    + (((r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.proof_points||[]).slice(0,3).join('; ') : '')
+    + (((r.existing_proof||r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.existing_proof||r.proof_points||[]).slice(0,3).join('; ') : '')
     + ((r.booking_flow_description) ? '\nBOOKING FLOW: '+r.booking_flow_description : '')
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
@@ -588,7 +591,7 @@ async function runCopyPass3(slug) {
 
   var r = S.research || {}, s = S.setup;
   // Build E-E-A-T material from research
-  var proofPoints = (r.proof_points || []).slice(0,6).join('\n- ');
+  var proofPoints = (r.existing_proof || r.proof_points || []).slice(0,6).join('\n- ');
   var caseStudies = (r.case_studies || []).slice(0,4).map(function(cs){ return typeof cs==='object'?((cs.client||'Client')+' — '+(cs.result||'result')+(cs.timeframe?' ('+cs.timeframe+')':'')):cs; }).join('\n- ');
   var teamCreds = r.team_credentials || r.founder_bio || '';
   var awards = (r.awards_certifications || []).join(', ');
@@ -668,7 +671,7 @@ async function runCopyPass2(slug) {
     + '\nWord count target: ' + (p.word_count_target||1500)
     + '\nClient: ' + (s&&s.client||'')
     + '\nGeo: ' + getPageGeo(p)
-    + '\nVoice: ' + ((r.tone_and_voice)||(s&&s.voice)||'Confident, direct. Canadian spelling.');
+    + '\nVoice: ' + ((getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice'))||(s&&s.voice)||'Confident, direct. Canadian spelling.');
 
   // Trim HTML for input — strip inline styles and class attrs to save tokens
   // Strip style/class attrs to save tokens, keep up to 7500 chars of actual content
