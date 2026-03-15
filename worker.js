@@ -1665,11 +1665,16 @@ export default {
           .filter(p => p.traffic > 0 || p.referringDomains > 0)
           .map(p => ({ oldUrl: p.url, oldSlug: p.slug, newSlug: '', status: 'pending' }));
 
+        // Convert DataForSEO rank (0-1000) to 0-100 scale using their formula: sin(rank/636.62)*100
+        const rawRank = backlinksResult?.rank ?? null;
+        const dr100 = rawRank != null ? Math.round(Math.sin(rawRank / 636.62) * 100) : null;
+        console.log('[snapshot] backlinks rank raw:', rawRank, '→ DR (0-100):', dr100, 'refdomains:', backlinksResult?.referring_domains);
+
         const result = {
           capturedAt: Date.now(),
           domain,
           domainMetrics: {
-            dr: backlinksResult?.rank ?? null,
+            dr: dr100,
             orgTraffic: Math.round(overviewResult?.items?.[0]?.metrics?.organic?.etv || 0),
             orgKeywords: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0)+(orgMetrics.pos_4_10||0)+(orgMetrics.pos_11_20||0)+(orgMetrics.pos_21_30||0)+(orgMetrics.pos_31_40||0)+(orgMetrics.pos_41_50||0)+(orgMetrics.pos_51_60||0)+(orgMetrics.pos_61_70||0)+(orgMetrics.pos_71_80||0)+(orgMetrics.pos_81_90||0)+(orgMetrics.pos_91_100||0),
             orgKeywords1_3: (orgMetrics.pos_1||0)+(orgMetrics.pos_2_3||0),
