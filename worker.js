@@ -1848,13 +1848,18 @@ export default {
               keyword,
               locationCode,
               httpStatus: serpRes.status,
+              apiStatusCode: serpData?.status_code,
+              apiStatusMessage: serpData?.status_message,
+              tasksCount: serpData?.tasks?.length || 0,
               taskStatus: serpData?.tasks?.[0]?.status_code,
               taskMessage: serpData?.tasks?.[0]?.status_message,
+              resultCount: serpData?.tasks?.[0]?.result?.length || 0,
               totalItems: serpItems.length,
               itemTypes: [...new Set(serpItems.map(i => i.type))],
               organicCount: allOrganic.length,
               filteredCount: filteredItems.length,
-              organicDomains: allOrganic.slice(0, 8).map(i => { try { return new URL(i.url).hostname; } catch(e) { return '?'; } })
+              organicDomains: allOrganic.slice(0, 8).map(i => { try { return new URL(i.url).hostname; } catch(e) { return '?'; } }),
+              rawSnippet: JSON.stringify(serpData).slice(0, 500)
             },
             competitors: []
           }), {
