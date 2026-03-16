@@ -1237,6 +1237,9 @@ var STAGE_TIPS = {
     "Client name and URL are used in all downstream copy and SEO output.",
     "Upload strategy docs here — they feed Research enrichment and Strategy generation. The website strategy brief is auto-generated in Strategy (Output tab).",
     "Primary Market is the default geo for all pages — override per page in the Sitemap Market column.",
+    "Discovery notes — paste call notes, client conversations, intake forms. Feeds D0 Audience and positioning hypothesis extraction.",
+    "Sales qualification — budget range, deal timeline, decision stage. Feeds Unit Economics (D1) and channel budget allocation (D4).",
+    "Competitor URLs — up to 5. Used in Snapshot DA comparison, Research competitor tab, and Strategy positioning analysis.",
   ],
   snapshot: [
     "Snapshot pulls domain authority, backlink count, and top organic pages from DataForSEO.",
@@ -1259,6 +1262,7 @@ var STAGE_TIPS = {
     "Strategic fields (value proposition, CTAs, brand voice, differentiators) have moved to the Strategy stage — Research focuses on factual data collection.",
     "Unit Economics fields (budget, deal size, LTV, lead quality, lead volume, close rate) auto-normalise on input — enter $5k or 5000 and it formats correctly.",
     "Economics Readiness panel shows which inputs are filled and their impact on Strategy D1 confidence — click missing fields to jump to them.",
+    "Client Pain (Layer 1 of dual pain): extracted from Audience tab — pain points, triggers, language, severity ratings. Warning badge shows when pain data is incomplete. Feeds all downstream prompts via getPainContextBlock().",
   ],
   strategy: [
     "Strategy runs D0 (Audience) first, then 7 diagnostics sequentially: Unit Economics, Competitive Position, Subtraction, Channel Viability, Website and CRO, Content and Authority, Risk Assessment.",
@@ -1286,6 +1290,7 @@ var STAGE_TIPS = {
     "Every vertical from intake appears in the Audience tab as active or explicitly deprioritised with rationale in the Parked Segments section.",
     "First-pass scores above 7.0 trigger a warning — high confidence on Pass 1 usually means anti-inflation caps were not enforced properly. Score jumps above 1.5 between passes are also flagged.",
     "Voice and hard rules are vertical-aware — content pillars and word permissions/bans can differ by audience segment via vertical overlays in the Brand tab.",
+    "Customer Voice enrichment (Layer 2 of dual pain): enriches each persona executionProfile with emotional drivers, competitor frustrations, switching triggers, and decision anxiety. Combined with Layer 1 client pain via getPainContextBlock() for all downstream prompts.",
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
@@ -1304,6 +1309,8 @@ var STAGE_TIPS = {
     "Content Pillar tags (blue) show which brand pillar a blog page supports. Use the Pillars toolbar button to AI-assign all blog pages at once, or pick manually in Edit mode.",
     "Priority suggestions (blue chips in Edit mode) show when strategy data suggests a different priority than currently set. Accept individually or use Accept All in the toolbar.",
     "Re-suggest button recalculates priority suggestions from growth plan phases and channel lever scores — use after updating strategy.",
+    "Mermaid Export — opens a modal with the sitemap as a Mermaid diagram. Copy to Clipboard, then paste in FigJam (Insert → Mermaid diagram → paste → Done).",
+    "HTML Sitemap Export — opens a styled HTML sitemap in a new tab with all pages grouped by priority, URL, primary keyword, and completion status.",
     "Gate 1: approve the sitemap before generating briefs. Changes here affect all downstream work.",
   ],
   briefs: [
@@ -1339,6 +1346,7 @@ var STAGE_TIPS = {
     "Human QC now includes persona language verification and positioning consistency checks alongside the original brand voice, facts, and pricing items.",
     "Meta tags are auto-generated with positioning angle, primary keyword placement, and search intent framing — editable inline with character counters.",
     "Queue All generates copy server-side with full strategy context parity — same prompt as client-side. Safe to close the tab.",
+    "Pain sidebar — expanded copy panel shows a collapsible dual pain context panel with Layer 1 (client pain from Research) and Layer 2 (customer pain from persona executionProfile). Helps verify pain language is woven into the copy.",
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
   ],
   images: [
@@ -3141,8 +3149,8 @@ async function deleteAdminUser() {
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Overall Score Caps</div>
       <p style="font-size:11px;margin:0 0 6px;color:var(--n2)">These cap the final overall score regardless of section scores:</p>
       <div style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;margin-bottom:14px">
-        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>D8 demand validation not run</strong> — overall capped at 6.5</span></div>
-        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>D8 high-severity strategic revision needed</strong> — overall capped at 6.5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Demand validation not run</strong> (Keywords tab) — overall capped at 6.5</span></div>
+        <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Demand validation: high-severity strategic revision needed</strong> — overall capped at 6.5</span></div>
         <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>No subtraction analysis</strong> — overall capped at 7.0</span></div>
         <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Low audit pass rate (&lt;50% across all diagnostics)</strong> — overall capped at 7.0</span></div>
         <div style="display:flex;gap:8px"><span style="color:#f56c6c;min-width:14px"><i class="ti ti-lock" style="font-size:9px"></i></span><span><strong>Audience score below 5.0</strong> — overall capped at 6.0 (weak audience foundation limits entire strategy)</span></div>
@@ -3190,7 +3198,7 @@ async function deleteAdminUser() {
         <p><strong>Page Goal (Sitemap)</strong> — AI-generated strategic purpose per page. Derived from website strategy, page type, keyword intent, and CRO context. Shows as purple text under the page name. Per-page sparkle button or bulk <em>Goals</em> toolbar button. Editable in Edit mode. Injected into brief and copy prompts as <code>## PAGE GOAL</code> — every section of downstream output is written to serve this goal.</p>
         <p><strong>Per-page geo / Market column (Sitemap)</strong> — Each page inherits the Primary Market from Setup by default. Override per page in the Market column for multi-market projects (e.g. US landing pages on a Canadian project). Keyword volume Refresh groups lookups by target market — separate DataForSEO API calls per country. Briefs and copy prompts use per-page geo for SERP Intel and geography context.</p>
         <p><strong>Intent column (Sitemap)</strong> — Search intent classification (commercial, transactional, informational, navigational) visible in the grid. Colour-coded: orange = transactional, blue = commercial, green = informational, grey = navigational. Editable dropdown in Edit mode.</p>
-        <p><strong>Setup simplified</strong> — Stripped to essentials: client name, URL, primary market, strategy doc. Voice, competitors, pricing, image style, and site type are derived downstream in Research or later stages. Old field values preserved for backward compatibility.</p>
+        <p><strong>Setup expanded</strong> — Client name, URL, primary market, industry, strategy doc upload, discovery notes (call transcripts, client conversations), sales qualification (budget, timeline, deal stage), and up to 5 competitor URLs. Voice, pricing, image style, and site type are derived downstream in Research or later stages.</p>
         <p><strong>Web Strategy Brief (Strategy Output tab)</strong> — Auto-generated after strategy compilation; regenerate anytime from the Output tab. Reads all 8 strategy sections plus research data and produces a 7-section 800-1100 word website brief: (1) what the site must convince, (2) competitive frame, (3) conversion economics, (4) page type rules, (5) proof requirements, (6) channel integration, (7) hard rules and risk guardrails. Injected into every brief, copy, and sitemap generation call.</p>
         <p><strong>Per-page context (Briefs)</strong> — "Page Context" field at the bottom of every brief card. Paste case study data, stats, claims, or custom copy instructions. Upload text files (appended to context) or images (noted for reference). Saves on blur, injected as <code>## PAGE-SPECIFIC CONTEXT</code> in briefs and copy.</p>
         <p><strong>Keyword gate (Sitemap)</strong> — SEO pages without a primary keyword show an amber <strong>⚠ none</strong> in the keyword column. Gate 1 shows a count warning before you can approve.</p>
@@ -3229,7 +3237,7 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>KV limit:</strong> 25MB max. Monitor console for [save] payload size warnings. Projects with 100+ pages and heavy research data approach this limit.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Save:</strong> auto-saves on every action (debounced). Green indicator top-right confirms saved. Red = failed — check console for payload size or network error.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Auth:</strong> Cloudflare Access (Google SSO). Any @setsail.ca email can authenticate. Projects are user-scoped (<code>u:{email}:project:{id}</code>). Roles (Admin/Strategist/Viewer) and per-project access restrictions managed in Admin panel (top-right dropdown → Admin).</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Token limits:</strong> Default 3k. Briefs: 4k. Copy: 6k. Schema: 4k. Research: 3.5k. Gap analysis: 3k.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Token limits:</strong> Default 3k. Briefs: 8k. Copy: 3k (default). Schema: 4k. Research: 8k (brand/business) or 6k (others). Strategy diagnostics: 8k. Strategy output: 8k. Server cap: 8192.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Bulk queue:</strong> Cloudflare Queues (setsailos-gen-queue). 2 concurrent, 3 retries, 30s delay on 429. Job status in KV, 24h TTL. Free tier handles ~10k ops/day — 40 briefs ≈ 120 ops.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Canadian spelling:</strong> -ize endings are correct (optimize, organize, specialize). Only flag: color/honour/center/theatre and -yze → -yse (analyze → analyse).</span></div>
       </div>

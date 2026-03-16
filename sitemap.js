@@ -1217,15 +1217,16 @@ function showMermaidModal() {
   modal.querySelector('#mermaid-close-btn').onclick = function() {
     document.getElementById('mermaid-modal').remove();
   };
-  // Wire copy button with fallback
+  // Wire copy button with fallback — use mermaid var from closure, not DOM read
   modal.querySelector('#mermaid-copy-btn').onclick = function() {
     var btn = this;
-    var text = document.getElementById('mermaid-output').textContent;
+    var text = mermaid;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function() {
         btn.innerHTML = '<i class="ti ti-check"></i> Copied!';
         setTimeout(function() { btn.innerHTML = '<i class="ti ti-copy"></i> Copy to Clipboard'; }, 2200);
-      }).catch(function() {
+      }).catch(function(err) {
+        console.warn('[mermaid] clipboard API failed, using fallback:', err);
         _mermaidFallbackCopy(text, btn);
       });
     } else {
