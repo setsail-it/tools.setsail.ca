@@ -1279,9 +1279,14 @@ var STAGE_TIPS = {
     "Intent column shows search intent (commercial, transactional, informational, navigational) — editable in Edit mode.",
     "Market column shows per-page target geo — leave blank to inherit Primary Market, or override for multi-market pages.",
     "Page Goal (purple text under page name) is the strategic purpose — click the sparkle button to AI-generate, or use the Goals toolbar button to generate all.",
-    "Page goals flow into briefs and copy prompts — every section of downstream output is written to serve the stated goal.",
+    "Page goals now include persona context and positioning direction — AI writes goals addressing the assigned persona specifically, not generic marketing speak.",
+    "Persona badges (purple) show which strategy persona each page targets. Auto-assigned during build: industry pages match segments, service pages get the primary persona. Override in Edit mode.",
+    "Voice overlay (Edit mode dropdown) assigns vertical-specific voice rules to each page — feeds into Briefs with segment-appropriate tone, vocabulary, and banned words.",
     "Refresh button fetches keyword volumes grouped by each page target market — multi-country projects get separate API calls per geo.",
     "Align column shows strategy alignment: green dot = page type supported by strategy levers, yellow = needs review, red = cut suggested by subtraction analysis. Hover for revenue estimate on low-volume pages.",
+    "Stats bar shows positioning gaps (purple) and CTA gaps (orange) when the sitemap is missing pages that support the selected positioning direction or CTA landing pages.",
+    "Persona Coverage Check panel (Content Intelligence section) verifies each active persona has an industry page, case study, and objection content. Click + Create to add missing pages directly.",
+    "Budget tier awareness: priority suggestions now consider whether the lever is funded in the current budget. Unfunded levers are capped at P3 with a tooltip explaining the growth budget threshold.",
     "Content Pillar tags (blue) show which brand pillar a blog page supports. Use the Pillars toolbar button to AI-assign all blog pages at once, or pick manually in Edit mode.",
     "Priority suggestions (blue chips in Edit mode) show when strategy data suggests a different priority than currently set. Accept individually or use Accept All in the toolbar.",
     "Re-suggest button recalculates priority suggestions from growth plan phases and channel lever scores — use after updating strategy.",
@@ -1292,24 +1297,35 @@ var STAGE_TIPS = {
     "Generate Page Questions before AI Assign — they become FAQ H3s in the brief.",
     "AI Assign Keywords + Questions maps the right keywords and FAQs to each page in one pass.",
     "SERP Intel is cached per keyword — re-generating a brief skips the API call if data already exists.",
-    "Brief Evaluator scores 9-11 quality checks including page goal alignment — fix reds before approving.",
+    "Brief Evaluator scores 9-11 quality checks including page goal alignment and persona fit — fix reds before approving.",
     "Pre-generation warnings flag missing keywords, questions, research data, or CTAs before the AI call runs.",
     "Stop button in the AI bar pauses any generation mid-stream. Resume picks up exactly where it left off.",
-    "Queue All generates all briefs server-side — safe to close the tab while it runs.",
+    "Queue All generates all briefs server-side — safe to close the tab while it runs. Worker uses the same context blocks as the frontend.",
     "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
     "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy.",
     "Page Goal from the Sitemap stage is injected into the brief prompt — the AI writes every section to serve that strategic purpose.",
+    "Positioning Direction shapes every brief — if the strategy direction is 'The Diagnostic Agency,' service briefs frame the service through that narrative lens automatically.",
+    "Subtraction Insights inject what the client should stop doing — service and utility briefs use these as differentiated messaging angles that no competitor brief would include.",
+    "Economics-calibrated CTAs: budget tier and lead volume from Strategy determine CTA aggressiveness. Low-volume clients get low-friction CTAs; high-volume clients get qualifying CTAs.",
+    "Competitive Counter from Strategy's positioning diagnostic is sharper than Research-level competitor weaknesses — it's injected alongside competitor context for precise differentiation.",
+    "Persona alignment: if a page has a target persona assigned in Sitemap, the brief prompt includes that persona's frustrations, decision criteria, and language patterns. Evaluator checks persona fit.",
     "Services pricing from Research is now included in brief context — the AI uses real pricing data for CRO recommendations.",
     "The code icon on each brief card shows the exact prompt sent to Claude — use it to diagnose unexpected outputs.",
   ],
   copy: [
-    "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures.",
-    "Copy Audit checks word count, FAQ section, Canadian spelling, CTA presence, and more.",
-    "Pass 3 (E-E-A-T) injects case studies, team credentials, awards, and notable clients from Research into existing copy — run after audit passes.",
-    "Proof, CTA architecture, slogan, words to avoid, and booking flow from Strategy and Research are all injected into the copy prompt automatically.",
-    "Human QC gate: verify brand voice, facts, and offers before approving.",
+    "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures. Pass 3 injects E-E-A-T signals.",
+    "Positioning Direction shapes every page — if the strategy direction is 'The Diagnostic Agency,' the Hero, Problem/Agitation, and Solution Bridge all frame through that lens automatically.",
+    "Persona context is injected per page — the copy prompt includes the target persona frustrations, objection profile, decision criteria, and language patterns. Home/about pages get all active personas.",
+    "Voice overlay from Sitemap carries through — pages with vertical-specific voice rules get those rules in the copy prompt, Pass 2, and Pass 3.",
+    "Copy Audit now checks persona alignment and positioning direction consistency alongside word count, FAQ, Canadian spelling, and CTA presence.",
+    "Pass 3 (E-E-A-T) prioritises proof by persona segment — construction personas get construction case studies first. Missing proof is flagged with PROOF GAP comments for Human QC.",
+    "Subtraction insights inject what the client should stop doing — service page copy uses these as differentiated messaging angles in Problem/Agitation sections.",
+    "Economics context calibrates CTA aggressiveness — volume-constrained clients get low-friction CTAs, volume-sufficient clients get qualifying CTAs.",
+    "Blog content pillars shape writing style — Thought Leadership gets contrarian angles, Case Study gets narrative structure, Vertical Deep-dive gets industry-specific language.",
+    "Human QC now includes persona language verification and positioning consistency checks alongside the original brand voice, facts, and pricing items.",
+    "Meta tags are auto-generated with positioning angle, primary keyword placement, and search intent framing — editable inline with character counters.",
+    "Queue All generates copy server-side with full strategy context parity — same prompt as client-side. Safe to close the tab.",
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
-    "Copy is generated at 6,000 tokens — long pages may need a Pass 2 to complete thin sections.",
   ],
   images: [
     "Images are generated per page based on the approved brief and copy.",
@@ -2842,7 +2858,7 @@ async function deleteAdminUser() {
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S2</span><span>Site Snapshot — domain authority, link metrics</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S3</span><span>Research — upload docs, AI enriches 150+ fields (proof, CTAs, services detail, competitors)</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S4</span><span>Keywords — AEO pipeline: questions → seeds → opportunities → strategy-aligned clusters</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals, persona/voice/positioning integration</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S7</span><span>Copy — generate → audit → QC → approve</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — generate per page</span></div>
@@ -2934,13 +2950,18 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Location pages</strong> — geo + category: "digital marketing Calgary", "marketing agency Toronto".</span></div>
       </div>
       <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
-        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters and assigns a <strong>page goal</strong> (strategic purpose) to each page based on the website strategy. Review the output carefully.</li>
+        <li><strong>Generate Sitemap</strong> — Claude maps pages to keyword clusters and assigns a <strong>page goal</strong> (strategic purpose) to each page based on the website strategy. When a positioning direction is selected, it is injected into the AI prompt so page architecture reflects the chosen strategic angle.</li>
         <li><strong>Display order</strong> — pages are automatically sorted: Core (home, about, contact) → Services → Locations → Blog. Within each type: P1 → P2 → P3 → score. Display-only — does not change generation priority.</li>
         <li><strong>Category tabs</strong> — filter by All, Services, Locations, Blog, or Core. Counts update live.</li>
         <li><strong>Grid columns</strong> — #, Page, Cluster Anchor, Vol, KD, Score, Intent, Priority, Market, Traffic. Intent and Market are editable in Edit mode.</li>
-        <li><strong>Page Goal</strong> (purple text under page name) — the strategic purpose of the page. AI-generated from strategy + page type + keyword intent. Click the sparkle button per page or use <em>Goals</em> toolbar button to bulk-generate for all pages without one. Editable in Edit mode. Flows into brief and copy prompts.</li>
+        <li><strong>Page Goal</strong> (purple text under page name) — the strategic purpose of the page. AI-generated from strategy + page type + keyword intent + persona context. Click the sparkle button per page or use <em>Goals</em> toolbar button to bulk-generate for all pages without one. Editable in Edit mode. Flows into brief and copy prompts.</li>
+        <li><strong>Persona badge</strong> (blue badge after content pillar) — shows the target persona assigned to each page. Auto-assigned during Build based on page type and audience segments. Editable via dropdown in Edit mode. Persona context (frustrations, decision criteria, language patterns) is injected into page goal and brief prompts.</li>
+        <li><strong>Voice overlay</strong> — per-page voice rule assignment. Auto-assigned from the persona segment name, defaults to "base". Editable via dropdown in Edit mode. Briefs stage reads the overlay and injects vertical-specific voice rules from strategy into the brief prompt.</li>
         <li><strong>Market column</strong> — per-page target geo. Leave blank to inherit Primary Market from Setup. Override for multi-market pages (e.g. US landing pages on a Canadian project). Keyword volume Refresh groups lookups by target market.</li>
         <li><strong>Intent column</strong> — search intent classification (commercial, transactional, informational, navigational). Colour-coded. Editable dropdown in Edit mode.</li>
+        <li><strong>Priority + budget awareness</strong> — AI-suggested priority (P1/P2/P3) factors in alignment score, page type, and budget tier. If a lever is unfunded in the current budget tier, the page is capped at P3 with a tooltip explaining the budget threshold needed.</li>
+        <li><strong>Stats bar strategy badges</strong> — when strategy data exists, the stats bar shows: alignment score average, priority distribution diff, positioning direction gaps (purple badge — missing proof pages), and CTA landing page gaps (orange badge — CTAs without dedicated pages).</li>
+        <li><strong>Persona Coverage Check</strong> — panel in the Content Intelligence section. Verifies each active persona has an industry page, case study, and objection-addressing content. Missing items show "+ Create" buttons to add gap-filling pages directly.</li>
         <li><strong>Refresh</strong> — re-fetches keyword volumes from DataForSEO, grouped by each page target market. Multi-country projects get separate API calls per geo.</li>
         <li><strong>Approve Sitemap</strong> — locks the page architecture. Required before Briefs stage processes.</li>
       </ol>

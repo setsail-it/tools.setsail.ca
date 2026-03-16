@@ -345,6 +345,11 @@ async function scoreBrief(pageIdx) {
     checks.push({ id:'goal_alignment', label:'Brief serves page goal: '+p.page_goal.trim().substring(0,40) });
   }
 
+  // Persona alignment check (only if persona assigned)
+  if (p.target_persona) {
+    checks.push({ id: 'persona', label: 'Persona alignment — addresses target persona pains/language' });
+  }
+
   // Add SERP-aware checks if serpIntel data exists
   var serpContext = '';
   if (p.serpIntel && p.serpIntel.directives) {
@@ -361,6 +366,12 @@ async function scoreBrief(pageIdx) {
 
   var checkList = checks.map(function(c){ return '- '+c.id+': '+c.label; }).join('\n');
 
+  // Persona evaluation context (only if persona assigned)
+  var personaContext = '';
+  if (p.target_persona) {
+    personaContext = '\nFor persona: Does the brief address the target persona (' + p.target_persona + ') specific frustrations, use their language patterns, or acknowledge their decision criteria?';
+  }
+
   var prompt = 'You are evaluating a content brief for completeness and quality.\n\n'
     + '## BRIEF TO EVALUATE\n'+p.brief.summary+'\n\n'
     + '## PAGE\n'
@@ -368,6 +379,7 @@ async function scoreBrief(pageIdx) {
     + (p.page_goal ? 'Page goal: '+p.page_goal+'\n' : '')
     + '\n'
      + serpContext
+     + personaContext
     + '\n## CHECKS\\nFor each check below, return pass:true  or pass:false plus a one-line note (max 8 words).\n\n'
     + checkList+'\n\n'
     + 'Return raw JSON only — no markdown:\n'
@@ -1169,19 +1181,54 @@ async function generatePageBrief(pageIdx) {
   var _wa = getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid') || [];
   var _wu = getStrategyField('brand_strategy.words_to_use', 'words_to_use') || [];
   var _pn = R.current_pricing || R.pricing_notes || '';
+
+  // Voice overlay: use page-level voice_overlay to load vertical-specific voice rules
+  var _voiceOverlay = p.voice_overlay || 'base';
+  var _voiceRules = '';
+  if (_voiceOverlay !== 'base' && S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.voice_overlays && S.strategy.brand_strategy.voice_overlays[_voiceOverlay]) {
+    var _overlay = S.strategy.brand_strategy.voice_overlays[_voiceOverlay];
+    _voiceRules = '\nVoice overlay (' + _voiceOverlay + '): ' + (typeof _overlay === 'string' ? _overlay : JSON.stringify(_overlay));
+  }
+
+  // Persona context for this page
+  var _personaCtx = '';
+  if (p.target_persona && S.strategy && S.strategy.audience && S.strategy.audience.personas) {
+    var _matchedPersona = S.strategy.audience.personas.find(function(per) { return per.name === p.target_persona; });
+    if (_matchedPersona) {
+      var _perParts = ['Target persona: ' + (_matchedPersona.name || '')];
+      if (_matchedPersona.role) _perParts.push('Role: ' + _matchedPersona.role);
+      if (_matchedPersona.frustrations && _matchedPersona.frustrations.length) _perParts.push('Pains: ' + _matchedPersona.frustrations.slice(0, 3).join('; '));
+      if (_matchedPersona.decision_criteria && _matchedPersona.decision_criteria.length) _perParts.push('Evaluates: ' + _matchedPersona.decision_criteria.slice(0, 3).join('; '));
+      if (_matchedPersona.language_patterns && _matchedPersona.language_patterns.length) _perParts.push('Language: ' + _matchedPersona.language_patterns.slice(0, 2).join('; '));
+      _personaCtx = '\n' + _perParts.join('\n');
+    }
+  }
+
+  // Positioning direction: the strategic narrative spine
+  var _directionCtx = '';
+  if (S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction) {
+    var _dir = S.strategy.positioning.selected_direction;
+    var _dirParts = ['POSITIONING DIRECTION: ' + (_dir.name || _dir.direction || '')];
+    if (_dir.thesis) _dirParts.push('Thesis: ' + _dir.thesis);
+    if (_dir.messaging_hierarchy && _dir.messaging_hierarchy.length) _dirParts.push('Messaging hierarchy: ' + _dir.messaging_hierarchy.slice(0, 3).join(' → '));
+    _directionCtx = '\n' + _dirParts.join('\n');
+  }
+
   var ctxBusiness = [
     'Client: '+(R.client_name||S.setup&&S.setup.client_name||'Unknown'),
     'Industry: '+(R.industry||''),
     'Value proposition: '+_vp,
+    _directionCtx,
     'Key differentiators: '+(_kd.length ? _kd.join('; ') : 'none provided'),
     'Proof points: '+(_ep.length ? _ep.join('; ') : 'none provided'),
-    'Brand voice: '+(_bv||_tv||'professional'),
+    'Brand voice: '+(_bv||_tv||'professional') + _voiceRules,
     (_sl ? 'Slogan: '+_sl : ''),
     (_wa.length ? 'Words to avoid: '+_wa.join(', ') : ''),
     (_wu.length ? 'Words to use: '+_wu.join(', ') : ''),
     (R.booking_flow_description ? 'Booking flow: '+R.booking_flow_description : ''),
     (_pn ? 'Pricing notes: '+_pn : ''),
-  ].filter(function(l){ return l && l.split(': ')[1]; }).join('\n');
+    _personaCtx,
+  ].filter(function(l){ return l && l.trim() && (l.indexOf(': ') < 0 || l.split(': ')[1]); }).join('\n');
   var _webStrategy = (S.strategy&&S.strategy.webStrategy&&S.strategy.webStrategy.trim()) || (S.setup&&S.setup.webStrategy&&S.setup.webStrategy.trim()) || '';
   var _pageCtx = (p.pageContext&&p.pageContext.trim()) || '';
   var _pageGoal = (p.page_goal&&p.page_goal.trim()) || '';
@@ -1200,7 +1247,8 @@ async function generatePageBrief(pageIdx) {
   // CTA architecture context
   var _ctaLines = [];
   var _pCta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
-  var _sCta = getStrategyField('positioning.secondary_cta', 'secondary_cta') || '';
+  var _sCtas = getStrategyField('positioning.secondary_ctas', 'secondary_ctas') || [];
+  var _sCta = Array.isArray(_sCtas) ? _sCtas.join(', ') : (_sCtas || '');
   var _lCta = getStrategyField('positioning.low_commitment_cta', 'low_commitment_cta') || '';
   if (_pCta) _ctaLines.push('Primary CTA: '+_pCta);
   if (_sCta) _ctaLines.push('Secondary CTA: '+_sCta);
@@ -1211,6 +1259,53 @@ async function generatePageBrief(pageIdx) {
   var ctxServicesDetail = '';
   if ((R.services_detail||[]).length) {
     ctxServicesDetail = '\n\n## SERVICES DETAIL\n'+(R.services_detail||[]).slice(0,8).map(function(sd){ return '- '+sd.name+(sd.description?' — '+sd.description:'')+(sd.pricing?' (pricing: '+sd.pricing+')':'')+(sd.key_differentiator?' [differentiator: '+sd.key_differentiator+']':''); }).join('\n');
+  }
+
+  // Subtraction context — what the client should stop doing (messaging angle)
+  var ctxSubtraction = '';
+  if (S.strategy && S.strategy.subtraction) {
+    var _sub = S.strategy.subtraction;
+    var _subLines = [];
+    var _subAudit = _sub.current_activities_audit || _sub.verdicts || [];
+    if (_subAudit.length) {
+      var _stops = _subAudit.filter(function(v) { return v.verdict === 'cut' || v.verdict === 'stop' || v.verdict === 'restructure'; });
+      if (_stops.length) {
+        _subLines = _stops.slice(0, 4).map(function(v) {
+          var _vLabel = (v.verdict === 'cut' || v.verdict === 'stop') ? 'CUT' : 'RESTRUCTURE';
+          return '- ' + _vLabel + ': ' + (v.activity || v.name || '') + (v.reason || v.rationale ? ' — ' + (v.reason || v.rationale) : '');
+        });
+      }
+    }
+    if (_sub.total_recoverable_monthly) _subLines.push('Recoverable budget: $' + _sub.total_recoverable_monthly + '/mo');
+    else if (_sub.recoverable_budget) _subLines.push('Recoverable budget: ' + _sub.recoverable_budget);
+    if (_sub.subtraction_summary) _subLines.push('Summary: ' + _sub.subtraction_summary);
+    if (_subLines.length) ctxSubtraction = '\n\n## SUBTRACTION INSIGHTS (use as differentiated messaging angle)\n' + _subLines.join('\n');
+  }
+
+  // Economics signal — budget posture for CTA calibration
+  var ctxEconomics = '';
+  if (S.strategy && S.strategy.unit_economics) {
+    var _ue = S.strategy.unit_economics;
+    var _econLines = [];
+    if (S.strategy.channel_strategy && S.strategy.channel_strategy.budget_tiers) {
+      var _bt = S.strategy.channel_strategy.budget_tiers;
+      var _tierLabel = _bt.current_budget ? 'Current' : 'Unknown';
+      if (_bt.current_budget && _bt.current_budget.label) _tierLabel = _bt.current_budget.label;
+      _econLines.push('Budget tier: ' + _tierLabel);
+    }
+    if (_ue.monthly_leads_target) _econLines.push('Lead volume target: ' + _ue.monthly_leads_target + '/mo');
+    if (_ue.cac) _econLines.push('CAC: $' + _ue.cac);
+    if (_ue.ltv && _ue.cac) {
+      var _ratio = (parseFloat(_ue.ltv) / parseFloat(_ue.cac)).toFixed(1);
+      _econLines.push('LTV:CAC ratio: ' + _ratio + 'x');
+    }
+    // Volume vs quality posture
+    if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) < 30) {
+      _econLines.push('Posture: volume-constrained — every lead matters, minimise friction in CTAs');
+    } else if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) >= 100) {
+      _econLines.push('Posture: volume-sufficient — CTAs can afford to qualify (filter low-intent leads)');
+    }
+    if (_econLines.length) ctxEconomics = '\n\n## ECONOMICS CONTEXT (calibrate CTA aggressiveness)\n' + _econLines.join('\n');
   }
 
   var ctxAudience = [
@@ -1225,6 +1320,17 @@ async function generatePageBrief(pageIdx) {
   var ctxCompetitors = (R.competitors||[]).slice(0,3).map(function(c){
     return '- '+(c.name||c.url||c)+(c.weaknesses?' (weakness: '+c.weaknesses+')':'');
   }).join('\n') || 'None identified';
+
+  // Strategy-level competitive counter (sharper than research-level weaknesses)
+  var _compCounter = '';
+  if (S.strategy && S.strategy.positioning) {
+    var _pos = S.strategy.positioning;
+    if (_pos.competitive_counter) _compCounter += '\nCompetitive counter: ' + _pos.competitive_counter;
+    if (_pos.validated_differentiators && _pos.validated_differentiators.length) {
+      _compCounter += '\nValidated differentiators: ' + _pos.validated_differentiators.slice(0, 4).join('; ');
+    }
+  }
+  if (_compCounter) ctxCompetitors += _compCounter;
 
   var _impliedKw = (!p.primary_keyword && ['home','about','contact','utility','team'].includes((p.page_type||'').toLowerCase()))
     ? (((S.research&&S.research.client_name)||(S.setup&&S.setup.client)||'') + ' ' + p.page_name).trim() : '';
@@ -1293,7 +1399,7 @@ async function generatePageBrief(pageIdx) {
       + (_webStrategy ? '\n\n## WEBSITE STRATEGY\n'+_webStrategy : '')
       + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n'+_pageGoal : '')
-      + ctxProof + ctxCTA + ctxServicesDetail
+      + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
@@ -1406,7 +1512,7 @@ async function generatePageBrief(pageIdx) {
       + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
-      + ctxProof + ctxCTA + ctxServicesDetail
+      + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions

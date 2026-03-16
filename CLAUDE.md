@@ -10,9 +10,9 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison
 3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
 4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline, and compiled 14-section strategy document
-5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, market overrides, and active page import from Snapshot
-6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), and AI evaluation scorecards
-7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection), human QC checklists, and version tabs
+5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, and active page import from Snapshot
+6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards, positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, and persona alignment scoring
+7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
 8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
 9. **Layout** — Wireframe generation with section-level structure and responsive grid suggestions
 10. **Schema** — Structured data markup (JSON-LD) per page type with validation
@@ -37,13 +37,13 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 ## File Map
 
 ```
-worker.js        — All backend API routes + queue consumer (~2141 lines)
+worker.js        — All backend API routes + queue consumer (~2682 lines)
 index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~3249 lines)
 strategy.js      — Stage 4: strategy engine + scoring + diagnostics + web strategy brief (~5961 lines)
 keywords.js      — Keyword research (tab within Strategy stage) (~3072 lines)
-sitemap.js       — Stage 5: sitemap generation (~1928 lines)
-briefs.js        — Stage 6: brief generation + queue (~1645 lines)
-copy.js          — Stage 7: copy generation + audit (~1171 lines)
+sitemap.js       — Stage 5: sitemap generation + persona/voice/positioning integration (~2379 lines)
+briefs.js        — Stage 6: brief generation + queue + strategy context integration (~1751 lines)
+copy.js          — Stage 7: copy generation + audit + strategy context integration (~1367 lines)
 research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1523 lines)
 layout.js        — Stage 9: wireframe generation (~558 lines)
 images.js        — Stage 8: image generation (~490 lines)
@@ -71,7 +71,7 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 - `S.strategy.positioning` — D2 output: hypotheses, evaluations, selected direction, messaging, voice
 - `S.strategy.unit_economics` — D1 output: CPL, CAC, LTV, sensitivity analysis, CPC intelligence
 - `S.strategy.channel_strategy` — D4 output: lever scores, budget tiers, funnel coverage
-- `S.pages[]` — sitemap pages with keywords, briefs, metadata
+- `S.pages[]` — sitemap pages with keywords, briefs, metadata, `target_persona`, `voice_overlay`
 - `S.kwResearch` — seeds, keywords, clusters, selected
 - `S.copy{}` — per-slug copy data (HTML stored in separate KV keys)
 - `S.schema{}`, `S.layout{}`, `S.images{}` — per-slug stage data

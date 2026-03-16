@@ -2021,8 +2021,9 @@ export default {
             } catch { /* SERP non-fatal */ }
           }
 
-          // ── Build brief prompt (same logic as client generatePageBrief) ──
+          // ── Build brief prompt (feature-parity with briefs.js generatePageBrief) ──
           const addlKws = (p.supporting_keywords || []).map(k => typeof k === 'object' ? (k.kw || '') : String(k)).filter(Boolean);
+          const existingRkws = (p.existing_ranking_kws || []).slice(0, 5).map(k => k.kw || k);
           const assignedQs = p.assignedQuestions || [];
           // Read strategic fields from S.strategy with fallback to S.research
           const ST = S.strategy || {};
@@ -2033,19 +2034,96 @@ export default {
           const _wTv = (ST.brand_strategy && ST.brand_strategy.tone_and_voice) || R.tone_and_voice || '';
           const _wSl = R.current_slogan || R.slogan_or_tagline || '';
           const _wWa = (ST.brand_strategy && ST.brand_strategy.words_to_avoid) || R.words_to_avoid || [];
+          const _wWu = (ST.brand_strategy && ST.brand_strategy.words_to_use) || R.words_to_use || [];
+          const _wPn = R.current_pricing || R.pricing_notes || '';
           const _wPcta = (ST.positioning && ST.positioning.primary_cta) || R.primary_cta || '';
-          const _wScta = (ST.positioning && ST.positioning.secondary_cta) || R.secondary_cta || '';
+          const _wScta = (ST.positioning && ST.positioning.secondary_ctas) || (ST.positioning && ST.positioning.secondary_cta) || R.secondary_cta || '';
           const _wLcta = (ST.positioning && ST.positioning.low_commitment_cta) || R.low_commitment_cta || '';
+
+          // Voice overlay (1)
+          const _voiceOverlay = p.voice_overlay || 'base';
+          let _voiceRules = '';
+          if (_voiceOverlay !== 'base' && ST.brand_strategy && ST.brand_strategy.voice_overlays && ST.brand_strategy.voice_overlays[_voiceOverlay]) {
+            const _overlay = ST.brand_strategy.voice_overlays[_voiceOverlay];
+            _voiceRules = '\nVoice overlay (' + _voiceOverlay + '): ' + (typeof _overlay === 'string' ? _overlay : JSON.stringify(_overlay));
+          }
+
+          // Persona context (2)
+          let _personaCtx = '';
+          if (p.target_persona && ST.audience && ST.audience.personas) {
+            const _matchedPersona = (ST.audience.personas || []).find(per => per.name === p.target_persona);
+            if (_matchedPersona) {
+              const _perParts = ['Target persona: ' + (_matchedPersona.name || '')];
+              if (_matchedPersona.role) _perParts.push('Role: ' + _matchedPersona.role);
+              if (_matchedPersona.frustrations && _matchedPersona.frustrations.length) _perParts.push('Pains: ' + _matchedPersona.frustrations.slice(0, 3).join('; '));
+              if (_matchedPersona.decision_criteria && _matchedPersona.decision_criteria.length) _perParts.push('Evaluates: ' + _matchedPersona.decision_criteria.slice(0, 3).join('; '));
+              if (_matchedPersona.language_patterns && _matchedPersona.language_patterns.length) _perParts.push('Language: ' + _matchedPersona.language_patterns.slice(0, 2).join('; '));
+              _personaCtx = '\n' + _perParts.join('\n');
+            }
+          }
+
           const ctxBusiness = [
             'Client: ' + (R.client_name || setup.client_name || 'Unknown'),
+            'Industry: ' + (R.industry || ''),
             'Value proposition: ' + _wVp,
-            'Key differentiators: ' + (_wKd.length ? _wKd.join('; ') : 'none'),
-            'Proof points: ' + (_wEp.length ? _wEp.join('; ') : 'none'),
-            'Brand voice: ' + (_wBv || _wTv || 'professional'),
+            'Key differentiators: ' + (_wKd.length ? _wKd.join('; ') : 'none provided'),
+            'Proof points: ' + (_wEp.length ? _wEp.join('; ') : 'none provided'),
+            'Brand voice: ' + (_wBv || _wTv || 'professional') + _voiceRules,
             (_wSl ? 'Slogan: ' + _wSl : ''),
             (_wWa.length ? 'Words to avoid: ' + _wWa.join(', ') : ''),
+            (_wWu.length ? 'Words to use: ' + _wWu.join(', ') : ''),
             (R.booking_flow_description ? 'Booking flow: ' + R.booking_flow_description : ''),
-          ].filter(l => l && l.split(': ')[1]).join('\n');
+            (_wPn ? 'Pricing notes: ' + _wPn : ''),
+            _personaCtx,
+          ].filter(l => l && l.trim() && (l.indexOf(': ') < 0 || l.split(': ')[1])).join('\n');
+
+          // Positioning direction (12)
+          let ctxPositioning = '';
+          if (ST.positioning && ST.positioning.selected_direction) {
+            const _dir = ST.positioning.selected_direction;
+            ctxPositioning = '\n\n## POSITIONING DIRECTION\n' + (_dir.name || '') + ((_dir.thesis) ? ' — ' + _dir.thesis : '');
+          }
+
+          // Competitive counter (13)
+          let ctxCompCounter = '';
+          if (ST.positioning && ST.positioning.competitive_counter) {
+            ctxCompCounter = '\nCompetitive counter: ' + ST.positioning.competitive_counter;
+          }
+
+          const pt = (p.page_type || 'service').toLowerCase();
+          const isService = /^(service|location|industry)$/.test(pt);
+          const isBlog = /^(blog|faq|resource)$/.test(pt);
+          const isUtility = /^(home|about|team|utility)$/.test(pt);
+
+          // Subtraction context (14) — service/utility only
+          let ctxSubtraction = '';
+          if ((isService || isUtility) && ST.subtraction) {
+            const _subItems = [];
+            const _subAudit = ST.subtraction.current_activities_audit || ST.subtraction.verdicts || (Array.isArray(ST.subtraction) ? ST.subtraction : []);
+            _subAudit.filter(s => s.verdict === 'cut' || s.verdict === 'stop' || s.verdict === 'restructure').slice(0, 4).forEach(s => {
+              const _vLabel = (s.verdict === 'cut' || s.verdict === 'stop') ? 'CUT' : 'RESTRUCTURE';
+              _subItems.push('- ' + _vLabel + ': ' + (s.activity || s.name || '') + (s.reason || s.rationale ? ' — ' + (s.reason || s.rationale) : ''));
+            });
+            if (ST.subtraction.total_recoverable_monthly) _subItems.push('Recoverable budget: $' + ST.subtraction.total_recoverable_monthly + '/mo');
+            if (ST.subtraction.subtraction_summary) _subItems.push('Summary: ' + ST.subtraction.subtraction_summary);
+            if (_subItems.length) ctxSubtraction = '\n\n## SUBTRACTION INSIGHTS (use as differentiated messaging angle)\n' + _subItems.join('\n');
+          }
+
+          // Economics signal (15) — service/utility only
+          let ctxEconomics = '';
+          if ((isService || isUtility) && ST.unit_economics) {
+            const _ue = ST.unit_economics;
+            const _eLines = [];
+            if (_ue.budget_tier_label || _ue.budget_tier) _eLines.push('Budget tier: ' + (_ue.budget_tier_label || _ue.budget_tier));
+            if (_ue.lead_volume_target) _eLines.push('Lead volume target: ' + _ue.lead_volume_target);
+            if (_ue.volume_vs_quality) _eLines.push('Posture: ' + _ue.volume_vs_quality);
+            if (_eLines.length) ctxEconomics = '\n\n## ECONOMICS SIGNAL\n' + _eLines.join('\n');
+          }
+
+          const _webStrat = ((ST.webStrategy) || setup.webStrategy || '').trim();
+          const _pageCtx = (p.pageContext || '').trim();
+          const _pageGoal = (p.page_goal || '').trim();
+
           // Proof & E-E-A-T context
           const _proofLines = [];
           if ((R.case_studies || []).length) _proofLines.push('Case studies: ' + R.case_studies.slice(0, 4).map(cs => (cs.client || 'Client') + ' — ' + (cs.result || 'result') + (cs.timeframe ? ' (' + cs.timeframe + ')' : '')).join('; '));
@@ -2053,37 +2131,256 @@ export default {
           if ((R.awards_certifications || []).length) _proofLines.push('Awards/certs: ' + R.awards_certifications.slice(0, 4).join(', '));
           if (R.team_credentials) _proofLines.push('Team credentials: ' + R.team_credentials);
           if (R.founder_bio) _proofLines.push('Founder: ' + R.founder_bio);
+          if ((R.publications_media || []).length) _proofLines.push('Media: ' + R.publications_media.slice(0, 3).join(', '));
           const ctxProof = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS\n' + _proofLines.join('\n') : '';
-          // CTA architecture
+
+          // CTA architecture (16 — fixed secondary_ctas)
           const _ctaLines = [];
           if (_wPcta) _ctaLines.push('Primary CTA: ' + _wPcta);
-          if (_wScta) _ctaLines.push('Secondary CTA: ' + _wScta);
+          if (_wScta) _ctaLines.push('Secondary CTA: ' + (Array.isArray(_wScta) ? _wScta.join(', ') : _wScta));
           if (_wLcta) _ctaLines.push('Low-commitment CTA: ' + _wLcta);
           const ctxCTA = _ctaLines.length ? '\n\n## CTA ARCHITECTURE\n' + _ctaLines.join('\n') : '';
+
+          // Services detail (3) — service/utility templates only
+          let ctxServicesDetail = '';
+          if ((R.services_detail || []).length && (isService || isUtility)) {
+            ctxServicesDetail = '\n\n## SERVICES DETAIL\n' + (R.services_detail || []).slice(0, 8).map(sd => '- ' + sd.name + (sd.description ? ' — ' + sd.description : '') + (sd.pricing ? ' (pricing: ' + sd.pricing + ')' : '') + (sd.key_differentiator ? ' [differentiator: ' + sd.key_differentiator + ']' : '')).join('\n');
+          }
+
+          // Page geo (11)
+          const _pageGeo = (p.targetGeo) || (R.geography && R.geography.primary) || (setup.geo) || '';
+
           const ctxAudience = [
-            'Primary audience: ' + (R.primary_audience_description || ''),
+            'Primary audience: ' + (R.primary_audience_description || ((R.current_customer_profile || R.target_audience || [])[0]) || ''),
+            'Best customer example: ' + (R.best_customer_examples || ''),
             'Buyer roles: ' + ((R.buyer_roles_titles || []).join(', ') || ''),
             'Top pain points: ' + ((R.pain_points_top5 || []).slice(0, 3).join('; ') || ''),
             'Top objections: ' + ((R.objections_top5 || []).slice(0, 3).join('; ') || ''),
-            'Geography: ' + ((R.geography?.primary) || R.target_geography || ''),
+            'Geography: ' + (_pageGeo || R.target_geography || ''),
           ].filter(l => l.split(': ')[1]).join('\n');
-          const ctxKeywords = '**Primary:** ' + (p.primary_keyword || 'none') + ' (' + (p.primary_vol || 0) + '/mo, KD:' + (p.primary_kd || 0) + ')\n' + (addlKws.length ? '**Supporting:** ' + addlKws.join(', ') : '');
-          const ctxQuestions = assignedQs.length ? assignedQs.map((q, i) => (i + 1) + '. ' + q).join('\n') : 'None assigned';
 
-          const pt = (p.page_type || 'service').toLowerCase();
-          const isService = /^(service|location|industry)$/.test(pt);
-          const isBlog = /^(blog|faq|resource)$/.test(pt);
+          // Competitors (5)
+          const ctxCompetitors = (R.competitors || []).slice(0, 3).map(c => {
+            return '- ' + (c.name || c.url || c) + (c.weaknesses ? ' (weakness: ' + c.weaknesses + ')' : '');
+          }).join('\n') || 'None identified';
 
-          const sysPrompt = isService
-            ? 'You are a senior CRO + SEO strategist. Write conversion-optimised page briefs for service businesses. CRO and SEO are equally important. Be specific, direct, no generic advice. Canadian spelling.'
-            : isBlog
-            ? 'You are a senior content strategist and SEO specialist. Write editorial briefs for blog posts. E-E-A-T, unique insight, and backlink potential are priorities. Canadian spelling.'
-            : 'You are a senior SEO strategist and brand strategist. Write page briefs for homepage, about, and utility pages. Canadian spelling.';
+          // Implied keywords for nav pages (8)
+          const _impliedKw = (!p.primary_keyword && ['home', 'about', 'contact', 'utility', 'team'].includes(pt))
+            ? ((R.client_name || setup.client_name || '') + ' ' + p.page_name).trim() : '';
 
-          const _webStrat = ((ST.webStrategy)||setup.webStrategy||'').trim();
-          const _pageCtx = (p.pageContext||'').trim();
-          const _pageGoal = (p.page_goal||'').trim();
-          const prompt = '## PAGE\nName: ' + p.page_name + '\nURL: /' + p.slug + '\nType: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n\n## BUSINESS CONTEXT\n' + ctxBusiness + (_webStrat?'\n\n## WEBSITE STRATEGY\n'+_webStrat:'') + (_pageGoal?'\n\n## PAGE GOAL (every section must serve this strategic purpose)\n'+_pageGoal:'') + ctxProof + ctxCTA + '\n\n## AUDIENCE\n' + ctxAudience + '\n\n## KEYWORDS\n' + ctxKeywords + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions + (_pageCtx?'\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx:'') + '\n\n---\nWrite a full 10-section SEO + CRO brief for this page. Include: Reader Profile, Unique Angle, H1 + Title Tag, Conversion Architecture, H2 Skeleton (6-10 sections), Keyword Integration, FAQ Section (use assigned questions as H3s), Internal Links, Word Count target, E-E-A-T inputs required.';
+          // Keywords context (7 — existing ranking kws)
+          const ctxKeywords = '**Primary:** ' + (p.primary_keyword || (_impliedKw ? _impliedKw + ' (navigational)' : 'none')) + ' (' + (p.primary_vol || 0) + '/mo, KD:' + (p.primary_kd || 0) + ')\n'
+            + (addlKws.length ? '**Supporting:** ' + addlKws.join(', ') : '')
+            + (existingRkws.length ? '\n**Currently ranking for:** ' + existingRkws.join(', ') : '');
+
+          const ctxQuestions = assignedQs.length ? assignedQs.map((q, i) => (i + 1) + '. ' + q).join('\n') : 'None assigned — suggest 4-6 questions matched to search intent';
+
+          // Internal links (4)
+          const ctxInternalLinks = (S.pages || []).filter(pg => {
+            return pg.slug !== p.slug && pg.primary_keyword && (pg.page_type === 'service' || pg.page_type === 'location' || pg.page_type === 'industry');
+          }).slice(0, 8).map(pg => '- /' + pg.slug + ' (' + pg.primary_keyword + ')').join('\n') || 'None available yet';
+
+          // SERP Intel block (6) — use the serpIntel data already fetched above
+          let serpBriefBlock = '';
+          const _si = p.serpIntel || S.pages[pageIdx].serpIntel;
+          if (_si && _si.competitors && _si.competitors.length) {
+            const _siKw = p.primary_keyword || '';
+            const _siLines = [];
+            _si.competitors.forEach((c, i) => {
+              _siLines.push('### Competitor ' + (i + 1) + ' — ' + c.url);
+              _siLines.push('- Title: "' + c.title + '"');
+              if (c.meta_description) _siLines.push('- Meta: "' + (c.meta_description || '').slice(0, 160) + '"');
+              if (c.h1) _siLines.push('- H1: "' + c.h1 + '"');
+              if (c.h2s && c.h2s.length) _siLines.push('- H2s: ' + c.h2s.slice(0, 12).join(' | '));
+              if (c.fetch_ok) {
+                _siLines.push('- Words: ~' + c.word_count + (c.kw_count !== undefined ? ' | Keyword "' + _siKw + '" appears ' + c.kw_count + 'x (' + (c.kw_density || 0) + '%)' : ''));
+              }
+            });
+            const _siDir = _si.directives || {};
+            _siLines.push('\n### GAP DIRECTIVES — follow these exactly:');
+            _siLines.push('WORD COUNT: Write minimum ' + (_siDir.word_count_target || Math.round(Math.max(..._si.competitors.filter(c => c.fetch_ok).map(c => c.word_count || 0)) * 1.05) || 1500) + ' words.');
+            if (_siDir.avg_kw_density > 0) {
+              if (_siDir.avg_kw_density > 1.5) {
+                _siLines.push('KEYWORD DENSITY: Competitors avg ' + _siDir.avg_kw_density + '% — target ~' + _siDir.avg_kw_density + '%, do NOT exceed ' + (_siDir.density_ceiling || _siDir.avg_kw_density + 0.5) + '%.');
+              } else {
+                _siLines.push('KEYWORD DENSITY: Competitors avg ' + _siDir.avg_kw_density + '% — target a similar density.');
+              }
+            }
+            if (_siDir.all_competitor_h2s && _siDir.all_competitor_h2s.length) {
+              _siLines.push('H2 COVERAGE: Cover or exceed these competitor topics: ' + _siDir.all_competitor_h2s.slice(0, 15).join(' | '));
+            }
+            serpBriefBlock = _siLines.join('\n');
+          }
+
+          // ── PAGE TYPE ROUTING — three specialised templates ──
+          let sysPrompt, prompt;
+
+          if (isService) {
+            // ── TEMPLATE 1: SERVICE / LOCATION / INDUSTRY ─────────────────
+            sysPrompt = 'You are a senior CRO + SEO strategist. You write conversion-optimised page briefs for service businesses. '
+              + 'CRO and SEO are equally important. Every section must serve both search intent AND move the reader toward the primary CTA. '
+              + 'Be specific, direct, no generic advice. Canadian spelling.';
+
+            prompt = '## PAGE\n'
+              + 'Name: ' + p.page_name + '\n'
+              + 'URL: /' + p.slug + '\n'
+              + 'Type: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n'
+              + (p.existing_traffic ? 'Existing traffic: ' + p.existing_traffic + '/mo\n' : '')
+              + '\n## BUSINESS CONTEXT\n' + ctxBusiness
+              + ctxPositioning + ctxCompCounter
+              + (_webStrat ? '\n\n## WEBSITE STRATEGY\n' + _webStrat : '')
+              + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n' + _pageCtx : '')
+              + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n' + _pageGoal : '')
+              + ctxProof + ctxCTA + ctxServicesDetail
+              + ctxSubtraction + ctxEconomics
+              + '\n\n## AUDIENCE\n' + ctxAudience
+              + '\n\n## KEYWORDS\n' + ctxKeywords
+              + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions
+              + '\n\n## INTERNAL LINK OPPORTUNITIES\n' + ctxInternalLinks
+              + '\n\n## COMPETITORS TO BEAT\n' + ctxCompetitors
+              + (serpBriefBlock ? '\n\n## SERP INTEL\n' + serpBriefBlock : '')
+              + '\n\n---\n'
+              + '## BRIEF OUTPUT — write each section:\n\n'
+              + '### 1. READER PROFILE\n'
+              + 'Who is landing on this page, from what search, at what awareness stage? '
+              + 'What specific fear or desire brings them here? (2-3 sentences — be a real person, not a persona category)\n\n'
+              + '### 2. UNIQUE ANGLE\n'
+              + 'What does this page say that the top 3 SERP results do NOT say? '
+              + 'What proof, claim, or POV makes this worth clicking over the rest? (1-2 sentences, specific)\n\n'
+              + '### 3. H1 + TITLE TAG\n'
+              + 'Recommended H1 (primary keyword in first 3 words). '
+              + 'Title tag variation under 60 chars (optimised for CTR).\n\n'
+              + '### 4. CONVERSION ARCHITECTURE\n'
+              + 'Primary CTA (exact label + placement: hero / post-intro / sticky / end). '
+              + 'Secondary CTA if needed. '
+              + 'Primary objection this page must overcome. '
+              + 'Trust signals required (e.g. testimonial, case study, guarantee, logo bar) and where each appears.\n\n'
+              + '### 5. PAGE STRUCTURE (H2 SKELETON)\n'
+              + 'List 5-10 H2 sections in order. Each H2 should serve both a search intent signal AND a conversion micro-step. '
+              + 'Note the purpose of each section in brackets (e.g. [builds trust], [removes objection], [CTA]).\n\n'
+              + '### 6. KEYWORD INTEGRATION NOTES\n'
+              + 'Where and how often to use the primary keyword. Where to place each supporting keyword. '
+              + 'Which entity terms must appear for topical authority.\n\n'
+              + '### 7. FAQ SECTION (H3s)\n'
+              + 'Use the assigned questions verbatim as H3s. For each, note the answer angle (1 line — not the answer, the direction).\n\n'
+              + '### 8. INTERNAL LINKS\n'
+              + 'Which 3-5 pages from the internal link list should this page link to, and with what anchor text? '
+              + 'Which pages should link TO this page?\n\n'
+              + '### 9. WORD COUNT + FORMAT TARGET\n'
+              + 'Target word count (justify from intent + page type). '
+              + 'Recommended content format (e.g. service landing page with proof blocks, not a listicle).\n\n'
+              + '### 10. E-E-A-T INPUTS REQUIRED\n'
+              + 'What proof must appear on this page to be credible? '
+              + '(e.g. specific case study result, stat, team credential, guarantee). '
+              + 'Flag if any of this is missing from what you know about the client.\n';
+
+          } else if (isBlog) {
+            // ── TEMPLATE 2: BLOG / FAQ / RESOURCE ────────────────────────
+            sysPrompt = 'You are a senior content strategist and SEO specialist. You write editorial briefs for blog posts and resource pages. '
+              + 'E-E-A-T signals, unique insight, and backlink potential are your top priorities alongside search intent match. '
+              + 'Never produce a brief that would result in generic AI-flavoured content. Push for real expertise and original angles. '
+              + 'Canadian spelling.';
+
+            prompt = '## PAGE\n'
+              + 'Name: ' + p.page_name + '\n'
+              + 'URL: /' + p.slug + '\n'
+              + 'Type: blog/resource | Action: ' + (p.action || 'build_new') + '\n'
+              + (p.existing_traffic ? 'Existing traffic: ' + p.existing_traffic + '/mo\n' : '')
+              + '\n## BUSINESS CONTEXT\n' + ctxBusiness
+              + ctxPositioning + ctxCompCounter
+              + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n' + _pageGoal : '')
+              + ctxProof + ctxCTA
+              + '\n\n## AUDIENCE\n' + ctxAudience
+              + '\n\n## KEYWORDS\n' + ctxKeywords
+              + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions
+              + '\n\n## INTERNAL LINK OPPORTUNITIES\n' + ctxInternalLinks
+              + (serpBriefBlock ? '\n\n## SERP INTEL\n' + serpBriefBlock : '')
+              + '\n\n---\n'
+              + '## BRIEF OUTPUT — write each section:\n\n'
+              + '### 1. READER PROFILE + AWARENESS STAGE\n'
+              + 'Who is searching this, what do they already know, what are they hoping to learn or resolve? '
+              + 'What makes them click this over the top result? (2-3 sentences)\n\n'
+              + '### 2. UNIQUE ANGLE + CONTRARIAN HOOK\n'
+              + 'What does this article say or show that the existing top results do NOT? '
+              + 'Is there a contrarian position, proprietary framework, or insider take this business can credibly make? '
+              + '(Specific — not "bring a fresh perspective")\n\n'
+              + '### 3. HEADLINE OPTIONS\n'
+              + 'H1 option (primary keyword in first 3 words, promise-led). '
+              + 'Title tag variation under 60 chars. '
+              + 'One curiosity-gap alternative headline.\n\n'
+              + '### 4. ARTICLE STRUCTURE (H2 SKELETON)\n'
+              + 'List 6-12 H2 sections in reading order. '
+              + 'Flow must resolve search intent start to finish — reader should feel the article answered their question completely. '
+              + 'Note where pull quotes, data callouts, or tables would live.\n\n'
+              + '### 5. INTRO REQUIREMENTS\n'
+              + 'Primary keyword placement (first 120 words). '
+              + 'Hook approach (stat, counterintuitive claim, story, problem statement). '
+              + 'What promise does the intro make to the reader?\n\n'
+              + '### 6. E-E-A-T INPUTS\n'
+              + 'What real experience, data, or proof must appear in this article to be credible? '
+              + 'Specific sections where case study, stat, or first-person experience should be injected. '
+              + 'Is an expert quote or external source citation needed, and on what claim?\n\n'
+              + '### 7. BACKLINK POTENTIAL INPUTS\n'
+              + 'What stat, framework, visual, or original research in this article would make other sites want to link to it? '
+              + 'Be specific about what to include (e.g. "a comparison table of X vs Y that does not exist anywhere else").\n\n'
+              + '### 8. FAQ SECTION (H3s)\n'
+              + 'Use assigned questions verbatim as H3s. Note the answer angle for each (1 line).\n\n'
+              + '### 9. INTERNAL LINKS + SOFT CTA\n'
+              + 'Which 3-5 internal pages should this link to, and where/why? '
+              + 'What soft CTA fits at the end (not pushy — this is an info page)?\n\n'
+              + '### 10. WORD COUNT + SKIMMABILITY FORMAT\n'
+              + 'Target word count. Required skimmability elements (bullets, table, TL;DR box, pull quote, summary section). '
+              + 'Reading time estimate.\n';
+
+          } else {
+            // ── TEMPLATE 3: HOME / ABOUT / UTILITY ───────────────────────
+            sysPrompt = 'You are a senior brand strategist and conversion copywriter. '
+              + 'You write briefs for homepage, about, and utility pages where brand voice and trust signals drive performance. '
+              + 'Search intent must be matched but these pages are also heavy brand touchpoints. '
+              + 'Canadian spelling.';
+
+            prompt = '## PAGE\n'
+              + 'Name: ' + p.page_name + '\n'
+              + 'URL: /' + p.slug + '\n'
+              + 'Type: ' + p.page_type + ' | Action: ' + (p.action || 'build_new') + '\n'
+              + (p.existing_traffic ? 'Existing traffic: ' + p.existing_traffic + '/mo\n' : '')
+              + '\n## BUSINESS CONTEXT\n' + ctxBusiness
+              + ctxPositioning + ctxCompCounter
+              + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n' + _pageGoal : '')
+              + ctxProof + ctxCTA + ctxServicesDetail
+              + ctxSubtraction + ctxEconomics
+              + '\n\n## AUDIENCE\n' + ctxAudience
+              + '\n\n## KEYWORDS\n' + ctxKeywords
+              + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n' + ctxQuestions
+              + '\n\n## COMPETITORS\n' + ctxCompetitors
+              + (serpBriefBlock ? '\n\n## SERP INTEL\n' + serpBriefBlock : '')
+              + '\n\n---\n'
+              + '## BRIEF OUTPUT — write each section:\n\n'
+              + '### 1. PAGE PURPOSE + SEARCH INTENT\n'
+              + 'What is this page\'s primary job? Who lands here and from where (organic, direct, referral)? '
+              + 'What do they need to feel/know/do within 5 seconds of landing?\n\n'
+              + '### 2. BRAND VOICE DIRECTION\n'
+              + 'Specific tone instructions for this page (e.g. "warm and direct, not corporate"). '
+              + 'Words/phrases to use. Words to avoid. One sentence that captures the voice this page should feel like.\n\n'
+              + '### 3. H1 + ABOVE-FOLD CONTENT\n'
+              + 'Recommended H1. What goes above the fold: headline, subheadline, CTA, visual direction.\n\n'
+              + '### 4. PAGE STRUCTURE (H2 SKELETON)\n'
+              + 'Section list in order. For home/about pages this is lighter (4-7 sections). '
+              + 'Each section note: what trust signal or brand story moment lives here.\n\n'
+              + '### 5. TRUST SIGNAL REQUIREMENTS\n'
+              + 'Exactly which trust signals must appear and where: '
+              + 'testimonials, case study callouts, awards, team credentials, client logos, guarantees, stats. '
+              + 'Flag any that are missing from what you know about the client.\n\n'
+              + '### 6. CTA ARCHITECTURE\n'
+              + 'Primary CTA (what, where, what copy). Secondary CTA if needed. '
+              + 'What objection must be removed before a visitor will take action?\n\n'
+              + '### 7. KEYWORD + INTENT INTEGRATION\n'
+              + 'How to work the primary keyword in naturally without making it feel like an SEO page. '
+              + 'For about/team pages: how to integrate expertise signals for E-E-A-T without sounding like a CV.\n\n'
+              + '### 8. WORD COUNT + FORMAT\n'
+              + 'Target word count (home/about pages are shorter — justify). '
+              + 'Format: landing page blocks, narrative, hybrid?\n';
+          }
 
           const briefText = await claudeCall(sysPrompt, prompt, 8000);
 
@@ -2106,13 +2403,257 @@ export default {
           await setStatus('done', { completedAt: Date.now() });
 
         } else if (type === 'copy') {
-          // Copy generation — load brief, call Claude, save to copy KV key
-          const brief = p.brief?.summary || '';
-          if (!brief) { await setStatus('failed', { error: 'No approved brief for ' + slug }); msg.ack(); continue; }
+          // ── Copy generation — full prompt parity with client-side buildCopyPrompt() ──
 
-          const copySystem = 'You are an expert SEO copywriter. Write complete, publish-ready page HTML from this brief. Every section in the brief must become real copy — no placeholders, no [INSERT X]. Canadian spelling.';
-          const copyPrompt = 'Brief:\n' + brief + '\n\nWrite the full page copy as clean HTML. Include all sections from the H2 skeleton, FAQ, and CTAs. Minimum word count as specified in the brief.';
-          const copyHtml = await claudeCall(copySystem, copyPrompt, 6000);
+          const P_COPY = 'You are a senior CRO copywriter and SEO specialist at Setsail Marketing. Write complete, conversion-optimised page copy following this exact structure:\n\n1. HERO — H1 with primary keyword exact match. Outcome-first subheadline (what the client gets, not what we do). Single primary CTA button above the fold. One supporting trust signal (e.g. award, review rating, years in business).\n2. SOCIAL PROOF STRIP — logos or stat bar (3–5 credibility signals, use realistic placeholders like "[Client Logo]" or "★★★★★ 4.9/5 from 28 reviews").\n3. PROBLEM/AGITATION — 2–3 short paragraphs naming the pain the audience feels. Make them feel understood before offering a solution.\n4. SOLUTION BRIDGE — how the service/product solves exactly that problem. Outcome ownership framing, not activity-based.\n5. SERVICES / WHAT\'S INCLUDED — H2 with supporting keyword. 3–6 service cards or feature list with benefit-led descriptions (not feature lists).\n6. PROCESS — 3–5 numbered steps showing how it works. Reduces friction and eliminates "what happens next?" anxiety.\n7. PROOF SECTION — 2–3 case study or testimonial placeholders with specific results (e.g. "[Company X] increased leads by 47% in 90 days — [Name, Title]").\n8. OBJECTION HANDLING — 3–5 short "You might be thinking..." callout blocks that pre-empt the top buying objections.\n9. FAQ — minimum 8 questions. Target long-tail keyword phrases. Answer concisely and naturally.\n10. FINAL CTA SECTION — restate the outcome, repeat the primary CTA, add a low-commitment secondary option (e.g. "Book a free audit" vs "Call us").\n\nSEO RULES: H1 = primary keyword verbatim. First paragraph includes primary keyword. H2s use supporting keywords naturally. Internal link placeholders where relevant.\nCRO RULES: Every section must earn the scroll. No filler copy. Lead with outcomes not activities. Canadian spelling. Direct, confident tone.\nOUTPUT: Clean semantic HTML only. Use section/article/h1/h2/h3/p/ul/li/blockquote. No html/head/body/style tags. Wrap in <div class="page-copy">. CRITICAL: Write the COMPLETE page — all 10 sections — without truncating or stopping early. FAQ must include all 8+ questions. Output the entire page in one response.';
+
+          // ── Strategy context variables (mirrors brief consumer pattern) ──
+          const kws = (p.supporting_keywords || []).map(k => typeof k === 'object' ? (k.kw || '') : String(k)).filter(Boolean).join(', ');
+          const _wVp = (ST.positioning && ST.positioning.value_proposition) || R.value_proposition || '';
+          const _wKd = (ST.positioning && ST.positioning.key_differentiators) || R.key_differentiators || [];
+          const _wBv = (ST.brand_strategy && ST.brand_strategy.voice_style) || R.brand_voice_style || '';
+          const _wTv = (ST.brand_strategy && ST.brand_strategy.tone_and_voice) || R.tone_and_voice || '';
+          const _wSl = R.current_slogan || R.slogan_or_tagline || '';
+          const _wWa = (ST.brand_strategy && ST.brand_strategy.words_to_avoid) || R.words_to_avoid || [];
+          const _wWu = (ST.brand_strategy && ST.brand_strategy.words_to_use) || R.words_to_use || [];
+          const _wPn = R.current_pricing || R.pricing_notes || '';
+          const _wPcta = (ST.positioning && ST.positioning.primary_cta) || R.primary_cta || '';
+          const _wSctas = (ST.positioning && ST.positioning.secondary_ctas) || (ST.positioning && ST.positioning.secondary_cta) || R.secondary_cta || '';
+          const _wScta = Array.isArray(_wSctas) ? _wSctas.join(', ') : (_wSctas || '');
+          const _wLcta = (ST.positioning && ST.positioning.low_commitment_cta) || R.low_commitment_cta || '';
+          const _pageGeo = p.targetGeo || (R.geography && R.geography.primary) || setup.geo || '';
+          const _voice = _wTv || _wBv || setup.voice || 'Confident, direct. Canadian spelling.';
+          const clientName = R.client_name || setup.client_name || setup.client || 'Unknown';
+
+          // Voice overlay
+          const _voiceOverlay = p.voice_overlay || 'base';
+          let _voiceBlock = '';
+          if (_voiceOverlay !== 'base' && ST.brand_strategy && ST.brand_strategy.voice_overlays && ST.brand_strategy.voice_overlays[_voiceOverlay]) {
+            const _overlay = ST.brand_strategy.voice_overlays[_voiceOverlay];
+            _voiceBlock = '\n\nVOICE OVERLAY (' + _voiceOverlay + '): ' + (typeof _overlay === 'string' ? _overlay : JSON.stringify(_overlay)) + '\nThese overlay rules supplement the base voice rules above. Both apply.';
+          }
+
+          // Persona context
+          const _personas = (ST.audience && ST.audience.personas) || [];
+          let _personaBlock = '';
+          if (p.target_persona && _personas.length) {
+            const _matchedPersona = _personas.find(per => per.name === p.target_persona);
+            if (_matchedPersona) {
+              const _pp = ['TARGET PERSONA: ' + _matchedPersona.name];
+              if (_matchedPersona.role) _pp.push('Role: ' + _matchedPersona.role);
+              if (_matchedPersona.frustrations && _matchedPersona.frustrations.length) _pp.push('Pains: ' + _matchedPersona.frustrations.slice(0, 3).join('; '));
+              if (_matchedPersona.objection_profile && _matchedPersona.objection_profile.length) _pp.push('Objections: ' + _matchedPersona.objection_profile.slice(0, 2).join('; '));
+              if (_matchedPersona.decision_criteria && _matchedPersona.decision_criteria.length) _pp.push('Evaluates: ' + _matchedPersona.decision_criteria.slice(0, 3).join('; '));
+              if (_matchedPersona.language_patterns && _matchedPersona.language_patterns.length) _pp.push('Their language: ' + _matchedPersona.language_patterns.slice(0, 2).join('; '));
+              _pp.push('Write copy that speaks directly to this persona. Problem/Agitation must reference their specific pains. Objection Handling must address their stated objections.');
+              _personaBlock = '\n\n' + _pp.join('\n');
+            }
+          } else if ((p.page_type === 'home' || p.page_type === 'about') && _personas.length) {
+            const _parked = (ST.audience && ST.audience.parked_segments) || [];
+            const _activePers = _personas.filter(per => !_parked.some(ps => per.segment && ps.toLowerCase() === per.segment.toLowerCase()));
+            if (_activePers.length) {
+              const _mpp = ['TARGET AUDIENCES (this page serves multiple personas):'];
+              _activePers.slice(0, 3).forEach(per => {
+                _mpp.push('- ' + per.name + (per.frustrations && per.frustrations[0] ? ': pain = ' + per.frustrations[0] : ''));
+              });
+              _mpp.push('Copy must resonate with all listed personas.');
+              _personaBlock = '\n\n' + _mpp.join('\n');
+            }
+          } else if (p.page_type === 'blog' && _personas.length) {
+            const _parked2 = (ST.audience && ST.audience.parked_segments) || [];
+            const _activePers2 = _personas.filter(per => !_parked2.some(ps => per.segment && ps.toLowerCase() === per.segment.toLowerCase()));
+            if (_activePers2.length) {
+              const _bpp = ['TARGET AUDIENCE (blog readers):'];
+              _activePers2.slice(0, 2).forEach(per => {
+                _bpp.push('- ' + per.name + (per.frustrations && per.frustrations[0] ? ': pain = ' + per.frustrations[0] : ''));
+              });
+              _personaBlock = '\n\n' + _bpp.join('\n');
+            }
+          }
+
+          // Positioning direction
+          let _posDirBlock = '';
+          if (ST.positioning && ST.positioning.selected_direction) {
+            const _dir = ST.positioning.selected_direction;
+            _posDirBlock = '\n\nPOSITIONING DIRECTION: ' + (_dir.direction || _dir.name || '') + ((_dir.headline || _dir.thesis) ? '\nHeadline: ' + (_dir.headline || _dir.thesis) : '') + (_dir.rationale ? '\nRationale: ' + _dir.rationale : '') + '\nAll copy must reinforce this positioning. Weave into H1 subheadline, Solution Bridge, and CTA framing.';
+          }
+
+          // Content pillar guidance (blog)
+          let _pillarBlock = '';
+          if (p.content_pillar) {
+            const _pgMap = {
+              'thought leadership': 'Take a strong position. Lead with original insight, not common knowledge.',
+              'case study': 'Narrative: situation, challenge, approach, results, takeaway. Use specific numbers.',
+              'decision content': 'Help the reader choose. Compare options, then guide toward a conclusion. Late-funnel.',
+              'vertical deep-dive': 'Speak the vertical language. Reference industry challenges, regulations, benchmarks.',
+              'performance marketing': 'Data-first. Show methodology, not just results.'
+            };
+            _pillarBlock = '\nCONTENT PILLAR: ' + p.content_pillar;
+            const _cpLower = p.content_pillar.toLowerCase();
+            for (const k of Object.keys(_pgMap)) {
+              if (_cpLower.indexOf(k) >= 0) { _pillarBlock += '\nPILLAR GUIDANCE: ' + _pgMap[k]; break; }
+            }
+          }
+
+          // Proof & E-E-A-T
+          const _proofLines = [];
+          if ((R.case_studies || []).length) _proofLines.push('Case studies: ' + R.case_studies.slice(0, 4).map(cs => (cs.client || 'Client') + ' — ' + (cs.result || 'result') + (cs.timeframe ? ' (' + cs.timeframe + ')' : '')).join('; '));
+          if ((R.notable_clients || []).length) _proofLines.push('Notable clients: ' + R.notable_clients.slice(0, 6).join(', '));
+          if ((R.awards_certifications || []).length) _proofLines.push('Awards/certs: ' + R.awards_certifications.slice(0, 4).join(', '));
+          if (R.team_credentials) _proofLines.push('Team credentials: ' + R.team_credentials);
+          if (R.founder_bio) _proofLines.push('Founder: ' + R.founder_bio);
+          const cpProofBlock = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n' + _proofLines.join('\n') : '';
+
+          // CTA architecture
+          const _ctaLines = [];
+          if (_wPcta) _ctaLines.push('Primary CTA: ' + _wPcta);
+          if (_wScta) _ctaLines.push('Secondary CTA: ' + _wScta);
+          if (_wLcta) _ctaLines.push('Low-commitment CTA: ' + _wLcta);
+          const cpCtaBlock = _ctaLines.length ? '\n\n## CTA ARCHITECTURE\n' + _ctaLines.join('\n') : '';
+
+          // Subtraction context (non-blog only)
+          const isBlog = /^(blog|faq|resource)$/i.test(p.page_type || '');
+          let _subBlock = '';
+          if (!isBlog && ST.subtraction) {
+            const _subAudit = ST.subtraction.current_activities_audit || ST.subtraction.verdicts || (Array.isArray(ST.subtraction) ? ST.subtraction : []);
+            const _subStops = _subAudit.filter(v => v.verdict === 'cut' || v.verdict === 'stop' || v.verdict === 'restructure').slice(0, 3);
+            if (_subStops.length) {
+              const _subLines = ['SUBTRACTION INSIGHTS (use as differentiated messaging angle):'];
+              _subStops.forEach(v => {
+                _subLines.push('- ' + (v.verdict === 'cut' || v.verdict === 'stop' ? 'CUT' : 'RESTRUCTURE') + ': ' + (v.activity || v.name || '') + (v.reason || v.rationale ? ' — ' + (v.reason || v.rationale) : ''));
+              });
+              if (ST.subtraction.total_recoverable_monthly) _subLines.push('Recoverable budget: $' + ST.subtraction.total_recoverable_monthly + '/mo');
+              _subLines.push('Frame as: "Most agencies add more. We found waste first."');
+              _subBlock = '\n\n' + _subLines.join('\n');
+            }
+          }
+
+          // Economics context (non-blog only)
+          let _econBlock = '';
+          if (!isBlog && ST.unit_economics) {
+            const _ue = ST.unit_economics;
+            const _econLines = [];
+            if (ST.channel_strategy && ST.channel_strategy.budget_tiers && ST.channel_strategy.budget_tiers.current_budget && ST.channel_strategy.budget_tiers.current_budget.label) {
+              _econLines.push('Budget tier: ' + ST.channel_strategy.budget_tiers.current_budget.label);
+            }
+            if (_ue.monthly_leads_target) _econLines.push('Lead target: ' + _ue.monthly_leads_target + '/mo');
+            if (_ue.ltv && _ue.cac && parseFloat(_ue.cac) > 0) {
+              _econLines.push('LTV:CAC: ' + (parseFloat(_ue.ltv) / parseFloat(_ue.cac)).toFixed(1) + 'x');
+            }
+            if (_econLines.length) {
+              let _posture = '';
+              if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) < 30) _posture = 'Volume-constrained — minimise CTA friction, every lead matters.';
+              else if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) >= 100) _posture = 'Volume-sufficient — CTAs can qualify and filter low-intent leads.';
+              if (_posture) _econLines.push('CTA posture: ' + _posture);
+              _econBlock = '\n\nECONOMICS CONTEXT (calibrate CTA aggressiveness):\n' + _econLines.join('\n');
+            }
+          }
+
+          // Competitive counter (non-blog only)
+          let _compCounter = '';
+          if (!isBlog && ST.positioning) {
+            if (ST.positioning.competitive_counter) _compCounter += '\nCOMPETITIVE COUNTER: ' + ST.positioning.competitive_counter + '\nUse in Objection Handling or Solution Bridge. Do NOT name competitors directly.';
+            if (ST.positioning.validated_differentiators && ST.positioning.validated_differentiators.length) {
+              _compCounter += '\nValidated differentiators: ' + ST.positioning.validated_differentiators.slice(0, 4).join('; ');
+            }
+          }
+
+          // FAQ targets
+          const questionsBlock = (p.assignedQuestions || []).length
+            ? '\nFAQ TARGETS (must appear as H3 questions in FAQ section):\n- ' + (p.assignedQuestions || []).join('\n- ')
+            : '';
+
+          // Brief block
+          const hasBrief = !!(p.brief && p.brief.approved && p.brief.summary && p.brief.summary.trim().length > 50);
+          const briefBlock = hasBrief
+            ? '\n\n## APPROVED CONTENT BRIEF\nThis brief has been reviewed and approved. Follow its H2 structure, CTA architecture, word count target, FAQ questions, and E-E-A-T inputs precisely. Do not invent a different structure.\n\n' + p.brief.summary + '\n\n## END OF BRIEF'
+            : '';
+          const briefInstruction = hasBrief
+            ? 'Follow the approved brief above. Write complete page HTML matching the brief H1, H2 structure, CTA positions, word count, objections, trust signals, FAQ questions, and E-E-A-T inputs exactly. Use the business context fields above for the actual copy content. No <html>/<head>/<body> tags.'
+            : 'Write the complete page. No <html>/<head>/<body> tags. Canadian spelling.';
+          const blogBriefInstruction = hasBrief
+            ? 'Follow the approved brief above. Write the complete blog post in HTML matching the structure, unique angle, word count, and FAQ questions specified. No <html>/<head>/<body> tags. Canadian spelling.'
+            : 'Write a complete, SEO-optimised blog post in HTML. Structure: H1 title, engaging introduction (2-3 sentences), 3-5 H2 sections with substantive body copy, a conclusion paragraph with a CTA linking back to the client\'s services. Do not include <html>, <head>, or <body> tags. Canadian spelling throughout.';
+
+          // SERP Intel block (inline since buildSerpIntelBlock is not available in worker)
+          let serpBlock = '';
+          if (p.serpIntel && p.serpIntel.competitors && p.serpIntel.competitors.length) {
+            const si = p.serpIntel;
+            serpBlock = '\n\n## SERP INTEL — "' + (p.primary_keyword || '') + '"\n';
+            si.competitors.forEach((c, i) => {
+              serpBlock += '### Competitor ' + (i + 1) + ' — ' + c.url + '\n';
+              serpBlock += '- Title: "' + c.title + '"\n';
+              if (c.meta_description) serpBlock += '- Meta: "' + c.meta_description.slice(0, 160) + '"\n';
+              if (c.h1) serpBlock += '- H1: "' + c.h1 + '"\n';
+              if (c.h2s && c.h2s.length) serpBlock += '- H2s: ' + c.h2s.slice(0, 12).join(' | ') + '\n';
+              if (c.fetch_ok) serpBlock += '- Words: ~' + c.word_count + ' | KW density: ' + c.kw_density + '%\n';
+            });
+            const d = si.directives || {};
+            if (d.word_count_target) serpBlock += '\nTarget word count: ' + d.word_count_target + ' (max × 1.05)\n';
+          }
+
+          // Web strategy
+          const _webStrat = (ST.webStrategy || setup.webStrategy || '').trim();
+
+          // ── Assemble user prompt — blog vs non-blog paths ──
+          let copyPrompt;
+          if (isBlog) {
+            copyPrompt = 'CLIENT: ' + clientName
+              + '\nBLOG POST TITLE: ' + (p.page_name || '')
+              + '\nPRIMARY KEYWORD: ' + (p.primary_keyword || '')
+              + '\nSUPPORTING KEYWORDS: ' + kws
+              + '\nTARGET WORD COUNT: ' + (p.word_count_target || 1200)
+              + '\nBUSINESS OVERVIEW: ' + (R.business_overview || '')
+              + '\nGEOGRAPHY: ' + _pageGeo
+              + '\nVOICE: ' + _voice
+              + (_pillarBlock ? _pillarBlock : '')
+              + (_wSl ? '\nSLOGAN: ' + _wSl : '')
+              + (_wWa.length ? '\nWORDS TO AVOID: ' + _wWa.join(', ') : '')
+              + (_posDirBlock ? _posDirBlock : '')
+              + _personaBlock
+              + '\nNOTES: ' + (p.notes || '')
+              + questionsBlock + briefBlock + serpBlock
+              + cpProofBlock + cpCtaBlock
+              + (_webStrat ? '\n\n## WEBSITE STRATEGY\n' + _webStrat : '')
+              + (p.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n' + p.pageContext : '')
+              + (p.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n' + p.page_goal : '')
+              + '\n\n' + blogBriefInstruction;
+          } else {
+            copyPrompt = 'CLIENT: ' + clientName
+              + '\nPAGE: ' + (p.page_name || '') + ' | /' + slug
+              + '\nPRIMARY KW: ' + (p.primary_keyword || '')
+              + '\nSUPPORTING: ' + kws
+              + '\nINTENT: ' + (p.search_intent || '')
+              + '\nWORD COUNT MIN: ' + (p.word_count_target || 1500)
+              + '\nOVERVIEW: ' + (R.business_overview || '')
+              + '\nVALUE PROP: ' + _wVp
+              + '\nDIFFERENTIATORS: ' + (_wKd.length ? _wKd.join('. ') : '')
+              + '\nGEOGRAPHY: ' + _pageGeo
+              + '\nPRICING: ' + (setup.pricing || _wPn || '')
+              + '\nVOICE: ' + _voice
+              + (_wSl ? '\nSLOGAN: ' + _wSl : '')
+              + (_wWa.length ? '\nWORDS TO AVOID: ' + _wWa.join(', ') : '')
+              + (_wWu.length ? '\nWORDS TO USE: ' + _wWu.join(', ') : '')
+              + (_posDirBlock ? _posDirBlock : '')
+              + _voiceBlock
+              + (((R.pain_points_top5 || []).length) ? '\nAUDIENCE PAIN POINTS: ' + (R.pain_points_top5 || []).slice(0, 3).join('; ') : '')
+              + (((R.objections_top5 || []).length) ? '\nBUYER OBJECTIONS: ' + (R.objections_top5 || []).slice(0, 3).join('; ') : '')
+              + (((R.existing_proof || R.proof_points || []).length) ? '\nPROOF POINTS: ' + (R.existing_proof || R.proof_points || []).slice(0, 3).join('; ') : '')
+              + ((R.booking_flow_description) ? '\nBOOKING FLOW: ' + R.booking_flow_description : '')
+              + _personaBlock
+              + _subBlock
+              + _econBlock
+              + _compCounter
+              + '\nNOTES: ' + (p.notes || '')
+              + questionsBlock + briefBlock + serpBlock
+              + cpProofBlock + cpCtaBlock
+              + (_webStrat ? '\n\n## WEBSITE STRATEGY\n' + _webStrat : '')
+              + (p.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n' + p.pageContext : '')
+              + (p.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n' + p.page_goal : '')
+              + '\n\n' + briefInstruction;
+          }
+
+          const copyHtml = await claudeCall(P_COPY, copyPrompt, 6000);
 
           // Save copy to its own KV key (same pattern as client copy.js)
           const copyKey = userPrefix + 'copy:' + projectId + ':' + slug;

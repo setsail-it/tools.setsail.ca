@@ -1,4 +1,259 @@
 
+// ── PERSONA, VOICE, POSITIONING HELPERS ───────────────────────────────
+
+// Slugify a string for voice overlay IDs
+function _slugifyOverlay(s) {
+  return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
+// Check if a persona's segment is parked/deprioritised
+function _isPersonaParked(persona) {
+  var a = S.strategy && S.strategy.audience;
+  if (!a) return false;
+  var seg = (persona.segment || '').toLowerCase();
+  // Check parked_segments array
+  if (a.parked_segments && a.parked_segments.length) {
+    var parked = a.parked_segments.some(function(ps) {
+      return (ps.name || '').toLowerCase() === seg || (ps.vertical || '').toLowerCase() === seg;
+    });
+    if (parked) return true;
+  }
+  // Check segment status
+  if (a.segments && a.segments.length) {
+    var matchedSeg = a.segments.find(function(s) { return (s.name || '').toLowerCase() === seg; });
+    if (matchedSeg && (matchedSeg.status || '').toLowerCase() === 'deprioritised') return true;
+  }
+  return false;
+}
+
+// Get active personas from strategy audience data (excludes parked segment personas)
+function _getActivePersonas() {
+  var a = S.strategy && S.strategy.audience;
+  if (!a || !a.personas || !a.personas.length) return [];
+  return a.personas.filter(function(p) { return !_isPersonaParked(p); });
+}
+
+// Get all personas including parked
+function _getAllPersonas() {
+  var a = S.strategy && S.strategy.audience;
+  if (!a || !a.personas || !a.personas.length) return [];
+  return a.personas;
+}
+
+// Fuzzy match a page against a persona segment name
+function _matchesSegment(page, segmentName) {
+  if (!segmentName) return false;
+  var seg = segmentName.toLowerCase();
+  var pageName = (page.page_name || '').toLowerCase();
+  var pageSlug = (page.slug || '').toLowerCase();
+  // Direct substring match either way
+  return pageName.indexOf(seg) >= 0 || seg.indexOf(pageName.replace(/\s*marketing\s*/gi, '').trim()) >= 0
+    || pageSlug.indexOf(seg.replace(/\s+/g, '-')) >= 0 || pageSlug.indexOf(seg.replace(/\s+/g, '_')) >= 0;
+}
+
+// Auto-assign target persona to a page based on page type and content
+function _autoAssignPersona(page) {
+  var personas = _getActivePersonas();
+  if (!personas.length) return '';
+
+  var pt = (page.page_type || '').toLowerCase();
+
+  // Structural pages serve all personas — leave empty
+  if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(pt) >= 0) return '';
+
+  // Industry pages: match segment name to page name/slug
+  if (pt === 'industry') {
+    for (var i = 0; i < personas.length; i++) {
+      if (_matchesSegment(page, personas[i].segment)) return personas[i].name || '';
+    }
+    return '';
+  }
+
+  // Service pages: assign the first active persona (primary segment)
+  if (pt === 'service' || pt === 'product') {
+    return personas.length ? (personas[0].name || '') : '';
+  }
+
+  // Location pages: match based on which persona segment covers that geo
+  if (pt === 'location') {
+    for (var j = 0; j < personas.length; j++) {
+      if (_matchesSegment(page, personas[j].segment)) return personas[j].name || '';
+    }
+    // Default: primary persona for location pages
+    return personas[0] ? (personas[0].name || '') : '';
+  }
+
+  // Blog pages: leave empty — assigned via content pillar + persona mapping later
+  return '';
+}
+
+// Auto-assign voice overlay based on page type and target persona
+function _autoAssignVoiceOverlay(page) {
+  var personas = _getAllPersonas();
+  var pt = (page.page_type || '').toLowerCase();
+
+  // Structural pages → base voice
+  if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(pt) >= 0) return 'base';
+
+  // If page has a target persona, use that persona segment overlay
+  if (page.target_persona) {
+    var persona = personas.find(function(p) { return p.name === page.target_persona; });
+    if (persona && persona.segment) return _slugifyOverlay(persona.segment);
+  }
+
+  // Industry pages — derive from slug
+  if (pt === 'industry') {
+    var slug = (page.slug || '').replace(/^industries?[/-]/, '');
+    return _slugifyOverlay(slug) || 'base';
+  }
+
+  return 'base';
+}
+
+// Check positioning direction page gaps
+function _checkDirectionPageGaps(pages) {
+  var st = S.strategy;
+  if (!st || !st.positioning || !st.positioning.selected_direction) return [];
+  var dir = st.positioning.selected_direction;
+  var gaps = [];
+
+  // Check if positioning direction keywords appear in any page
+  var dirWords = (dir.direction || '').toLowerCase().split(/\s+/).filter(function(w) { return w.length > 3; });
+  var headline = (dir.headline || '').toLowerCase();
+  var hasProofPage = pages.some(function(p) {
+    var pn = (p.page_name || '').toLowerCase();
+    var ps = (p.slug || '').toLowerCase();
+    var pg = (p.page_goal || '').toLowerCase();
+    return dirWords.some(function(w) { return pn.indexOf(w) >= 0 || ps.indexOf(w) >= 0; })
+      || pg.indexOf(headline.slice(0, 30)) >= 0;
+  });
+
+  if (!hasProofPage && dirWords.length) {
+    gaps.push({
+      type: 'positioning_proof',
+      description: 'No page directly supports positioning: "' + (dir.direction || '').slice(0, 60) + '"',
+      suggestion: 'Consider a case study or landing page that proves this direction'
+    });
+  }
+
+  // Check for case study page if positioning relies on proof
+  var hasCaseStudy = pages.some(function(p) {
+    return (p.page_name || '').toLowerCase().indexOf('case stud') >= 0
+      || (p.slug || '').indexOf('case-stud') >= 0;
+  });
+  if (!hasCaseStudy) {
+    gaps.push({
+      type: 'positioning_proof',
+      description: 'No case study page found — positioning direction needs proof',
+      suggestion: 'Create /case-studies to validate positioning claims'
+    });
+  }
+
+  return gaps;
+}
+
+// Check CTA landing page gaps
+function _checkCTAPageGaps(pages) {
+  var ep = S.strategy && S.strategy.execution_plan;
+  if (!ep) return [];
+  var gaps = [];
+  var ctas = [];
+
+  if (ep.primary_cta) ctas.push({ label: ep.primary_cta, type: 'primary' });
+  if (ep.secondary_ctas && ep.secondary_ctas.length) {
+    ep.secondary_ctas.forEach(function(c) { ctas.push({ label: c, type: 'secondary' }); });
+  }
+  if (ep.low_commitment_cta) ctas.push({ label: ep.low_commitment_cta, type: 'low_commitment' });
+
+  ctas.forEach(function(cta) {
+    // Check if any page goal or page name references this CTA
+    var ctaLower = (cta.label || '').toLowerCase().slice(0, 30);
+    if (!ctaLower) return;
+    var hasPage = pages.some(function(p) {
+      return (p.page_goal || '').toLowerCase().indexOf(ctaLower) >= 0
+        || (p.page_name || '').toLowerCase().indexOf(ctaLower) >= 0;
+    });
+    if (!hasPage) {
+      gaps.push({ cta: cta.label, type: cta.type, suggestion: 'No landing page found for ' + cta.type + ' CTA: "' + cta.label + '"' });
+    }
+  });
+
+  return gaps;
+}
+
+// Run persona coverage check
+function _runPersonaCoverageCheck(pages) {
+  var personas = _getAllPersonas();
+  if (!personas.length) return [];
+  var results = [];
+
+  personas.filter(function(p) { return !_isPersonaParked(p); }).forEach(function(persona) {
+    var checks = [];
+    var seg = persona.segment || persona.name || '';
+
+    // 1. Industry/vertical page exists?
+    var hasIndustryPage = pages.some(function(p) {
+      return (p.page_type || '').toLowerCase() === 'industry' && _matchesSegment(p, seg);
+    });
+    checks.push({
+      type: 'industry_page',
+      label: 'Industry page for ' + seg,
+      passed: hasIndustryPage,
+      suggestion: hasIndustryPage ? null : 'Create: /industries/' + _slugifyOverlay(seg)
+    });
+
+    // 2. Case study mentioning this vertical?
+    var hasCaseStudy = pages.some(function(p) {
+      return ((p.page_name || '').toLowerCase().indexOf('case stud') >= 0 || (p.slug || '').indexOf('case-stud') >= 0)
+        && _matchesSegment(p, seg);
+    });
+    checks.push({
+      type: 'case_study',
+      label: 'Case study for ' + seg,
+      passed: hasCaseStudy,
+      suggestion: hasCaseStudy ? null : 'Create: /case-studies/' + _slugifyOverlay(seg)
+    });
+
+    // 3. Blog content addressing persona top objection?
+    var topObjection = (persona.objection_profile && persona.objection_profile[0]) || '';
+    if (topObjection) {
+      var hasObjectionContent = pages.some(function(p) {
+        return ['blog', 'article'].indexOf((p.page_type || '').toLowerCase()) >= 0
+          && (p.target_persona === persona.name
+            || (p.page_goal || '').toLowerCase().indexOf(seg.toLowerCase()) >= 0);
+      });
+      checks.push({
+        type: 'objection_content',
+        label: 'Content addressing: "' + topObjection.slice(0, 60) + '"',
+        passed: hasObjectionContent,
+        suggestion: hasObjectionContent ? null : 'Create blog post addressing this objection for ' + (persona.name || seg)
+      });
+    }
+
+    results.push({
+      persona: persona.name || seg,
+      segment: seg,
+      priority: persona.priority || 'P1',
+      checks: checks,
+      coverage: checks.length ? (checks.filter(function(c) { return c.passed; }).length / checks.length) : 1
+    });
+  });
+
+  // Parked personas
+  personas.filter(function(p) { return _isPersonaParked(p); }).forEach(function(persona) {
+    results.push({
+      persona: persona.name || persona.segment || '',
+      segment: persona.segment || '',
+      priority: 'parked',
+      checks: [],
+      coverage: null
+    });
+  });
+
+  return results;
+}
+
+
 // ── STRATEGY ALIGNMENT, PILLAR TAGS, PRIORITY SUGGESTIONS ────────────
 
 // Map page types to the strategy levers they support
@@ -75,7 +330,7 @@ function _revenueEstimate(page) {
   return { vol: vol, ctr: ctr, closeRate: closeRate, dealSize: dealSize, monthly: Math.round(monthlyRevenue) };
 }
 
-// Suggest priority from growth plan phases and channel lever scores
+// Suggest priority from growth plan phases, channel lever scores, and budget tier
 function _suggestPriority(page) {
   var st = S.strategy;
   if (!st || !st._meta || st._meta.current_version === 0) return null; // no strategy
@@ -89,6 +344,7 @@ function _suggestPriority(page) {
   var leverId = _leverForPageType(page.page_type);
   var lever = _findLever(leverId);
   var leverScore = lever ? (lever.priority_score || 0) : 0;
+  var leverName = lever ? (lever.lever || lever.name || '') : '';
 
   // Check growth plan timeline for this lever phase
   var gp = st.growth_plan || {};
@@ -112,11 +368,13 @@ function _suggestPriority(page) {
   var phase = tlItem ? (tlItem.phase || 0) : 3;
 
   // Map phase + lever score to priority
-  var suggested;
-  if (phase <= 1 && leverScore >= 7) suggested = 'P1';
-  else if (phase <= 1 && leverScore >= 5) suggested = 'P1';
-  else if (phase <= 2 && leverScore >= 5) suggested = 'P2';
-  else suggested = 'P3';
+  var basePriority;
+  if (phase <= 1 && leverScore >= 7) basePriority = 'P1';
+  else if (phase <= 1 && leverScore >= 5) basePriority = 'P1';
+  else if (phase <= 2 && leverScore >= 5) basePriority = 'P2';
+  else basePriority = 'P3';
+
+  var suggested = basePriority;
 
   // Alignment boost: aligned pages bump up one tier
   var align = _computeAlignment(page);
@@ -127,6 +385,20 @@ function _suggestPriority(page) {
 
   // High-volume override: if vol >= 500 and we would suggest P2/P3, suggest P1
   if ((page.primary_vol || 0) >= 500 && suggested !== 'P1') suggested = 'P1';
+
+  // Budget tier check: lever not funded in current budget → cap at P3
+  var currentBudget = st.channel_strategy && st.channel_strategy.budget_tiers && st.channel_strategy.budget_tiers.current_budget;
+  if (currentBudget && leverName && currentBudget.allocations) {
+    var leverLower = leverName.toLowerCase().replace(/\s+/g, '_');
+    var leverFunded = currentBudget.allocations.some(function(a) {
+      var aName = ((a.lever || a.channel || a.name || '') + '').toLowerCase().replace(/\s+/g, '_');
+      return (aName === leverLower || aName.indexOf(leverLower) >= 0 || leverLower.indexOf(aName) >= 0) && (a.budget || a.amount || 0) > 0;
+    });
+    if (!leverFunded && suggested !== 'P3') {
+      page._priorityNote = 'Unfunded in current budget. Becomes ' + basePriority + ' at Growth Budget.';
+      suggested = 'P3';
+    }
+  }
 
   return suggested;
 }
@@ -157,6 +429,7 @@ async function assignContentPillars() {
   aiBarStart('Assigning content pillars...');
   try {
     var result = await callClaude(sys, user, null, 2000);
+    if (!result) throw new Error('Empty response from AI');
     // Parse JSON from response
     var jsonMatch = result.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('No JSON array in response');
@@ -175,6 +448,23 @@ async function assignContentPillars() {
   } catch (e) {
     aiBarNotify('Pillar assignment failed: ' + e.message, { isError: true, duration: 4000 });
   }
+}
+
+// Assign personas + voice overlays to all pages that do not have one
+function assignAllPersonas() {
+  var count = 0;
+  (S.pages || []).forEach(function(p) {
+    if (!p.target_persona) {
+      p.target_persona = _autoAssignPersona(p);
+      if (p.target_persona) count++;
+    }
+    if (!p.voice_overlay || p.voice_overlay === 'base') {
+      p.voice_overlay = _autoAssignVoiceOverlay(p);
+    }
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  if (typeof aiBarNotify === 'function') aiBarNotify('Assigned personas to ' + count + ' pages', { duration: 3000 });
 }
 
 // Accept all priority suggestions
@@ -347,6 +637,15 @@ function buildSitemapFromClusters() {
 
   S.pages = pages;
 
+  // Auto-assign target persona and voice overlay from strategy audience data
+  var _hasAudience = S.strategy && S.strategy.audience && S.strategy.audience.personas && S.strategy.audience.personas.length;
+  if (_hasAudience) {
+    S.pages.forEach(function(p) {
+      if (!p.target_persona) p.target_persona = _autoAssignPersona(p);
+      if (!p.voice_overlay) p.voice_overlay = _autoAssignVoiceOverlay(p);
+    });
+  }
+
   // Inject assigned PAA questions into their matching pages
   var questions = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) || [];
   questions.forEach(function(q) {
@@ -464,6 +763,28 @@ async function runSitemap(withRevisions) {
   var _ws = ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)||'').trim();
   if (_ws) prompt += '\n## WEBSITE STRATEGY (use this to derive page_goal for each page)\n' + _ws.slice(0, 3000) + '\n\n';
   else prompt += '\n';
+
+  // Positioning direction context
+  var _posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  if (_posDir && _posDir.direction) {
+    prompt += '## POSITIONING DIRECTION\n';
+    prompt += 'The selected positioning direction is: "' + _posDir.direction + '"\n';
+    if (_posDir.headline) prompt += 'Headline: "' + _posDir.headline + '"\n';
+    if (_posDir.rationale) prompt += 'This means: ' + _posDir.rationale + '\n';
+    prompt += 'Page goals must support this positioning. Pages that directly prove or demonstrate this direction should be prioritised.\n\n';
+  }
+
+  // Audience persona context for page goal derivation
+  var _activePersonas = _getActivePersonas();
+  if (_activePersonas.length) {
+    prompt += '## AUDIENCE PERSONAS (' + _activePersonas.length + ')\n';
+    _activePersonas.forEach(function(per) {
+      prompt += '- ' + (per.name || per.segment || '') + ' (' + (per.role || '') + ')';
+      if (per.segment) prompt += ' [segment: ' + per.segment + ']';
+      prompt += '\n';
+    });
+    prompt += '\n';
+  }
 
   // Use pre-clustered data if available (preferred), fall back to raw keywords
   if (S.kwResearch?.clusters?.length) {
@@ -642,6 +963,31 @@ function deletePage(idx) {
   renderSitemapResults(S.sitemapApproved);
 }
 
+// Add a page from persona coverage gap or CTA gap
+function addPageFromGap(slug, name, persona) {
+  var existingSlugs = new Set((S.pages || []).map(function(p) { return p.slug; }));
+  if (existingSlugs.has(slug)) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Page /' + slug + ' already exists', { duration: 3000 });
+    return;
+  }
+  var _pt = 'blog';
+  if (slug.indexOf('case-stud') >= 0) _pt = 'utility';
+  else if (slug.indexOf('industries/') >= 0) _pt = 'industry';
+  else if (slug.indexOf('services/') >= 0) _pt = 'service';
+  S.pages.push({
+    page_name: name, slug: slug, page_type: _pt,
+    is_structural: false, priority: 'P2', primary_keyword: '',
+    primary_vol: 0, primary_kd: 0, score: 0,
+    supporting_keywords: [], search_intent: _pt === 'blog' ? 'informational' : 'commercial',
+    word_count_target: 1500, notes: 'Source: Persona Coverage Gap',
+    targetGeo: '', page_goal: '',
+    target_persona: persona || '', voice_overlay: _autoAssignVoiceOverlay({ page_type: _pt, target_persona: persona, slug: slug })
+  });
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  if (typeof aiBarNotify === 'function') aiBarNotify('Added /' + slug + ' from persona gap', { duration: 3000 });
+}
+
 function addNewPage() {
   S.pages.push({
     page_name: 'New Page', slug: 'new-page', page_type: 'service',
@@ -649,7 +995,8 @@ function addNewPage() {
     primary_vol: 0, primary_kd: 0, score: 0,
     supporting_keywords: [], search_intent: 'commercial',
     word_count_target: 1500, notes: '', meta_title: '', meta_description: '',
-    targetGeo: '', page_goal: ''
+    targetGeo: '', page_goal: '',
+    target_persona: '', voice_overlay: 'base'
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -664,6 +1011,31 @@ async function generatePageGoal(idx) {
   var R = S.research || {};
   var ws = ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)||'').trim();
   var sys = 'You are a senior CRO + SEO strategist. Write a 1-2 sentence page goal — the strategic purpose this page must achieve. Be specific: name the audience segment, the desired action, and the proof required. No generic goals. Canadian spelling.';
+
+  // Build persona context from strategy audience data
+  var activePersonas = _getActivePersonas();
+  var targetPersona = activePersonas.find(function(per) { return per.name === p.target_persona; });
+  var personaCtx = '';
+  if (targetPersona) {
+    personaCtx = '\nTarget persona for this page:\n'
+      + 'Primary persona: ' + (targetPersona.name || '') + '\n'
+      + (targetPersona.frustrations && targetPersona.frustrations.length ? 'Core pains: ' + targetPersona.frustrations.join('; ') + '\n' : '')
+      + (targetPersona.decision_criteria && targetPersona.decision_criteria.length ? 'What they evaluate: ' + targetPersona.decision_criteria.join('; ') + '\n' : '')
+      + (targetPersona.language_patterns && targetPersona.language_patterns.length ? 'Their language: ' + targetPersona.language_patterns.slice(0, 3).join('; ') + '\n' : '')
+      + 'Write the page goal addressing THIS persona specifically, not generic marketing speak.\n';
+  } else if (activePersonas.length) {
+    personaCtx = '\nGeneral audience — serves all personas: ' + activePersonas.map(function(per) { return per.name || per.segment; }).join(', ') + '\n';
+  }
+
+  // Positioning direction context
+  var posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  var posDirCtx = '';
+  if (posDir && posDir.direction) {
+    posDirCtx = '\nPositioning direction: "' + posDir.direction + '"'
+      + (posDir.headline ? ' — ' + posDir.headline : '') + '\n'
+      + 'Page goals must support this positioning.\n';
+  }
+
   var user = 'Client: '+(R.client_name||S.setup.client||'')+'\n'
     + 'Page: '+p.page_name+' (/'+p.slug+')\n'
     + 'Type: '+(p.page_type||'')+'\n'
@@ -672,7 +1044,9 @@ async function generatePageGoal(idx) {
     + 'Geo: '+(getPageGeo(p)||'')+'\n'
     + (ws ? '\nWebsite strategy:\n'+ws.slice(0,2000)+'\n' : '')
     + ((getStrategyField('positioning.value_proposition', 'value_proposition')) ? '\nValue prop: '+(getStrategyField('positioning.value_proposition', 'value_proposition'))+'\n' : '')
-    + (R.primary_audience_description ? '\nAudience: '+R.primary_audience_description+'\n' : '')
+    + personaCtx
+    + posDirCtx
+    + ((!personaCtx && R.primary_audience_description) ? '\nAudience: '+R.primary_audience_description+'\n' : '')
     + '\nOutput ONLY the 1-2 sentence goal. No labels, no bullets, no preamble.';
   try {
     var result = await callClaude(sys, user, null, 300);
@@ -693,17 +1067,25 @@ async function generateAllPageGoals(startFrom) {
   if(typeof aiBarStart==='function') aiBarStart('Generating page goals');
   var start = startFrom || 0;
   var generated = 0;
-  for (var i = start; i < pages.length; i++) {
+  var total = pages.length;
+  for (var i = start; i < total; i++) {
     if (window._aiStopAll) {
       window._aiStopResumeCtx = {
-        label: 'Goals paused (' + i + '/' + pages.length + ')',
+        label: 'Goals paused (' + i + '/' + total + ')',
         fn: function(args) { generateAllPageGoals(args.startFrom); },
         args: { startFrom: i }
       };
       return;
     }
     if (pages[i].page_goal && pages[i].page_goal.trim()) continue;
-    if(typeof aiBarNotify==='function') aiBarNotify('Goal '+(i+1)+'/'+pages.length+': '+pages[i].page_name, {duration:2000});
+    // Update progress bar directly (do not use aiBarNotify — it hides the track)
+    var _pct = Math.round(((i + 1) / total) * 100);
+    var _lbl = document.getElementById('ai-bar-label');
+    var _fill = document.getElementById('ai-bar-fill');
+    var _meta = document.getElementById('ai-bar-meta');
+    if (_lbl) _lbl.textContent = 'Goal ' + (i + 1) + '/' + total + ': ' + pages[i].page_name;
+    if (_fill) { _fill.classList.remove('indeterminate'); _fill.style.width = _pct + '%'; }
+    if (_meta) _meta.textContent = generated + ' done';
     try {
       await generatePageGoal(i);
       generated++;
@@ -897,6 +1279,7 @@ function _renderSitemapResultsInner(approved) {
   };
   const pages = allPages.filter(_catFilter);
 
+  var _hasStrategy = S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0;
   const p1 = allPages.filter(p=>p.priority==='P1').length;
   const p2 = allPages.filter(p=>p.priority==='P2').length;
   const p3 = allPages.filter(p=>p.priority==='P3').length;
@@ -916,6 +1299,14 @@ function _renderSitemapResultsInner(approved) {
     // Priority suggestion diff count
     var _diffCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
     if (_diffCount > 0) html += '<span style="background:rgba(59,130,246,0.08);color:#3b82f6;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(59,130,246,0.15)">'+_diffCount+' priority diffs</span>';
+
+    // Positioning direction gaps
+    var _dirGaps = _checkDirectionPageGaps(allPages);
+    if (_dirGaps.length > 0) html += '<span style="background:rgba(147,51,234,0.08);color:#7c3aed;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(147,51,234,0.15)" title="' + _dirGaps.map(function(g) { return esc(g.description); }).join(' | ') + '">' + _dirGaps.length + ' positioning gap' + (_dirGaps.length !== 1 ? 's' : '') + '</span>';
+
+    // CTA landing page gaps
+    var _ctaGaps = _checkCTAPageGaps(allPages);
+    if (_ctaGaps.length > 0) html += '<span style="background:rgba(234,88,12,0.08);color:#c2410c;font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(234,88,12,0.15)" title="' + _ctaGaps.map(function(g) { return esc(g.suggestion); }).join(' | ') + '">' + _ctaGaps.length + ' CTA gap' + (_ctaGaps.length !== 1 ? 's' : '') + '</span>';
   }
   html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes</span></span>';
   html += '</div>';
@@ -952,6 +1343,9 @@ function _renderSitemapResultsInner(approved) {
     if (_blogCount > 0) {
       html += '<button class="btn btn-ghost sm" data-tip="AI assigns each blog page to a content pillar from your brand strategy. Requires D6 Brand diagnostic in Strategy." style="font-size:11px;padding:2px 8px" onclick="assignContentPillars()"><i class="ti ti-tags"></i> Pillars</button>';
     }
+    if (_getActivePersonas().length > 0) {
+      html += '<button class="btn btn-ghost sm" data-tip="Auto-assigns a target persona and voice overlay to every page based on page type and audience segments. Does not overwrite pages that already have a persona assigned." style="font-size:11px;padding:2px 8px" onclick="assignAllPersonas()"><i class="ti ti-users"></i> Personas</button>';
+    }
     var _suggestCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
     html += '<button class="btn btn-ghost sm" data-tip="Recalculates strategy-driven priority suggestions for all pages based on channel lever scores and growth plan phases." style="font-size:11px;padding:2px 8px" onclick="renderSitemapResults(S.sitemapApproved)"><i class="ti ti-arrows-sort"></i> Re-suggest</button>';
     if (_suggestCount > 0) {
@@ -964,7 +1358,6 @@ function _renderSitemapResultsInner(approved) {
   html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
 
   // Grid: # | Page + slug | Keyword | Vol | KD | Score | Intent | Priority | Align | Market | Traffic
-  var _hasStrategy = S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0;
   const gcols = sitemapEditMode ? '22px 1.3fr 1fr 54px 42px 44px 56px 46px 36px 72px 50px' : '22px 1.3fr 1fr 54px 42px 44px 56px 48px 36px 72px 50px';
   html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
   html += '<div style="display:grid;grid-template-columns:'+gcols+';background:var(--bg);padding:7px 14px;border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
@@ -1044,6 +1437,23 @@ function _renderSitemapResultsInner(approved) {
           html += '</select>';
         }
       }
+      // Persona dropdown (all page types, if personas exist)
+      var _editPersonas = _getActivePersonas();
+      if (_editPersonas.length) {
+        html += '<select onchange="updatePageField('+i+',\'target_persona\',this.value)" style="font-size:10px;color:#7c3aed;background:rgba(168,85,247,0.04);border:1px solid rgba(168,85,247,0.2);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+        html += '<option value="">Persona…</option>';
+        _editPersonas.forEach(function(per) { var pn = per.name || per.segment || ''; html += '<option value="'+esc(pn)+'"'+(p.target_persona===pn?' selected':'')+'>'+esc(pn)+'</option>'; });
+        html += '</select>';
+      }
+      // Voice overlay dropdown (all page types, if strategy exists)
+      if (_hasStrategy) {
+        html += '<select onchange="updatePageField('+i+',\'voice_overlay\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+        html += '<option value="base"'+((!p.voice_overlay||p.voice_overlay==='base')?' selected':'')+'>Voice: base</option>';
+        var _voiceSegs = _getActivePersonas().map(function(per) { return per.segment; }).filter(Boolean);
+        var _seenVoice = {};
+        _voiceSegs.forEach(function(vs) { var id = _slugifyOverlay(vs); if (!_seenVoice[id]) { _seenVoice[id] = true; html += '<option value="'+esc(id)+'"'+(p.voice_overlay===id?' selected':'')+'>Voice: '+esc(vs)+'</option>'; } });
+        html += '</select>';
+      }
       // Icon-only reorder/delete
       html += '<div style="display:flex;gap:3px;margin-top:1px">';
       html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
@@ -1079,12 +1489,29 @@ function _renderSitemapResultsInner(approved) {
       html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       if (p.page_goal) html += '<div style="font-size:10px;color:#6b21a8;margin-top:2px" title="Page goal: '+esc(p.page_goal)+'"><i class="ti ti-target" style="font-size:10px;margin-right:2px"></i>'+esc(p.page_goal.length>80?p.page_goal.slice(0,80)+'…':p.page_goal)+'</div>';
-      // Content pillar tag (blog pages only)
-      if (p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0) {
-        html += '<div style="margin-top:2px"><span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500">'+esc(p.content_pillar)+'</span></div>';
-      } else if (!p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
-        html += '<div style="margin-top:2px"><span style="background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">Unassigned</span></div>';
+      // Metadata badges row: page type, pillar, persona, voice overlay
+      var _badges = '';
+      // Page type badge
+      var _pt = (p.page_type || '').toLowerCase();
+      if (_pt) {
+        var _ptColour = _pt === 'service' ? '#0d9488' : _pt === 'location' ? '#d97706' : _pt === 'blog' || _pt === 'article' ? '#3b82f6' : _pt === 'home' ? '#6366f1' : _pt === 'industry' ? '#8b5cf6' : 'var(--n2)';
+        _badges += '<span style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:'+_ptColour+';font-weight:500">'+esc(_pt)+'</span>';
       }
+      // Content pillar tag (blog pages only)
+      if (p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf(_pt) >= 0) {
+        _badges += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500"><i class="ti ti-tags" style="font-size:8px;margin-right:2px"></i>'+esc(p.content_pillar)+'</span>';
+      } else if (!p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf(_pt) >= 0 && _hasStrategy) {
+        _badges += '<span style="background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)"><i class="ti ti-tags" style="font-size:8px;margin-right:2px"></i>No pillar</span>';
+      }
+      // Persona badge
+      if (p.target_persona && _getActivePersonas().length) {
+        _badges += '<span style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#7c3aed;font-weight:500"><i class="ti ti-user" style="font-size:8px;margin-right:2px"></i>'+esc(p.target_persona)+'</span>';
+      }
+      // Voice overlay badge (if not base)
+      if (p.voice_overlay && p.voice_overlay !== 'base') {
+        _badges += '<span style="background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#c2410c;font-weight:500"><i class="ti ti-microphone" style="font-size:8px;margin-right:2px"></i>'+esc(p.voice_overlay)+'</span>';
+      }
+      if (_badges) html += '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+_badges+'</div>';
       html += '</div>';
       const _geo1 = (S.research?.geography?.primary || S.setup?.geo || '').replace(/,.*$/,'').trim();
       var _kwDisplay = p.primary_keyword
@@ -1115,7 +1542,8 @@ function _renderSitemapResultsInner(approved) {
       ['P1','P2','P3'].forEach(pv => { html += `<option value="${pv}"${p.priority===pv?' selected':''}>${pv}</option>`; });
       html += '</select>';
       if (_hasSuggestion) {
-        html += `<button onclick="updatePageField(${i},'priority','${_suggested}');renderSitemapResults(S.sitemapApproved)" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:3px;padding:0 4px;font-size:9px;color:#3b82f6;cursor:pointer;font-family:var(--font);line-height:1.4" title="Strategy suggests ${_suggested}">${_suggested} ✓</button>`;
+        var _priNote = p._priorityNote ? (' — ' + p._priorityNote) : '';
+        html += `<button onclick="updatePageField(${i},'priority','${_suggested}');renderSitemapResults(S.sitemapApproved)" style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:3px;padding:0 4px;font-size:9px;color:#3b82f6;cursor:pointer;font-family:var(--font);line-height:1.4" title="Strategy suggests ${_suggested}${_priNote}">${_suggested} ✓</button>`;
       }
       html += '</div>';
     } else {
@@ -1305,6 +1733,69 @@ function _renderSitemapResultsInner(approved) {
     if (!gapDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run.</div>';
     html += '</div></div>';
     html += '</div>'; // end two-col grid
+
+    // Persona Coverage Check panel (if personas exist)
+    var _pcPersonas = _getAllPersonas();
+    if (_pcPersonas.length) {
+      html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+      html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-user-check" style="font-size:11px;color:#7c3aed"></i> Persona Coverage Check</span>';
+      html += '<button onclick="renderSitemapResults(S.sitemapApproved)" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> Refresh</button>';
+      html += '</div>';
+      html += '<div style="padding:10px 12px;max-height:320px;overflow-y:auto">';
+      var _pcResults = _runPersonaCoverageCheck(allPages);
+      _pcResults.forEach(function(r) {
+        if (r.priority === 'parked') {
+          html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;opacity:0.5">';
+          html += '<span style="font-size:11px;color:var(--n2)"><i class="ti ti-player-pause" style="font-size:10px"></i> ' + esc(r.persona) + ' — Parked</span>';
+          html += '</div>';
+          return;
+        }
+        var covPct = Math.round((r.coverage || 0) * 100);
+        var covColor = covPct >= 75 ? 'var(--green)' : covPct >= 50 ? 'var(--warn)' : 'var(--error)';
+        html += '<div style="margin-bottom:8px">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+        html += '<span style="font-size:11.5px;font-weight:500;color:var(--dark)">' + esc(r.persona) + '</span>';
+        if (r.segment && r.segment !== r.persona) html += '<span style="font-size:10px;color:var(--n2)">(' + esc(r.segment) + ')</span>';
+        html += '<span style="font-size:10px;color:' + covColor + ';font-weight:500;margin-left:auto">' + covPct + '%</span>';
+        html += '</div>';
+        r.checks.forEach(function(c) {
+          html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0;padding-left:12px">';
+          if (c.passed) {
+            html += '<span style="font-size:10px;color:var(--green);flex-shrink:0">✓</span>';
+            html += '<span style="font-size:11px;color:var(--n3)">' + esc(c.label) + '</span>';
+          } else {
+            html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
+            html += '<span style="font-size:11px;color:var(--dark)">' + esc(c.label) + '</span>';
+            if (c.suggestion) {
+              var _sugSlug = c.suggestion.replace(/^Create:\s*\/?/, '').replace(/\s+/g, '-').toLowerCase();
+              var _sugName = c.suggestion.replace(/^Create:\s*\/?/, '');
+              var _safeSlug = _sugSlug.replace(/'/g, '');
+              var _safeName = _sugName.replace(/'/g, '');
+              html += '<button onclick="addPageFromGap(\'' + _safeSlug + '\',\'' + _safeName + '\',\'' + esc(r.persona).replace(/'/g, '') + '\')" style="background:transparent;border:1px solid rgba(168,85,247,0.3);border-radius:3px;padding:1px 6px;font-size:9px;color:#7c3aed;cursor:pointer;font-family:var(--font);white-space:nowrap;margin-left:4px;flex-shrink:0">+ Create</button>';
+            }
+          }
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+
+      // CTA gap checks
+      var _ctaGapsInPanel = _checkCTAPageGaps(allPages);
+      if (_ctaGapsInPanel.length) {
+        html += '<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">';
+        html += '<div style="font-size:10px;font-weight:500;color:#c2410c;margin-bottom:4px"><i class="ti ti-click" style="font-size:10px"></i> CTA Landing Page Gaps</div>';
+        _ctaGapsInPanel.forEach(function(g) {
+          html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;padding-left:12px">';
+          html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
+          html += '<span style="font-size:11px;color:var(--dark)">' + esc(g.suggestion) + '</span>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      html += '</div></div>';
+    }
 
     // Unified topic pool
     const _allSources = [
@@ -1688,7 +2179,9 @@ function addBlogPagesToSitemap() {
       supporting_keywords: [],
       search_intent: 'informational',
       word_count_target: 1200,
-      notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`
+      notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`,
+      target_persona: '',
+      voice_overlay: 'base'
     });
     added++;
   });

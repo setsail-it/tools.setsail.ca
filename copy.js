@@ -135,30 +135,152 @@ function buildCopyPrompt(page) {
   var cpProofBlock = _cpProof.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n'+_cpProof.join('\n') : '';
   var _cpCta = [];
   var _cpPcta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
-  var _cpScta = getStrategyField('positioning.secondary_cta', 'secondary_cta') || '';
+  var _cpSctas = getStrategyField('positioning.secondary_ctas', 'secondary_ctas') || getStrategyField('positioning.secondary_cta', 'secondary_cta') || [];
+  var _cpScta = Array.isArray(_cpSctas) ? _cpSctas.join(', ') : (_cpSctas || '');
   var _cpLcta = getStrategyField('positioning.low_commitment_cta', 'low_commitment_cta') || '';
   if (_cpPcta) _cpCta.push('Primary CTA: '+_cpPcta);
   if (_cpScta) _cpCta.push('Secondary CTA: '+_cpScta);
   if (_cpLcta) _cpCta.push('Low-commitment CTA: '+_cpLcta);
   var cpCtaBlock = _cpCta.length ? '\n\n## CTA ARCHITECTURE\n'+_cpCta.join('\n') : '';
 
+  // Fix 3: Persona context
+  var _personas = (S.strategy && S.strategy.audience && S.strategy.audience.personas) || [];
+  var _targetPersona = page.target_persona ? _personas.find(function(per) { return per.name === page.target_persona; }) : null;
+  var _personaBlock = '';
+  if (_targetPersona) {
+    var _pp = [];
+    _pp.push('TARGET PERSONA: ' + _targetPersona.name);
+    if (_targetPersona.role) _pp.push('Role: ' + _targetPersona.role);
+    if (_targetPersona.frustrations && _targetPersona.frustrations.length) _pp.push('Pains: ' + _targetPersona.frustrations.slice(0, 3).join('; '));
+    if (_targetPersona.objection_profile && _targetPersona.objection_profile.length) _pp.push('Objections: ' + _targetPersona.objection_profile.slice(0, 2).join('; '));
+    if (_targetPersona.decision_criteria && _targetPersona.decision_criteria.length) _pp.push('Evaluates: ' + _targetPersona.decision_criteria.slice(0, 3).join('; '));
+    if (_targetPersona.language_patterns && _targetPersona.language_patterns.length) _pp.push('Their language: ' + _targetPersona.language_patterns.slice(0, 2).join('; '));
+    _pp.push('Write copy that speaks directly to this persona. Problem/Agitation must reference their specific pains. Objection Handling must address their stated objections.');
+    _personaBlock = '\n\n' + _pp.join('\n');
+  } else if ((page.page_type === 'home' || page.page_type === 'about') && _personas.length) {
+    var _activePers = _personas.filter(function(per) {
+      var parked = (S.strategy && S.strategy.audience && S.strategy.audience.parked_segments) || [];
+      return !parked.some(function(ps) { return per.segment && ps.toLowerCase() === per.segment.toLowerCase(); });
+    });
+    if (_activePers.length) {
+      var _mpp = ['TARGET AUDIENCES (this page serves multiple personas):'];
+      _activePers.slice(0, 3).forEach(function(per) {
+        _mpp.push('- ' + per.name + (per.frustrations && per.frustrations[0] ? ': pain = ' + per.frustrations[0] : ''));
+      });
+      _mpp.push('Copy must resonate with all listed personas.');
+      _personaBlock = '\n\n' + _mpp.join('\n');
+    }
+  } else if (page.page_type === 'blog' && _personas.length) {
+    // Blog fallback: give context from active personas
+    var _activePers2 = _personas.filter(function(per) {
+      var parked = (S.strategy && S.strategy.audience && S.strategy.audience.parked_segments) || [];
+      return !parked.some(function(ps) { return per.segment && ps.toLowerCase() === per.segment.toLowerCase(); });
+    });
+    if (_activePers2.length) {
+      var _bpp = ['TARGET AUDIENCE (blog readers):'];
+      _activePers2.slice(0, 2).forEach(function(per) {
+        _bpp.push('- ' + per.name + (per.frustrations && per.frustrations[0] ? ': pain = ' + per.frustrations[0] : ''));
+      });
+      _personaBlock = '\n\n' + _bpp.join('\n');
+    }
+  }
+
+  // Fix 4: Voice overlay
+  var _voiceOverlay = page.voice_overlay || 'base';
+  var _voiceBlock = '';
+  if (_voiceOverlay !== 'base' && S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.voice_overlays && S.strategy.brand_strategy.voice_overlays[_voiceOverlay]) {
+    var _overlay = S.strategy.brand_strategy.voice_overlays[_voiceOverlay];
+    _voiceBlock = '\n\nVOICE OVERLAY (' + _voiceOverlay + '): ' + (typeof _overlay === 'string' ? _overlay : JSON.stringify(_overlay)) + '\nThese overlay rules supplement the base voice rules above. Both apply.';
+  }
+
+  // Fix 5: Subtraction & Economics
+  var _subBlock = '';
+  if (page.page_type !== 'blog' && S.strategy && S.strategy.subtraction) {
+    var _subAudit = S.strategy.subtraction.current_activities_audit || S.strategy.subtraction.verdicts || [];
+    var _subStops = _subAudit.filter(function(v) { return v.verdict === 'cut' || v.verdict === 'stop' || v.verdict === 'restructure'; }).slice(0, 3);
+    if (_subStops.length) {
+      var _subLines = ['SUBTRACTION INSIGHTS (use as differentiated messaging angle):'];
+      _subStops.forEach(function(v) {
+        _subLines.push('- ' + (v.verdict === 'cut' || v.verdict === 'stop' ? 'CUT' : 'RESTRUCTURE') + ': ' + (v.activity || v.name || '') + (v.reason || v.rationale ? ' — ' + (v.reason || v.rationale) : ''));
+      });
+      if (S.strategy.subtraction.total_recoverable_monthly) _subLines.push('Recoverable budget: $' + S.strategy.subtraction.total_recoverable_monthly + '/mo');
+      _subLines.push('Frame as: "Most agencies add more. We found waste first."');
+      _subBlock = '\n\n' + _subLines.join('\n');
+    }
+  }
+
+  var _econBlock = '';
+  if (page.page_type !== 'blog' && S.strategy && S.strategy.unit_economics) {
+    var _ue = S.strategy.unit_economics;
+    var _econLines = [];
+    if (S.strategy.channel_strategy && S.strategy.channel_strategy.budget_tiers && S.strategy.channel_strategy.budget_tiers.current_budget && S.strategy.channel_strategy.budget_tiers.current_budget.label) {
+      _econLines.push('Budget tier: ' + S.strategy.channel_strategy.budget_tiers.current_budget.label);
+    }
+    if (_ue.monthly_leads_target) _econLines.push('Lead target: ' + _ue.monthly_leads_target + '/mo');
+    var _ltvCac = '';
+    if (_ue.ltv && _ue.cac && parseFloat(_ue.cac) > 0) {
+      _ltvCac = (parseFloat(_ue.ltv) / parseFloat(_ue.cac)).toFixed(1);
+      _econLines.push('LTV:CAC: ' + _ltvCac + 'x');
+    }
+    if (_econLines.length) {
+      var _posture = '';
+      if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) < 30) _posture = 'Volume-constrained — minimise CTA friction, every lead matters.';
+      else if (_ue.monthly_leads_target && parseFloat(_ue.monthly_leads_target) >= 100) _posture = 'Volume-sufficient — CTAs can qualify and filter low-intent leads.';
+      if (_posture) _econLines.push('CTA posture: ' + _posture);
+      _econBlock = '\n\nECONOMICS CONTEXT (calibrate CTA aggressiveness):\n' + _econLines.join('\n');
+    }
+  }
+
+  // Fix 6: Competitive counter
+  var _compCounter = '';
+  if (page.page_type !== 'blog' && S.strategy && S.strategy.positioning) {
+    if (S.strategy.positioning.competitive_counter) _compCounter += '\nCOMPETITIVE COUNTER: ' + S.strategy.positioning.competitive_counter + '\nUse in Objection Handling or Solution Bridge. Do NOT name competitors directly.';
+    if (S.strategy.positioning.validated_differentiators && S.strategy.positioning.validated_differentiators.length) {
+      _compCounter += '\nValidated differentiators: ' + S.strategy.positioning.validated_differentiators.slice(0, 4).join('; ');
+    }
+  }
+
+  // Fix 2: Positioning direction
+  var _posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+
+  // Fix 11/12: Content pillar guidance
+  var _pillarGuidance = '';
+  if (page.content_pillar) {
+    var _pgMap = {
+      'thought leadership': 'Take a strong position. Lead with original insight, not common knowledge.',
+      'case study': 'Narrative: situation, challenge, approach, results, takeaway. Use specific numbers.',
+      'decision content': 'Help the reader choose. Compare options, then guide toward a conclusion. Late-funnel.',
+      'vertical deep-dive': 'Speak the vertical language. Reference industry challenges, regulations, benchmarks.',
+      'performance marketing': 'Data-first. Show methodology, not just results.'
+    };
+    var _cpLower = page.content_pillar.toLowerCase();
+    Object.keys(_pgMap).forEach(function(k) {
+      if (_cpLower.indexOf(k) >= 0) _pillarGuidance = '\nPILLAR GUIDANCE: ' + _pgMap[k];
+    });
+  }
+
   if (page.page_type === 'blog') {
     return 'CLIENT: ' + s.client
       + '\nBLOG POST TITLE: ' + page.page_name
+      + (page.content_pillar ? '\nCONTENT PILLAR: ' + page.content_pillar : '')
+      + _pillarGuidance
       + '\nPRIMARY KEYWORD: ' + page.primary_keyword
       + '\nSUPPORTING KEYWORDS: ' + kws
       + '\nTARGET WORD COUNT: ' + (page.word_count_target || 1200)
       + '\nBUSINESS OVERVIEW: ' + (r.business_overview||'')
       + '\nGEOGRAPHY: ' + getPageGeo(page)
       + '\nVOICE: ' + (getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice')||s.voice||'Confident, direct. Canadian spelling.')
+      + (_posDir && _posDir.direction ? '\nPOSITIONING DIRECTION: ' + _posDir.direction + (_posDir.headline ? ' — "' + _posDir.headline + '"' : '') : '')
       + ((r.current_slogan||r.slogan_or_tagline) ? '\nSLOGAN: '+(r.current_slogan||r.slogan_or_tagline) : '')
       + (((getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).length) ? '\nWORDS TO AVOID: '+(getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).join(', ') : '')
+      + _voiceBlock
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
       + cpProofBlock + cpCtaBlock
       + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)) : '')
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
+      + _personaBlock
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -171,12 +293,14 @@ function buildCopyPrompt(page) {
     + '\nOVERVIEW: ' + (r.business_overview||'')
     + '\nVALUE PROP: ' + (getStrategyField('positioning.value_proposition', 'value_proposition')||'')
     + '\nDIFFERENTIATORS: ' + (getStrategyField('positioning.key_differentiators', 'key_differentiators')||[]).join('. ')
+    + (_posDir && _posDir.direction ? '\nPOSITIONING DIRECTION: ' + _posDir.direction + (_posDir.headline ? ' — "' + _posDir.headline + '"' : '') + (_posDir.rationale ? '\nDirection context: ' + _posDir.rationale : '') + '\nAll copy must reinforce this positioning direction. Hero should echo the headline. Problem/Agitation should frame problems through this lens.' : '')
     + '\nGEOGRAPHY: ' + getPageGeo(page)
     + '\nPRICING: ' + (s.pricing||r.current_pricing||r.pricing_notes||'')
     + '\nVOICE: ' + (getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice')||s.voice||'Confident, direct. Canadian spelling.')
     + ((r.current_slogan||r.slogan_or_tagline) ? '\nSLOGAN: '+(r.current_slogan||r.slogan_or_tagline) : '')
     + (((getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).length) ? '\nWORDS TO AVOID: '+(getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid')||[]).join(', ') : '')
     + (((getStrategyField('brand_strategy.words_to_use', 'words_to_use')||[]).length) ? '\nWORDS TO USE: '+(getStrategyField('brand_strategy.words_to_use', 'words_to_use')||[]).join(', ') : '')
+    + _voiceBlock
     + (((r.pain_points_top5||[]).length) ? '\nAUDIENCE PAIN POINTS: ' + (r.pain_points_top5||[]).slice(0,3).join('; ') : '')
     + (((r.objections_top5||[]).length) ? '\nBUYER OBJECTIONS: ' + (r.objections_top5||[]).slice(0,3).join('; ') : '')
     + (((r.existing_proof||r.proof_points||[]).length) ? '\nPROOF POINTS: ' + (r.existing_proof||r.proof_points||[]).slice(0,3).join('; ') : '')
@@ -184,9 +308,11 @@ function buildCopyPrompt(page) {
     + '\nNOTES: ' + (page.notes||'')
     + questionsBlock + briefBlock + serpBlock
     + cpProofBlock + cpCtaBlock
+    + _subBlock + _econBlock + _compCounter
     + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)) : '')
     + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
     + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
+    + _personaBlock
     + '\n\n' + briefInstruction;
 }
 
@@ -336,6 +462,8 @@ var QC_MAP = {
     {key:'links_working',    label:'CTAs & links work', note:'Every button and link tested — no 404s or dead forms'},
     {key:'voice_on_point',   label:'Brand voice on-point', note:'Sounds like us — direct, confident, not generic AI copy'},
     {key:'no_stale_content', label:'No stale content', note:'No outdated team, discontinued services, or old events'},
+    {key:'persona_voice',    label:'Copy uses target persona language', note:'Speaks to assigned persona pains and uses their vocabulary, not generic marketing'},
+    {key:'positioning_consistent', label:'Copy reinforces positioning direction', note:'Hero and key sections echo the selected positioning angle — not a generic agency pitch'},
   ],
   // Additional items per page type
   service:  [{key:'pricing_current', label:'Pricing anchor is current', note:'"Starting from" or anchor price reflects real current pricing'}],
@@ -358,11 +486,24 @@ function getQCItems(pageType) {
 async function generateMetaTags(slug, page, copyHtml) {
   var stripped = (copyHtml||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,8000);
   var p = page || orderedPages().find(function(pp){ return pp.slug===slug; }) || {};
+  var r = S.research||{}, s = S.setup;
+  var _metaPosDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  var _metaSlogan = (r.current_slogan || r.slogan_or_tagline || '');
+  var _metaWordsAvoid = (getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid') || []);
   var prompt = 'Write an SEO meta title and meta description for this page.\n\nPage: ' + (p.page_name||slug)
     + '\nPrimary keyword: ' + (p.primary_keyword||'')
     + '\nURL: /' + (p.slug||slug)
+    + '\nSearch intent: ' + (p.search_intent || '')
+    + '\nClient: ' + (s.client || r.client_name || '')
+    + (_metaSlogan ? '\nTagline: ' + _metaSlogan : '')
+    + (_metaPosDir && _metaPosDir.headline ? '\nPositioning: ' + _metaPosDir.headline : '')
     + '\nCopy excerpt:\n' + stripped
-    + '\n\nRules:\n- Title: 50-60 chars, include primary keyword near start, brand name at end separated by |\n- Description: 150-160 chars, action-oriented, include primary keyword naturally, no clickbait\n\nReturn raw JSON only:\n{"title":"...","description":"..."}';
+    + '\n\nRules:\n- Title: 50-60 chars, primary keyword in first 3 words, brand name at end with |'
+    + '\n- Title should reflect the positioning direction if provided'
+    + '\n- Description: 150-160 chars, action-oriented, include primary keyword naturally'
+    + (_metaWordsAvoid.length ? '\n- Do NOT use these words: ' + _metaWordsAvoid.join(', ') : '')
+    + '\n- Intent framing: ' + (p.search_intent === 'transactional' ? 'action-oriented, ready to buy' : p.search_intent === 'informational' ? 'educational, answer-first' : 'evaluate and compare')
+    + '\n\nReturn raw JSON only:\n{"title":"...","description":"..."}';
   try {
     var result = await callClaude('You write SEO meta tags. Return raw JSON only, no markdown or explanation.', prompt, null, 300);
     var clean = result.replace(/```json\s*/g,'').replace(/```/g,'').trim();
@@ -535,6 +676,27 @@ async function runCopyAudit(slug) {
     });
   }
 
+  // Persona alignment check
+  var _auditPersonas = (S.strategy && S.strategy.audience && S.strategy.audience.personas) || [];
+  var _auditPersona = p.target_persona ? _auditPersonas.find(function(per) { return per.name === p.target_persona; }) : null;
+  if (_auditPersona) {
+    checks.push({
+      id: 'persona_alignment',
+      label: 'Copy addresses ' + _auditPersona.name + ' specific pains (not generic problems). Look for: ' + (_auditPersona.frustrations ? _auditPersona.frustrations.slice(0, 2).join('; ') : 'persona-specific language') + '. Problem/Agitation should reference this persona.',
+      display: 'Persona alignment — addresses ' + _auditPersona.name + ' pains'
+    });
+  }
+
+  // Positioning direction check
+  var _auditPosDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  if (_auditPosDir && _auditPosDir.direction) {
+    checks.push({
+      id: 'positioning_direction',
+      label: 'Copy reinforces "' + _auditPosDir.direction + '" positioning. Hero and Solution Bridge should frame the client as "' + (_auditPosDir.headline || _auditPosDir.direction) + '". If copy could belong to any agency regardless of positioning, FAIL.',
+      display: 'Positioning — reinforces "' + _auditPosDir.direction + '"'
+    });
+  }
+
   var prompt = '## PAGE\n'
     + 'Name: ' + (p.page_name||slug) + ' | Type: ' + (p.page_type||'') + '\n'
     + 'Primary keyword: ' + (p.primary_keyword||'') + '\n'
@@ -598,6 +760,26 @@ async function runCopyPass3(slug) {
   var clientLogos = (r.notable_clients || []).join(', ');
   var pageCtx = (p.pageContext || '').trim();
 
+  // Persona-aware proof prioritisation
+  var _p3Personas = (S.strategy && S.strategy.audience && S.strategy.audience.personas) || [];
+  var _p3Persona = p.target_persona ? _p3Personas.find(function(per) { return per.name === p.target_persona; }) : null;
+  var _p3PersonaCtx = '';
+  if (_p3Persona) {
+    _p3PersonaCtx = '\n\nTarget persona: ' + _p3Persona.name + '.';
+    if (_p3Persona.segment) _p3PersonaCtx += ' Segment: ' + _p3Persona.segment + '.';
+    _p3PersonaCtx += ' Prioritise E-E-A-T signals this persona would find credible — ' + _p3Persona.segment + '-specific case studies and credentials first, then general proof.';
+    if (_p3Persona.decision_criteria && _p3Persona.decision_criteria.length) {
+      _p3PersonaCtx += '\nProof they need: ' + _p3Persona.decision_criteria.slice(0, 3).join('; ') + '.';
+    }
+    _p3PersonaCtx += '\nIf relevant proof is missing, add <!-- PROOF GAP: description --> comments so human QC can address it.';
+  }
+
+  var _p3PosDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  var _p3DirCtx = '';
+  if (_p3PosDir && _p3PosDir.direction) {
+    _p3DirCtx = '\n\nPositioning direction: "' + _p3PosDir.direction + '". Select proof points that specifically support this positioning. Prioritise proof that demonstrates "' + (_p3PosDir.headline || _p3PosDir.direction) + '" over generic credibility signals.';
+  }
+
   var pass3System = 'You are a senior E-E-A-T specialist and conversion copywriter. You receive existing page HTML and add Experience, Expertise, Authoritativeness, and Trust signals throughout the copy without changing its structure. Make signals specific and credible — never generic. Canadian spelling.';
   var prompt = '## EXISTING COPY\n' + cd.copy
     + '\n\n## E-E-A-T MATERIAL TO INJECT'
@@ -607,6 +789,7 @@ async function runCopyPass3(slug) {
     + (awards ? '\n\nAwards/accreditations: ' + awards : '')
     + (clientLogos ? '\n\nNotable clients: ' + clientLogos : '')
     + (pageCtx ? '\n\nPage-specific context: ' + pageCtx : '')
+    + _p3PersonaCtx + _p3DirCtx
     + '\n\n## TASK\nEnhance this copy with E-E-A-T signals using the material above. Rules:'
     + '\n1. Add specific stats, results, and credentials where they strengthen credibility'
     + '\n2. Make social proof concrete — named clients, specific outcomes, real numbers'
@@ -673,6 +856,19 @@ async function runCopyPass2(slug) {
     + '\nGeo: ' + getPageGeo(p)
     + '\nVoice: ' + ((getStrategyField('brand_strategy.tone_and_voice', 'tone_and_voice'))||(s&&s.voice)||'Confident, direct. Canadian spelling.');
 
+    // Add strategy context for targeted fixes
+    var _p2Personas = (S.strategy && S.strategy.audience && S.strategy.audience.personas) || [];
+    var _p2Persona = p.target_persona ? _p2Personas.find(function(per) { return per.name === p.target_persona; }) : null;
+    var _p2PosDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+    var _p2Ctx = '';
+    if (_p2Persona) _p2Ctx += '\nTarget persona: ' + _p2Persona.name + '. Pains: ' + (_p2Persona.frustrations || []).slice(0, 3).join('; ') + '. When fixing reader profile or objection checks, use this persona.';
+    if (_p2PosDir && _p2PosDir.direction) _p2Ctx += '\nPositioning: "' + _p2PosDir.direction + '" — ' + (_p2PosDir.headline || '') + '. Fixes must maintain this positioning.';
+    var _voiceOv2 = p.voice_overlay || 'base';
+    if (_voiceOv2 !== 'base' && S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.voice_overlays && S.strategy.brand_strategy.voice_overlays[_voiceOv2]) {
+      var _ov2 = S.strategy.brand_strategy.voice_overlays[_voiceOv2];
+      _p2Ctx += '\nVoice overlay (' + _voiceOv2 + '): ' + (typeof _ov2 === 'string' ? _ov2 : JSON.stringify(_ov2)) + '. Fixes must maintain this vertical voice.';
+    }
+
   // Trim HTML for input — strip inline styles and class attrs to save tokens
   // Strip style/class attrs to save tokens, keep up to 7500 chars of actual content
   var trimmedHtml = (c.copy||'').replace(/ style="[^"]*"/g,'').replace(/ class="[^"]*"/g,'').replace(/ data-[^=]*="[^"]*"/g,'').slice(0,7500);
@@ -689,7 +885,7 @@ async function runCopyPass2(slug) {
     ? '\n\n## ASSIGNED FAQ QUESTIONS (must appear verbatim in FAQ section):\n' + (p.assignedQuestions||[]).map(function(q,i){ return (i+1)+'. '+q; }).join('\n')
     : '';
 
-  var prompt = '## PAGE CONTEXT\n' + pageCtx
+  var prompt = '## PAGE CONTEXT\n' + pageCtx + _p2Ctx
     + assignedQsList
     + '\n\n## CHECKS ALREADY PASSING (preserve these sections — do not rewrite):\n' + passList
     + '\n\n## FAILED CHECKS TO FIX (improve specifically for these):\n' + failList

@@ -2306,7 +2306,7 @@ async function synthesiseWebStrategy() {
   if (st.execution_plan) {
     ctx += '\nEXECUTION PLAN:\n';
     if (st.execution_plan.primary_cta) ctx += '- Primary CTA: ' + st.execution_plan.primary_cta + '\n';
-    if (st.execution_plan.secondary_cta) ctx += '- Secondary CTA: ' + st.execution_plan.secondary_cta + '\n';
+    if (st.execution_plan.secondary_ctas) ctx += '- Secondary CTAs: ' + (Array.isArray(st.execution_plan.secondary_ctas) ? st.execution_plan.secondary_ctas.join(', ') : st.execution_plan.secondary_ctas) + '\n';
     if (st.execution_plan.low_commitment_cta) ctx += '- Low-commitment CTA: ' + st.execution_plan.low_commitment_cta + '\n';
     if (st.execution_plan.kpis && st.execution_plan.kpis.length) {
       ctx += '- KPIs: ' + st.execution_plan.kpis.slice(0, 5).map(function(k) { return typeof k === 'string' ? k : (k.metric || k.name || ''); }).join('; ') + '\n';
@@ -5352,7 +5352,7 @@ async function compileStrategyOutput() {
   // Full CTA architecture from execution plan
   if (st.execution_plan) {
     if (st.execution_plan.primary_cta && !web) ctx += '\nPRIMARY CTA: ' + st.execution_plan.primary_cta + '\n';
-    if (st.execution_plan.secondary_cta) ctx += 'SECONDARY CTA: ' + st.execution_plan.secondary_cta + '\n';
+    if (st.execution_plan.secondary_ctas) ctx += 'SECONDARY CTAs: ' + (Array.isArray(st.execution_plan.secondary_ctas) ? st.execution_plan.secondary_ctas.join(', ') : st.execution_plan.secondary_ctas) + '\n';
     if (st.execution_plan.low_commitment_cta) ctx += 'LOW-COMMITMENT CTA: ' + st.execution_plan.low_commitment_cta + '\n';
     if (st.execution_plan.kpis && st.execution_plan.kpis.length) {
       ctx += 'KPIs: ' + st.execution_plan.kpis.slice(0, 8).map(function(k) {
