@@ -8,6 +8,11 @@ binding = "SETSAIL_OS"
 id = "c3439e54cebb4328b0fc5753a9292bc2"
 remote = true
 
+[[kv_namespaces]]
+binding = "PRICING_KV"
+id = "a74c3ca5a74e4d29a1dfaf24f43ac5b3"
+remote = true
+
 [[queues.producers]]
 binding = "SETSAIL_GEN_QUEUE"
 queue = "setsailos-gen-queue"

@@ -143,6 +143,21 @@ async function checkRateLimit(env, userId, group) {
   return { limited: false, remaining: max - bucket.count };
 }
 
+// ── Pricing Engine KV (read-only) ────────────────────────────────────────
+async function getPricingCatalog(env) {
+  try {
+    const raw = await env.PRICING_KV.get('global:pricing-catalog');
+    if (!raw) {
+      console.warn('Pricing catalog not found in KV');
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error(`Error reading pricing catalog: ${err.message}`);
+    return null;
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────────
 
 export default {

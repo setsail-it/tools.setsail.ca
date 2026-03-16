@@ -25,7 +25,7 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 | Layer | Tech |
 |---|---|
 | Hosting | Cloudflare Workers (Paid plan) |
-| Storage | Cloudflare KV (`SETSAIL_OS`) |
+| Storage | Cloudflare KV (`SETSAIL_OS`) + read-only `PRICING_KV` (Pricing Engine) |
 | Queue | Cloudflare Queues (`setsailos-gen-queue`) |
 | Auth | Cloudflare Access (Google SSO, `@setsail.ca`) + JWT validation |
 | AI | Anthropic Claude (`claude-sonnet-4-20250514`) via `/api/claude` proxy |
@@ -126,6 +126,7 @@ These are defined once and used across all routes:
 - `detectCountryFromGeo(geo)` — regex-based geo string → country code
 - `EXCLUDED_DOMAINS` — domains to filter from competitor results
 - `checkRateLimit(env, userId, group)` — KV-based sliding window rate limiter
+- `getPricingCatalog(env)` — reads `global:pricing-catalog` from `PRICING_KV` (read-only, owned by Pricing Engine). Returns parsed catalog object or null. Schema: `catalog.services[]` (9 services with pricing ranges, margin targets, KPIs), `catalog.packages[]` (3 tiers: Starter/Growth/Scale), `catalog.marginTargets` (default 75%, per-category/service), `catalog.strategy` (Growth Diagnostic $750 credited on sign), `catalog.tracking` (Analytics setup $1,500-4,000). **Never write to PRICING_KV from SetSailOS.**
 
 ### Shared Helpers (index.html, available to all stage files)
 
@@ -366,6 +367,12 @@ All user data prefixed `u:{email}:`.
 | `u:{email}:img:{projectId}:{slug}` | Image data per page |
 | `admin:user:{email}` | User profile: name, role, projects |
 | `rl:{email}:{group}` | Rate limit bucket (auto-expiring) |
+
+**External KV (read-only):**
+
+| KV Namespace | Key | Contents |
+|---|---|---|
+| `PRICING_KV` | `global:pricing-catalog` | Pricing Engine catalog: 9 services, 3 packages, margin targets, strategy pricing, tracking pricing. **Read-only — owned by Pricing Engine repo.** |
 
 **25MB KV limit per value.** Server rejects at 24MB, warns at 15MB+.
 
