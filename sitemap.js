@@ -1203,15 +1203,55 @@ function showMermaidModal() {
         <div style="font-size:14px;font-weight:500;color:var(--dark)">🌿 Mermaid Sitemap Export</div>
         <div style="font-size:11.5px;color:var(--n2);margin-top:3px">In FigJam: <strong>Insert → Mermaid diagram</strong> → paste → Done</div>
       </div>
-      <button onclick="document.getElementById('mermaid-modal').remove()" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--n2);white-space:nowrap">✕ Close</button>
+      <button id="mermaid-close-btn" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--n2);white-space:nowrap">✕ Close</button>
     </div>
-    <pre id="mermaid-output" style="background:var(--panel);border-radius:8px;padding:14px 16px;font-size:10.5px;font-family:monospace;overflow:auto;white-space:pre;color:var(--dark);border:1px solid var(--border);line-height:1.65;flex:1;max-height:52vh">${mermaid}</pre>
+    <pre id="mermaid-output" style="background:var(--panel);border-radius:8px;padding:14px 16px;font-size:10.5px;font-family:monospace;overflow:auto;white-space:pre;color:var(--dark);border:1px solid var(--border);line-height:1.65;flex:1;max-height:52vh"></pre>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="mermaid-copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('mermaid-output').textContent).then(()=>{this.innerHTML='<i class=\'ti ti-check\'></i> Copied!';setTimeout(()=>this.innerHTML='<i class=\'ti ti-copy\'></i> Copy to Clipboard',2200)})"><i class='ti ti-copy'></i> Copy to Clipboard</button>
+      <button class="btn btn-primary" id="mermaid-copy-btn"><i class="ti ti-copy"></i> Copy to Clipboard</button>
       <a href="https://www.figma.com/figjam/" target="_blank" class="btn btn-ghost" style="text-decoration:none"><i class="ti ti-external-link"></i> Open FigJam</a>
     </div>
   </div>`;
+  // Set mermaid text via textContent (safe, no HTML injection)
+  modal.querySelector('#mermaid-output').textContent = mermaid;
+  // Wire close button
+  modal.querySelector('#mermaid-close-btn').onclick = function() {
+    document.getElementById('mermaid-modal').remove();
+  };
+  // Wire copy button with fallback
+  modal.querySelector('#mermaid-copy-btn').onclick = function() {
+    var btn = this;
+    var text = document.getElementById('mermaid-output').textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        btn.innerHTML = '<i class="ti ti-check"></i> Copied!';
+        setTimeout(function() { btn.innerHTML = '<i class="ti ti-copy"></i> Copy to Clipboard'; }, 2200);
+      }).catch(function() {
+        _mermaidFallbackCopy(text, btn);
+      });
+    } else {
+      _mermaidFallbackCopy(text, btn);
+    }
+  };
   document.body.appendChild(modal);
+}
+
+function _mermaidFallbackCopy(text, btn) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    btn.innerHTML = '<i class="ti ti-check"></i> Copied!';
+    setTimeout(function() { btn.innerHTML = '<i class="ti ti-copy"></i> Copy to Clipboard'; }, 2200);
+  } catch(e) {
+    btn.innerHTML = '<i class="ti ti-alert-circle"></i> Select + Cmd-C';
+    var pre = document.getElementById('mermaid-output');
+    if (pre) { var range = document.createRange(); range.selectNodeContents(pre); window.getSelection().removeAllRanges(); window.getSelection().addRange(range); }
+    setTimeout(function() { btn.innerHTML = '<i class="ti ti-copy"></i> Copy to Clipboard'; }, 3000);
+  }
+  document.body.removeChild(ta);
 }
 
 function showHtmlSitemapModal() {
