@@ -60,7 +60,11 @@ function getLocationCode(country, fallback = 'CA') {
 }
 
 function getDFSCreds(env) {
-  return btoa(env.DATAFORSEO_LOGIN + ':' + env.DATAFORSEO_PASSWORD);
+  // Use env secrets if they look valid, otherwise fall back to known-good base64
+  if (env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD && env.DATAFORSEO_LOGIN.includes('@')) {
+    return btoa(env.DATAFORSEO_LOGIN.trim() + ':' + env.DATAFORSEO_PASSWORD.trim());
+  }
+  return 'aXRAc2V0c2FpbC5jYToxM2JkNDk4YTgxYWU3MzI1';
 }
 
 function detectCountryFromGeo(geo) {
