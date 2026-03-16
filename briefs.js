@@ -1201,8 +1201,52 @@ async function generatePageBrief(pageIdx) {
       if (_matchedPersona.frustrations && _matchedPersona.frustrations.length) _perParts.push('Pains: ' + _matchedPersona.frustrations.slice(0, 3).join('; '));
       if (_matchedPersona.decision_criteria && _matchedPersona.decision_criteria.length) _perParts.push('Evaluates: ' + _matchedPersona.decision_criteria.slice(0, 3).join('; '));
       if (_matchedPersona.language_patterns && _matchedPersona.language_patterns.length) _perParts.push('Language: ' + _matchedPersona.language_patterns.slice(0, 2).join('; '));
+      // Execution Profile (Layer 2 enrichment) — inject customer voice into brief
+      var _epBrief = _matchedPersona.executionProfile;
+      if (_epBrief && _epBrief._enrichedAt) {
+        if (_epBrief.painLanguage && _epBrief.painLanguage.length) {
+          _perParts.push('\nCUSTOMER VOICE (what this persona says):');
+          _epBrief.painLanguage.slice(0, 5).forEach(function(pl) { _perParts.push('  "' + pl.phrase + '" (' + pl.pain + ')'); });
+        }
+        if (_epBrief.emotionalDrivers && _epBrief.emotionalDrivers.length) {
+          _perParts.push('EMOTIONAL DRIVERS (what they actually feel):');
+          _epBrief.emotionalDrivers.slice(0, 3).forEach(function(e) { _perParts.push('  ' + e.pain + ': ' + e.beneath); });
+        }
+        if (_epBrief.competitorVoice) {
+          if (_epBrief.competitorVoice.whatEveryoneSays && _epBrief.competitorVoice.whatEveryoneSays.length) {
+            _perParts.push('DO NOT SAY (competitor cliches): ' + _epBrief.competitorVoice.whatEveryoneSays.join(', '));
+          }
+          if (_epBrief.competitorVoice.whatNobodySays && _epBrief.competitorVoice.whatNobodySays.length) {
+            _perParts.push('SAY THIS INSTEAD (messaging gap): ' + _epBrief.competitorVoice.whatNobodySays.join(', '));
+          }
+          if (_epBrief.competitorVoice.messagingGap) {
+            _perParts.push('Biggest unaddressed need: ' + _epBrief.competitorVoice.messagingGap);
+          }
+        }
+        if (_epBrief.objectionDetail && _epBrief.objectionDetail.length) {
+          _perParts.push('KEY OBJECTIONS:');
+          _epBrief.objectionDetail.slice(0, 3).forEach(function(o) { _perParts.push('  "' + o.objection + '" → Counter: ' + o.counterStrategy); });
+        }
+        if (_epBrief.proofTypes && _epBrief.proofTypes.length) {
+          _perParts.push('PROOF NEEDED: ' + _epBrief.proofTypes.filter(function(pt2){return pt2.impact==='high';}).map(function(pt2){return pt2.type;}).join(', '));
+        }
+      }
       _personaCtx = '\n' + _perParts.join('\n');
     }
+  }
+
+  // Client Pain context (Layer 1)
+  var _clientPainCtx = '';
+  var _cp = (S.research && S.research.clientPain) || {};
+  if (_cp.primary) {
+    var _cpParts = ['\n## CLIENT CONTEXT (why they hired us)'];
+    _cpParts.push('Primary pain: ' + _cp.primary);
+    if (_cp.priorAttempts && _cp.priorAttempts.length) {
+      _cpParts.push('What they tried: ' + _cp.priorAttempts.map(function(a){return a.what + ' → ' + a.outcome;}).join('; '));
+    }
+    if (_cp.successDefinition) _cpParts.push('Success metric: ' + _cp.successDefinition);
+    if (_cp.clientQuotes && _cp.clientQuotes.length) _cpParts.push('In their words: ' + _cp.clientQuotes.slice(0, 2).join(' | '));
+    _clientPainCtx = _cpParts.join('\n');
   }
 
   // Positioning direction: the strategic narrative spine
@@ -1397,6 +1441,7 @@ async function generatePageBrief(pageIdx) {
       + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
       + (p.existing_traffic ? 'Existing traffic: '+p.existing_traffic+'/mo\n' : '')
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + _clientPainCtx
       + (_webStrategy ? '\n\n## WEBSITE STRATEGY\n'+_webStrategy : '')
       + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n'+_pageGoal : '')
@@ -1455,6 +1500,7 @@ async function generatePageBrief(pageIdx) {
       + 'URL: /'+p.slug+'\n'
       + 'Type: blog/resource | Action: '+(p.action||'build_new')+'\n'
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + ctxProof + ctxCTA
       + '\n\n## AUDIENCE\n'+ctxAudience
@@ -1512,6 +1558,7 @@ async function generatePageBrief(pageIdx) {
       + 'URL: /'+p.slug+'\n'
       + 'Type: '+p.page_type+' | Action: '+(p.action||'build_new')+'\n'
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
+      + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
       + '\n\n## AUDIENCE\n'+ctxAudience

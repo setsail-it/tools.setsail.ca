@@ -276,6 +276,27 @@ function renderResearchScorecard() {
   });
   html += '</div>';
 
+  // Client Pain completeness indicator
+  var cp = (S.research && S.research.clientPain) || {};
+  var cpScore = 0, cpMax = 5;
+  if (cp.primary && cp.primary.trim()) cpScore++;
+  if (cp.secondary && cp.secondary.length >= 2) cpScore++;
+  if (cp.successDefinition && cp.successDefinition.trim()) cpScore++;
+  if (cp.priorAttempts && cp.priorAttempts.length > 0) cpScore++;
+  if (cp.clientQuotes && cp.clientQuotes.length >= 2) cpScore++;
+  var cpPct = Math.round((cpScore / cpMax) * 100);
+  var cpColour = cpPct >= 80 ? 'var(--green)' : cpPct >= 40 ? '#e6a23c' : '#f56c6c';
+  html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+  html += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--n2)">Client Pain (Layer 1)</span>';
+  if (!cp.primary || !cp.primary.trim()) html += '<span style="font-size:9px;background:#f56c6c;color:white;padding:1px 5px;border-radius:3px">caps score at 6.0</span>';
+  html += '</div>';
+  html += '<span style="font-size:10px;color:' + cpColour + '">' + cpScore + '/' + cpMax + '</span>';
+  html += '</div>';
+  html += '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
+  html += '<div style="height:100%;width:' + cpPct + '%;background:' + cpColour + ';border-radius:2px;transition:width .3s"></div>';
+  html += '</div></div>';
+
   // Missing fields (critical first, then normal — skip optional)
   var critMissing = c.missing.filter(function(m) { return m.importance === 'critical'; });
   var normMissing = c.missing.filter(function(m) { return m.importance === 'normal'; });
@@ -322,6 +343,10 @@ function initResearch() {
   if (!S.research) S.research = researchDefaults();
   migrateResearchFields(S.research);
   _cachedWebsiteText = null; // reset website cache on project load
+  // Ensure clientPain exists for older projects
+  if (!S.research.clientPain) {
+    S.research.clientPain = { primary:'', secondary:[], consequence:'', urgencyTrigger:'', priorAttempts:[], successDefinition:'', clientQuotes:[], source:'', _extractedAt:null };
+  }
   // Auto-populate client_name from Setup
   if (!S.research.client_name && S.setup && S.setup.client) {
     S.research.client_name = S.setup.client;
@@ -381,6 +406,18 @@ function researchDefaults() {
     current_faqs:[], reviews:[],
     // Competitors
     competitors:[],
+    // Client Pain (Layer 1 — why the client hired Setsail)
+    clientPain: {
+      primary: '',
+      secondary: [],
+      consequence: '',
+      urgencyTrigger: '',
+      priorAttempts: [],
+      successDefinition: '',
+      clientQuotes: [],
+      source: '',
+      _extractedAt: null
+    },
   };
 }
 
@@ -690,7 +727,205 @@ function renderRBusiness(r) {
     [{key:'name',label:'Service Name',width:'150px'},{key:'description',label:'Description'},{key:'pricing',label:'Pricing',width:'120px'},{key:'target_audience',label:'Target Audience',width:'130px'},{key:'key_differentiator',label:'Differentiator',width:'130px'}],
     '+ Add Service'
   );
+  // Client Pain card (Layer 1)
+  html += renderClientPainCard(r);
   return html;
+}
+
+function renderClientPainCard(r) {
+  var cp = r.clientPain || {};
+  var hasPrimary = cp.primary && cp.primary.trim();
+  var hasAny = hasPrimary || (cp.secondary && cp.secondary.length) || (cp.clientQuotes && cp.clientQuotes.length);
+  var borderColor = hasPrimary ? 'var(--green)' : hasAny ? '#e6a23c' : '#f56c6c';
+  var statusBadge = hasPrimary
+    ? '<span style="font-size:9px;background:var(--green);color:white;padding:1px 6px;border-radius:3px;margin-left:8px">Extracted</span>'
+    : '<span style="font-size:9px;background:#f56c6c;color:white;padding:1px 6px;border-radius:3px;margin-left:8px">Missing</span>';
+  if (cp._extractedAt) {
+    var d = new Date(cp._extractedAt);
+    statusBadge += '<span style="font-size:9px;color:var(--n2);margin-left:6px">Extracted ' + d.toLocaleDateString('en-CA') + '</span>';
+  }
+  if (cp.source) {
+    statusBadge += '<span style="font-size:9px;color:var(--n2);margin-left:4px">via ' + cp.source.replace(/_/g,' ') + '</span>';
+  }
+
+  var html = '<div class="card" style="margin-bottom:10px;border-left:3px solid ' + borderColor + '">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html += '<div style="display:flex;align-items:center">';
+  html += '<div class="eyebrow" style="margin:0;color:#f56c6c">Client Pain</div>';
+  html += statusBadge;
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px">';
+  html += '<button class="btn btn-ghost sm" onclick="extractClientPain()"><i class="ti ti-sparkles" style="font-size:11px"></i> Re-extract</button>';
+  html += '<button class="btn btn-ghost sm" onclick="toggleClientPainEdit()"><i class="ti ti-edit" style="font-size:11px"></i> Edit</button>';
+  html += '</div></div>';
+  html += '<p style="font-size:11px;color:var(--n2);margin:0 0 12px">Why this client hired Setsail — extracted from discovery notes and uploaded documents.</p>';
+
+  // Read-only display
+  html += '<div id="client-pain-display">';
+  // Primary Pain
+  html += '<div style="margin-bottom:10px">';
+  html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Primary Pain</div>';
+  html += '<div style="font-size:13px;color:var(--dark);padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">' + esc(cp.primary || 'Not yet captured — run enrichment or edit manually') + '</div>';
+  html += '</div>';
+
+  // Secondary Pains
+  if (cp.secondary && cp.secondary.length) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Secondary Pains</div>';
+    for (var si = 0; si < cp.secondary.length; si++) {
+      html += '<div style="font-size:12px;color:var(--dark);padding:4px 0;display:flex;gap:6px"><span style="color:var(--n2)">·</span>' + esc(cp.secondary[si]) + '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Consequence + Urgency (side by side)
+  if (cp.consequence || cp.urgencyTrigger) {
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">';
+    html += '<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Consequence</div>';
+    html += '<div style="font-size:12px;color:var(--dark);padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border);min-height:28px">' + esc(cp.consequence || 'Not stated') + '</div></div>';
+    html += '<div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Why Now</div>';
+    html += '<div style="font-size:12px;color:var(--dark);padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border);min-height:28px">' + esc(cp.urgencyTrigger || 'Not stated') + '</div></div>';
+    html += '</div>';
+  }
+
+  // Prior Attempts
+  if (cp.priorAttempts && cp.priorAttempts.length) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">What They Have Tried</div>';
+    for (var pa = 0; pa < cp.priorAttempts.length; pa++) {
+      var att = cp.priorAttempts[pa];
+      html += '<div style="font-size:12px;padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border);margin-bottom:4px">';
+      html += '<strong>' + esc(att.what || '') + '</strong>';
+      if (att.outcome) html += ' <span style="color:var(--n2)">&rarr;</span> ' + esc(att.outcome);
+      var meta = [];
+      if (att.spend) meta.push(att.spend);
+      if (att.duration) meta.push(att.duration);
+      if (meta.length) html += '<div style="font-size:10px;color:var(--n2);margin-top:2px">' + esc(meta.join(' · ')) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Success Definition
+  if (cp.successDefinition) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Their Definition of Success</div>';
+    html += '<div style="font-size:12px;color:var(--dark);padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">' + esc(cp.successDefinition) + '</div>';
+    html += '</div>';
+  }
+
+  // Client Quotes
+  if (cp.clientQuotes && cp.clientQuotes.length) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">In Their Words</div>';
+    for (var qi = 0; qi < cp.clientQuotes.length; qi++) {
+      html += '<div style="font-size:12px;color:var(--dark);padding:6px 10px;border-left:3px solid #e6a23c;background:#e6a23c08;border-radius:0 6px 6px 0;margin-bottom:4px;font-style:italic">"' + esc(cp.clientQuotes[qi]) + '"</div>';
+    }
+    html += '</div>';
+  }
+
+  // Customer Voice Quotes (stashed for Strategy)
+  if (cp._customerVoiceQuotes && cp._customerVoiceQuotes.length) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:3px">Customer Voice Quotes <span style="font-size:9px;background:var(--lime);color:var(--dark);padding:1px 5px;border-radius:3px;text-transform:none;letter-spacing:0;vertical-align:middle">feeds Strategy</span></div>';
+    for (var cvi = 0; cvi < cp._customerVoiceQuotes.length; cvi++) {
+      html += '<div style="font-size:12px;color:var(--dark);padding:6px 10px;border-left:3px solid var(--green);background:var(--green-bg,#10b98108);border-radius:0 6px 6px 0;margin-bottom:4px;font-style:italic">"' + esc(cp._customerVoiceQuotes[cvi]) + '"</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>'; // end #client-pain-display
+
+  // Editable form (hidden by default)
+  html += '<div id="client-pain-edit" style="display:none">';
+  html += '<div style="display:grid;grid-template-columns:1fr;gap:10px">';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Primary Pain</label>';
+  html += '<input id="cp-primary" type="text" value="' + esc(cp.primary || '') + '" class="inp" placeholder="The single biggest reason they hired Setsail"></div>';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Secondary Pains (one per line)</label>';
+  html += '<textarea id="cp-secondary" rows="3" class="inp" placeholder="Other problems mentioned">' + esc((cp.secondary || []).join('\n')) + '</textarea></div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Consequence</label>';
+  html += '<input id="cp-consequence" type="text" value="' + esc(cp.consequence || '') + '" class="inp" placeholder="What happens if nothing changes"></div>';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Why Now</label>';
+  html += '<input id="cp-urgency" type="text" value="' + esc(cp.urgencyTrigger || '') + '" class="inp" placeholder="What changed or what deadline"></div>';
+  html += '</div>';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Success Definition</label>';
+  html += '<input id="cp-success" type="text" value="' + esc(cp.successDefinition || '') + '" class="inp" placeholder="How they defined success, in their words"></div>';
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Client Quotes (one per line)</label>';
+  html += '<textarea id="cp-quotes" rows="4" class="inp" placeholder="Direct quotes that capture frustration, fear, or aspiration">' + esc((cp.clientQuotes || []).join('\n')) + '</textarea></div>';
+  // Prior Attempts editor (simplified — one per line as "what → outcome | spend | duration")
+  html += '<div><label style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px">Prior Attempts <span style="font-weight:400;text-transform:none;letter-spacing:0">(one per line: what &rarr; outcome | spend | duration)</span></label>';
+  var attLines = (cp.priorAttempts || []).map(function(a) {
+    var parts = [a.what || ''];
+    if (a.outcome) parts[0] += ' → ' + a.outcome;
+    if (a.spend) parts.push(a.spend);
+    if (a.duration) parts.push(a.duration);
+    return parts.join(' | ');
+  });
+  html += '<textarea id="cp-attempts" rows="3" class="inp" placeholder="Freelance SEO → no results | $2,000/mo | 6 months">' + esc(attLines.join('\n')) + '</textarea></div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;margin-top:10px">';
+  html += '<button class="btn btn-primary sm" onclick="saveClientPainEdit()"><i class="ti ti-check"></i> Save</button>';
+  html += '<button class="btn btn-ghost sm" onclick="toggleClientPainEdit()">Cancel</button>';
+  html += '</div>';
+  html += '</div>'; // end #client-pain-edit
+
+  html += '</div>'; // end card
+  return html;
+}
+
+function toggleClientPainEdit() {
+  var display = document.getElementById('client-pain-display');
+  var edit = document.getElementById('client-pain-edit');
+  if (!display || !edit) return;
+  if (edit.style.display === 'none') {
+    display.style.display = 'none';
+    edit.style.display = 'block';
+  } else {
+    display.style.display = 'block';
+    edit.style.display = 'none';
+  }
+}
+
+function saveClientPainEdit() {
+  if (!S.research) S.research = researchDefaults();
+  if (!S.research.clientPain) S.research.clientPain = {};
+  var cp = S.research.clientPain;
+  cp.primary = (document.getElementById('cp-primary')?.value || '').trim();
+  cp.secondary = (document.getElementById('cp-secondary')?.value || '').trim().split('\n').map(function(s){return s.trim();}).filter(Boolean);
+  cp.consequence = (document.getElementById('cp-consequence')?.value || '').trim();
+  cp.urgencyTrigger = (document.getElementById('cp-urgency')?.value || '').trim();
+  cp.successDefinition = (document.getElementById('cp-success')?.value || '').trim();
+  cp.clientQuotes = (document.getElementById('cp-quotes')?.value || '').trim().split('\n').map(function(s){return s.trim();}).filter(Boolean);
+  // Parse prior attempts from simplified format: "what → outcome | spend | duration"
+  var attRaw = (document.getElementById('cp-attempts')?.value || '').trim().split('\n').filter(Boolean);
+  cp.priorAttempts = attRaw.map(function(line) {
+    var mainParts = line.split('|').map(function(s){return s.trim();});
+    var whatOutcome = (mainParts[0] || '').split(/\s*→\s*|\s*->\s*/);
+    return {
+      what: (whatOutcome[0] || '').trim(),
+      outcome: (whatOutcome[1] || '').trim(),
+      spend: (mainParts[1] || '').trim(),
+      duration: (mainParts[2] || '').trim()
+    };
+  });
+  if (!cp.source) cp.source = 'manual';
+  scheduleSave();
+  toggleClientPainEdit();
+  renderResearchTabContent();
+  scheduleScorecard();
+}
+
+async function extractClientPain() {
+  try {
+    aiBarStart('Extracting client pain...');
+    await enrichRTab('client-pain', true);
+    aiBarEnd();
+    aiBarNotify('Client pain extracted', { type: 'success' });
+    renderResearchTabContent();
+  } catch(e) {
+    aiBarEnd();
+    aiBarNotify('Client pain extraction failed: ' + (e.message || '').slice(0, 60), { type: 'error' });
+  }
 }
 
 function renderRAudience(r) {
@@ -916,8 +1151,8 @@ async function enrichOneTab(tab) {
 }
 
 async function enrichAll(forceAll, startFrom) {
-  const steps = ['gmb','website','brand-assets','business','audience','brand','schema','competitors'];
-  const stepLabels = { gmb:'Google Business Profile', website:'Website Scrape', 'brand-assets':'Brand Assets', business:'Business', audience:'Audience', brand:'Brand', schema:'Schema & Local', competitors:'Competitors' };
+  const steps = ['gmb','website','brand-assets','business','audience','client-pain','brand','schema','competitors'];
+  const stepLabels = { gmb:'Google Business Profile', website:'Website Scrape', 'brand-assets':'Brand Assets', business:'Business', audience:'Audience', 'client-pain':'Client Pain', brand:'Brand', schema:'Schema & Local', competitors:'Competitors' };
   const btn = document.getElementById('research-enrich-btn');
   const statusEl = document.getElementById('research-enrich-status');
   const msgEl = document.getElementById('research-enrich-msg');
@@ -1407,6 +1642,67 @@ async function enrichRTab(tab, forceAll) {
       + 'Return ONLY valid JSON, no preamble.\n{\n'
       + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength", "weaknesses": "specific weakness or gap", "what_we_do_better": "how our client beats them"}]\n}'
   };
+
+  // ── Client Pain extraction (dedicated step — separate from audience tab) ──
+  if (tab === 'client-pain') {
+    var cpCtx = ctx;
+    // Inject already-extracted audience data for cross-reference
+    if (r.pain_points_top5 && r.pain_points_top5.length) cpCtx += '\n\nAUDIENCE PAIN POINTS (already extracted): ' + r.pain_points_top5.join('; ');
+    if (r.objections_top5 && r.objections_top5.length) cpCtx += '\nAUDIENCE OBJECTIONS: ' + r.objections_top5.join('; ');
+    if (r.primary_audience_description) cpCtx += '\nAUDIENCE: ' + r.primary_audience_description;
+    if (r.previous_agency_experience) cpCtx += '\nPREVIOUS AGENCY EXPERIENCE: ' + r.previous_agency_experience;
+    if (r.current_marketing_activities && r.current_marketing_activities.length) cpCtx += '\nCURRENT MARKETING: ' + r.current_marketing_activities.join(', ');
+
+    var cpSys = 'You are a senior business strategist at Setsail Marketing. Your job is to extract the CLIENT\'S OWN business problems — why they are seeking marketing help. This is about the CLIENT (the business that hired Setsail), NOT their end customers.\n'
+      + 'Use the client\'s actual language. "I need better jobs, not more leads" not "Client desires higher lead quality."\n'
+      + 'If something was not explicitly stated, leave the field empty. Do not infer.\n'
+      + 'Return ONLY valid JSON — no preamble, no markdown fences, no backticks.';
+
+    var cpPrompt = cpCtx + '\n\nFrom the discovery notes, uploaded documents, and any other context provided, extract the CLIENT\'S OWN business problems.\n'
+      + 'Focus on: Why did they reach out? What is broken? What did they try before? What does success look like?\n\n'
+      + 'Return a JSON object:\n{\n'
+      + '  "primary": "The single biggest reason they hired Setsail. Use their words. e.g. Unpredictable lead flow — 90% referral dependent",\n'
+      + '  "secondary": ["Other problems mentioned, up to 5. Each in their words."],\n'
+      + '  "consequence": "What happens if nothing changes. Leave empty string if not stated.",\n'
+      + '  "urgencyTrigger": "Why NOW — what changed or what deadline. Leave empty string if not stated.",\n'
+      + '  "priorAttempts": [{"what": "what they tried", "outcome": "what happened", "spend": "how much e.g. $2,000/mo", "duration": "how long e.g. 6 months"}],\n'
+      + '  "successDefinition": "How they defined success, in their words.",\n'
+      + '  "clientQuotes": ["3-5 direct quotes that vividly capture their frustration, fear, or aspiration. Emotionally resonant sentences."],\n'
+      + '  "customerVoiceQuotes": ["Any time the client describes what their CUSTOMERS say, think, worry about, or do. Tag these separately — they feed the Strategy stage."],\n'
+      + '  "source": "discovery_notes or fathom_transcript or intake_form or manual"\n}';
+
+    try {
+      window._aiBarLabel = 'Research: Client Pain';
+      var cpResult = await callClaude(cpSys, cpPrompt, null, 4000);
+      var cpParsed = parseEnrichResult(cpResult);
+      if (cpParsed) {
+        if (!r.clientPain) r.clientPain = {};
+        // Merge — only fill empty fields unless forceAll
+        if (forceAll || !r.clientPain.primary) r.clientPain.primary = cpParsed.primary || '';
+        if (forceAll || !r.clientPain.secondary || !r.clientPain.secondary.length) r.clientPain.secondary = cpParsed.secondary || [];
+        if (forceAll || !r.clientPain.consequence) r.clientPain.consequence = cpParsed.consequence || '';
+        if (forceAll || !r.clientPain.urgencyTrigger) r.clientPain.urgencyTrigger = cpParsed.urgencyTrigger || '';
+        if (forceAll || !r.clientPain.priorAttempts || !r.clientPain.priorAttempts.length) r.clientPain.priorAttempts = cpParsed.priorAttempts || [];
+        if (forceAll || !r.clientPain.successDefinition) r.clientPain.successDefinition = cpParsed.successDefinition || '';
+        if (forceAll || !r.clientPain.clientQuotes || !r.clientPain.clientQuotes.length) r.clientPain.clientQuotes = cpParsed.clientQuotes || [];
+        r.clientPain.source = cpParsed.source || 'discovery_notes';
+        r.clientPain._extractedAt = Date.now();
+        // Stash customerVoiceQuotes for Strategy enrichment
+        if (cpParsed.customerVoiceQuotes && cpParsed.customerVoiceQuotes.length) {
+          r.clientPain._customerVoiceQuotes = cpParsed.customerVoiceQuotes;
+        }
+        scheduleSave();
+        _rTab = 'business'; // stay on current tab
+        renderResearchTabContent();
+        scheduleScorecard();
+      }
+    } catch(e) {
+      var _emsgCP = document.getElementById('research-enrich-msg');
+      if (_emsgCP) _emsgCP.textContent = 'Client Pain extraction failed: ' + (e.message || '').slice(0, 60);
+      console.error('enrichRTab [client-pain]:', e);
+    }
+    return;
+  }
 
   if (!prompts[tab]) return;
 

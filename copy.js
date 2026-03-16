@@ -4,6 +4,84 @@ function focusCopyPage(slug) {
   renderCopyQueue();
 }
 
+function _buildPainSidebar(page) {
+  var cp = (S.research && S.research.clientPain) || {};
+  var persona = null;
+  if (page.target_persona && S.strategy && S.strategy.audience && S.strategy.audience.personas) {
+    persona = S.strategy.audience.personas.find(function(per) { return per.name === page.target_persona; });
+  }
+  var ep = (persona && persona.executionProfile && persona.executionProfile._enrichedAt) ? persona.executionProfile : null;
+  // Only show if we have meaningful data
+  if (!cp.primary && !ep) return '';
+
+  var html = '<div style="margin-top:12px;padding:12px;background:var(--panel);border-radius:8px;border:1px solid var(--border)">';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;cursor:pointer" onclick="this.parentElement.classList.toggle(\'_collapsed\')">';
+  html += '<i class="ti ti-target" style="font-size:12px;color:var(--acc)"></i>';
+  html += '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--dark)">Pain Context</span>';
+  html += '<i class="ti ti-chevron-down" style="font-size:11px;color:var(--n2);margin-left:auto"></i>';
+  html += '</div>';
+
+  // Client Context (Layer 1)
+  if (cp.primary) {
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="font-size:10px;font-weight:600;color:#f56c6c;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Client Context</div>';
+    html += '<div style="font-size:11px;color:var(--dark);margin-bottom:3px"><strong>Hired us because:</strong> ' + esc(cp.primary) + '</div>';
+    if (cp.priorAttempts && cp.priorAttempts.length) {
+      html += '<div style="font-size:11px;color:var(--n2);margin-bottom:3px"><strong>They tried:</strong></div>';
+      cp.priorAttempts.forEach(function(a) {
+        html += '<div style="font-size:10px;color:var(--n2);padding-left:8px">· ' + esc(a.what) + ' → ' + esc(a.outcome) + '</div>';
+      });
+    }
+    if (cp.successDefinition) html += '<div style="font-size:11px;color:var(--dark);margin-top:3px"><strong>Success:</strong> ' + esc(cp.successDefinition) + '</div>';
+    if (cp.clientQuotes && cp.clientQuotes.length) {
+      html += '<div style="font-size:11px;margin-top:3px"><strong>In their words:</strong></div>';
+      cp.clientQuotes.slice(0, 2).forEach(function(q) {
+        html += '<div style="font-size:10px;color:var(--dark);padding-left:8px;font-style:italic;border-left:2px solid #e6a23c;padding:2px 8px;margin:2px 0">"' + esc(q) + '"</div>';
+      });
+    }
+    html += '</div>';
+  }
+
+  // Customer Voice (Layer 2)
+  if (ep) {
+    html += '<div style="padding-top:8px;border-top:1px solid var(--border)">';
+    html += '<div style="font-size:10px;font-weight:600;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Customer Voice — ' + esc(persona.name) + '</div>';
+    if (ep.painLanguage && ep.painLanguage.length) {
+      html += '<div style="font-size:11px;margin-bottom:3px"><strong>They say:</strong></div>';
+      ep.painLanguage.slice(0, 4).forEach(function(pl) {
+        html += '<div style="font-size:10px;color:var(--dark);padding-left:8px">"' + esc(pl.phrase) + '"</div>';
+      });
+    }
+    if (ep.emotionalDrivers && ep.emotionalDrivers.length) {
+      html += '<div style="font-size:11px;margin-top:4px"><strong>They feel:</strong></div>';
+      ep.emotionalDrivers.slice(0, 2).forEach(function(e) {
+        html += '<div style="font-size:10px;color:var(--n2);padding-left:8px">' + esc(e.pain) + ': ' + esc(e.beneath) + '</div>';
+      });
+    }
+    if (ep.competitorVoice) {
+      if (ep.competitorVoice.whatEveryoneSays && ep.competitorVoice.whatEveryoneSays.length) {
+        html += '<div style="font-size:11px;margin-top:4px;color:#f56c6c"><strong>Do not say:</strong> ' + ep.competitorVoice.whatEveryoneSays.slice(0, 3).join(', ') + '</div>';
+      }
+      if (ep.competitorVoice.whatNobodySays && ep.competitorVoice.whatNobodySays.length) {
+        html += '<div style="font-size:11px;margin-top:2px;color:var(--green)"><strong>Say instead:</strong> ' + ep.competitorVoice.whatNobodySays.slice(0, 3).join(', ') + '</div>';
+      }
+    }
+    if (ep.objectionDetail && ep.objectionDetail.length) {
+      html += '<div style="font-size:11px;margin-top:4px"><strong>Top objection:</strong> "' + esc(ep.objectionDetail[0].objection) + '"</div>';
+      html += '<div style="font-size:10px;color:var(--n2);padding-left:8px">→ ' + esc(ep.objectionDetail[0].counterStrategy) + '</div>';
+    }
+    if (ep.proofTypes && ep.proofTypes.length) {
+      html += '<div style="font-size:11px;margin-top:4px"><strong>Proof needed:</strong></div>';
+      ep.proofTypes.filter(function(pt){return pt.impact==='high';}).forEach(function(pt) {
+        html += '<div style="font-size:10px;color:var(--n2);padding-left:8px">· ' + esc(pt.type) + ' (' + esc(pt.impact) + ')</div>';
+      });
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
 
 
 let copyStopFlag = false;
@@ -1137,6 +1215,9 @@ function renderCopyQueue() {
             + (p.word_count_target ? ' <span>\u00b7</span> ' + p.word_count_target + ' words' : '')
             + (_bb2 ? ' <span>\u00b7</span> ' + _bb2 : '')
             + '</div>';
+
+          // PAIN CONTEXT SIDEBAR
+          html += _buildPainSidebar(p);
 
           // STALE BRIEF BANNER
           if (_stale) {

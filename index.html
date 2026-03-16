@@ -326,10 +326,10 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div class="card">
-        <div class="section-mark"><span class="section-mark-label">Discovery &amp; Reference</span><div class="section-mark-line"></div></div>
-        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Call transcripts, Fathom recordings, discovery notes, brand guides — anything that feeds Research enrichment and Strategy diagnostics.</p>
-        <label style="font-size:12px;display:block;margin-bottom:5px">Quick Notes</label>
-        <textarea class="inp" id="f-discovery-notes" rows="4" placeholder="Paste raw call notes, key takeaways, or anything the AI should know about this client..." style="margin-bottom:12px"></textarea>
+        <div class="section-mark"><span class="section-mark-label">Discovery &amp; Pain Context</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Paste any notes from discovery calls, intake forms, emails, or conversations that describe the client's situation and problems. This feeds Research and Strategy stages.</p>
+        <label style="font-size:12px;display:block;margin-bottom:5px">Discovery Notes <span style="color:var(--n2);font-weight:400">— call notes, intake form responses, email threads, Fathom highlights</span></label>
+        <textarea class="inp" id="f-discovery-notes" rows="6" placeholder="Client is a GC in Metro Vancouver. Doing $3M/yr revenue but 90% from referrals. Lost their biggest referral source (partner retired).&#10;&#10;Tried SEO freelancer for 6 months, no results, no reporting. Spent $8K on Google Ads themselves but could not tell which leads were qualified.&#10;&#10;Prospect said on the call: &quot;I don't need more leads, I need better jobs and fewer tire-kickers&quot;&#10;&#10;Their customers apparently always ask about cost first and worry about being scammed." style="margin-bottom:12px"></textarea>
         <label style="font-size:12px;display:block;margin-bottom:5px">Documents</label>
         <div id="docs-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
         <div id="doc-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:10px">
@@ -2048,6 +2048,30 @@ function buildEnrichCtx() {
     ctx += _docExtractCtx(docs, ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals']);
   }
   return ctx;
+}
+
+function getPainContextBlock() {
+  var cp = (S.research && S.research.clientPain) || {};
+  var personas = (S.strategy && S.strategy.audience && S.strategy.audience.personas) || [];
+  var block = '\n=== PAIN CONTEXT (reference for all strategic decisions) ===\n';
+  block += 'CLIENT PAIN (why they hired us):\n';
+  block += 'Primary: ' + (cp.primary || 'Not yet captured') + '\n';
+  block += 'Consequence: ' + (cp.consequence || 'Not stated') + '\n';
+  block += 'Prior attempts: ' + (cp.priorAttempts && cp.priorAttempts.length ? cp.priorAttempts.map(function(a){return a.what+' → '+a.outcome;}).join('; ') : 'None documented') + '\n';
+  block += 'Success metric: ' + (cp.successDefinition || 'Not defined') + '\n';
+  block += 'In their words: ' + (cp.clientQuotes && cp.clientQuotes.length ? cp.clientQuotes.join(' | ') : 'No quotes captured') + '\n';
+  for (var pi = 0; pi < personas.length; pi++) {
+    var p = personas[pi];
+    if (p.executionProfile && p.executionProfile._enrichedAt) {
+      var ep = p.executionProfile;
+      block += '\nCUSTOMER PAIN — ' + p.name + ':\n';
+      block += 'They say: ' + (ep.painLanguage && ep.painLanguage.length ? ep.painLanguage.map(function(pl){return '"'+pl.phrase+'"';}).join(', ') : 'Not enriched') + '\n';
+      block += 'They feel: ' + (ep.emotionalDrivers && ep.emotionalDrivers.length ? ep.emotionalDrivers.map(function(e){return e.pain+': '+e.beneath;}).join('; ') : 'Not enriched') + '\n';
+      block += 'They object: ' + (ep.objectionDetail && ep.objectionDetail.length ? ep.objectionDetail.map(function(o){return '"'+o.objection+'"';}).join(', ') : 'Not enriched') + '\n';
+      block += 'Competitor gap: ' + (ep.competitorVoice && ep.competitorVoice.messagingGap ? ep.competitorVoice.messagingGap : 'Not identified') + '\n';
+    }
+  }
+  return block;
 }
 
 function setupNext() {

@@ -1058,6 +1058,13 @@ function _stratCtx() {
     ctx += '\nREFERENCE DOCUMENTS:\n';
     ctx += _docExtractCtx(s.docs, ['facts','decisions','requirements','competitors','audience','services','goals']);
   }
+  // Inject Client Pain (Layer 1) + Customer Pain (Layer 2) if available
+  if (typeof getPainContextBlock === 'function') {
+    var painBlock = getPainContextBlock();
+    if (painBlock && painBlock.indexOf('Not yet captured') === -1) {
+      ctx += painBlock;
+    }
+  }
   return ctx;
 }
 
@@ -1846,6 +1853,151 @@ async function runDiagnostic(num) {
     aiBarNotify('D' + num + ' error: ' + e.message, { duration: 5000 });
     console.error('D' + num + ' error:', e);
   }
+}
+
+// ── Customer Voice Enrichment (Layer 2) ───────────────────────────────
+
+async function enrichCustomerVoice() {
+  if (!S.strategy || !S.strategy.audience || !S.strategy.audience.personas) {
+    aiBarNotify('Generate audience first (run Strategy D0)', { type: 'warn' });
+    return;
+  }
+  var personas = S.strategy.audience.personas;
+  var r = S.research || {};
+  var cp = r.clientPain || {};
+
+  aiBarStart('Enriching customer voice...');
+
+  for (var pi = 0; pi < personas.length; pi++) {
+    if (window._aiStopAll) break;
+    var persona = personas[pi];
+
+    // Build enrichment data from available sources
+    var enrichData = {
+      fathomQuotes: (cp._customerVoiceQuotes || []).map(function(q) { return { quote: q, context: 'discovery' }; }),
+      setupQuotes: [],
+      reviewPatterns: { positiveThemes: [], negativeThemes: [], exactPhrases: [] },
+      compReviewPatterns: { positiveThemes: [], negativeThemes: [], gaps: [] },
+      painKeywordMap: [],
+      messagingAnalysis: []
+    };
+
+    // Pull GBP reviews if available
+    if (r.reviews && r.reviews.length) {
+      var posThemes = [], negThemes = [], phrases = [];
+      r.reviews.forEach(function(rev) {
+        if (rev.rating >= 4 && rev.text) posThemes.push(rev.text.slice(0, 100));
+        if (rev.rating <= 2 && rev.text) negThemes.push(rev.text.slice(0, 100));
+        if (rev.text) phrases.push(rev.text.slice(0, 60));
+      });
+      enrichData.reviewPatterns = { positiveThemes: posThemes.slice(0, 5), negativeThemes: negThemes.slice(0, 5), exactPhrases: phrases.slice(0, 8) };
+    }
+
+    // Pull keyword data if available
+    if (S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.length) {
+      enrichData.painKeywordMap = S.kwResearch.keywords.slice(0, 20).map(function(kw) {
+        return { query: kw.kw, volume: kw.vol || 0, intent: kw.intent || 'unknown' };
+      });
+    }
+
+    // Pull competitor data if available
+    if (r.competitors && r.competitors.length) {
+      enrichData.messagingAnalysis = r.competitors.slice(0, 5).map(function(c) {
+        return { name: c.name || c.url, headlines: [c.why_they_win || ''], ctas: [] };
+      });
+    }
+
+    var sys = 'You are the audience intelligence engine for SetSailOS. Your job is to deeply understand the END CUSTOMER of a business — not the business itself, but the person who BUYS FROM the business.\n'
+      + 'You must distinguish between:\n'
+      + '- What customers SAY they want (rational)\n'
+      + '- What customers FEEL (emotional driver beneath the statement)\n'
+      + '- What customers DO (actual search/buying behaviour)\n'
+      + '- What customers FEAR (objections they will not voice unprompted)\n'
+      + 'Output must be specific, evidence-based, and immediately usable by a copywriter.\n'
+      + 'Return ONLY valid JSON — no preamble, no markdown fences.';
+
+    var prompt = '## Business Context\n'
+      + 'Industry: ' + (r.industry || '') + '\n'
+      + 'Business: ' + (r.client_name || '') + ' — ' + (r.business_overview || '') + '\n'
+      + 'Location: ' + ((r.geography && r.geography.primary) || '') + '\n\n'
+      + '## Client Pain (Layer 1 — for context)\n'
+      + 'Primary: ' + (cp.primary || 'Not captured') + '\n'
+      + 'Prior attempts: ' + (cp.priorAttempts && cp.priorAttempts.length ? cp.priorAttempts.map(function(a){return a.what+' → '+a.outcome;}).join('; ') : 'None') + '\n'
+      + 'Client quotes: ' + (cp.clientQuotes && cp.clientQuotes.length ? cp.clientQuotes.join(' | ') : 'None') + '\n\n'
+      + '## Target Persona\n'
+      + 'Name: ' + persona.name + '\n'
+      + 'Role: ' + (persona.role || '') + '\n'
+      + 'Segment: ' + (persona.segment || '') + '\n'
+      + 'Goals: ' + (persona.goals ? persona.goals.join('; ') : '') + '\n'
+      + 'Frustrations: ' + (persona.frustrations ? persona.frustrations.join('; ') : '') + '\n'
+      + 'Objections: ' + (persona.objection_profile ? persona.objection_profile.join('; ') : '') + '\n\n'
+      + '## Evidence Gathered\n'
+      + 'Customer quotes from discovery: ' + (enrichData.fathomQuotes.length ? enrichData.fathomQuotes.map(function(q){return '"'+q.quote+'"';}).join('; ') : 'None available') + '\n'
+      + 'Review patterns (positive): ' + (enrichData.reviewPatterns.positiveThemes.length ? enrichData.reviewPatterns.positiveThemes.join('; ') : 'No reviews') + '\n'
+      + 'Review patterns (negative): ' + (enrichData.reviewPatterns.negativeThemes.length ? enrichData.reviewPatterns.negativeThemes.join('; ') : 'No reviews') + '\n'
+      + 'Search behaviour: ' + (enrichData.painKeywordMap.length ? enrichData.painKeywordMap.slice(0,10).map(function(k){return '"'+k.query+'" ('+k.volume+'/mo)';}).join(', ') : 'No keyword data') + '\n'
+      + 'Competitor messaging: ' + (enrichData.messagingAnalysis.length ? enrichData.messagingAnalysis.map(function(c){return c.name+': "'+c.headlines.join(', ')+'"';}).join('; ') : 'No competitor data') + '\n\n'
+      + '## Output\n'
+      + 'JSON object:\n{\n'
+      + '  "painLanguage": [{"pain": "category", "phrase": "natural customer language", "source": "evidence source"}],\n'
+      + '  "emotionalDrivers": [{"pain": "category", "surface": "what they say", "beneath": "emotional truth they do not say aloud"}],\n'
+      + '  "competitorVoice": {\n'
+      + '    "whatEveryoneSays": ["common phrases across competitors"],\n'
+      + '    "whatNobodySays": ["angles no competitor occupies"],\n'
+      + '    "messagingGap": "single biggest unaddressed need",\n'
+      + '    "tonePattern": "how competitors collectively sound"\n'
+      + '  },\n'
+      + '  "objectionDetail": [{"objection": "text", "timing": "when in journey", "frequency": "how common", "counterStrategy": "how to address in copy"}],\n'
+      + '  "journey": {\n'
+      + '    "awareness": {"trigger": "event", "behavior": "action", "contentNeeded": "type", "keyQuestions": ["4+ questions"]},\n'
+      + '    "consideration": {"trigger": "", "behavior": "", "contentNeeded": "", "keyQuestions": []},\n'
+      + '    "decision": {"trigger": "", "behavior": "", "contentNeeded": "", "keyQuestions": []}\n'
+      + '  },\n'
+      + '  "proofTypes": [{"type": "format", "impact": "high|medium|low", "where": "placement", "note": "why"}],\n'
+      + '  "searchByPain": [{"pain": "category", "queries": [], "totalVolume": 0, "intent": "informational|commercial|transactional"}],\n'
+      + '  "gaps": ["what we still do not know"]\n'
+      + '}\n\n'
+      + 'Rules:\n'
+      + '- painLanguage: minimum 5 entries. Must sound like a real person.\n'
+      + '- emotionalDrivers: minimum 3. "beneath" must be an insight the customer would not say out loud.\n'
+      + '- competitorVoice.whatNobodySays: most valuable field — where differentiation lives.\n'
+      + '- journey.keyQuestions: minimum 4 per stage. Must be answerable with content.\n'
+      + '- Be specific to ' + (r.industry || 'this industry') + ' in ' + ((r.geography && r.geography.primary) || 'this market') + '. No generic answers.';
+
+    try {
+      window._aiBarLabel = 'Customer Voice: ' + persona.name;
+      var result = await callClaude(sys, prompt, null, 6000);
+      var parsed = parseEnrichResult(result);
+      if (parsed) {
+        if (!persona.executionProfile) persona.executionProfile = {};
+        var ep = persona.executionProfile;
+        ep.painLanguage = parsed.painLanguage || [];
+        ep.emotionalDrivers = parsed.emotionalDrivers || [];
+        ep.competitorVoice = parsed.competitorVoice || {};
+        ep.objectionDetail = parsed.objectionDetail || [];
+        ep.journey = parsed.journey || {};
+        ep.proofTypes = parsed.proofTypes || [];
+        ep.searchByPain = parsed.searchByPain || [];
+        ep._enrichedAt = Date.now();
+        ep._enrichmentSources = [];
+        if (enrichData.fathomQuotes.length) ep._enrichmentSources.push('fathom');
+        if (enrichData.reviewPatterns.positiveThemes.length) ep._enrichmentSources.push('gbp_reviews');
+        if (enrichData.painKeywordMap.length) ep._enrichmentSources.push('search_data');
+        if (enrichData.messagingAnalysis.length) ep._enrichmentSources.push('competitor_copy');
+        ep._enrichmentGaps = parsed.gaps || [];
+        scheduleSave();
+      }
+    } catch(e) {
+      console.error('enrichCustomerVoice failed for', persona.name, e);
+    }
+
+    // Pause between personas to avoid rate limits
+    if (pi < personas.length - 1) await new Promise(function(r){ setTimeout(r, 2000); });
+  }
+
+  aiBarEnd();
+  aiBarNotify('Customer voice enriched for ' + personas.length + ' personas', { type: 'success' });
+  renderStrategyTabContent();
 }
 
 // ── Iterative Loop ────────────────────────────────────────────────────
@@ -3318,9 +3470,46 @@ function _renderAudience(st) {
           html += '<div style="font-size:11px;color:#b45309;padding-left:8px">&bull; ' + esc(o) + '</div>';
         });
       }
+      // Execution Profile (Layer 2 enrichment)
+      var ep = p.executionProfile;
+      if (ep && ep._enrichedAt) {
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+        html += '<span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--green)">Customer Voice</span>';
+        html += '<span style="font-size:9px;background:var(--green);color:white;padding:1px 5px;border-radius:3px">Enriched</span>';
+        html += '</div>';
+        if (ep.painLanguage && ep.painLanguage.length) {
+          html += '<div style="font-size:11px;margin-bottom:4px"><strong>They say:</strong></div>';
+          ep.painLanguage.slice(0,3).forEach(function(pl) {
+            html += '<div style="font-size:11px;color:var(--dark);padding-left:8px;font-style:italic;margin-bottom:2px">"' + esc(pl.phrase) + '" <span style="font-size:9px;color:var(--n2)">(' + esc(pl.pain) + ')</span></div>';
+          });
+          if (ep.painLanguage.length > 3) html += '<div style="font-size:10px;color:var(--n2);padding-left:8px">+' + (ep.painLanguage.length - 3) + ' more</div>';
+        }
+        if (ep.emotionalDrivers && ep.emotionalDrivers.length) {
+          html += '<div style="font-size:11px;margin-top:4px"><strong>They feel:</strong></div>';
+          ep.emotionalDrivers.slice(0,2).forEach(function(e) {
+            html += '<div style="font-size:11px;padding-left:8px;margin-bottom:2px"><span style="color:var(--dark)">' + esc(e.pain) + ':</span> <span style="color:var(--n2)">' + esc(e.beneath) + '</span></div>';
+          });
+        }
+        if (ep.competitorVoice && ep.competitorVoice.messagingGap) {
+          html += '<div style="font-size:11px;margin-top:4px;padding:4px 8px;background:var(--lime);border-radius:4px"><strong>Messaging gap:</strong> ' + esc(ep.competitorVoice.messagingGap) + '</div>';
+        }
+        html += '</div>';
+      } else {
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">';
+        html += '<div style="font-size:10px;color:var(--n2);font-style:italic">Customer Voice not enriched yet</div>';
+        html += '</div>';
+      }
       html += '</div>';
     });
     html += '</div>';
+
+    // Enrich Customer Voice button
+    var anyUnenriched = a.personas.some(function(p) { return !p.executionProfile || !p.executionProfile._enrichedAt; });
+    if (anyUnenriched) {
+      html += '<div style="margin-bottom:16px"><button class="btn btn-primary sm" onclick="enrichCustomerVoice()"><i class="ti ti-sparkles"></i> Enrich Customer Voice</button>';
+      html += '<span style="font-size:11px;color:var(--n2);margin-left:8px">Analyses search data, reviews, and competitor messaging to build execution profiles for each persona</span></div>';
+    }
   }
 
   // Purchase Triggers

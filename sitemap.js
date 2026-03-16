@@ -850,6 +850,15 @@ function enrichSitemapWithKwData() {
         return typeof sk === 'object' ? sk : { kw: raw, vol: 0, kd: 0 };
       });
     }
+    // Auto-derive journeyStage from page type if not set
+    if (!p.journeyStage) {
+      var pt = (p.page_type || '').toLowerCase();
+      if (['blog', 'resource', 'faq'].indexOf(pt) !== -1) p.journeyStage = 'awareness';
+      else if (['service', 'industry', 'location', 'product'].indexOf(pt) !== -1) p.journeyStage = 'consideration';
+      else if (['case-study', 'case-studies'].indexOf(pt) !== -1) p.journeyStage = 'decision';
+      else if (['home', 'about', 'contact', 'utility', 'team'].indexOf(pt) !== -1) p.journeyStage = 'consideration';
+      else p.journeyStage = 'consideration';
+    }
     return p;
   });
 }
