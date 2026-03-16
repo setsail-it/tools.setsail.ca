@@ -153,6 +153,9 @@ These are defined once and used across all routes:
 
 ## Critical Patterns — Never Break These
 
+### Secrets — never read, log, or hardcode
+Never read `.dev.vars`. Never print or log API keys. Never hardcode credentials in source. All secrets accessed via `env.VAR_NAME` in worker.js only. Frontend calls proxy routes — it never sees keys. See the **Secrets Management** section below for the full reference.
+
 ### D0 (Audience) is diagnostic number 0 — falsy in JavaScript
 `diagNum === 0` is falsy. All checks must use `diagNum !== undefined && diagNum !== null` instead of `if (diagNum)`. This applies in: `scoreSection()` audit adjustment, `improveStrategy()` diagnostic selection, `renderStrategyTabContent()` tab routing, `_versionLearningCtx()` previous output lookup.
 
@@ -279,16 +282,77 @@ wrangler dev
 
 Note: Cloudflare Access auth headers are not present locally. The worker falls back to header-only auth, which means `/api/*` routes return 401 unless you set `CF_ACCESS_TEAM_DOMAIN` to empty or test via curl with a fake email header.
 
-## Environment Variables
+## Secrets Management — READ THIS EVERY SESSION
 
-| Variable | Purpose |
-|---|---|
-| `ANTHROPIC_API_KEY` | Claude API |
-| `DATAFORSEO_LOGIN` | DataForSEO username |
-| `DATAFORSEO_PASSWORD` | DataForSEO password |
-| `GEMINI_API_KEY` | Image generation |
-| `ADMIN_EMAIL` | Owner email — bypasses role check |
-| `CF_ACCESS_TEAM_DOMAIN` | CF Access team name (enables JWT validation) |
+### Golden Rules
+1. **NEVER** read, print, log, or expose the contents of `.dev.vars` — it contains live API keys
+2. **NEVER** hardcode API keys, tokens, or passwords anywhere in source code
+3. **NEVER** commit `.dev.vars` — it is gitignored and must stay that way
+4. **NEVER** add secrets to `wrangler.toml` — that file is committed to git
+5. **NEVER** create new env vars without updating this section AND `.dev.vars.example`
+
+### Where Secrets Live
+
+| Environment | Location | How to Set |
+|---|---|---|
+| **Production** (Cloudflare Workers) | Encrypted Worker Secrets | `wrangler secret put VAR_NAME` (already set, do not re-set unless rotating) |
+| **Local dev** (`wrangler dev`) | `.dev.vars` file (gitignored) | Copy from `.dev.vars.example`, fill in real values |
+
+### Required Environment Variables
+
+| Variable | Purpose | Used In | Required? |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude API (chat, briefs, copy, strategy) | worker.js `/api/claude`, `/api/claude-sync`, queue consumer | **Yes** — app non-functional without it |
+| `DATAFORSEO_LOGIN` | DataForSEO username (email) | worker.js `getDFSCreds()` → all `/api/kw-*`, `/api/serp-intel`, `/api/snapshot` | **Yes** — keyword/SERP features break |
+| `DATAFORSEO_PASSWORD` | DataForSEO password | worker.js `getDFSCreds()` (same routes) | **Yes** — paired with LOGIN |
+| `GEMINI_API_KEY` | Google Gemini image generation | worker.js `/api/generate-image` | **Yes** — images stage breaks |
+| `ADMIN_EMAIL` | Owner email — bypasses role check, gets admin by default | worker.js auth + `/api/admin/users` | Recommended |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team name (e.g. `setsail`) | worker.js JWT validation | Production only — omit locally |
+
+### How Secrets Flow in Code
+
+```
+Production:  CF Worker env bindings → env.VAR_NAME in worker.js
+Local dev:   .dev.vars → wrangler dev injects → env.VAR_NAME in worker.js
+Frontend:    NEVER has direct access to secrets — all API calls go through worker.js proxy routes
+```
+
+**The frontend never touches API keys.** `callClaude()` in index.html hits `/api/claude` which adds the `x-api-key` header server-side. Same for DataForSEO, Ahrefs, and Gemini.
+
+### Worker.js Secret Access Patterns (do not deviate)
+
+```js
+// Claude — always via env.ANTHROPIC_API_KEY
+headers: { 'x-api-key': env.ANTHROPIC_API_KEY, ... }
+
+// DataForSEO — always via getDFSCreds(env) helper (top of worker.js)
+headers: { 'Authorization': 'Basic ' + getDFSCreds(env) }
+
+// Gemini — always via env.GEMINI_API_KEY in query string
+fetch(`https://generativelanguage.googleapis.com/...?key=${env.GEMINI_API_KEY}`)
+
+// Auth — always via env.CF_ACCESS_TEAM_DOMAIN + env.ADMIN_EMAIL
+```
+
+### Adding a New Secret
+
+If a new API integration is added:
+1. Add the variable to this table above
+2. Add a placeholder line to `.dev.vars.example`
+3. Set it in production: `wrangler secret put NEW_VAR_NAME`
+4. Set it locally in `.dev.vars`
+5. Access it in worker.js via `env.NEW_VAR_NAME` — never import/require
+6. **Never** pass it to the frontend — create a proxy route in worker.js
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| 401 on all `/api/*` locally | `CF_ACCESS_TEAM_DOMAIN` is set but no Access JWT | Comment it out in `.dev.vars` |
+| "No keyword API configured" | `DATAFORSEO_LOGIN` or `DATAFORSEO_PASSWORD` missing | Check `.dev.vars` has both |
+| "GEMINI_API_KEY not configured" | `GEMINI_API_KEY` missing from env | Add to `.dev.vars` or `wrangler secret put` |
+| Claude calls return 401 | `ANTHROPIC_API_KEY` missing or expired | Check `.dev.vars` / rotate key at console.anthropic.com |
+| `getDFSCreds()` returns wrong base64 | Login doesn't contain `@` — falls back to hardcoded | Ensure `DATAFORSEO_LOGIN` is a valid email |
 
 ## KV Key Schema
 

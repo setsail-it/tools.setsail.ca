@@ -626,6 +626,7 @@ function setSlotApproval(slug, slotIdx, status) {
     S.images[slug].slots[slotIdx].sourceType = 'upload';
   }
   scheduleSave();
+  savePageImages(slug);
   renderImageQueue();
   updateImageProgress();
 }
