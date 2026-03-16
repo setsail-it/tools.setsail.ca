@@ -252,58 +252,30 @@ function renderResearchScorecard() {
   var pct = c.total.pct;
   var colour = pct >= 75 ? 'var(--green)' : pct >= 40 ? '#e6a23c' : '#f56c6c';
 
-  var html = '<div class="card" style="margin-bottom:14px;padding:14px 18px">';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-  html += '<div style="display:flex;align-items:center;gap:10px">';
-  html += '<span style="font-size:22px;font-weight:600;color:' + colour + '">' + pct + '%</span>';
-  html += '<span style="font-size:12px;color:var(--n2)">Research Completeness</span>';
+  // Slim progress bar with overall % and collapsible missing fields
+  var html = '<div style="margin-bottom:12px">';
+
+  // Overall progress bar
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">';
+  html += '<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
+  html += '<div style="height:100%;width:' + pct + '%;background:' + colour + ';border-radius:2px;transition:width .3s"></div>';
   html += '</div>';
-  html += '<span style="font-size:11px;color:var(--n2)">' + c.total.filled + ' / ' + c.total.count + ' fields</span>';
+  html += '<span style="font-size:11px;font-weight:500;color:' + colour + ';white-space:nowrap">' + pct + '% · ' + c.total.filled + '/' + c.total.count + '</span>';
   html += '</div>';
 
-  // Per-tab progress bars
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-  var tabLabels = { business:'Business', audience:'Audience', brand:'Brand', schema:'Schema', competitors:'Competitors' };
-  ['business','audience','brand','schema','competitors'].forEach(function(t) {
-    var tb = c.byTab[t] || { pct:0, filled:0, count:0 };
-    var tc = tb.pct >= 75 ? 'var(--green)' : tb.pct >= 40 ? '#e6a23c' : '#f56c6c';
-    html += '<div style="flex:1;min-width:100px">';
-    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--n2);margin-bottom:3px">';
-    html += '<span>' + tabLabels[t] + '</span><span>' + tb.pct + '%</span></div>';
-    html += '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
-    html += '<div style="height:100%;width:' + tb.pct + '%;background:' + tc + ';border-radius:2px;transition:width .3s"></div>';
-    html += '</div></div>';
-  });
-  html += '</div>';
-
-  // Client Pain completeness indicator
+  // Client Pain indicator (compact)
   var cp = (S.research && S.research.clientPain) || {};
-  var cpScore = 0, cpMax = 5;
-  if (cp.primary && cp.primary.trim()) cpScore++;
-  if (cp.secondary && cp.secondary.length >= 2) cpScore++;
-  if (cp.successDefinition && cp.successDefinition.trim()) cpScore++;
-  if (cp.priorAttempts && cp.priorAttempts.length > 0) cpScore++;
-  if (cp.clientQuotes && cp.clientQuotes.length >= 2) cpScore++;
-  var cpPct = Math.round((cpScore / cpMax) * 100);
-  var cpColour = cpPct >= 80 ? 'var(--green)' : cpPct >= 40 ? '#e6a23c' : '#f56c6c';
-  html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
-  html += '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--n2)">Client Pain (Layer 1)</span>';
-  if (!cp.primary || !cp.primary.trim()) html += '<span style="font-size:9px;background:#f56c6c;color:white;padding:1px 5px;border-radius:3px">caps score at 6.0</span>';
-  html += '</div>';
-  html += '<span style="font-size:10px;color:' + cpColour + '">' + cpScore + '/' + cpMax + '</span>';
-  html += '</div>';
-  html += '<div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">';
-  html += '<div style="height:100%;width:' + cpPct + '%;background:' + cpColour + ';border-radius:2px;transition:width .3s"></div>';
-  html += '</div></div>';
+  if (!cp.primary || !cp.primary.trim()) {
+    html += '<div style="font-size:10px;color:#f56c6c;margin-bottom:4px"><i class="ti ti-alert-triangle" style="font-size:11px;margin-right:3px;vertical-align:-1px"></i>Client Pain not captured — caps strategy score at 6.0</div>';
+  }
 
   // Missing fields (critical first, then normal — skip optional)
   var critMissing = c.missing.filter(function(m) { return m.importance === 'critical'; });
   var normMissing = c.missing.filter(function(m) { return m.importance === 'normal'; });
   if (critMissing.length || normMissing.length) {
-    html += '<details style="margin-top:6px"><summary style="font-size:11px;color:var(--n2);cursor:pointer;user-select:none">';
+    html += '<details style="margin-bottom:2px"><summary style="font-size:11px;color:var(--n2);cursor:pointer;user-select:none">';
     html += critMissing.length + ' critical, ' + normMissing.length + ' normal fields missing</summary>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;margin-bottom:4px">';
     critMissing.forEach(function(m) {
       var badge = m.source === 'manual' ? '<span style="font-size:9px;color:#e6a23c;margin-left:3px">MANUAL</span>' : '<span style="font-size:9px;color:var(--green);margin-left:3px">AI</span>';
       html += '<button onclick="jumpToResearchField(\'' + m.key + '\',\'' + m.tab + '\')" style="border:1px solid #f56c6c33;background:#f56c6c0d;color:var(--dark);font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:var(--font);white-space:nowrap">'
@@ -319,6 +291,8 @@ function renderResearchScorecard() {
 
   html += '</div>';
   el.innerHTML = html;
+  // Also refresh tab nav scores
+  renderResearchNav();
 }
 
 function jumpToResearchField(key, tab) {
@@ -453,16 +427,20 @@ function migrateResearchFields(r) {
 function renderResearchNav() {
   const nav = document.getElementById('research-tab-nav');
   if (!nav) return;
+  var c = calcResearchCompleteness();
   nav.innerHTML = RESEARCH_TABS.map(t => {
     const active = _rTab === t.id;
     const done = _enrichDone.has(t.id);
     const enrichingThis = _enriching === t.id;
-    const badge = enrichingThis
+    const tb = c.byTab[t.id] || { pct:0 };
+    const pctColour = tb.pct >= 75 ? 'var(--green)' : tb.pct >= 40 ? '#e6a23c' : 'var(--n2)';
+    const statusBadge = enrichingThis
       ? `<span class="spinner" style="width:10px;height:10px;display:inline-block;margin-left:5px;vertical-align:middle"></span>`
       : done
         ? `<span style="color:var(--green);font-size:10px;margin-left:4px;font-weight:600">✓</span>`
         : '';
-    return `<button onclick="switchRTab('${t.id}')" style="padding:9px 16px;border:none;border-bottom:2px solid ${active?'var(--green)':'transparent'};background:none;font-family:var(--font);font-size:13px;color:${active?'var(--dark)':'var(--n2)'};cursor:pointer;white-space:nowrap;font-weight:${active?500:400};transition:color .15s;margin-bottom:-2px"><i class="ti ${t.icon}" style="margin-right:5px;font-size:12px"></i>${t.label}${badge}</button>`;
+    const pctBadge = `<span style="font-size:10px;font-weight:500;color:${pctColour};margin-left:5px;opacity:${active?1:0.7}">${tb.pct}%</span>`;
+    return `<button onclick="switchRTab('${t.id}')" style="padding:9px 16px;border:none;border-bottom:2px solid ${active?'var(--green)':'transparent'};background:none;font-family:var(--font);font-size:13px;color:${active?'var(--dark)':'var(--n2)'};cursor:pointer;white-space:nowrap;font-weight:${active?500:400};transition:color .15s;margin-bottom:-2px"><i class="ti ${t.icon}" style="margin-right:5px;font-size:12px"></i>${t.label}${pctBadge}${statusBadge}</button>`;
   }).join('');
 }
 
