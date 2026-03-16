@@ -457,7 +457,7 @@ function _renderPricingIndicator() {
   var colour = _pricingStatus === 'live' ? 'var(--green)' : _pricingStatus === 'estimated' ? '#e6a23c' : '#f56c6c';
   var label = _pricingStatus === 'live' ? 'Live' : _pricingStatus === 'estimated' ? 'Estimated' : 'Unavailable';
   var icon = _pricingStatus === 'live' ? 'ti-plug-connected' : 'ti-plug-connected-x';
-  return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:' + colour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + colour + '30;background:' + colour + '08">'
+  return '<span id="pricing-indicator" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:' + colour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + colour + '30;background:' + colour + '08">'
     + '<i class="ti ' + icon + '" style="font-size:11px"></i> Pricing: ' + label + '</span>';
 }
 
@@ -627,6 +627,18 @@ function _scopeCostForTier(cost, scope) {
   if (scope === 'low') return cost.min || 0;
   if (scope === 'high') return cost.max || 0;
   return cost.mid || 0;
+}
+
+// Auto-build engagement scope if D4 data exists but scope doesn't yet
+function _ensureEngagementScope() {
+  if (S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers
+      && _pricingCatalog && !S.strategy.engagement_scope) {
+    _buildEngagementScope();
+    // Re-render current tab if user is on channels or output
+    if (_sTab === 'channels' || _sTab === 'output') {
+      renderStrategyTabContent();
+    }
+  }
 }
 
 function _buildEngagementScope() {
@@ -3654,6 +3666,22 @@ function strategyInit() {
   renderStrategyScorecard();
   renderStrategyNav();
   renderStrategyTabContent();
+  // Eagerly fetch pricing catalog on stage entry so Channels/Output tabs
+  // have pricing data without requiring a diagnostic run first
+  if (!_pricingCatalog) {
+    fetchPricingCatalog().then(function(cat) {
+      if (!cat) return;
+      _ensureEngagementScope();
+      // Update pricing indicator if currently visible
+      var pInd = document.getElementById('pricing-indicator');
+      if (pInd) {
+        pInd.outerHTML = _renderPricingIndicator();
+      }
+    });
+  } else {
+    // Catalog already loaded (e.g. from a previous diagnostic run) — ensure scope exists
+    _ensureEngagementScope();
+  }
 }
 
 // ── UI: Scorecard ─────────────────────────────────────────────────────
