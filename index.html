@@ -192,6 +192,20 @@ textarea.inp{resize:vertical}
 /* Nav tooltips flip downward — backdrop-filter clips upward ::after */
 #nav [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
 #nav [data-tip]::before{bottom:auto;top:calc(100% + 1px);border-top-color:transparent;border-bottom-color:var(--dark)}
+.img-type-chip,.img-source-chip{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px}
+.img-slot-context{font-size:11px;color:var(--n2);margin-top:2px;line-height:1.3}
+.img-approval{display:flex;gap:4px;margin-top:6px}
+.img-approval button{font-size:14px;padding:2px 6px;border:1px solid var(--n1);border-radius:4px;background:var(--panel);cursor:pointer;transition:all .15s}
+.img-approval button.active{border-color:var(--green);background:#E8F5E9}
+.img-approval button:hover{background:var(--n1)}
+.img-slot-removed{opacity:0.35;pointer-events:none}
+.img-brief{background:#FFF8E1;border-radius:6px;padding:8px 10px;font-size:11px;margin-top:6px}
+.img-brief-label{font-weight:600;color:#FB8C00;margin-bottom:3px}
+.img-copy-preview{border:1px solid var(--n1);border-radius:6px;margin-bottom:12px;overflow:hidden;font-size:12px}
+.img-copy-toggle{padding:8px 12px;cursor:pointer;font-weight:600;background:var(--panel);display:flex;align-items:center;gap:6px;user-select:none}
+.img-copy-body{padding:8px 12px;display:none}
+.img-reinit-btn{font-size:11px;padding:3px 10px;border:1px dashed var(--n2);border-radius:4px;background:none;cursor:pointer;color:var(--n2);font-family:var(--font)}
+.img-reinit-btn:hover{border-color:var(--green);color:var(--green)}
 </style>
 </head>
 <body>
@@ -593,7 +607,7 @@ textarea.inp{resize:vertical}
         <div>
           <div class="eyebrow stage-eyebrow" data-stage-num="8"></div>
           <h2 class="ph sm">Image Generation</h2>
-          <p class="psub" style="margin-bottom:0">AI generates 5 images per page using Nano Banana 2 (Gemini). Click any slot to customise the prompt or request modifications.</p>
+          <p class="psub" style="margin-bottom:0">Content-aware image planning. Reads your copy to determine what each page needs — photos, illustrations, diagrams, or upload briefs — with persona and emotional targeting.</p>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost sm" onclick="toggleImageStylePanel()"><i class="ti ti-palette"></i> Style Guide</button>
