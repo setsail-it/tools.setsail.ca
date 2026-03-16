@@ -1245,7 +1245,7 @@ var STAGE_TIPS = {
     "Low DA (< 20) means prioritise long-tail, low-KD keywords in the Strategy Keywords tab.",
   ],
   research: [
-    "Completeness scorecard at top shows overall percentage and per-tab progress bars — click any missing field to jump straight to it.",
+    "Per-tab completion percentages show inline next to each tab name. Compact progress bar at top shows overall completeness — click missing fields to jump straight to them.",
     "Fields labelled AI can be filled by the Enrich button. Fields labelled MANUAL need human input (links, brand colours, reviews).",
     "Run all 5 tabs: Business, Audience, Brand, Schema and Local, Competitors.",
     "Unit Economics (Audience tab): budget, deal size, LTV, lead quality, lead volume — manual inputs that feed the Strategy diagnostics.",
@@ -1342,8 +1342,14 @@ var STAGE_TIPS = {
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
   ],
   images: [
-    "Images are generated per page based on the approved brief and copy.",
-    "Review and swap images before Layout — Layout uses whatever is approved here.",
+    "Content-aware engine — reads your copy HTML to determine what each page needs. Slots are auto-created per section: hero, section breaks, CTA, and extras for long sections.",
+    "Visual types are auto-detected from section headings: photography, illustration, diagram, data_viz, social_proof, before/after, screenshot. Each type routes to a source: AI generate, upload, brief-only, or placeholder.",
+    "Persona and emotional targeting — each slot inherits the page persona and journey-stage emotion (awareness → curiosity, consideration → confidence, decision → urgency). Competitor voice avoidance is injected into prompts.",
+    "Approval workflow per slot: pending → approved / redo / replace / removed. Only approved slots carry forward to Layout and Export.",
+    "Re-analyse from Copy button rebuilds slots when copy changes — existing images are preserved by label matching. New sections get new slots, removed sections are flagged.",
+    "Upload your own images for social_proof, before/after, and screenshots. Brief-only slots generate a written image brief instead of an AI image.",
+    "Bulk generate skips approved and removed slots. Stop/Resume works mid-generation.",
+    "Backward compatible — existing projects with 5 fixed slots get new fields merged automatically via mergeSlotDefaults().",
   ],
   layout: [
     "Layout assigns components to each page section based on content type.",
@@ -2899,7 +2905,7 @@ async function deleteAdminUser() {
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S5</span><span>Sitemap — page architecture, keyword mapping, page goals, persona/voice/positioning integration</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S6</span><span>Briefs — enrich → assign → generate → evaluate</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S7</span><span>Copy — generate → audit → QC → approve</span></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — generate per page</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S8</span><span>Images — content-aware visual planning: auto-slots from copy, persona targeting, approval workflow</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S9</span><span>Layout — assign components per page</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S10</span><span>Schema — FAQ + structured data generation</span></div>
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(0,0,0,0.02);border-radius:6px;border:1px solid var(--border)"><span style="font-size:10px;font-weight:700;color:var(--mid);min-width:20px">S11</span><span>Export — package copy, images, schema + layout for handoff</span></div>
@@ -3052,6 +3058,29 @@ async function deleteAdminUser() {
       </div>
     </div>
 
+    <!-- S8: IMAGES -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Stage 8 — Images · Content-Aware Visual Planning</div>
+      <p style="font-size:11.5px;margin:0 0 8px">Reads approved copy HTML to auto-generate image slots per page section. Each slot gets a visual type, source route, persona targeting, and emotional tone — not just "5 generic photos."</p>
+      <ol style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;font-size:11.5px">
+        <li><strong>Auto-slot generation</strong> — parses copy HTML (H1/H2/H3 sections) via TreeWalker. Creates a hero slot, one slot per major section break, extras for long sections (400+ words), and a CTA slot. Slot count varies per page based on actual content.</li>
+        <li><strong>Visual type detection</strong> — regex matches section headings and body text to assign types: <em>photography</em>, <em>photography_people</em>, <em>illustration</em>, <em>diagram</em>, <em>data_viz</em>, <em>social_proof</em>, <em>icon</em>, <em>before_after</em>, <em>screenshot</em>. Each type auto-routes to a source.</li>
+        <li><strong>Source routing</strong> — <em>ai_generate</em> (Gemini), <em>upload</em> (file picker with WebP compression), <em>brief_only</em> (written image brief instead of image), <em>placeholder</em> (generates a placeholder visual with a note that real asset is needed). Override per slot via dropdown.</li>
+        <li><strong>Persona and emotional targeting</strong> — each slot inherits the page target persona from Sitemap. Journey stage maps to emotional tone: awareness → curiosity, consideration → confidence, decision → urgency. Persona executionProfile emotional drivers are injected into prompts.</li>
+        <li><strong>Competitor voice avoidance</strong> — prompts include anti-patterns from competitor brand analysis so generated images do not look like competitor visual language.</li>
+        <li><strong>Approval workflow</strong> — per-slot status: pending → approved / redo / replace / removed. Redo clears the image for re-generation. Replace switches source to upload. Removed soft-deletes (restorable). Only approved slots carry forward.</li>
+        <li><strong>Re-analyse from Copy</strong> — when copy changes, click the refresh button per page to rebuild slots from the new copy structure. Existing images are preserved by label matching — only new/removed sections change.</li>
+        <li><strong>Copy preview panel</strong> — collapsible panel per page shows parsed section structure with visual type assignments. Useful for verifying slot-to-section mapping.</li>
+        <li><strong>Bulk generate</strong> — generates all pages or per-page. Skips approved and removed slots. Stop/Resume works mid-generation with exact position tracking.</li>
+        <li><strong>Upload</strong> — file picker for social_proof, before/after, screenshots, or any slot you want a real image for. Auto-compresses to WebP. Saved to per-slug KV key.</li>
+        <li><strong>Custom prompts</strong> — click any slot to edit the AI prompt before generation. Useful for specific creative direction.</li>
+        <li><strong>Backward compatible</strong> — existing projects with the old 5-slot format get new fields merged via mergeSlotDefaults(). No data loss on upgrade.</li>
+      </ol>
+      <div style="margin-top:10px;padding:8px 10px;background:rgba(255,165,0,0.06);border-radius:6px;border:1px solid rgba(255,165,0,0.2);font-size:11px;color:#92660a">
+        ⚠ Image data is stored in separate KV keys per page (<code>u:{email}:img:{projectId}:{slug}</code>). Both scheduleSave() and savePageImages(slug) must be called for changes to persist.
+      </div>
+    </div>
+
     <!-- STRATEGY SCORING -->
     <div style="margin-bottom:24px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">Strategy Scoring Engine</div>
@@ -3158,6 +3187,10 @@ async function deleteAdminUser() {
         <p><strong>Keywords: Strategy-aligned clusters</strong> — Cluster prompt now receives full research context: value proposition, differentiators, services_detail, competitor weaknesses, audience, and buyer roles. Clusters use page-title naming and prefer 3-6 blog pillars over many thin posts.</p>
         <p><strong>Keywords: Strategic Override</strong> — Core services from services_detail always qualify for pages even with volume under 50 — the AI will not disqualify flagship services.</p>
         <p><strong>Keywords: Question-cluster alignment</strong> — Question page assignments (from Validate and Assign) are passed into the cluster prompt so AEO page mapping stays aligned with keyword clusters.</p>
+        <p><strong>Images: Content-aware visual planning (full rewrite)</strong> — Replaced the old 5-fixed-slots-per-page system with a content-aware engine that reads copy HTML to auto-generate slots per section. Visual types are auto-detected from headings (photography, diagram, illustration, etc.). Each type routes to a source (AI generate, upload, brief-only, placeholder). Persona targeting injects emotional drivers and competitor voice avoidance into prompts. Per-slot approval workflow (pending/approved/redo/replace/removed). Re-analyse from Copy rebuilds slots when copy changes while preserving existing images by label match. Backward compatible with existing projects.</p>
+        <p><strong>Dual Pain Architecture (Research + Strategy)</strong> — Two layers of pain data. Layer 1 (Client Pain): extracted in Research from strategy docs — pain points, triggers, language, severity ratings, urgency signals. Layer 2 (Customer Pain): enriched onto each persona in Strategy as executionProfile — emotional drivers, competitor frustrations, switching triggers, and decision anxiety points. <code>getPainContextBlock()</code> shared function builds combined pain context from both layers, injected into briefs, copy, and all downstream prompts.</p>
+        <p><strong>Research UI: Inline tab scores</strong> — Per-tab completion percentages now display inline next to each tab name in the Research nav bar. The separate scorecard was slimmed from a full card with per-tab bars to a compact overall progress bar with a collapsible missing fields list. Client pain warning badge shows when pain data is incomplete.</p>
+        <p><strong>Sitemap: Mermaid export</strong> — Export the sitemap as a Mermaid diagram for pasting into FigJam (Insert → Mermaid diagram → paste). Copy to Clipboard button with fallback for restricted contexts.</p>
       </div>
     </div>
 
@@ -3170,7 +3203,7 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel:</strong> fetches top 3 organic results. Some sites block crawlers (fetch_ok: false) — this is normal. Directives still generated from whatever was fetched.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Brief versions:</strong> last 2 kept. V1 is dropped when V3 is generated. Regenerate Brief = update current draft in-place. Run V2 = push new draft.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Copy HTML</strong> is stored in separate KV keys per page (not in the main project payload) — survives reload. Main payload stores only audit results and approval state.</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Images</strong> — base64 image data stripped from save payload (too large). Only prompt + status saved. Images must be regenerated on a new session.</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Images</strong> — image data stored in separate per-slug KV keys (<code>img:{projectId}:{slug}</code>), not the main project payload. Slot metadata (type, source, approval status, briefs) persists across sessions. Base64 image data is stripped from the main save — actual images are in their own KV entries.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Monthly keyword trends</strong> stripped from save payload — reconstructed from DataForSEO on next Fetch Volumes run.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>SERP Intel competitors</strong> stripped from save payload — only directives + metadata persists. SERP competitors visible in brief card only until next save.</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>KV limit:</strong> 25MB max. Monitor console for [save] payload size warnings. Projects with 100+ pages and heavy research data approach this limit.</span></div>
