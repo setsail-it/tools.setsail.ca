@@ -1842,7 +1842,22 @@ export default {
         console.log('[SERP-DEBUG] final:', organicItems.length, 'usedFallback:', usedFallback);
 
         if (!organicItems.length) {
-          return new Response(JSON.stringify({ error: 'No organic results found', competitors: [] }), {
+          return new Response(JSON.stringify({
+            error: 'No organic results found',
+            _debug: {
+              keyword,
+              locationCode,
+              httpStatus: serpRes.status,
+              taskStatus: serpData?.tasks?.[0]?.status_code,
+              taskMessage: serpData?.tasks?.[0]?.status_message,
+              totalItems: serpItems.length,
+              itemTypes: [...new Set(serpItems.map(i => i.type))],
+              organicCount: allOrganic.length,
+              filteredCount: filteredItems.length,
+              organicDomains: allOrganic.slice(0, 8).map(i => { try { return new URL(i.url).hostname; } catch(e) { return '?'; } })
+            },
+            competitors: []
+          }), {
             status: 200, headers: { 'Content-Type': 'application/json', ...cors }
           });
         }

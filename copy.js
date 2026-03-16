@@ -49,7 +49,10 @@ async function runSerpIntel(slug) {
       body: JSON.stringify({ keyword: page.primary_keyword, country })
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (data.error) {
+      if (data._debug) console.warn('[SERP Intel debug]', JSON.stringify(data._debug, null, 2));
+      throw new Error(data.error + (data._debug ? ' [loc:' + data._debug.locationCode + ' items:' + data._debug.totalItems + ' organic:' + data._debug.organicCount + ' filtered:' + data._debug.filteredCount + ' task:' + data._debug.taskStatus + ']' : ''));
+    }
 
     // Store on the page object — must find in S.pages directly, not orderedPages() (different order)
     const pi = S.pages.findIndex(p => p.slug === slug);
