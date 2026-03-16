@@ -1806,7 +1806,10 @@ export default {
           body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'en', depth: 20 }])
         });
         const serpData = await serpRes.json();
+        console.log('[SERP-DEBUG] keyword:', keyword, 'location:', locationCode, 'HTTP:', serpRes.status);
+        console.log('[SERP-DEBUG] task status:', serpData?.tasks?.[0]?.status_code, serpData?.tasks?.[0]?.status_message);
         const serpItems = serpData?.tasks?.[0]?.result?.[0]?.items || [];
+        console.log('[SERP-DEBUG] total items:', serpItems.length, 'types:', [...new Set(serpItems.map(i => i.type))].join(','));
 
         // Exclude directories, aggregators, social platforms
         const EXCLUDED = [
@@ -1820,6 +1823,7 @@ export default {
         ];
 
         const allOrganic = serpItems.filter(item => item.type === 'organic' && item.url);
+        console.log('[SERP-DEBUG] organic count:', allOrganic.length, 'domains:', allOrganic.slice(0,5).map(i => { try { return new URL(i.url).hostname; } catch(e) { return i.url; } }).join(', '));
 
         const filteredItems = allOrganic
           .filter(item => {
@@ -1832,8 +1836,10 @@ export default {
 
         // If filtering removed everything, fall back to top 3 unfiltered organic results
         // Their word counts, H2s, and density are still valuable SERP Intel
+        console.log('[SERP-DEBUG] after filter:', filteredItems.length, 'items');
         const usedFallback = !filteredItems.length && allOrganic.length > 0;
         const organicItems = filteredItems.length ? filteredItems : allOrganic.slice(0, 3);
+        console.log('[SERP-DEBUG] final:', organicItems.length, 'usedFallback:', usedFallback);
 
         if (!organicItems.length) {
           return new Response(JSON.stringify({ error: 'No organic results found', competitors: [] }), {
