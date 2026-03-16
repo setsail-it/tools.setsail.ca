@@ -162,15 +162,151 @@ function capturePricingSnapshot() {
   };
 }
 
-function _renderPricingIndicator() {
-  var colour = _pricingStatus === 'live' ? 'var(--green)' : _pricingStatus === 'estimated' ? '#e6a23c' : '#f56c6c';
-  var label = _pricingStatus === 'live' ? 'Live' : _pricingStatus === 'estimated' ? 'Estimated' : 'Unavailable';
-  var icon = _pricingStatus === 'live' ? 'ti-plug-connected' : 'ti-plug-connected-x';
-  return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:' + colour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + colour + '30;background:' + colour + '08">'
-    + '<i class="ti ' + icon + '" style="font-size:11px"></i> Pricing: ' + label + '</span>';
+// ── Strategy Document Export ────────────────────────────────────────
+
+function copyStrategyDoc() {
+  if (!S.strategy || !S.strategy.compiled_output) return;
+  copyToClip2(S.strategy.compiled_output);
+  aiBarNotify('Strategy document copied to clipboard', { duration: 2000 });
 }
 
-function _renderMarginAnalysis() {
+function downloadStrategyDoc() {
+  if (!S.strategy || !S.strategy.compiled_output) return;
+  var client = (S.setup && S.setup.client) || 'Client';
+  var content = '# ' + client + ' \u2014 Growth Strategy\n\n' + S.strategy.compiled_output;
+  var blob = new Blob([content], { type: 'text/markdown' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = client.toLowerCase().replace(/\s+/g, '-') + '-growth-strategy.md';
+  a.click();
+  URL.revokeObjectURL(url);
+  aiBarNotify('Strategy document downloaded', { duration: 2000 });
+}
+
+// ── Investment Summary Export ────────────────────────────────────────
+
+function buildInvestmentText() {
+  if (!_pricingCatalog || !S.strategy) return '';
+  var st = S.strategy;
+  var levers = (st.channel_strategy && st.channel_strategy.levers) || [];
+  if (!levers.length) return '';
+  var client = (S.setup && S.setup.client) || 'Client';
+  var date = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  var monthlyServices = [];
+  var projectServices = [];
+  var totalMonthly = 0;
+  var totalProject = 0;
+  levers.forEach(function(lev) {
+    var svc = lookupServicePricing(lev.lever);
+    if (!svc) return;
+    var cost = getServiceMonthlyCost(svc);
+    if (!cost) return;
+    var entry = { name: svc.name || svc.service || lev.lever, min: cost.min, max: cost.max, mid: cost.mid };
+    if (cost.isProject) { projectServices.push(entry); totalProject += cost.mid; }
+    else { monthlyServices.push(entry); totalMonthly += cost.mid; }
+  });
+  var diagCost = 0;
+  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
+    diagCost = _pricingCatalog.strategy.pricing.price || 750;
+  }
+  var trackMin = 0, trackMax = 0;
+  if (_pricingCatalog.tracking) {
+    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
+    trackMin = tr.projectMin || tr.project_min || tr.min || 1500;
+    trackMax = tr.projectMax || tr.project_max || tr.max || 4000;
+  }
+  var trackMid = Math.round((trackMin + trackMax) / 2);
+  totalProject += trackMid + diagCost;
+  var yearTotal = (totalMonthly * 12) + totalProject;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var pkgFit = getPackageFit(budget);
+
+  var txt = '# Investment Summary \u2014 ' + client + '\n';
+  txt += 'Prepared by Setsail Marketing | ' + date + '\n\n';
+  // Monthly recurring
+  if (monthlyServices.length) {
+    txt += '## Monthly Recurring Services\n\n';
+    txt += '| Service | Range (CAD/mo) |\n';
+    txt += '|---------|---------------|\n';
+    monthlyServices.forEach(function(s) {
+      txt += '| ' + s.name + ' | $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + ' |\n';
+    });
+    txt += '\n**Monthly Total (midpoint): $' + totalMonthly.toLocaleString() + '/mo**\n\n';
+  }
+  // One-time
+  txt += '## One-Time Setup\n\n';
+  txt += '- Growth Diagnostic: $' + diagCost.toLocaleString() + ' (credited toward first invoice within 30 days)\n';
+  if (trackMin) txt += '- Analytics Setup: $' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '\n';
+  projectServices.forEach(function(s) {
+    txt += '- ' + s.name + ': $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '\n';
+  });
+  txt += '\n**One-Time Total (midpoint): $' + totalProject.toLocaleString() + '**\n\n';
+  // Year 1
+  txt += '## Year 1 Projection\n\n';
+  txt += '- Monthly services: $' + totalMonthly.toLocaleString() + ' x 12 = $' + (totalMonthly * 12).toLocaleString() + '\n';
+  txt += '- One-time setup: $' + totalProject.toLocaleString() + '\n';
+  txt += '- **Estimated Year 1 Investment: $' + yearTotal.toLocaleString() + ' CAD**\n\n';
+  // Package
+  if (pkgFit && pkgFit.label) {
+    txt += '## Recommended Package: ' + pkgFit.label;
+    if (pkgFit.pkg) {
+      var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
+      var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
+      txt += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
+    }
+    txt += '\n\n';
+  }
+  // Budget alignment
+  if (budget > 0) {
+    txt += '## Budget Alignment\n\n';
+    txt += '- Client stated budget: $' + budget.toLocaleString() + '/mo\n';
+    txt += '- Recommended monthly: $' + totalMonthly.toLocaleString() + '/mo\n';
+    var gap = totalMonthly - budget;
+    if (gap > 0) {
+      txt += '- **Gap: $' + gap.toLocaleString() + '/mo over budget.** Consider phased rollout or fewer levers.\n';
+    } else {
+      txt += '- **Plan fits within budget** (surplus: $' + Math.abs(gap).toLocaleString() + '/mo)\n';
+    }
+  }
+  return txt;
+}
+
+function copyInvestmentSummary() {
+  var txt = buildInvestmentText();
+  if (!txt) { aiBarNotify('No investment data available', { isError: true, duration: 2000 }); return; }
+  copyToClip2(txt);
+  aiBarNotify('Investment summary copied to clipboard', { duration: 2000 });
+}
+
+function downloadInvestmentSummary() {
+  var txt = buildInvestmentText();
+  if (!txt) { aiBarNotify('No investment data available', { isError: true, duration: 2000 }); return; }
+  var client = (S.setup && S.setup.client) || 'Client';
+  var blob = new Blob([txt], { type: 'text/markdown' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = client.toLowerCase().replace(/\s+/g, '-') + '-investment-summary.md';
+  a.click();
+  URL.revokeObjectURL(url);
+  aiBarNotify('Investment summary downloaded', { duration: 2000 });
+}
+
+// ── Recalculate Investment ──────────────────────────────────────────
+
+async function recalculateInvestment() {
+  aiBarStart('Recalculating investment');
+  await fetchPricingCatalog();
+  capturePricingSnapshot();
+  await saveProject();
+  renderStrategyTabContent();
+  aiBarEnd('Investment recalculated from live pricing');
+}
+
+// ── Margin Analysis Modal ───────────────────────────────────────────
+
+function _buildMarginTable() {
   if (!_pricingCatalog || !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers) return '';
   var levers = S.strategy.channel_strategy.levers;
   var totalRevenue = 0;
@@ -192,14 +328,7 @@ function _renderMarginAnalysis() {
   });
   if (!rows.length) return '';
   var overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
-  var html = '<details style="margin-bottom:18px;border:1px solid #e6a23c40;border-radius:8px;background:#fffdf5">'
-    + '<summary style="padding:10px 14px;cursor:pointer;font-size:11px;font-weight:600;color:#92660a;display:flex;align-items:center;gap:6px">'
-    + '<i class="ti ti-lock" style="font-size:13px"></i> Internal: Margin Analysis'
-    + '<span style="margin-left:auto;font-size:10px;font-weight:500;color:var(--n2)">$' + totalProfit.toLocaleString() + '/mo GP (' + overallMargin + '% margin)</span>'
-    + '</summary>';
-  html += '<div style="padding:10px 14px 14px">';
-  html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f56c6c;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#fef0f0;border-radius:4px;display:inline-block">INTERNAL ONLY — not for client export</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:11px">';
   html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:5px 8px;font-weight:500;color:var(--n2)">Service</th>'
     + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Revenue/mo</th>'
     + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Margin</th>'
@@ -222,8 +351,59 @@ function _renderMarginAnalysis() {
     html += '<div style="margin-top:8px;padding:6px 10px;border-radius:5px;background:#fef0f0;border:1px solid #f56c6c30;font-size:10px;color:#f56c6c">'
       + '<strong>Low margin warning:</strong> ' + warnings.join(', ') + '</div>';
   }
-  html += '</div></details>';
   return html;
+}
+
+function showMarginModal() {
+  var table = _buildMarginTable();
+  if (!table) { aiBarNotify('No margin data available', { isError: true, duration: 2000 }); return; }
+  // Backdrop
+  var backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding-top:80px';
+  // Modal
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)';
+  // Header
+  var header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:16px';
+  var title = document.createElement('div');
+  title.style.cssText = 'display:flex;align-items:center;gap:8px';
+  title.innerHTML = '<i class="ti ti-lock" style="color:#f56c6c;font-size:16px"></i>'
+    + '<span style="font-size:13px;font-weight:600;color:var(--dark)">Margin Analysis</span>'
+    + '<span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f56c6c;font-weight:600;padding:2px 6px;border-radius:3px;background:#fef0f0">Internal Only</span>';
+  var closeBtn = document.createElement('button');
+  closeBtn.className = 'btn btn-ghost sm';
+  closeBtn.innerHTML = '<i class="ti ti-x"></i>';
+  closeBtn.onclick = function() { document.body.removeChild(backdrop); document.removeEventListener('keydown', escHandler); };
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+  // Body
+  var body = document.createElement('div');
+  body.innerHTML = table;
+  modal.appendChild(body);
+  backdrop.appendChild(modal);
+  backdrop.onclick = function(e) { if (e.target === backdrop) { document.body.removeChild(backdrop); document.removeEventListener('keydown', escHandler); } };
+  document.body.appendChild(backdrop);
+  // Escape key
+  function escHandler(e) { if (e.key === 'Escape') { document.body.removeChild(backdrop); document.removeEventListener('keydown', escHandler); } }
+  document.addEventListener('keydown', escHandler);
+}
+
+function _renderPricingIndicator() {
+  var colour = _pricingStatus === 'live' ? 'var(--green)' : _pricingStatus === 'estimated' ? '#e6a23c' : '#f56c6c';
+  var label = _pricingStatus === 'live' ? 'Live' : _pricingStatus === 'estimated' ? 'Estimated' : 'Unavailable';
+  var icon = _pricingStatus === 'live' ? 'ti-plug-connected' : 'ti-plug-connected-x';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:' + colour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + colour + '30;background:' + colour + '08">'
+    + '<i class="ti ' + icon + '" style="font-size:11px"></i> Pricing: ' + label + '</span>';
+}
+
+function _renderMarginAnalysis() {
+  if (!_pricingCatalog || !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers) return '';
+  var table = _buildMarginTable();
+  if (!table) return '';
+  return '<div style="margin-bottom:14px"><button class="btn btn-ghost sm" onclick="showMarginModal()" style="color:#f56c6c;border-color:#f56c6c30;font-size:10px">'
+    + '<i class="ti ti-lock" style="font-size:12px"></i> View Internal Margins</button></div>';
 }
 
 function _renderInvestmentSummary() {
@@ -266,7 +446,12 @@ function _renderInvestmentSummary() {
   var yearTotal = (totalMonthly * 12) + totalProject;
   var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
   var pkgFit = getPackageFit(budget);
-  var html = '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Investment Summary ' + _renderPricingIndicator() + '</div>';
+  var html = '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">'
+    + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Investment Summary ' + _renderPricingIndicator() + '</span>'
+    + '<span style="display:flex;gap:4px">'
+    + '<button class="btn btn-ghost sm" onclick="copyInvestmentSummary()" style="font-size:10px;padding:2px 6px" data-tip="Copy investment summary to clipboard"><i class="ti ti-copy" style="font-size:11px"></i></button>'
+    + '<button class="btn btn-ghost sm" onclick="downloadInvestmentSummary()" style="font-size:10px;padding:2px 6px" data-tip="Download as markdown"><i class="ti ti-download" style="font-size:11px"></i></button>'
+    + '</span></div>';
   // Monthly services
   if (monthlyServices.length) {
     html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">Monthly Recurring</div>';
@@ -6243,6 +6428,7 @@ function _renderOutput(st) {
     if (!st.webStrategy || st.webStrategy.length < 100) {
       html += '<button class="btn btn-ghost sm" data-tip="Generates a shorter website-focused brief for downstream stages" onclick="synthesiseWebStrategy()"><i class="ti ti-file-description"></i> Generate Website Brief</button>';
     }
+    html += '<button class="btn btn-ghost sm" data-tip="Re-reads live pricing catalog and recalculates investment without re-running diagnostics" onclick="recalculateInvestment()"><i class="ti ti-calculator"></i> Recalculate Investment</button>';
   } else {
     html += '<div class="card" style="color:var(--n2);text-align:center;padding:20px"><p>Generate strategy diagnostics first, then compile the output document here.</p></div>';
     return html;
@@ -6327,7 +6513,11 @@ function _renderOutput(st) {
   if (output) {
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
     html += '<div style="font-size:12px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Compiled Strategy Document</div>';
-    if (meta.current_version > 0) html += '<div style="font-size:10px;color:var(--n2)">v' + meta.current_version + '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    if (meta.current_version > 0) html += '<span style="font-size:10px;color:var(--n2)">v' + meta.current_version + '</span>';
+    html += '<button class="btn btn-ghost sm" onclick="copyStrategyDoc()" style="font-size:10px;padding:2px 8px" data-tip="Copy full strategy document to clipboard"><i class="ti ti-copy" style="font-size:11px"></i> Copy</button>';
+    html += '<button class="btn btn-ghost sm" onclick="downloadStrategyDoc()" style="font-size:10px;padding:2px 8px" data-tip="Download strategy as markdown file"><i class="ti ti-download" style="font-size:11px"></i> Download .md</button>';
+    html += '</div>';
     html += '</div>';
     html += '<div class="card" style="padding:24px 28px;margin-bottom:14px">';
     html += '<div style="font-size:13px;line-height:1.7;font-family:var(--font)">' + sanitiseHTML(_markdownToHtml(output)) + '</div>';

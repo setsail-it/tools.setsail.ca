@@ -16,7 +16,7 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
 9. **Layout** — Wireframe generation with section-level structure and responsive grid suggestions
 10. **Schema** — Structured data markup (JSON-LD) per page type with validation
-11. **Export** — Final packaging of all assets for handoff to development
+11. **Export** — Final packaging of all assets for handoff: 5 tabs (Sitemap, Copy, Schema, Strategy, Investment) with copy/download per section, full package .txt download including strategy document and investment summary
 
 **Not a framework.** No React, no bundler, no build step. `worker.js` is the backend. `index.html` + external `.js` files are the frontend, served as static assets.
 
@@ -49,7 +49,7 @@ layout.js        — Stage 9: wireframe generation (~558 lines)
 images.js        — Stage 8: image generation (~490 lines)
 schema.js        — Stage 10: schema markup (~260 lines)
 prompts.js       — Shared AI prompt templates (~121 lines)
-export.js        — Stage 11: export packaging (~76 lines)
+export.js        — Stage 11: export packaging + strategy/investment tabs (~138 lines)
 wrangler.toml    — Cloudflare deployment config
 .dev.vars        — Local dev secrets (gitignored)
 ```
@@ -116,6 +116,16 @@ The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequ
 **Anti-inflation caps** prevent score gaming — e.g. no validated differentiators caps positioning confidence at 6, audience score below 5.0 caps overall at 6.0, first-pass scores above 7.0 trigger a warning.
 
 **Positioning direction system:** Founder hypotheses → Evaluate Hypotheses (stress-tests against competitors/demand) → Select Direction → D2 generates full messaging. Without a selected direction, D2 generates competitive analysis but messaging fields are blocked with `direction_required: true`.
+
+**Pricing pipeline export (strategy.js + export.js):**
+- `copyStrategyDoc()` / `downloadStrategyDoc()` — copy/download the compiled strategy document (.md)
+- `buildInvestmentText()` — pure data function returning formatted investment summary markdown (monthly services, one-time setup, year 1 projection, package fit, budget alignment). Client-safe — no internal margins.
+- `copyInvestmentSummary()` / `downloadInvestmentSummary()` — copy/download the investment summary
+- `showMarginModal()` — internal-only margin analysis in a modal (z-index:600, backdrop, Escape to close). Replaces old inline `<details>` to prevent accidental exposure during screen-shares.
+- `recalculateInvestment()` — re-reads live pricing catalog and recomputes snapshot without re-running diagnostics
+- `_renderScopeWarning()` (sitemap.js) — compares page count against `TIER_PAGE_RANGES` for the matched engagement tier, shows amber/red warning if over scope
+
+**Export stage (export.js):** 5 tabs — Sitemap, Copy, Schema, Strategy, Investment. Strategy tab renders compiled document with copy/download. Investment tab renders `buildInvestmentText()` as formatted HTML. `downloadPackage()` prepends Growth Strategy and Investment Summary sections to the .txt export.
 
 ### Shared Helpers (worker.js, top of file)
 

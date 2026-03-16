@@ -1,4 +1,33 @@
 
+// ── TIER PAGE RANGE HEURISTICS ────────────────────────────────────────
+var TIER_PAGE_RANGES = {
+  below_minimum: { min: 0, max: 5, label: 'Below Minimum' },
+  starter: { min: 8, max: 15, label: 'Starter' },
+  growth: { min: 15, max: 30, label: 'Growth' },
+  scale: { min: 25, max: 50, label: 'Scale' },
+  custom: { min: 0, max: 999, label: 'Custom' }
+};
+
+function _renderScopeWarning() {
+  if (!S.strategy || !S.strategy.pricing_snapshot || !S.strategy.pricing_snapshot.package_fit) return '';
+  var tier = S.strategy.pricing_snapshot.package_fit.toLowerCase().replace(/\s+/g, '_');
+  var range = TIER_PAGE_RANGES[tier];
+  if (!range) return '';
+  var pageCount = (S.sitemapApproved || S.pages || []).length;
+  if (tier === 'custom') return '';
+  if (tier === 'below_minimum') {
+    return '<div style="background:rgba(220,50,47,0.08);border:1px solid rgba(220,50,47,0.2);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:var(--error);display:flex;align-items:center;gap:8px">'
+      + '<i class="ti ti-alert-triangle" style="font-size:14px;flex-shrink:0"></i>'
+      + '<span>Below minimum engagement tier. Current budget may not support a website build. Review strategy pricing before finalising sitemap.</span></div>';
+  }
+  if (pageCount > range.max) {
+    return '<div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:8px">'
+      + '<i class="ti ti-alert-triangle" style="font-size:14px;flex-shrink:0"></i>'
+      + '<span>' + esc(range.label) + ' engagement typically supports ' + range.min + '–' + range.max + ' pages. Current sitemap has ' + pageCount + ' pages — consider trimming lower-priority pages or upgrading the engagement tier.</span></div>';
+  }
+  return '';
+}
+
 // ── PERSONA, VOICE, POSITIONING HELPERS ───────────────────────────────
 
 // Slugify a string for voice overlay IDs
@@ -1360,6 +1389,7 @@ function _renderSitemapResultsInner(approved) {
   }
   html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes</span></span>';
   html += '</div>';
+  html += _renderScopeWarning();
 
   // Category tabs
   const _tabCounts = {

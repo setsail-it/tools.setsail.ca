@@ -3,11 +3,15 @@ function renderExport() {
   const pages = S.pages;
   const copyCount = pages.filter(p => S.copy[p.slug]?.copy).length;
   const schemaCount = pages.filter(p => S.schema[p.slug]?.schema).length;
+  const hasStrategy = S.strategy && S.strategy.compiled_output ? 1 : 0;
+  const hasInvestment = (S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog) ? 1 : 0;
   document.getElementById('export-subtitle').textContent = S.setup?.client+' — '+pages.length+' pages ready to hand off.';
   document.getElementById('export-stats').innerHTML = [
     {val:pages.length, label:'Pages in Sitemap', icon:'📄'},
     {val:copyCount, label:'Pages with Copy', icon:'✍️', green:true},
     {val:schemaCount, label:'Pages with Schema', icon:'🏷️'},
+    {val:hasStrategy, label:'Strategy Document', icon:'📋'},
+    {val:hasInvestment, label:'Investment Summary', icon:'💰'},
   ].map(s => '<div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">'
     +'<div style="width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:14px">'+s.icon+'</div>'
     +'<div><div style="font-size:24px;font-weight:500;letter-spacing:-0.03em;color:'+(s.green?'var(--green)':'var(--dark)')+'">'+s.val+'</div>'
@@ -16,7 +20,9 @@ function renderExport() {
   document.querySelectorAll('#export-tab-bar .tab-btn')[0].textContent = 'Sitemap ('+pages.length+')';
   document.querySelectorAll('#export-tab-bar .tab-btn')[1].textContent = 'Copy ('+copyCount+')';
   document.querySelectorAll('#export-tab-bar .tab-btn')[2].textContent = 'Schema ('+schemaCount+')';
-  renderSitemapTab(); renderCopyTab(); renderSchemaTab();
+  document.querySelectorAll('#export-tab-bar .tab-btn')[3].textContent = 'Strategy ('+(hasStrategy?'1':'0')+')';
+  document.querySelectorAll('#export-tab-bar .tab-btn')[4].textContent = 'Investment ('+(hasInvestment?'1':'0')+')';
+  renderSitemapTab(); renderCopyTab(); renderSchemaTab(); renderStrategyExportTab(); renderInvestmentExportTab();
 }
 
 function renderSitemapTab() {
@@ -52,14 +58,70 @@ function switchExportCopy(slug, btn) {
 }
 
 function switchTab(tab, btn) {
-  ['sitemap','copy','schema'].forEach(t => { document.getElementById('export-'+t+'-tab').style.display = t===tab?'block':'none'; });
+  ['sitemap','copy','schema','strategy','investment'].forEach(t => { document.getElementById('export-'+t+'-tab').style.display = t===tab?'block':'none'; });
   document.querySelectorAll('.tab-bar .tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
 
+function renderStrategyExportTab() {
+  var el = document.getElementById('export-strategy-tab');
+  if (!S.strategy || !S.strategy.compiled_output) {
+    el.innerHTML = '<p style="color:var(--n2);font-size:13px">Generate strategy diagnostics first.</p>';
+    return;
+  }
+  var html = '<div class="card" style="padding:20px">';
+  html += '<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:12px">';
+  html += '<button class="btn btn-ghost sm" onclick="copyStrategyDoc()"><i class="ti ti-copy"></i> Copy</button>';
+  html += '<button class="btn btn-ghost sm" onclick="downloadStrategyDoc()"><i class="ti ti-download"></i> Download .md</button>';
+  html += '</div>';
+  html += '<div style="font-size:13px;line-height:1.7;color:var(--dark)">' + sanitiseHTML(_markdownToHtml(S.strategy.compiled_output)) + '</div>';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderInvestmentExportTab() {
+  var el = document.getElementById('export-investment-tab');
+  var hasData = S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog;
+  if (!hasData) {
+    el.innerHTML = '<p style="color:var(--n2);font-size:13px">Run strategy with pricing data first.</p>';
+    return;
+  }
+  var html = '<div class="card" style="padding:20px">';
+  html += '<div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:12px">';
+  html += '<button class="btn btn-ghost sm" onclick="copyInvestmentSummary()"><i class="ti ti-copy"></i> Copy</button>';
+  html += '<button class="btn btn-ghost sm" onclick="downloadInvestmentSummary()"><i class="ti ti-download"></i> Download .md</button>';
+  html += '</div>';
+  // Render the investment text as markdown
+  var investText = typeof buildInvestmentText === 'function' ? buildInvestmentText() : '';
+  if (investText) {
+    html += '<div style="font-size:13px;line-height:1.7;color:var(--dark)">' + sanitiseHTML(_markdownToHtml(investText)) + '</div>';
+  } else {
+    html += '<p style="color:var(--n2);font-size:13px">No investment data available.</p>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 function downloadPackage() {
   const pages = S.pages;
-  let out = S.setup.client+' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n'+'='.repeat(60)+'\n\nSITEMAP ('+pages.length+' pages)\n'+'-'.repeat(40)+'\n\n';
+  let out = S.setup.client+' — Website Build Package\nSetSailOS · Setsail Marketing Agency\n'+'='.repeat(60)+'\n\n';
+
+  // Strategy document
+  if (S.strategy && S.strategy.compiled_output) {
+    out += '='.repeat(60)+'\nGROWTH STRATEGY\n'+'-'.repeat(40)+'\n\n';
+    out += S.strategy.compiled_output + '\n\n';
+  }
+
+  // Investment summary
+  if (typeof buildInvestmentText === 'function') {
+    var investText = buildInvestmentText();
+    if (investText) {
+      out += '='.repeat(60)+'\nINVESTMENT SUMMARY\n'+'-'.repeat(40)+'\n\n';
+      out += investText + '\n\n';
+    }
+  }
+
+  out += '='.repeat(60)+'\nSITEMAP ('+pages.length+' pages)\n'+'-'.repeat(40)+'\n\n';
   pages.forEach((p,i) => { out += (i+1)+'. '+p.page_name+' (/'+p.slug+') ['+p.priority+']\n   Primary: '+p.primary_keyword+' | KD: '+(p.primary_kd||'?')+'\n\n'; });
   out += '\n'+'='.repeat(60)+'\nCOPY BY PAGE\n'+'-'.repeat(40)+'\n\n';
   pages.forEach(p => { if(S.copy[p.slug]?.copy) out += '\n'+p.page_name.toUpperCase()+' · /'+p.slug+'\n'+'-'.repeat(30)+'\n'+S.copy[p.slug].copy+'\n\n'; });
