@@ -882,7 +882,8 @@ function renderBriefs() {
       if (siHasData) {
         siStripHtml += '<div style="border-bottom:1px solid var(--border)">';
         siStripHtml += '<div onclick="var e=document.getElementById(\''+siPanelId+'\');e.style.display=e.style.display===\'none\'?\'block\':\'none\'" style="display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;background:rgba(21,142,29,0.03)">';
-        siStripHtml += '<span style="font-size:9px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em">✓ SERP Intel</span>';
+        var siFallback = p.serpIntel.used_directory_fallback;
+        siStripHtml += '<span style="font-size:9px;font-weight:700;color:'+(siFallback?'var(--warn)':'var(--green)')+';text-transform:uppercase;letter-spacing:.06em">'+(siFallback?'⚠ SERP Intel (directory results)':'✓ SERP Intel')+'</span>';
         var siDisplayCount = siComps.length || siAllFetched.length;
         siStripHtml += '<span style="font-size:9px;color:var(--n2)">' + siDisplayCount + ' competitors · avg ' + (siD.avg_word_count||0) + ' words · target ' + (siD.word_count_target||0) + ' words · density ceiling ' + (siD.density_ceiling||0) + '%</span>';
         siStripHtml += '<span style="font-size:9px;color:var(--n2);margin-left:auto">▼ expand</span>';

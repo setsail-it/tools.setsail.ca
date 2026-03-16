@@ -1799,11 +1799,11 @@ export default {
         const creds = getDFSCreds(env);
         const locationCode = getLocationCode(country);
 
-        // Step 1: Get top 10 organic SERP results
+        // Step 1: Get top 20 organic SERP results (depth 20 gives more to filter)
         const serpRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
           method: 'POST',
           headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
-          body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'en', depth: 10 }])
+          body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'en', depth: 20 }])
         });
         const serpData = await serpRes.json();
         const serpItems = serpData?.tasks?.[0]?.result?.[0]?.items || [];
@@ -1819,8 +1819,9 @@ export default {
           'hellodarwin.com','604list.ca','infinitydigital.ca'
         ];
 
-        const organicItems = serpItems
-          .filter(item => item.type === 'organic' && item.url)
+        const allOrganic = serpItems.filter(item => item.type === 'organic' && item.url);
+
+        const filteredItems = allOrganic
           .filter(item => {
             try {
               const host = new URL(item.url).hostname.replace(/^www\./, '');
@@ -1828,6 +1829,11 @@ export default {
             } catch(e) { return false; }
           })
           .slice(0, 3);
+
+        // If filtering removed everything, fall back to top 3 unfiltered organic results
+        // Their word counts, H2s, and density are still valuable SERP Intel
+        const usedFallback = !filteredItems.length && allOrganic.length > 0;
+        const organicItems = filteredItems.length ? filteredItems : allOrganic.slice(0, 3);
 
         if (!organicItems.length) {
           return new Response(JSON.stringify({ error: 'No organic results found', competitors: [] }), {
@@ -1851,7 +1857,8 @@ export default {
           word_count: 0,
           kw_count: 0,
           kw_density: 0,
-          fetch_ok: false
+          fetch_ok: false,
+          is_directory: usedFallback
         }));
 
         try {
@@ -1910,6 +1917,7 @@ export default {
         return new Response(JSON.stringify({
           keyword,
           competitors,
+          used_directory_fallback: usedFallback,
           directives: {
             word_count_target: Math.round(maxWordCount * 1.05),
             avg_word_count: avgWordCount,

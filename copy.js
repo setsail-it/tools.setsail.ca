@@ -71,7 +71,8 @@ function buildSerpIntelBlock(page) {
   if (!si || !si.competitors || !si.competitors.length) return '';
 
   var kw = page.primary_keyword || '';
-  var lines = ['\n\n## SERP INTEL — "' + kw + '" (top organic competitors)\n'];
+  var _dirNote = si.used_directory_fallback ? ' (NOTE: no direct competitors in top 20 — these are directory/aggregator pages. Use their word counts and H2 structures as benchmarks but differentiate with original expertise content.)' : '';
+  var lines = ['\n\n## SERP INTEL — "' + kw + '" (top organic competitors)' + _dirNote + '\n'];
 
   si.competitors.forEach(function(c, i) {
     lines.push('### Competitor ' + (i+1) + ' — ' + c.url);
@@ -1314,9 +1315,10 @@ function renderCopyQueue() {
               : '<span title="No brief — copy will use basic context only" style="font-size:9px;background:rgba(0,0,0,0.04);color:var(--n2);border:1px solid var(--border);border-radius:3px;padding:1px 6px">No brief</span> ');
           var _si = p.serpIntel;
           var _siDone = !!(_si && _si.competitors && _si.competitors.length);
-          var _siBtnLabel = _siDone ? '✓ SERP Intel (' + _si.competitors.length + ')' : '⟳ SERP Intel';
-          var _siBtnClr = _siDone ? 'var(--green)' : 'var(--n2)';
-          var _siBtnBg  = _siDone ? 'rgba(21,142,29,0.08)' : 'rgba(0,0,0,0.04)';
+          var _siFallback = _siDone && _si.used_directory_fallback;
+          var _siBtnLabel = _siDone ? (_siFallback ? '⚠ SERP Intel (directories)' : '✓ SERP Intel (' + _si.competitors.length + ')') : '⟳ SERP Intel';
+          var _siBtnClr = _siDone ? (_siFallback ? 'var(--warn)' : 'var(--green)') : 'var(--n2)';
+          var _siBtnBg  = _siDone ? (_siFallback ? 'rgba(255,165,0,0.08)' : 'rgba(21,142,29,0.08)') : 'rgba(0,0,0,0.04)';
           html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">';
           html += '<div style="font-size:12px;color:var(--n2);display:flex;align-items:center;gap:6px">'+_briefBadge+esc(p.primary_keyword||'')+' </div>';
           html += '<div style="display:flex;align-items:center;gap:6px">';
