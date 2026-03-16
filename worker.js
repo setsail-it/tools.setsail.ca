@@ -371,6 +371,14 @@ export default {
       });
     }
 
+    // ── PRICING CATALOG (read-only from Pricing Engine KV) ─────────────────
+    if (url.pathname === '/api/pricing-catalog' && request.method === 'GET') {
+      const catalog = await getPricingCatalog(env);
+      return new Response(JSON.stringify({ ok: !!catalog, catalog: catalog }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
         // ── ANTHROPIC PROXY ──────────────────────────────────────────
     // ── ADMIN — user management ──────────────────────────────────────────────────
     // Only admins (role=admin) or the seeded owner email can access these

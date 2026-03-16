@@ -3,6 +3,335 @@
 // Research gathers facts. Strategy makes decisions.
 // ══════════════════════════════════════════════════════════════════════
 
+// ── Pricing Engine Integration ────────────────────────────────────────
+
+var _pricingCatalog = null; // cached pricing catalog from Pricing Engine KV
+var _pricingStatus = 'unknown'; // 'live' | 'estimated' | 'error' | 'unknown'
+
+// Maps strategy lever IDs → Pricing Engine service slugs
+var LEVER_SERVICE_MAP = {
+  google_ads_search: 'google-ads',
+  google_display:    'google-ads',
+  meta_ads:          'meta-ads',
+  seo:               'seo',
+  website:           'website',
+  cro:               'cro',
+  email:             'email-marketing',
+  remarketing:       'google-ads',
+  social_media:      'social-media',
+  video:             'video-production',
+  content_marketing: 'seo',
+  branding:          'branding',
+  local_seo:         'seo'
+};
+
+async function fetchPricingCatalog() {
+  try {
+    var res = await fetch('/api/pricing-catalog');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+    if (data.ok && data.catalog) {
+      _pricingCatalog = data.catalog;
+      _pricingStatus = 'live';
+      console.log('[pricing] Catalog loaded: ' + (_pricingCatalog.services || []).length + ' services');
+      return _pricingCatalog;
+    }
+    _pricingStatus = 'estimated';
+    console.warn('[pricing] Catalog empty — using estimates');
+    return null;
+  } catch (err) {
+    _pricingStatus = 'error';
+    console.error('[pricing] Failed to load catalog:', err.message);
+    return null;
+  }
+}
+
+function lookupServicePricing(leverKey) {
+  if (!_pricingCatalog || !_pricingCatalog.services) return null;
+  var slug = LEVER_SERVICE_MAP[leverKey];
+  if (!slug) return null;
+  return _pricingCatalog.services.find(function(s) {
+    var sSlug = (s.id || s.slug || s.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    return sSlug === slug || sSlug.indexOf(slug) >= 0;
+  }) || null;
+}
+
+function getServiceMonthlyCost(service) {
+  if (!service || !service.pricing) return null;
+  var p = service.pricing;
+  // Monthly retainer range
+  var min = p.monthlyMin || p.monthly_min || p.min || 0;
+  var max = p.monthlyMax || p.monthly_max || p.max || 0;
+  if (min && max) return { min: min, max: max, mid: Math.round((min + max) / 2) };
+  // Project-based
+  if (p.projectMin || p.project_min) {
+    var pMin = p.projectMin || p.project_min || 0;
+    var pMax = p.projectMax || p.project_max || 0;
+    return { min: pMin, max: pMax, mid: Math.round((pMin + pMax) / 2), isProject: true };
+  }
+  // Single price field
+  if (p.price) return { min: p.price, max: p.price, mid: p.price };
+  return null;
+}
+
+function getPackageFit(monthlyBudget) {
+  if (!_pricingCatalog || !_pricingCatalog.packages || !monthlyBudget) return null;
+  var budget = parseFloat(String(monthlyBudget).replace(/[^0-9.]/g, ''));
+  if (!budget || budget <= 0) return null;
+  var fit = null;
+  _pricingCatalog.packages.forEach(function(pkg) {
+    var min = pkg.priceMin || pkg.price_min || pkg.min || 0;
+    var max = pkg.priceMax || pkg.price_max || pkg.max || 0;
+    if (budget >= min && budget <= max) fit = pkg;
+  });
+  // If above all tiers
+  if (!fit && budget > 0) {
+    var highest = _pricingCatalog.packages[_pricingCatalog.packages.length - 1];
+    var hMax = highest.priceMax || highest.price_max || highest.max || 0;
+    if (budget > hMax) return { tier: 'custom', label: 'Custom (above Scale)', budget: budget };
+    // Below all tiers
+    var lowest = _pricingCatalog.packages[0];
+    var lMin = lowest.priceMin || lowest.price_min || lowest.min || 0;
+    if (budget < lMin) return { tier: 'below_minimum', label: 'Below minimum engagement', budget: budget, minimum: lMin };
+  }
+  if (fit) return { tier: (fit.id || fit.name || '').toLowerCase().replace(/\s+/g, '_'), label: fit.name || fit.id, budget: budget, pkg: fit };
+  return null;
+}
+
+function buildPricingContextBlock() {
+  if (!_pricingCatalog || _pricingStatus !== 'live') return '';
+  var block = '\n\nSERVICE PRICING (from internal pricing engine — real costs in CAD):\n';
+  (_pricingCatalog.services || []).forEach(function(svc) {
+    var cost = getServiceMonthlyCost(svc);
+    if (!cost) return;
+    var name = svc.name || svc.service || svc.id || '';
+    if (cost.isProject) {
+      block += '- ' + name + ': $' + cost.min.toLocaleString() + ' - $' + cost.max.toLocaleString() + ' (project)\n';
+    } else {
+      block += '- ' + name + ': $' + cost.min.toLocaleString() + ' - $' + cost.max.toLocaleString() + '/month\n';
+    }
+    if (svc.marginTarget) block += '  Margin target: ' + svc.marginTarget + '%\n';
+  });
+  if (_pricingCatalog.packages && _pricingCatalog.packages.length) {
+    block += '\nPACKAGE TIERS:\n';
+    _pricingCatalog.packages.forEach(function(pkg) {
+      var min = pkg.priceMin || pkg.price_min || pkg.min || 0;
+      var max = pkg.priceMax || pkg.price_max || pkg.max || 0;
+      block += '- ' + (pkg.name || pkg.id) + ': $' + min.toLocaleString() + ' - $' + max.toLocaleString() + '/month\n';
+    });
+  }
+  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
+    var sp = _pricingCatalog.strategy.pricing;
+    block += '\nSTRATEGY DIAGNOSTIC: $' + (sp.price || 750) + ' CAD';
+    if (sp.credit) block += ' (credited toward first invoice within ' + (sp.creditWindow || 30) + ' days)';
+    block += '\n';
+  }
+  if (_pricingCatalog.tracking) {
+    var tr = _pricingCatalog.tracking;
+    var trCost = tr.pricing || tr;
+    var trMin = trCost.projectMin || trCost.project_min || trCost.min || 1500;
+    var trMax = trCost.projectMax || trCost.project_max || trCost.max || 4000;
+    block += 'ANALYTICS SETUP: $' + trMin.toLocaleString() + ' - $' + trMax.toLocaleString() + ' (one-time)\n';
+  }
+  block += '\nIMPORTANT: Use these REAL service costs in your calculations instead of estimates. When recommending a service, reference its actual pricing range. Match budget tiers to package tiers.\n';
+  return block;
+}
+
+function capturePricingSnapshot() {
+  if (!S.strategy) return;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var pkgFit = getPackageFit(budget);
+  var monthlyRec = 0;
+  if (S.strategy.channel_strategy && S.strategy.channel_strategy.levers) {
+    S.strategy.channel_strategy.levers.forEach(function(lev) {
+      var svc = lookupServicePricing(lev.lever);
+      if (svc) {
+        var cost = getServiceMonthlyCost(svc);
+        if (cost && !cost.isProject) monthlyRec += cost.mid;
+      }
+    });
+  }
+  S.strategy.pricing_snapshot = {
+    source: _pricingStatus,
+    catalog: _pricingCatalog,
+    captured_at: new Date().toISOString(),
+    package_fit: pkgFit ? pkgFit.tier : 'unknown',
+    monthly_recommended: monthlyRec,
+    monthly_client_budget: budget || 0,
+    gap: monthlyRec > budget ? monthlyRec - budget : 0
+  };
+}
+
+function _renderPricingIndicator() {
+  var colour = _pricingStatus === 'live' ? 'var(--green)' : _pricingStatus === 'estimated' ? '#e6a23c' : '#f56c6c';
+  var label = _pricingStatus === 'live' ? 'Live' : _pricingStatus === 'estimated' ? 'Estimated' : 'Unavailable';
+  var icon = _pricingStatus === 'live' ? 'ti-plug-connected' : 'ti-plug-connected-x';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;color:' + colour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + colour + '30;background:' + colour + '08">'
+    + '<i class="ti ' + icon + '" style="font-size:11px"></i> Pricing: ' + label + '</span>';
+}
+
+function _renderMarginAnalysis() {
+  if (!_pricingCatalog || !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers) return '';
+  var levers = S.strategy.channel_strategy.levers;
+  var totalRevenue = 0;
+  var totalProfit = 0;
+  var rows = [];
+  var warnings = [];
+  levers.forEach(function(lev) {
+    var svc = lookupServicePricing(lev.lever);
+    if (!svc) return;
+    var cost = getServiceMonthlyCost(svc);
+    if (!cost || cost.isProject) return;
+    var margin = svc.marginTarget || (_pricingCatalog.marginTargets ? _pricingCatalog.marginTargets.default : 75) || 75;
+    var revenue = cost.mid;
+    var profit = Math.round(revenue * (margin / 100));
+    totalRevenue += revenue;
+    totalProfit += profit;
+    rows.push({ lever: lev.lever, revenue: revenue, margin: margin, profit: profit, svcName: svc.name || svc.service || lev.lever });
+    if (margin < 70) warnings.push(lev.lever + ' (' + margin + '% margin)');
+  });
+  if (!rows.length) return '';
+  var overallMargin = totalRevenue > 0 ? Math.round((totalProfit / totalRevenue) * 100) : 0;
+  var html = '<details style="margin-bottom:18px;border:1px solid #e6a23c40;border-radius:8px;background:#fffdf5">'
+    + '<summary style="padding:10px 14px;cursor:pointer;font-size:11px;font-weight:600;color:#92660a;display:flex;align-items:center;gap:6px">'
+    + '<i class="ti ti-lock" style="font-size:13px"></i> Internal: Margin Analysis'
+    + '<span style="margin-left:auto;font-size:10px;font-weight:500;color:var(--n2)">$' + totalProfit.toLocaleString() + '/mo GP (' + overallMargin + '% margin)</span>'
+    + '</summary>';
+  html += '<div style="padding:10px 14px 14px">';
+  html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#f56c6c;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#fef0f0;border-radius:4px;display:inline-block">INTERNAL ONLY — not for client export</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:5px 8px;font-weight:500;color:var(--n2)">Service</th>'
+    + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Revenue/mo</th>'
+    + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Margin</th>'
+    + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Gross Profit</th></tr>';
+  rows.forEach(function(r) {
+    var mColour = r.margin < 70 ? '#f56c6c' : r.margin < 75 ? '#e6a23c' : 'var(--green)';
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:5px 8px">' + esc(r.svcName) + '</td>';
+    html += '<td style="padding:5px 8px;text-align:right">$' + r.revenue.toLocaleString() + '</td>';
+    html += '<td style="padding:5px 8px;text-align:right;color:' + mColour + ';font-weight:600">' + r.margin + '%</td>';
+    html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + r.profit.toLocaleString() + '</td>';
+    html += '</tr>';
+  });
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:5px 8px">Total Engagement</td>'
+    + '<td style="padding:5px 8px;text-align:right">$' + totalRevenue.toLocaleString() + '</td>'
+    + '<td style="padding:5px 8px;text-align:right;color:' + (overallMargin >= 75 ? 'var(--green)' : '#e6a23c') + '">' + overallMargin + '%</td>'
+    + '<td style="padding:5px 8px;text-align:right">$' + totalProfit.toLocaleString() + '</td></tr>';
+  html += '</table>';
+  if (warnings.length) {
+    html += '<div style="margin-top:8px;padding:6px 10px;border-radius:5px;background:#fef0f0;border:1px solid #f56c6c30;font-size:10px;color:#f56c6c">'
+      + '<strong>Low margin warning:</strong> ' + warnings.join(', ') + '</div>';
+  }
+  html += '</div></details>';
+  return html;
+}
+
+function _renderInvestmentSummary() {
+  if (!_pricingCatalog || !S.strategy) return '';
+  var st = S.strategy;
+  var levers = (st.channel_strategy && st.channel_strategy.levers) || [];
+  if (!levers.length) return '';
+  var monthlyServices = [];
+  var projectServices = [];
+  var totalMonthly = 0;
+  var totalProject = 0;
+  levers.forEach(function(lev) {
+    var svc = lookupServicePricing(lev.lever);
+    if (!svc) return;
+    var cost = getServiceMonthlyCost(svc);
+    if (!cost) return;
+    var entry = { lever: lev.lever, name: svc.name || svc.service || lev.lever, min: cost.min, max: cost.max, mid: cost.mid };
+    if (cost.isProject) {
+      projectServices.push(entry);
+      totalProject += cost.mid;
+    } else {
+      monthlyServices.push(entry);
+      totalMonthly += cost.mid;
+    }
+  });
+  // Strategy diagnostic
+  var diagCost = 0;
+  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
+    diagCost = _pricingCatalog.strategy.pricing.price || 750;
+  }
+  // Tracking setup
+  var trackMin = 0, trackMax = 0;
+  if (_pricingCatalog.tracking) {
+    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
+    trackMin = tr.projectMin || tr.project_min || tr.min || 1500;
+    trackMax = tr.projectMax || tr.project_max || tr.max || 4000;
+  }
+  var trackMid = Math.round((trackMin + trackMax) / 2);
+  totalProject += trackMid + diagCost;
+  var yearTotal = (totalMonthly * 12) + totalProject;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var pkgFit = getPackageFit(budget);
+  var html = '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Investment Summary ' + _renderPricingIndicator() + '</div>';
+  // Monthly services
+  if (monthlyServices.length) {
+    html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">Monthly Recurring</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
+    monthlyServices.forEach(function(s) {
+      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td>'
+        + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">$' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '/mo</td></tr>';
+    });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:4px 8px">Monthly Total (midpoint)</td>'
+      + '<td style="padding:4px 8px;text-align:right;color:var(--dark)">$' + totalMonthly.toLocaleString() + '/mo</td></tr>';
+    html += '</table>';
+  }
+  // One-time costs
+  html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">One-Time Setup</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
+  html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Growth Diagnostic</td>'
+    + '<td style="padding:4px 8px;text-align:right">$' + diagCost.toLocaleString() + ' <span style="font-size:9px;color:var(--green)">(credited on sign)</span></td></tr>';
+  if (trackMin) {
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Analytics Setup</td>'
+      + '<td style="padding:4px 8px;text-align:right">$' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '</td></tr>';
+  }
+  projectServices.forEach(function(s) {
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td>'
+      + '<td style="padding:4px 8px;text-align:right">$' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '</td></tr>';
+  });
+  html += '</table>';
+  // Totals
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">';
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + totalMonthly.toLocaleString() + '</div>'
+    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Monthly</div></div>';
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + totalProject.toLocaleString() + '</div>'
+    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">One-Time</div></div>';
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + yearTotal.toLocaleString() + '</div>'
+    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Year 1 Total</div></div>';
+  html += '</div>';
+  // Package fit
+  if (pkgFit) {
+    var fitColour = pkgFit.tier === 'below_minimum' ? '#f56c6c' : pkgFit.tier === 'custom' ? '#e6a23c' : 'var(--green)';
+    html += '<div style="padding:8px 12px;border-radius:6px;background:' + fitColour + '08;border:1px solid ' + fitColour + '20;font-size:11px;margin-bottom:8px">'
+      + '<strong>Package fit:</strong> ' + esc(pkgFit.label);
+    if (pkgFit.pkg) {
+      var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
+      var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
+      html += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
+    }
+    html += '</div>';
+  }
+  // Budget comparison
+  if (budget > 0) {
+    var gap = totalMonthly - budget;
+    if (gap > 0) {
+      html += '<div style="padding:8px 12px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px">'
+        + '<strong>Budget gap:</strong> Plan requires $' + totalMonthly.toLocaleString() + '/mo. Client budget: $' + budget.toLocaleString() + '/mo. Gap: $' + gap.toLocaleString() + '/mo. Consider phased rollout or fewer levers.</div>';
+    } else {
+      html += '<div style="padding:8px 12px;border-radius:6px;background:rgba(21,142,29,0.05);border:1px solid rgba(21,142,29,0.15);font-size:11px">'
+        + '<strong>Budget aligned:</strong> Plan requires $' + totalMonthly.toLocaleString() + '/mo. Client budget: $' + budget.toLocaleString() + '/mo.</div>';
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────
 
 var STRATEGY_TABS = [
@@ -1279,6 +1608,7 @@ function buildDiagnosticPrompt(num) {
     }
 
     return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
+      + buildPricingContextBlock()
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + '- Average deal size: ' + (r.average_deal_size || 'UNKNOWN') + '\n'
@@ -1475,6 +1805,7 @@ function buildDiagnosticPrompt(num) {
   if (num === 4) {
     // D4: Channel & Lever Viability
     return ctx + '\n\nDIAGNOSTIC: Channel & Lever Viability Assessment\n\n'
+      + buildPricingContextBlock()
       + 'UNIT ECONOMICS: ' + JSON.stringify(st.unit_economics || 'NOT YET CALCULATED') + '\n'
       + 'COMPETITIVE POSITION: ' + (st.positioning ? st.positioning.recommended_positioning_angle || '' : 'NOT YET ASSESSED') + '\n'
       + 'BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
@@ -2006,6 +2337,10 @@ async function generateStrategy() {
   if (!S.strategy) S.strategy = strategyDefaults();
   window._aiStopAll = false;
 
+  // Step 0: Load pricing catalog (runs once, cached)
+  aiBarStart('Loading pricing catalog');
+  await fetchPricingCatalog();
+
   // Step 1: Run enrichment
   aiBarStart('Strategy enrichment');
   var r = S.research || {};
@@ -2114,7 +2449,8 @@ async function generateStrategy() {
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
 
-    // Step 3: Score and create version
+    // Step 3: Capture pricing snapshot and score
+    capturePricingSnapshot();
     createStrategyVersion('auto_draft');
     await saveProject();
     renderStrategyScorecard();
@@ -2154,6 +2490,7 @@ async function _resumeDiagnosticsWithD0(startFrom) {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    capturePricingSnapshot();
     createStrategyVersion('auto_draft');
     await saveProject();
     renderStrategyScorecard();
@@ -2180,6 +2517,7 @@ async function _resumeDiagnostics(startFrom) {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    capturePricingSnapshot();
     createStrategyVersion('auto_draft');
     await saveProject();
     renderStrategyScorecard();
@@ -2194,6 +2532,8 @@ async function _resumeDiagnostics(startFrom) {
 async function runAllDiagnostics() {
   if (!S.strategy) S.strategy = strategyDefaults();
   window._aiStopAll = false;
+  aiBarStart('Loading pricing catalog');
+  await fetchPricingCatalog();
   aiBarStart('Running all diagnostics (D0-D7)');
   try {
     // D0 first
@@ -2219,6 +2559,7 @@ async function runAllDiagnostics() {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    capturePricingSnapshot();
     createStrategyVersion('rerun_all');
     await saveProject();
     renderStrategyScorecard();
@@ -3835,6 +4176,9 @@ function _renderEconomics(st) {
     return '<div class="card" style="color:var(--n2);text-align:centre"><p>No economics data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
+  // Pricing source indicator
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+    + _renderPricingIndicator() + '</div>';
   html += _stratSection('Unit Economics',
     _stratField('Max Allowable CPL', ue.max_allowable_cpl ? '$' + ue.max_allowable_cpl : '') +
     _stratField('Estimated Market CPL', ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '') +
@@ -3848,6 +4192,26 @@ function _renderEconomics(st) {
     _stratField('LTV:CAC Health', ue.ltv_cac_health) +
     _stratField('Paid Media Viable', ue.paid_media_viable ? 'Yes' : 'No')
   );
+  // Service cost reference (from pricing engine)
+  if (_pricingCatalog && _pricingCatalog.services) {
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Service Cost Reference (Pricing Engine)</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:5px 8px;font-weight:500;color:var(--n2)">Service</th>'
+      + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Min</th>'
+      + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Max</th>'
+      + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Type</th></tr>';
+    _pricingCatalog.services.forEach(function(svc) {
+      var cost = getServiceMonthlyCost(svc);
+      if (!cost) return;
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:5px 8px">' + esc(svc.name || svc.service || svc.id || '') + '</td>';
+      html += '<td style="padding:5px 8px;text-align:right">$' + cost.min.toLocaleString() + '</td>';
+      html += '<td style="padding:5px 8px;text-align:right">$' + cost.max.toLocaleString() + '</td>';
+      html += '<td style="padding:5px 8px;text-align:right;color:var(--n2)">' + (cost.isProject ? 'Project' : '/month') + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
   html += _stratSection('Pricing & Recommendation',
     _stratField('Pricing Strategy', ue.pricing_strategy, {span:true, textarea:true}) +
     _stratField('Recommendation', ue.recommendation, {span:true, textarea:true})
@@ -3988,8 +4352,21 @@ function _renderChannels(st) {
     html += '</div>';
   }
 
-  // Priority order table
-  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Channel Priority</div>';
+  // Package fit indicator
+  var _chBudget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var _chPkgFit = getPackageFit(_chBudget);
+  if (_chPkgFit) {
+    var _pkgColour = _chPkgFit.tier === 'below_minimum' ? '#f56c6c' : _chPkgFit.tier === 'custom' ? 'var(--green)' : '#409eff';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;border-radius:6px;background:var(--panel);border:1px solid var(--border)">'
+      + '<span style="font-size:11px;color:var(--n2)">Client budget: <strong>$' + _chBudget.toLocaleString() + '/mo</strong></span>'
+      + '<span style="font-size:10px;font-weight:600;color:' + _pkgColour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + _pkgColour + '30;background:' + _pkgColour + '08">' + esc(_chPkgFit.label) + '</span>'
+      + (_chPkgFit.tier === 'below_minimum' ? '<span style="font-size:10px;color:#f56c6c">Min: $' + (_chPkgFit.minimum || 0).toLocaleString() + '/mo</span>' : '')
+      + '</div>';
+  }
+
+  // Priority order table with service costs
+  var _hasPricing = _pricingCatalog && _pricingCatalog.services;
+  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Channel Priority ' + _renderPricingIndicator() + '</div>';
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
   html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Lever</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Fit</th>'
@@ -3998,16 +4375,27 @@ function _renderChannels(st) {
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Impact</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Priority</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Budget %</th>'
+    + (_hasPricing ? '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">Min Cost</th>' : '')
     + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Timeline</th></tr>';
   cs.levers.sort(function(a, b) { return (b.priority_score || 0) - (a.priority_score || 0); }).forEach(function(lev) {
-    html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:6px 8px;font-weight:500">' + esc(lev.lever || '') + '</td>';
+    var _levSvc = _hasPricing ? lookupServicePricing(lev.lever) : null;
+    var _levCost = _levSvc ? getServiceMonthlyCost(_levSvc) : null;
+    var _budgetFeasible = true;
+    if (_levCost && _chBudget > 0 && !_levCost.isProject) {
+      var _allocDollars = _chBudget * ((lev.budget_allocation_pct || 0) / 100);
+      if (_allocDollars < _levCost.min && lev.budget_allocation_pct > 0) _budgetFeasible = false;
+    }
+    html += '<tr style="border-bottom:1px solid var(--border);' + (!_budgetFeasible ? 'background:#fef0f0' : '') + '">';
+    html += '<td style="padding:6px 8px;font-weight:500">' + esc(lev.lever || '') + (!_budgetFeasible ? ' <span style="font-size:9px;color:#f56c6c;font-weight:400" title="Budget allocation below minimum service cost">⚠ underfunded</span>' : '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.fit || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.economics || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.competitive_reality || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.goal_impact || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center;font-weight:600">' + (lev.priority_score || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.budget_allocation_pct || 0) + '%</td>';
+    if (_hasPricing) {
+      html += '<td style="padding:6px 4px;text-align:right;font-size:10px;color:var(--n2)">' + (_levCost ? '$' + _levCost.min.toLocaleString() + (_levCost.isProject ? ' proj' : '/mo') : '\u2014') + '</td>';
+    }
     html += '<td style="padding:6px 8px">' + esc(lev.timeline_to_results || '') + '</td>';
     html += '</tr>';
   });
@@ -4088,12 +4476,53 @@ function _renderGrowth(st) {
   html += '<div id="strat-gantt-container"></div></div>';
   // Gantt is rendered via DOM after innerHTML is set (see _mountGantt call in renderStrategyTabContent)
 
-  // Budget allocation
+  // Budget allocation with real costs
   if (gp.budget_allocation) {
-    html += _stratSection('Budget Allocation',
-      _stratField('Total Monthly', gp.budget_allocation.total_monthly ? '$' + gp.budget_allocation.total_monthly : '') +
-      _stratField('By Lever', gp.budget_allocation.by_lever || {})
-    );
+    var _gaHasPricing = _pricingCatalog && _pricingCatalog.services;
+    var _gaTotalReal = 0;
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Budget Allocation ' + (_gaHasPricing ? _renderPricingIndicator() : '') + '</div>';
+    if (gp.budget_allocation.total_monthly) {
+      html += '<div style="font-size:18px;font-weight:700;color:var(--dark);margin-bottom:10px">$' + Number(gp.budget_allocation.total_monthly).toLocaleString() + '<span style="font-size:11px;font-weight:400;color:var(--n2)">/mo (AI recommended)</span></div>';
+    }
+    if (gp.budget_allocation.by_lever && typeof gp.budget_allocation.by_lever === 'object') {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+      html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:5px 8px;font-weight:500;color:var(--n2)">Lever</th>'
+        + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">AI Allocation</th>'
+        + (_gaHasPricing ? '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Real Cost (mid)</th>' : '')
+        + '</tr>';
+      Object.keys(gp.budget_allocation.by_lever).forEach(function(lever) {
+        var aiAmt = gp.budget_allocation.by_lever[lever] || 0;
+        var _gaSvc = _gaHasPricing ? lookupServicePricing(lever) : null;
+        var _gaCost = _gaSvc ? getServiceMonthlyCost(_gaSvc) : null;
+        if (_gaCost && !_gaCost.isProject) _gaTotalReal += _gaCost.mid;
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:5px 8px">' + esc(lever.replace(/_/g, ' ')) + '</td>';
+        html += '<td style="padding:5px 8px;text-align:right">$' + Number(aiAmt).toLocaleString() + '</td>';
+        if (_gaHasPricing) {
+          html += '<td style="padding:5px 8px;text-align:right;color:' + (_gaCost ? 'var(--dark)' : 'var(--n2)') + '">' + (_gaCost && !_gaCost.isProject ? '$' + _gaCost.mid.toLocaleString() : '\u2014') + '</td>';
+        }
+        html += '</tr>';
+      });
+      if (_gaHasPricing && _gaTotalReal > 0) {
+        html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:5px 8px">Total (real pricing)</td>'
+          + '<td style="padding:5px 8px;text-align:right">$' + Number(gp.budget_allocation.total_monthly || 0).toLocaleString() + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;color:var(--dark)">$' + _gaTotalReal.toLocaleString() + '</td></tr>';
+      }
+      html += '</table>';
+    }
+    // Budget vs plan comparison
+    var _gaBudget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+    var _gaPlanTotal = _gaTotalReal > 0 ? _gaTotalReal : (gp.budget_allocation.total_monthly || 0);
+    if (_gaBudget > 0 && _gaPlanTotal > 0) {
+      var _gaGap = _gaPlanTotal - _gaBudget;
+      var _gaGapColour = _gaGap > 0 ? '#f56c6c' : 'var(--green)';
+      html += '<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:' + (_gaGap > 0 ? '#fef0f0' : '#f0fdf4') + ';border:1px solid ' + _gaGapColour + '30;font-size:11px;display:flex;align-items:center;gap:8px">'
+        + '<i class="ti ' + (_gaGap > 0 ? 'ti-alert-triangle' : 'ti-circle-check') + '" style="color:' + _gaGapColour + ';font-size:14px"></i>'
+        + '<span>Client budget: <strong>$' + _gaBudget.toLocaleString() + '/mo</strong> | Plan total: <strong>$' + _gaPlanTotal.toLocaleString() + '/mo</strong> | '
+        + (_gaGap > 0 ? '<span style="color:#f56c6c;font-weight:600">Gap: $' + _gaGap.toLocaleString() + '/mo over budget</span>' : '<span style="color:var(--green);font-weight:600">Within budget (\u2212$' + Math.abs(_gaGap).toLocaleString() + ')</span>')
+        + '</span></div>';
+    }
+    html += '</div>';
   }
 
   // Targets
@@ -5735,8 +6164,19 @@ async function compileStrategyOutput() {
     ctx += '\nDISCOVERY NOTES:\n' + s.discoveryNotes.trim() + '\n';
   }
 
+  // Pricing Engine data for Investment Summary section
+  ctx += buildPricingContextBlock();
+  if (st.pricing_snapshot) {
+    ctx += '\nPRICING SNAPSHOT:\n';
+    ctx += '- Source: ' + (st.pricing_snapshot.source || 'unknown') + '\n';
+    ctx += '- Package fit: ' + (st.pricing_snapshot.package_fit || 'unknown') + '\n';
+    ctx += '- Monthly recommended (midpoint): $' + (st.pricing_snapshot.monthly_recommended || 0).toLocaleString() + '\n';
+    ctx += '- Client monthly budget: $' + (st.pricing_snapshot.monthly_client_budget || 0).toLocaleString() + '\n';
+    if (st.pricing_snapshot.gap > 0) ctx += '- Budget gap: $' + st.pricing_snapshot.gap.toLocaleString() + '/mo over budget\n';
+  }
+
   var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 14 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
+    + 'Write in these 15 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
     + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores, real case study results, real proof points. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers. If strategist notes were provided, incorporate their direction.\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
     + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition. Reference the strategy score and any active scoring caps that represent known limitations.\n\n'
@@ -5766,7 +6206,9 @@ async function compileStrategyOutput() {
     + 'Geographic targeting approach, primary and secondary markets, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
     + '## 14. RISKS, PROOF & CONSTRAINTS\n'
     + 'Top risks with severity scores and specific mitigations. E-E-A-T proof inventory: list actual case studies (client, result, timeframe), notable clients, awards/certifications, team credentials, and founder bio. Hard rules and constraints the team must follow — including words to avoid and tone boundaries.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2400-3200 words total.';
+    + '## 15. INVESTMENT SUMMARY\n'
+    + 'If real service pricing data is available, present a complete investment breakdown: monthly recurring services with cost ranges, one-time costs (strategy diagnostic, analytics setup, any project-based services), estimated year-one total, and the recommended package tier fit. Compare the total against the client stated budget and note any gap. If pricing data is not available, state that costs are estimates pending pricing confirmation.\n\n'
+    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2600-3400 words total.';
 
   aiBarStart('Compiling strategy document...');
   try {
@@ -5874,6 +6316,12 @@ function _renderOutput(st) {
     }
     html += '</div>';
   }
+
+  // Investment Summary (from pricing engine)
+  html += _renderInvestmentSummary();
+
+  // Margin Analysis (internal only)
+  html += _renderMarginAnalysis();
 
   // Compiled output document
   if (output) {
