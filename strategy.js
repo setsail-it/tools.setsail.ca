@@ -188,11 +188,109 @@ function downloadStrategyDoc() {
 
 function buildInvestmentText() {
   if (!_pricingCatalog || !S.strategy) return '';
+  var client = (S.setup && S.setup.client) || 'Client';
+  var date = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  var scope = S.strategy.engagement_scope;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var pkgFit = getPackageFit(budget);
+
+  // Extract one-time base costs
+  var diagCost = 0;
+  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) diagCost = _pricingCatalog.strategy.pricing.price || 750;
+  var trackMin = 0, trackMax = 0;
+  if (_pricingCatalog.tracking) {
+    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
+    trackMin = tr.projectMin || tr.project_min || tr.min || 1500;
+    trackMax = tr.projectMax || tr.project_max || tr.max || 4000;
+  }
+
+  // If engagement_scope exists, use dual-column format
+  if (scope && scope.services && Object.keys(scope.services).length) {
+    _recalcScopeTotals();
+    var t = scope.totals || {};
+    var txt = '# Investment Summary \u2014 ' + client + '\n';
+    txt += 'Prepared by Setsail Marketing | ' + date + '\n\n';
+
+    // Monthly services dual-column
+    var allSvcs = [];
+    Object.keys(scope.services).forEach(function(k) { allSvcs.push(scope.services[k]); });
+    Object.keys(scope.additional_services || {}).forEach(function(k) { if (scope.additional_services[k].enabled) allSvcs.push(scope.additional_services[k]); });
+    var monthlySvcs = allSvcs.filter(function(s) { return s.cost && !s.cost.isProject && s.enabled; });
+    var projectSvcs = allSvcs.filter(function(s) { return s.cost && s.cost.isProject && s.enabled; });
+
+    if (monthlySvcs.length) {
+      txt += '## Monthly Recurring Services\n\n';
+      txt += '| Service | Suggested | Realistic | Est. ROI |\n';
+      txt += '|---------|-----------|-----------|----------|\n';
+      monthlySvcs.forEach(function(s) {
+        var sugCost = _scopeCostForTier(s.cost, s.scope);
+        var rScope = s.scope;
+        var rEnabled = true;
+        if (s.realistic_override) {
+          if (s.realistic_override.enabled === false) rEnabled = false;
+          if (s.realistic_override.scope) rScope = s.realistic_override.scope;
+        }
+        var realTxt = rEnabled ? '$' + _scopeCostForTier(s.cost, rScope).toLocaleString() + '/mo' : '\u2014 (cut)';
+        var roiTxt = s.roi && s.roi.multiplier > 0 ? s.roi.multiplier + 'x (' + s.roi.timeline + ')' : '\u2014';
+        txt += '| ' + s.name + ' | $' + sugCost.toLocaleString() + '/mo (' + s.scope + ') | ' + realTxt + ' | ' + roiTxt + ' |\n';
+      });
+      txt += '\n**Suggested Monthly: $' + t.suggested_monthly.toLocaleString() + '/mo** | **Realistic: $' + t.realistic_monthly.toLocaleString() + '/mo**\n\n';
+    }
+
+    // One-time
+    txt += '## One-Time Setup\n\n';
+    txt += '- Growth Diagnostic: $' + diagCost.toLocaleString() + ' (credited toward first invoice within 30 days)\n';
+    if (trackMin) txt += '- Analytics Setup: $' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '\n';
+    projectSvcs.forEach(function(s) {
+      txt += '- ' + s.name + ': $' + s.cost.min.toLocaleString() + ' \u2013 $' + s.cost.max.toLocaleString() + '\n';
+    });
+    txt += '\n**One-Time Total: $' + t.suggested_project.toLocaleString() + '**\n\n';
+
+    // Year 1 projection
+    txt += '## Year 1 Projection\n\n';
+    txt += '| | Suggested | Realistic |\n';
+    txt += '|---|-----------|----------|\n';
+    txt += '| Monthly x 12 | $' + (t.suggested_monthly * 12).toLocaleString() + ' | $' + (t.realistic_monthly * 12).toLocaleString() + ' |\n';
+    txt += '| One-Time | $' + t.suggested_project.toLocaleString() + ' | $' + t.realistic_project.toLocaleString() + ' |\n';
+    txt += '| **Year 1 Total** | **$' + t.year1_suggested.toLocaleString() + '** | **$' + t.year1_realistic.toLocaleString() + '** |\n\n';
+
+    // Scope notes
+    var notes = allSvcs.filter(function(s) { return s.enabled && s.scope_note; });
+    if (notes.length) {
+      txt += '## Scope Notes\n\n';
+      notes.forEach(function(s) { txt += '- **' + s.name + ':** ' + s.scope_note + '\n'; });
+      txt += '\n';
+    }
+
+    // Package + budget
+    if (pkgFit && pkgFit.label) {
+      txt += '## Recommended Package: ' + pkgFit.label;
+      if (pkgFit.pkg) {
+        var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
+        var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
+        txt += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
+      }
+      txt += '\n\n';
+    }
+    if (budget > 0) {
+      txt += '## Budget Alignment\n\n';
+      txt += '- Client stated budget: $' + budget.toLocaleString() + '/mo\n';
+      txt += '- Suggested monthly: $' + t.suggested_monthly.toLocaleString() + '/mo\n';
+      txt += '- Realistic monthly: $' + t.realistic_monthly.toLocaleString() + '/mo\n';
+      var gap = t.suggested_monthly - budget;
+      if (gap > 0) {
+        txt += '- **Gap: $' + gap.toLocaleString() + '/mo.** Realistic scope has been adjusted to fit.\n';
+      } else {
+        txt += '- **Plan fits within budget.**\n';
+      }
+    }
+    return txt;
+  }
+
+  // Fallback: old lever-based behaviour (no engagement_scope)
   var st = S.strategy;
   var levers = (st.channel_strategy && st.channel_strategy.levers) || [];
   if (!levers.length) return '';
-  var client = (S.setup && S.setup.client) || 'Client';
-  var date = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
   var monthlyServices = [];
   var projectServices = [];
   var totalMonthly = 0;
@@ -206,68 +304,33 @@ function buildInvestmentText() {
     if (cost.isProject) { projectServices.push(entry); totalProject += cost.mid; }
     else { monthlyServices.push(entry); totalMonthly += cost.mid; }
   });
-  var diagCost = 0;
-  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
-    diagCost = _pricingCatalog.strategy.pricing.price || 750;
-  }
-  var trackMin = 0, trackMax = 0;
-  if (_pricingCatalog.tracking) {
-    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
-    trackMin = tr.projectMin || tr.project_min || tr.min || 1500;
-    trackMax = tr.projectMax || tr.project_max || tr.max || 4000;
-  }
   var trackMid = Math.round((trackMin + trackMax) / 2);
   totalProject += trackMid + diagCost;
   var yearTotal = (totalMonthly * 12) + totalProject;
-  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
-  var pkgFit = getPackageFit(budget);
 
   var txt = '# Investment Summary \u2014 ' + client + '\n';
   txt += 'Prepared by Setsail Marketing | ' + date + '\n\n';
-  // Monthly recurring
   if (monthlyServices.length) {
-    txt += '## Monthly Recurring Services\n\n';
-    txt += '| Service | Range (CAD/mo) |\n';
-    txt += '|---------|---------------|\n';
-    monthlyServices.forEach(function(s) {
-      txt += '| ' + s.name + ' | $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + ' |\n';
-    });
+    txt += '## Monthly Recurring Services\n\n| Service | Range (CAD/mo) |\n|---------|---------------|\n';
+    monthlyServices.forEach(function(s) { txt += '| ' + s.name + ' | $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + ' |\n'; });
     txt += '\n**Monthly Total (midpoint): $' + totalMonthly.toLocaleString() + '/mo**\n\n';
   }
-  // One-time
-  txt += '## One-Time Setup\n\n';
-  txt += '- Growth Diagnostic: $' + diagCost.toLocaleString() + ' (credited toward first invoice within 30 days)\n';
+  txt += '## One-Time Setup\n\n- Growth Diagnostic: $' + diagCost.toLocaleString() + ' (credited toward first invoice within 30 days)\n';
   if (trackMin) txt += '- Analytics Setup: $' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '\n';
-  projectServices.forEach(function(s) {
-    txt += '- ' + s.name + ': $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '\n';
-  });
+  projectServices.forEach(function(s) { txt += '- ' + s.name + ': $' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '\n'; });
   txt += '\n**One-Time Total (midpoint): $' + totalProject.toLocaleString() + '**\n\n';
-  // Year 1
-  txt += '## Year 1 Projection\n\n';
-  txt += '- Monthly services: $' + totalMonthly.toLocaleString() + ' x 12 = $' + (totalMonthly * 12).toLocaleString() + '\n';
-  txt += '- One-time setup: $' + totalProject.toLocaleString() + '\n';
-  txt += '- **Estimated Year 1 Investment: $' + yearTotal.toLocaleString() + ' CAD**\n\n';
-  // Package
+  txt += '## Year 1 Projection\n\n- Monthly services: $' + totalMonthly.toLocaleString() + ' x 12 = $' + (totalMonthly * 12).toLocaleString() + '\n';
+  txt += '- One-time setup: $' + totalProject.toLocaleString() + '\n- **Estimated Year 1 Investment: $' + yearTotal.toLocaleString() + ' CAD**\n\n';
   if (pkgFit && pkgFit.label) {
     txt += '## Recommended Package: ' + pkgFit.label;
-    if (pkgFit.pkg) {
-      var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
-      var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
-      txt += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
-    }
+    if (pkgFit.pkg) { var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0; var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0; txt += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)'; }
     txt += '\n\n';
   }
-  // Budget alignment
   if (budget > 0) {
-    txt += '## Budget Alignment\n\n';
-    txt += '- Client stated budget: $' + budget.toLocaleString() + '/mo\n';
-    txt += '- Recommended monthly: $' + totalMonthly.toLocaleString() + '/mo\n';
+    txt += '## Budget Alignment\n\n- Client stated budget: $' + budget.toLocaleString() + '/mo\n- Recommended monthly: $' + totalMonthly.toLocaleString() + '/mo\n';
     var gap = totalMonthly - budget;
-    if (gap > 0) {
-      txt += '- **Gap: $' + gap.toLocaleString() + '/mo over budget.** Consider phased rollout or fewer levers.\n';
-    } else {
-      txt += '- **Plan fits within budget** (surplus: $' + Math.abs(gap).toLocaleString() + '/mo)\n';
-    }
+    if (gap > 0) txt += '- **Gap: $' + gap.toLocaleString() + '/mo over budget.**\n';
+    else txt += '- **Plan fits within budget** (surplus: $' + Math.abs(gap).toLocaleString() + '/mo)\n';
   }
   return txt;
 }
@@ -408,113 +471,599 @@ function _renderMarginAnalysis() {
 
 function _renderInvestmentSummary() {
   if (!_pricingCatalog || !S.strategy) return '';
-  var st = S.strategy;
-  var levers = (st.channel_strategy && st.channel_strategy.levers) || [];
-  if (!levers.length) return '';
-  var monthlyServices = [];
-  var projectServices = [];
-  var totalMonthly = 0;
-  var totalProject = 0;
-  levers.forEach(function(lev) {
-    var svc = lookupServicePricing(lev.lever);
-    if (!svc) return;
-    var cost = getServiceMonthlyCost(svc);
-    if (!cost) return;
-    var entry = { lever: lev.lever, name: svc.name || svc.service || lev.lever, min: cost.min, max: cost.max, mid: cost.mid };
-    if (cost.isProject) {
-      projectServices.push(entry);
-      totalProject += cost.mid;
-    } else {
-      monthlyServices.push(entry);
-      totalMonthly += cost.mid;
-    }
-  });
-  // Strategy diagnostic
-  var diagCost = 0;
-  if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
-    diagCost = _pricingCatalog.strategy.pricing.price || 750;
-  }
-  // Tracking setup
-  var trackMin = 0, trackMax = 0;
-  if (_pricingCatalog.tracking) {
-    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
-    trackMin = tr.projectMin || tr.project_min || tr.min || 1500;
-    trackMax = tr.projectMax || tr.project_max || tr.max || 4000;
-  }
-  var trackMid = Math.round((trackMin + trackMax) / 2);
-  totalProject += trackMid + diagCost;
-  var yearTotal = (totalMonthly * 12) + totalProject;
+  var scope = S.strategy.engagement_scope;
   var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
   var pkgFit = getPackageFit(budget);
+
   var html = '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">'
     + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Investment Summary ' + _renderPricingIndicator() + '</span>'
     + '<span style="display:flex;gap:4px">'
     + '<button class="btn btn-ghost sm" onclick="copyInvestmentSummary()" style="font-size:10px;padding:2px 6px" data-tip="Copy investment summary to clipboard"><i class="ti ti-copy" style="font-size:11px"></i></button>'
     + '<button class="btn btn-ghost sm" onclick="downloadInvestmentSummary()" style="font-size:10px;padding:2px 6px" data-tip="Download as markdown"><i class="ti ti-download" style="font-size:11px"></i></button>'
     + '</span></div>';
-  // Monthly services
+
+  // Dual-column mode when engagement_scope exists
+  if (scope && scope.services && Object.keys(scope.services).length) {
+    _recalcScopeTotals();
+    var t = scope.totals || {};
+
+    // Collect all enabled services
+    var allSvcs = [];
+    Object.keys(scope.services).forEach(function(k) { allSvcs.push(scope.services[k]); });
+    Object.keys(scope.additional_services || {}).forEach(function(k) { if (scope.additional_services[k].enabled) allSvcs.push(scope.additional_services[k]); });
+    var monthlySvcs = allSvcs.filter(function(s) { return s.cost && !s.cost.isProject && s.enabled; });
+    var projectSvcs = allSvcs.filter(function(s) { return s.cost && s.cost.isProject && s.enabled; });
+
+    // Monthly services dual-column table
+    if (monthlySvcs.length) {
+      html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">Monthly Recurring</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
+      html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;font-weight:500;color:var(--n2)">Service</th>'
+        + '<th style="text-align:right;padding:4px 8px;font-weight:500;color:var(--n2)">Suggested</th>'
+        + '<th style="text-align:right;padding:4px 8px;font-weight:500;color:var(--n2)">Realistic</th>'
+        + '<th style="text-align:center;padding:4px 8px;font-weight:500;color:var(--n2)">ROI</th></tr>';
+      monthlySvcs.forEach(function(s) {
+        var sugCost = _scopeCostForTier(s.cost, s.scope);
+        var rEnabled = true, rScope = s.scope;
+        if (s.realistic_override) {
+          if (s.realistic_override.enabled === false) rEnabled = false;
+          if (s.realistic_override.scope) rScope = s.realistic_override.scope;
+        }
+        var realCost = rEnabled ? _scopeCostForTier(s.cost, rScope) : 0;
+        var roiColour = (s.roi && s.roi.multiplier >= 3) ? 'var(--green)' : (s.roi && s.roi.multiplier >= 1.5) ? 'var(--warn)' : 'var(--error)';
+        var roiTxt = s.roi && s.roi.multiplier > 0 ? '<span style="color:' + roiColour + ';font-weight:600">' + s.roi.multiplier + 'x</span>' : '\u2014';
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:4px 8px">' + esc(s.name) + (s.scope_note ? '<div style="font-size:9px;color:var(--n3)">' + esc(s.scope_note) + '</div>' : '') + '</td>';
+        html += '<td style="padding:4px 8px;text-align:right;white-space:nowrap">$' + sugCost.toLocaleString() + '/mo<div style="font-size:9px;color:var(--n3)">' + s.scope + ' scope</div></td>';
+        html += '<td style="padding:4px 8px;text-align:right;white-space:nowrap">' + (rEnabled ? '$' + realCost.toLocaleString() + '/mo' : '<span style="color:var(--n3);text-decoration:line-through">cut</span>') + '</td>';
+        html += '<td style="padding:4px 8px;text-align:center">' + roiTxt + '</td></tr>';
+      });
+      html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:4px 8px">Monthly Total</td>'
+        + '<td style="padding:4px 8px;text-align:right">$' + t.suggested_monthly.toLocaleString() + '/mo</td>'
+        + '<td style="padding:4px 8px;text-align:right;color:var(--green)">$' + t.realistic_monthly.toLocaleString() + '/mo</td>'
+        + '<td></td></tr>';
+      html += '</table>';
+    }
+
+    // One-time costs
+    var diagCost = 0;
+    if (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) diagCost = _pricingCatalog.strategy.pricing.price || 750;
+    var trackMin = 0, trackMax = 0;
+    if (_pricingCatalog.tracking) {
+      var tr2 = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
+      trackMin = tr2.projectMin || tr2.project_min || tr2.min || 1500;
+      trackMax = tr2.projectMax || tr2.project_max || tr2.max || 4000;
+    }
+    html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">One-Time Setup</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
+    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Growth Diagnostic</td>'
+      + '<td style="padding:4px 8px;text-align:right">$' + diagCost.toLocaleString() + ' <span style="font-size:9px;color:var(--green)">(credited on sign)</span></td></tr>';
+    if (trackMin) {
+      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Analytics Setup</td>'
+        + '<td style="padding:4px 8px;text-align:right">$' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '</td></tr>';
+    }
+    projectSvcs.forEach(function(s) {
+      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td>'
+        + '<td style="padding:4px 8px;text-align:right">$' + s.cost.min.toLocaleString() + ' \u2013 $' + s.cost.max.toLocaleString() + '</td></tr>';
+    });
+    html += '</table>';
+
+    // Totals grid: 2x3
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px">';
+    html += '<div style="background:var(--panel);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--dark)">$' + t.suggested_monthly.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Suggested /mo</div></div>';
+    html += '<div style="background:var(--panel);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--dark)">$' + t.suggested_project.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">One-Time</div></div>';
+    html += '<div style="background:var(--panel);border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:700;color:var(--dark)">$' + t.year1_suggested.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Year 1 Suggested</div></div>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">';
+    html += '<div style="background:rgba(21,142,29,0.04);border-radius:8px;padding:10px;text-align:center;border:1px solid rgba(21,142,29,0.1)"><div style="font-size:16px;font-weight:700;color:var(--green)">$' + t.realistic_monthly.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Realistic /mo</div></div>';
+    html += '<div style="background:rgba(21,142,29,0.04);border-radius:8px;padding:10px;text-align:center;border:1px solid rgba(21,142,29,0.1)"><div style="font-size:16px;font-weight:700;color:var(--green)">$' + t.realistic_project.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">One-Time</div></div>';
+    html += '<div style="background:rgba(21,142,29,0.04);border-radius:8px;padding:10px;text-align:center;border:1px solid rgba(21,142,29,0.1)"><div style="font-size:16px;font-weight:700;color:var(--green)">$' + t.year1_realistic.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Year 1 Realistic</div></div>';
+    html += '</div>';
+
+    // Package fit
+    if (pkgFit) {
+      var fitColour = pkgFit.tier === 'below_minimum' ? '#f56c6c' : pkgFit.tier === 'custom' ? '#e6a23c' : 'var(--green)';
+      html += '<div style="padding:8px 12px;border-radius:6px;background:' + fitColour + '08;border:1px solid ' + fitColour + '20;font-size:11px;margin-bottom:8px">'
+        + '<strong>Package fit:</strong> ' + esc(pkgFit.label);
+      if (pkgFit.pkg) {
+        var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
+        var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
+        html += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
+      }
+      html += '</div>';
+    }
+    if (budget > 0) {
+      var gap = t.suggested_monthly - budget;
+      if (gap > 0) {
+        html += '<div style="padding:8px 12px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px">'
+          + '<strong>Budget gap:</strong> Suggested $' + t.suggested_monthly.toLocaleString() + '/mo vs budget $' + budget.toLocaleString() + '/mo. Realistic scope adjusted to $' + t.realistic_monthly.toLocaleString() + '/mo.</div>';
+      } else {
+        html += '<div style="padding:8px 12px;border-radius:6px;background:rgba(21,142,29,0.05);border:1px solid rgba(21,142,29,0.15);font-size:11px">'
+          + '<strong>Budget aligned:</strong> Suggested $' + t.suggested_monthly.toLocaleString() + '/mo fits within $' + budget.toLocaleString() + '/mo budget.</div>';
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // Fallback: old lever-based rendering (no engagement_scope)
+  var levers = (S.strategy.channel_strategy && S.strategy.channel_strategy.levers) || [];
+  if (!levers.length) { html += '</div>'; return html; }
+  var monthlyServices = [];
+  var projectServices = [];
+  var totalMonthly = 0, totalProject = 0;
+  levers.forEach(function(lev) {
+    var svc = lookupServicePricing(lev.lever);
+    if (!svc) return;
+    var cost = getServiceMonthlyCost(svc);
+    if (!cost) return;
+    var entry = { name: svc.name || svc.service || lev.lever, min: cost.min, max: cost.max, mid: cost.mid };
+    if (cost.isProject) { projectServices.push(entry); totalProject += cost.mid; }
+    else { monthlyServices.push(entry); totalMonthly += cost.mid; }
+  });
+  var diagCost2 = (_pricingCatalog.strategy && _pricingCatalog.strategy.pricing) ? (_pricingCatalog.strategy.pricing.price || 750) : 0;
+  var trackMin2 = 0, trackMax2 = 0;
+  if (_pricingCatalog.tracking) { var tr3 = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking; trackMin2 = tr3.projectMin || tr3.project_min || tr3.min || 1500; trackMax2 = tr3.projectMax || tr3.project_max || tr3.max || 4000; }
+  totalProject += Math.round((trackMin2 + trackMax2) / 2) + diagCost2;
+  var yearTotal = (totalMonthly * 12) + totalProject;
   if (monthlyServices.length) {
     html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">Monthly Recurring</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
-    monthlyServices.forEach(function(s) {
-      html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td>'
-        + '<td style="padding:4px 8px;text-align:right;white-space:nowrap">$' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '/mo</td></tr>';
-    });
-    html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:4px 8px">Monthly Total (midpoint)</td>'
-      + '<td style="padding:4px 8px;text-align:right;color:var(--dark)">$' + totalMonthly.toLocaleString() + '/mo</td></tr>';
-    html += '</table>';
+    monthlyServices.forEach(function(s) { html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td><td style="padding:4px 8px;text-align:right">$' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '/mo</td></tr>'; });
+    html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:4px 8px">Monthly Total</td><td style="padding:4px 8px;text-align:right">$' + totalMonthly.toLocaleString() + '/mo</td></tr></table>';
   }
-  // One-time costs
-  html += '<div style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;margin-bottom:6px">One-Time Setup</div>';
-  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px">';
-  html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Growth Diagnostic</td>'
-    + '<td style="padding:4px 8px;text-align:right">$' + diagCost.toLocaleString() + ' <span style="font-size:9px;color:var(--green)">(credited on sign)</span></td></tr>';
-  if (trackMin) {
-    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">Analytics Setup</td>'
-      + '<td style="padding:4px 8px;text-align:right">$' + trackMin.toLocaleString() + ' \u2013 $' + trackMax.toLocaleString() + '</td></tr>';
-  }
-  projectServices.forEach(function(s) {
-    html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px">' + esc(s.name) + '</td>'
-      + '<td style="padding:4px 8px;text-align:right">$' + s.min.toLocaleString() + ' \u2013 $' + s.max.toLocaleString() + '</td></tr>';
-  });
-  html += '</table>';
-  // Totals
   html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">';
-  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
-    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + totalMonthly.toLocaleString() + '</div>'
-    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Monthly</div></div>';
-  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
-    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + totalProject.toLocaleString() + '</div>'
-    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">One-Time</div></div>';
-  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center">'
-    + '<div style="font-size:18px;font-weight:700;color:var(--dark)">$' + yearTotal.toLocaleString() + '</div>'
-    + '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Year 1 Total</div></div>';
-  html += '</div>';
-  // Package fit
-  if (pkgFit) {
-    var fitColour = pkgFit.tier === 'below_minimum' ? '#f56c6c' : pkgFit.tier === 'custom' ? '#e6a23c' : 'var(--green)';
-    html += '<div style="padding:8px 12px;border-radius:6px;background:' + fitColour + '08;border:1px solid ' + fitColour + '20;font-size:11px;margin-bottom:8px">'
-      + '<strong>Package fit:</strong> ' + esc(pkgFit.label);
-    if (pkgFit.pkg) {
-      var pMin = pkgFit.pkg.priceMin || pkgFit.pkg.price_min || pkgFit.pkg.min || 0;
-      var pMax = pkgFit.pkg.priceMax || pkgFit.pkg.price_max || pkgFit.pkg.max || 0;
-      html += ' ($' + pMin.toLocaleString() + ' \u2013 $' + pMax.toLocaleString() + '/mo)';
-    }
-    html += '</div>';
-  }
-  // Budget comparison
-  if (budget > 0) {
-    var gap = totalMonthly - budget;
-    if (gap > 0) {
-      html += '<div style="padding:8px 12px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px">'
-        + '<strong>Budget gap:</strong> Plan requires $' + totalMonthly.toLocaleString() + '/mo. Client budget: $' + budget.toLocaleString() + '/mo. Gap: $' + gap.toLocaleString() + '/mo. Consider phased rollout or fewer levers.</div>';
-    } else {
-      html += '<div style="padding:8px 12px;border-radius:6px;background:rgba(21,142,29,0.05);border:1px solid rgba(21,142,29,0.15);font-size:11px">'
-        + '<strong>Budget aligned:</strong> Plan requires $' + totalMonthly.toLocaleString() + '/mo. Client budget: $' + budget.toLocaleString() + '/mo.</div>';
-    }
-  }
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:700">$' + totalMonthly.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Monthly</div></div>';
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:700">$' + totalProject.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">One-Time</div></div>';
+  html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:700">$' + yearTotal.toLocaleString() + '</div><div style="font-size:9px;color:var(--n2)">Year 1</div></div></div>';
   html += '</div>';
   return html;
+}
+
+// ── Engagement Scope (Service Selection + ROI + Budget Throttle) ──────
+
+function _scopeCostForTier(cost, scope) {
+  if (!cost) return 0;
+  if (scope === 'low') return cost.min || 0;
+  if (scope === 'high') return cost.max || 0;
+  return cost.mid || 0;
+}
+
+function _buildEngagementScope() {
+  if (!_pricingCatalog || !S.strategy || !S.strategy.channel_strategy) return;
+  var levers = S.strategy.channel_strategy.levers || [];
+  if (!levers.length) return;
+
+  // Build reverse map: service slug → array of lever keys
+  var slugToLevers = {};
+  Object.keys(LEVER_SERVICE_MAP).forEach(function(leverKey) {
+    var slug = LEVER_SERVICE_MAP[leverKey];
+    if (!slugToLevers[slug]) slugToLevers[slug] = [];
+    slugToLevers[slug].push(leverKey);
+  });
+
+  // Build services from lever groups
+  var services = {};
+  var mappedSlugs = {};
+  Object.keys(slugToLevers).forEach(function(slug) {
+    var leverKeys = slugToLevers[slug];
+    var matchedLevers = levers.filter(function(l) { return leverKeys.indexOf(l.lever) >= 0; });
+    if (!matchedLevers.length) return;
+    mappedSlugs[slug] = true;
+    var avgPriority = matchedLevers.reduce(function(sum, l) { return sum + (l.priority_score || 0); }, 0) / matchedLevers.length;
+    var funnelStages = [];
+    matchedLevers.forEach(function(l) {
+      if (l.funnel_stage && funnelStages.indexOf(l.funnel_stage) < 0) funnelStages.push(l.funnel_stage);
+    });
+    var svc = lookupServicePricing(leverKeys[0]);
+    var cost = svc ? getServiceMonthlyCost(svc) : null;
+    var svcName = svc ? (svc.name || svc.service || svc.id || slug) : slug.replace(/-/g, ' ');
+    // Preserve existing scope settings if they exist
+    var existing = (S.strategy.engagement_scope && S.strategy.engagement_scope.services) ? S.strategy.engagement_scope.services[slug] : null;
+    services[slug] = {
+      slug: slug,
+      name: svcName,
+      enabled: existing ? existing.enabled : (avgPriority >= 5.0),
+      scope: existing ? existing.scope : 'mid',
+      scope_note: existing ? (existing.scope_note || '') : '',
+      source_levers: leverKeys.filter(function(k) { return matchedLevers.some(function(l) { return l.lever === k; }); }),
+      avg_priority: Math.round(avgPriority * 10) / 10,
+      funnel_stages: funnelStages,
+      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject } : null,
+      roi: null,
+      realistic_override: null
+    };
+    _computeServiceROI(services[slug]);
+  });
+
+  // Additional services from catalog not mapped from any lever
+  var additional = {};
+  (_pricingCatalog.services || []).forEach(function(svc) {
+    var sSlug = (svc.id || svc.slug || svc.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (mappedSlugs[sSlug]) return;
+    // Check if any LEVER_SERVICE_MAP value matches
+    var isMapped = false;
+    Object.keys(slugToLevers).forEach(function(s) { if (s === sSlug) isMapped = true; });
+    if (isMapped && services[sSlug]) return;
+    var cost = getServiceMonthlyCost(svc);
+    var existingAdd = (S.strategy.engagement_scope && S.strategy.engagement_scope.additional_services) ? S.strategy.engagement_scope.additional_services[sSlug] : null;
+    additional[sSlug] = {
+      slug: sSlug,
+      name: svc.name || svc.service || svc.id || sSlug,
+      enabled: existingAdd ? existingAdd.enabled : false,
+      scope: existingAdd ? existingAdd.scope : 'mid',
+      scope_note: existingAdd ? (existingAdd.scope_note || '') : '',
+      source_levers: [],
+      avg_priority: 0,
+      funnel_stages: [],
+      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject } : null,
+      roi: null,
+      realistic_override: null
+    };
+  });
+
+  S.strategy.engagement_scope = {
+    updated_at: new Date().toISOString(),
+    services: services,
+    additional_services: additional,
+    totals: {}
+  };
+  _computeRealisticOverrides();
+  _recalcScopeTotals();
+  scheduleSave();
+}
+
+function _recalcScopeTotals() {
+  var scope = S.strategy && S.strategy.engagement_scope;
+  if (!scope) return;
+  var sugMo = 0, sugProj = 0, realMo = 0, realProj = 0;
+  var allSvcs = [].concat(
+    Object.keys(scope.services || {}).map(function(k) { return scope.services[k]; }),
+    Object.keys(scope.additional_services || {}).map(function(k) { return scope.additional_services[k]; })
+  );
+  allSvcs.forEach(function(svc) {
+    if (!svc.cost) return;
+    // Suggested: use raw enabled + scope
+    if (svc.enabled) {
+      var sugCost = _scopeCostForTier(svc.cost, svc.scope);
+      if (svc.cost.isProject) sugProj += sugCost; else sugMo += sugCost;
+    }
+    // Realistic: use override if present
+    var rEnabled = svc.enabled;
+    var rScope = svc.scope;
+    if (svc.realistic_override) {
+      if (svc.realistic_override.enabled === false) rEnabled = false;
+      if (svc.realistic_override.scope) rScope = svc.realistic_override.scope;
+    }
+    if (rEnabled) {
+      var realCost = _scopeCostForTier(svc.cost, rScope);
+      if (svc.cost.isProject) realProj += realCost; else realMo += realCost;
+    }
+  });
+  // Add diagnostic + tracking to project totals
+  var diagCost = 0;
+  if (_pricingCatalog && _pricingCatalog.strategy && _pricingCatalog.strategy.pricing) {
+    diagCost = _pricingCatalog.strategy.pricing.price || 750;
+  }
+  var trackMid = 0;
+  if (_pricingCatalog && _pricingCatalog.tracking) {
+    var tr = _pricingCatalog.tracking.pricing || _pricingCatalog.tracking;
+    var tMin = tr.projectMin || tr.project_min || tr.min || 1500;
+    var tMax = tr.projectMax || tr.project_max || tr.max || 4000;
+    trackMid = Math.round((tMin + tMax) / 2);
+  }
+  sugProj += diagCost + trackMid;
+  realProj += diagCost + trackMid;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  scope.totals = {
+    suggested_monthly: sugMo,
+    suggested_project: sugProj,
+    realistic_monthly: realMo,
+    realistic_project: realProj,
+    client_budget: budget,
+    year1_suggested: (sugMo * 12) + sugProj,
+    year1_realistic: (realMo * 12) + realProj
+  };
+}
+
+function _computeRealisticOverrides() {
+  var scope = S.strategy && S.strategy.engagement_scope;
+  if (!scope) return;
+  var budget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  if (!budget || budget <= 0) return;
+
+  // Clear existing overrides
+  var allKeys = Object.keys(scope.services || {});
+  allKeys.forEach(function(k) { scope.services[k].realistic_override = null; });
+  Object.keys(scope.additional_services || {}).forEach(function(k) { scope.additional_services[k].realistic_override = null; });
+
+  // Calculate suggested monthly total
+  var enabledMonthly = [];
+  allKeys.forEach(function(k) {
+    var svc = scope.services[k];
+    if (svc.enabled && svc.cost && !svc.cost.isProject) {
+      enabledMonthly.push(svc);
+    }
+  });
+  Object.keys(scope.additional_services || {}).forEach(function(k) {
+    var svc = scope.additional_services[k];
+    if (svc.enabled && svc.cost && !svc.cost.isProject) {
+      enabledMonthly.push(svc);
+    }
+  });
+
+  // Sort by priority ascending (lowest gets throttled first)
+  enabledMonthly.sort(function(a, b) { return (a.avg_priority || 0) - (b.avg_priority || 0); });
+
+  var total = enabledMonthly.reduce(function(sum, svc) { return sum + _scopeCostForTier(svc.cost, svc.scope); }, 0);
+  if (total <= budget) return; // Already fits
+
+  for (var i = 0; i < enabledMonthly.length && total > budget; i++) {
+    var svc = enabledMonthly[i];
+    var currentScope = svc.scope;
+    var currentCost = _scopeCostForTier(svc.cost, currentScope);
+
+    if (currentScope === 'high') {
+      var midCost = _scopeCostForTier(svc.cost, 'mid');
+      svc.realistic_override = { scope: 'mid' };
+      total -= (currentCost - midCost);
+    } else if (currentScope === 'mid') {
+      var lowCost = _scopeCostForTier(svc.cost, 'low');
+      svc.realistic_override = { scope: 'low' };
+      total -= (currentCost - lowCost);
+    } else {
+      svc.realistic_override = { enabled: false };
+      total -= currentCost;
+    }
+  }
+}
+
+function _computeServiceROI(svcEntry) {
+  if (!svcEntry || !svcEntry.cost || !svcEntry.enabled) { svcEntry.roi = null; return; }
+  var ue = S.strategy && S.strategy.unit_economics;
+  if (!ue) { svcEntry.roi = null; return; }
+
+  var ltv = parseFloat(ue.ltv) || 0;
+  var cac = parseFloat(ue.estimated_cac) || 0;
+  if (!ltv || !cac) { svcEntry.roi = null; return; }
+
+  // Get economics score from source levers
+  var levers = (S.strategy.channel_strategy && S.strategy.channel_strategy.levers) || [];
+  var econScores = [];
+  svcEntry.source_levers.forEach(function(lk) {
+    var lev = levers.find(function(l) { return l.lever === lk; });
+    if (lev && lev.economics) econScores.push(lev.economics);
+  });
+  var avgEcon = econScores.length ? econScores.reduce(function(s, v) { return s + v; }, 0) / econScores.length : 5;
+
+  // Get sensitivity base scenario for close rate + avg deal
+  var closeRate = 0.05, avgDeal = ltv;
+  if (ue.sensitivity && ue.sensitivity.length) {
+    var base = ue.sensitivity.find(function(s) { return s.scenario === 'base'; }) || ue.sensitivity[1] || ue.sensitivity[0];
+    if (base) {
+      closeRate = parseFloat(String(base.close_rate || '5').replace(/[^0-9.]/g, '')) / 100 || 0.05;
+      avgDeal = parseFloat(base.avg_deal) || ltv;
+    }
+  }
+
+  // Estimate leads from expected_cpl
+  var bt = (S.strategy.channel_strategy && S.strategy.channel_strategy.budget_tiers) || {};
+  var currentTier = bt.current_budget || {};
+  var expectedCpl = parseFloat(currentTier.expected_cpl) || cac;
+  if (expectedCpl <= 0) expectedCpl = cac;
+
+  var svcCost = _scopeCostForTier(svcEntry.cost, svcEntry.scope);
+  if (!svcCost || svcEntry.cost.isProject) {
+    // Project-based: ROI = LTV of customers acquired from the asset over 12 months / cost
+    var estLeadsFromProject = avgDeal > 0 ? Math.max(1, Math.round(svcCost / expectedCpl * 0.3)) : 1;
+    var projRevenue = estLeadsFromProject * closeRate * avgDeal * 12;
+    svcEntry.roi = {
+      multiplier: svcCost > 0 ? Math.round((projRevenue / svcCost) * 10) / 10 : 0,
+      timeline: '6-12 months',
+      confidence: avgEcon >= 7 ? 'high' : avgEcon >= 5 ? 'medium' : 'low'
+    };
+    return;
+  }
+
+  // Monthly: leads per month from this service's budget
+  var leadsPerMonth = expectedCpl > 0 ? svcCost / expectedCpl : 0;
+  var revenuePerMonth = leadsPerMonth * closeRate * avgDeal;
+  var annualRevenue = revenuePerMonth * 12;
+  var annualCost = svcCost * 12;
+
+  // Get timeline from source levers
+  var timelines = [];
+  svcEntry.source_levers.forEach(function(lk) {
+    var lev = levers.find(function(l) { return l.lever === lk; });
+    if (lev && lev.timeline_to_results) timelines.push(lev.timeline_to_results);
+  });
+  var timeline = timelines.length ? timelines[timelines.length - 1] : 'ongoing';
+
+  svcEntry.roi = {
+    multiplier: annualCost > 0 ? Math.round((annualRevenue / annualCost) * 10) / 10 : 0,
+    timeline: timeline,
+    confidence: avgEcon >= 7 ? 'high' : avgEcon >= 5 ? 'medium' : 'low'
+  };
+}
+
+function _renderScopePanel() {
+  var scope = S.strategy && S.strategy.engagement_scope;
+  if (!scope) return '';
+  var html = '<div style="margin-bottom:18px;border:1px solid var(--border);border-radius:8px;padding:14px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    + '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Service Scope ' + _renderPricingIndicator() + '</span>'
+    + '<button class="btn btn-ghost sm" id="scope-reset-btn" style="font-size:10px"><i class="ti ti-refresh" style="font-size:11px"></i> Reset from D4</button></div>';
+
+  // Service rows
+  var svcKeys = Object.keys(scope.services || {}).sort(function(a, b) {
+    return (scope.services[b].avg_priority || 0) - (scope.services[a].avg_priority || 0);
+  });
+
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 6px;font-weight:500;color:var(--n2);width:20px"></th>'
+    + '<th style="text-align:left;padding:4px 6px;font-weight:500;color:var(--n2)">Service</th>'
+    + '<th style="text-align:right;padding:4px 6px;font-weight:500;color:var(--n2)">Range</th>'
+    + '<th style="text-align:center;padding:4px 6px;font-weight:500;color:var(--n2)">Scope</th>'
+    + '<th style="text-align:center;padding:4px 6px;font-weight:500;color:var(--n2);width:55px">Est. ROI</th>'
+    + '<th style="text-align:left;padding:4px 6px;font-weight:500;color:var(--n2)">Scope Note</th></tr>';
+
+  svcKeys.forEach(function(slug) {
+    var svc = scope.services[slug];
+    html += _renderScopeRow(svc, 'services');
+  });
+
+  // Additional services
+  var addKeys = Object.keys(scope.additional_services || {});
+  if (addKeys.length) {
+    html += '<tr><td colspan="6" style="padding:8px 6px 4px;font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;border-bottom:1px solid var(--border)">Additional Services</td></tr>';
+    addKeys.forEach(function(slug) {
+      var svc = scope.additional_services[slug];
+      html += _renderScopeRow(svc, 'additional');
+    });
+  }
+  html += '</table>';
+
+  // Totals bar
+  html += '<div id="scope-totals-bar" style="margin-top:10px">' + _renderScopeTotalsBar() + '</div>';
+  html += '</div>';
+  return html;
+}
+
+function _renderScopeRow(svc, section) {
+  var rowOpacity = svc.enabled ? '1' : '0.45';
+  var costTxt = '\u2014';
+  if (svc.cost) {
+    costTxt = '$' + svc.cost.min.toLocaleString() + ' \u2013 $' + svc.cost.max.toLocaleString() + (svc.cost.isProject ? '' : '/mo');
+  }
+  var roiHtml = '\u2014';
+  if (svc.roi && svc.roi.multiplier > 0) {
+    var roiColour = svc.roi.multiplier >= 3 ? 'var(--green)' : svc.roi.multiplier >= 1.5 ? 'var(--warn)' : 'var(--error)';
+    roiHtml = '<span style="color:' + roiColour + ';font-weight:600">' + svc.roi.multiplier + 'x</span>';
+  }
+  var html = '<tr style="border-bottom:1px solid var(--border);opacity:' + rowOpacity + '">';
+  html += '<td style="padding:4px 6px"><input type="checkbox" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + section + '" ' + (svc.enabled ? 'checked' : '') + ' style="margin:0;cursor:pointer"></td>';
+  html += '<td style="padding:4px 6px"><span style="font-weight:500">' + esc(svc.name) + '</span>';
+  if (svc.source_levers.length > 1) {
+    html += ' <span style="font-size:9px;color:var(--n2);background:var(--bg);padding:1px 4px;border-radius:3px">' + svc.source_levers.length + ' levers</span>';
+  }
+  if (svc.avg_priority > 0) {
+    html += ' <span style="font-size:9px;color:var(--n2)">' + svc.avg_priority + '</span>';
+  }
+  if (svc.funnel_stages.length) {
+    html += '<div style="font-size:9px;color:var(--n3);margin-top:1px">' + svc.funnel_stages.join(', ') + '</div>';
+  }
+  html += '</td>';
+  html += '<td style="padding:4px 6px;text-align:right;white-space:nowrap;font-size:10px;color:var(--n2)">' + costTxt + '</td>';
+  // Scope toggle
+  html += '<td style="padding:4px 6px;text-align:center;white-space:nowrap">';
+  ['low', 'mid', 'high'].forEach(function(level) {
+    var isActive = svc.scope === level;
+    html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(svc.enabled ? 'services' : 'additional') + '" data-scope-level="' + level + '" '
+      + 'style="font-size:9px;padding:2px 6px;border:1px solid ' + (isActive ? 'var(--green)' : 'var(--border)') + ';background:' + (isActive ? 'var(--green)' : 'transparent') + ';color:' + (isActive ? 'white' : 'var(--n2)') + ';border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
+      + level.charAt(0).toUpperCase() + level.slice(1) + '</button>';
+  });
+  html += '</td>';
+  html += '<td style="padding:4px 6px;text-align:center">' + roiHtml + '</td>';
+  html += '<td style="padding:4px 6px"><input type="text" data-scope-note="' + esc(svc.slug) + '" data-scope-note-section="' + esc(svc.enabled ? 'services' : 'additional') + '" value="' + esc(svc.scope_note || '') + '" placeholder="What is included at this scope" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-family:var(--font);color:var(--dark);background:var(--white)"></td>';
+  html += '</tr>';
+  return html;
+}
+
+function _renderScopeTotalsBar() {
+  var scope = S.strategy && S.strategy.engagement_scope;
+  if (!scope || !scope.totals) return '';
+  var t = scope.totals;
+  var gap = t.suggested_monthly - (t.client_budget || 0);
+  var gapColour = gap > 0 ? 'var(--warn)' : 'var(--green)';
+  var html = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:6px;background:var(--panel);border:1px solid var(--border)">';
+  html += '<div style="font-size:11px"><span style="color:var(--n2)">Suggested:</span> <strong>$' + t.suggested_monthly.toLocaleString() + '/mo</strong></div>';
+  html += '<div style="font-size:11px"><span style="color:var(--n2)">Realistic:</span> <strong style="color:var(--green)">$' + t.realistic_monthly.toLocaleString() + '/mo</strong></div>';
+  if (t.client_budget > 0) {
+    html += '<div style="font-size:11px"><span style="color:var(--n2)">Budget:</span> <strong>$' + t.client_budget.toLocaleString() + '/mo</strong></div>';
+    if (gap > 0) {
+      html += '<div style="font-size:10px;color:' + gapColour + '">Gap: $' + gap.toLocaleString() + '/mo</div>';
+    } else {
+      html += '<div style="font-size:10px;color:var(--green)">Within budget</div>';
+    }
+  }
+  html += '<div style="font-size:10px;color:var(--n3);margin-left:auto">Setup: $' + t.suggested_project.toLocaleString() + ' | Y1: $' + t.year1_suggested.toLocaleString() + '</div>';
+  html += '</div>';
+  return html;
+}
+
+var _scopeNoteTimer = null;
+function _mountScopePanel() {
+  var scope = S.strategy && S.strategy.engagement_scope;
+  if (!scope) return;
+
+  // Wire checkboxes
+  document.querySelectorAll('[data-scope-slug]').forEach(function(el) {
+    if (el.tagName !== 'INPUT' || el.type !== 'checkbox') return;
+    el.onclick = function() {
+      var slug = el.getAttribute('data-scope-slug');
+      var section = el.getAttribute('data-scope-section');
+      var store = section === 'additional' ? scope.additional_services : scope.services;
+      if (store && store[slug]) {
+        store[slug].enabled = el.checked;
+        _computeServiceROI(store[slug]);
+        _computeRealisticOverrides();
+        _recalcScopeTotals();
+        var bar = document.getElementById('scope-totals-bar');
+        if (bar) bar.innerHTML = _renderScopeTotalsBar();
+        scheduleSave();
+      }
+    };
+  });
+
+  // Wire scope level buttons
+  document.querySelectorAll('.scope-level-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      var slug = btn.getAttribute('data-scope-slug');
+      var level = btn.getAttribute('data-scope-level');
+      var svc = (scope.services && scope.services[slug]) || (scope.additional_services && scope.additional_services[slug]);
+      if (svc) {
+        svc.scope = level;
+        _computeServiceROI(svc);
+        _computeRealisticOverrides();
+        _recalcScopeTotals();
+        // Update button styling
+        document.querySelectorAll('.scope-level-btn[data-scope-slug="' + slug + '"]').forEach(function(b) {
+          var isActive = b.getAttribute('data-scope-level') === level;
+          b.style.borderColor = isActive ? 'var(--green)' : 'var(--border)';
+          b.style.background = isActive ? 'var(--green)' : 'transparent';
+          b.style.color = isActive ? 'white' : 'var(--n2)';
+        });
+        var bar = document.getElementById('scope-totals-bar');
+        if (bar) bar.innerHTML = _renderScopeTotalsBar();
+        scheduleSave();
+      }
+    };
+  });
+
+  // Wire scope note inputs (debounced)
+  document.querySelectorAll('[data-scope-note]').forEach(function(input) {
+    input.oninput = function() {
+      var slug = input.getAttribute('data-scope-note');
+      var svc = (scope.services && scope.services[slug]) || (scope.additional_services && scope.additional_services[slug]);
+      if (svc) {
+        svc.scope_note = input.value;
+        if (_scopeNoteTimer) clearTimeout(_scopeNoteTimer);
+        _scopeNoteTimer = setTimeout(function() { scheduleSave(); }, 500);
+      }
+    };
+  });
+
+  // Wire reset button
+  var resetBtn = document.getElementById('scope-reset-btn');
+  if (resetBtn) {
+    resetBtn.onclick = function() {
+      // Clear existing scope to force full rebuild
+      delete S.strategy.engagement_scope;
+      _buildEngagementScope();
+      renderStrategyTabContent();
+      aiBarNotify('Service scope reset from D4 levers', { duration: 2000 });
+    };
+  }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -2326,6 +2875,8 @@ async function runDiagnostic(num) {
         S.strategy.growth_plan = S.strategy.growth_plan || {};
         S.strategy.growth_plan.budget_allocation = parsed.budget_allocation;
       }
+      // Auto-build engagement scope from D4 levers
+      if (_pricingCatalog) _buildEngagementScope();
     } else if (num === 5) {
       S.strategy.execution_plan = S.strategy.execution_plan || { lever_details: {} };
       S.strategy.execution_plan.lever_details.website = parsed;
@@ -3401,6 +3952,10 @@ function renderStrategyTabContent() {
   // Mount interactive Gantt chart (DOM-based, after innerHTML)
   if (_sTab === 'growth') {
     _mountGantt(S.strategy || {});
+  }
+  // Mount scope panel (DOM-based, after innerHTML)
+  if (_sTab === 'channels') {
+    _mountScopePanel();
   }
 }
 
@@ -4549,6 +5104,11 @@ function _renderChannels(st) {
       + '</div>';
   }
 
+  // Service Scope panel
+  if (S.strategy.engagement_scope) {
+    html += _renderScopePanel();
+  }
+
   // Priority order table with service costs
   var _hasPricing = _pricingCatalog && _pricingCatalog.services;
   html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Channel Priority ' + _renderPricingIndicator() + '</div>';
@@ -4752,6 +5312,16 @@ function _buildGanttItems(st) {
   } else {
     // Build from AI data
     var levers = (st.channel_strategy && st.channel_strategy.levers) ? st.channel_strategy.levers.filter(function(l) { return l.priority_score > 3; }) : [];
+    // Filter out disabled services from engagement_scope
+    if (st.engagement_scope && st.engagement_scope.services) {
+      var _esScope = st.engagement_scope;
+      levers = levers.filter(function(l) {
+        var slug = LEVER_SERVICE_MAP[l.lever];
+        if (!slug) return true;
+        var svc = _esScope.services[slug];
+        return !svc || svc.enabled;
+      });
+    }
 
     items = [
       { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' },
@@ -5276,6 +5846,22 @@ function _mountGantt(st) {
       budgetTag.style.cssText = 'font-size:9px;color:var(--n2);flex-shrink:0';
       budgetTag.textContent = item.budgetPct + '%';
       labelCell.appendChild(budgetTag);
+    }
+
+    // Cost badge from engagement_scope
+    var _ganttSlug = LEVER_SERVICE_MAP[item.id];
+    var _ganttScope = st.engagement_scope;
+    if (_ganttSlug && _ganttScope && _ganttScope.services && _ganttScope.services[_ganttSlug]) {
+      var _ganttSvc = _ganttScope.services[_ganttSlug];
+      if (_ganttSvc.cost) {
+        var _ganttCostVal = _scopeCostForTier(_ganttSvc.cost, _ganttSvc.scope);
+        if (_ganttCostVal > 0) {
+          var costTag = document.createElement('span');
+          costTag.style.cssText = 'font-size:9px;color:var(--green);flex-shrink:0';
+          costTag.textContent = '$' + _ganttCostVal.toLocaleString() + (_ganttSvc.cost.isProject ? '' : '/mo');
+          labelCell.appendChild(costTag);
+        }
+      }
     }
 
     // Delete button

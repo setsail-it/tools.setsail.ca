@@ -4,7 +4,7 @@ function renderExport() {
   const copyCount = pages.filter(p => S.copy[p.slug]?.copy).length;
   const schemaCount = pages.filter(p => S.schema[p.slug]?.schema).length;
   const hasStrategy = S.strategy && S.strategy.compiled_output ? 1 : 0;
-  const hasInvestment = (S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog) ? 1 : 0;
+  const hasInvestment = ((S.strategy && S.strategy.engagement_scope) || (S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog)) ? 1 : 0;
   document.getElementById('export-subtitle').textContent = S.setup?.client+' — '+pages.length+' pages ready to hand off.';
   document.getElementById('export-stats').innerHTML = [
     {val:pages.length, label:'Pages in Sitemap', icon:'📄'},
@@ -81,7 +81,7 @@ function renderStrategyExportTab() {
 
 function renderInvestmentExportTab() {
   var el = document.getElementById('export-investment-tab');
-  var hasData = S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog;
+  var hasData = (S.strategy && S.strategy.engagement_scope) || (S.strategy && S.strategy.channel_strategy && S.strategy.channel_strategy.levers && typeof _pricingCatalog !== 'undefined' && _pricingCatalog);
   if (!hasData) {
     el.innerHTML = '<p style="color:var(--n2);font-size:13px">Run strategy with pricing data first.</p>';
     return;

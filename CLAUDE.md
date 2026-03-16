@@ -9,7 +9,7 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 1. **Setup** — Client name, URL, primary market, industry, uploaded strategy docs, discovery notes, sales qualification, competitor URLs
 2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison
 3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
-4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline, compiled 15-section strategy document, and Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis)
+4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline with cost labels, compiled 15-section strategy document, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes)
 5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, and active page import from Snapshot
 6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards, positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, and persona alignment scoring
 7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
@@ -117,15 +117,25 @@ The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequ
 
 **Positioning direction system:** Founder hypotheses → Evaluate Hypotheses (stress-tests against competitors/demand) → Select Direction → D2 generates full messaging. Without a selected direction, D2 generates competitive analysis but messaging fields are blocked with `direction_required: true`.
 
+**Engagement scope system (strategy.js):**
+- `S.strategy.engagement_scope` — human-curated service selection. Auto-populated from D4 levers via `_buildEngagementScope()`. Services deduplicated via `LEVER_SERVICE_MAP` (many-to-one collapse). Each service has `enabled`, `scope` (low/mid/high), `scope_note`, `roi`, `realistic_override`.
+- `_renderScopePanel()` / `_mountScopePanel()` — Service Scope panel in Channels tab. Checkboxes to enable/disable, Low/Mid/High scope toggles, scope note inputs, live totals bar. Post-render DOM wiring pattern (same as `_mountGantt`).
+- `_computeRealisticOverrides()` — auto-throttles lowest-priority services to fit client budget. Produces `realistic_override` per service.
+- `_computeServiceROI(svcEntry)` — per-service ROI from D1 unit economics (LTV, CAC, sensitivity, CPC). Returns multiplier + timeline + confidence.
+- `_recalcScopeTotals()` — computes suggested vs realistic monthly/project/year1 totals.
+
 **Pricing pipeline export (strategy.js + export.js):**
 - `copyStrategyDoc()` / `downloadStrategyDoc()` — copy/download the compiled strategy document (.md)
-- `buildInvestmentText()` — pure data function returning formatted investment summary markdown (monthly services, one-time setup, year 1 projection, package fit, budget alignment). Client-safe — no internal margins.
+- `buildInvestmentText()` — dual-column markdown (Suggested vs Realistic) when engagement_scope exists, with ROI per service and scope notes. Falls back to old lever-based format if no scope.
+- `_renderInvestmentSummary()` — dual-column HTML in Output tab. Suggested/Realistic columns with ROI badges, scope notes, 2x3 totals grid. Falls back to old format if no scope.
 - `copyInvestmentSummary()` / `downloadInvestmentSummary()` — copy/download the investment summary
-- `showMarginModal()` — internal-only margin analysis in a modal (z-index:600, backdrop, Escape to close). Replaces old inline `<details>` to prevent accidental exposure during screen-shares.
+- `showMarginModal()` — internal-only margin analysis in a modal (z-index:600, backdrop, Escape to close).
 - `recalculateInvestment()` — re-reads live pricing catalog and recomputes snapshot without re-running diagnostics
-- `_renderScopeWarning()` (sitemap.js) — compares page count against `TIER_PAGE_RANGES` for the matched engagement tier, shows amber/red warning if over scope
+- `_renderScopeWarning()` (sitemap.js) — compares page count against `TIER_PAGE_RANGES` for the matched engagement tier
 
-**Export stage (export.js):** 5 tabs — Sitemap, Copy, Schema, Strategy, Investment. Strategy tab renders compiled document with copy/download. Investment tab renders `buildInvestmentText()` as formatted HTML. `downloadPackage()` prepends Growth Strategy and Investment Summary sections to the .txt export.
+**Gantt pricing integration:** `_buildGanttItems()` filters out services disabled in engagement_scope. `_mountGantt()` shows cost labels ($X/mo or $X proj) per bar when scope data exists.
+
+**Export stage (export.js):** 5 tabs — Sitemap, Copy, Schema, Strategy, Investment. Strategy tab renders compiled document with copy/download. Investment tab renders `buildInvestmentText()` as formatted HTML (dual-column when scope exists). `downloadPackage()` prepends Growth Strategy and Investment Summary sections to the .txt export.
 
 ### Shared Helpers (worker.js, top of file)
 
