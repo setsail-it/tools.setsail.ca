@@ -50,6 +50,7 @@ images.js        — Stage 8: image generation (~490 lines)
 schema.js        — Stage 10: schema markup (~260 lines)
 prompts.js       — Shared AI prompt templates (~121 lines)
 export.js        — Stage 11: export packaging + strategy/investment tabs (~138 lines)
+setsailai.js     — SetsailAI assistant: sidepanel with ask/audit/explain/action modes (~1270 lines)
 wrangler.toml    — Cloudflare deployment config
 .dev.vars        — Local dev secrets (gitignored)
 ```
@@ -137,6 +138,48 @@ The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequ
 
 **Export stage (export.js):** 5 tabs — Sitemap, Copy, Schema, Strategy, Investment. Strategy tab renders compiled document with copy/download. Investment tab renders `buildInvestmentText()` as formatted HTML (dual-column when scope exists). `downloadPackage()` prepends Growth Strategy and Investment Summary sections to the .txt export.
 
+### Buyer Intelligence Layer (strategy.js, sitemap.js, briefs.js, copy.js, research.js)
+
+Four additive data signals that feed into brief and copy prompts:
+
+- **Perceived Alternatives (D0):** `S.strategy.audience.perceived_alternatives[]` — what buyers consider *instead* of hiring this type of provider (do nothing, hire in-house, freelancer, DIY). Each entry has `alternative`, `segments_affected`, `threat_level`, `counter_positioning`. Renders in Audience tab, feeds briefs via `_buyerIntelBlock()`.
+- **Category Perception Gap (D2):** `S.strategy.positioning.category_perception` — gap between how the market categorises the business vs how the client wants to be perceived. Fields: `buyer_frame`, `actual_frame`, `gap_severity` (none/mild/significant/fundamental), `reframing_language`. Renders in Positioning tab, feeds web strategy brief and briefs.
+- **Awareness Stage per Page:** `S.pages[i].awareness_stage` — auto-inferred from page type + keyword intent via `_inferAwarenessStage(page)` in sitemap.js. Values: `unaware`, `problem_aware`, `solution_aware`, `product_aware`, `most_aware`. Editable via dropdown in sitemap edit mode. Injected into brief and copy prompts with stage-specific structural guidance. Copy audit check verifies alignment.
+- **VoC Swipe File:** `S.strategy._enrichment.voc_swipe_file[]` (extracted from uploaded docs) + `S.research.voc_swipe_raw` (manual paste in Research Brand tab). Real buyer language injected into diagnostic context and downstream prompts. `source_type: 'extracted' | 'manual'`.
+
+**`_buyerIntelBlock(page)`** (strategy.js) — consolidating helper that combines all 4 signals into one prompt section. Called by briefs.js and copy.js via `typeof _buyerIntelBlock === 'function'` guard. Awareness sets page structure, perception sets opening hook, alternatives set objection handling, VoC sets language texture.
+
+### SetsailAI Assistant (setsailai.js)
+
+AI-powered sidepanel that persists across all 11 stages. Toggle button in the nav bar. State lives in `_sai` (session-only, not stored in `S`). Panel is 400px fixed-right, responsive (overlay on <1100px).
+
+**4 modes:**
+
+1. **Ask Mode** — Chat with Claude using tiered project context. Own streaming fetch to `/api/claude` (does not interfere with AI bar). 4-layer context assembly:
+   - Layer 0 (always): client name, URL, geo, industry, services, positioning direction
+   - Layer 1 (always): compiled strategy overview (truncated)
+   - Layer 2 (stage-routed): full data for current stage
+   - Layer 3 (question-routed): additional context when question mentions keywords/budget/competitor/persona/specific slug
+   - Conversation history: last 6 turns included for continuity
+   - Grounding system prompt: must cite source tab/diagnostic or say data doesn't exist
+
+2. **Audit Mode** — 30 pure-JS programmatic checks across all stages. `SAI_AUDIT_CHECKS[]` array. Severities: error (red), warning (orange), info (grey). Results grouped by stage with "Go →" navigation buttons. Runs on: stage change, after generation completes, on demand. Badge on nav button (red for errors, orange for warnings).
+
+3. **Explain Mode** — `data-sai-explain="type:identifier"` attributes on key UI elements (diagnostic sections, positioning direction, page rows, cluster cards, brief containers, copy audit results). Capture-phase click handler intercepts, assembles targeted context, auto-sends explanation request. `body.sai-explain` class enables dashed green outline on hover.
+
+4. **Action Mode** — Claude can propose project modifications via `:::ACTION{json}:::END` blocks. 6 action types:
+   - `sitemap_replace` — replace all pages (destructive, red warning)
+   - `sitemap_add` — add pages (deduplicates by slug)
+   - `sitemap_remove` — remove pages by slug (lists what will be lost)
+   - `sitemap_update` — update whitelisted fields on existing pages
+   - `research_update` — update whitelisted research fields
+   - `strategy_update` — update 5 approved strategy paths only
+   - Confirmation card UI: shows exact impact, Apply/Dismiss buttons. Nothing changes without explicit user approval.
+
+**Key functions:** `toggleSai()`, `saiSend()`, `setSaiMode()`, `runSaiAudit()`, `_assembleSaiContext()`, `_renderActionConfirmation()`, `_executeAction()`, `_saiPostGenAudit()`
+
+**Integration hooks in index.html:** `goTo()` calls `runSaiAudit()`, `aiBarEnd()` calls `_saiPostGenAudit()`, `toggleHelpPanel()` closes SetsailAI panel.
+
 ### Shared Helpers (worker.js, top of file)
 
 These are defined once and used across all routes:
@@ -208,8 +251,10 @@ These live inside single-quoted JS strings. Use full words: `do not`, `they have
 Nav has `z-index:600` creating a stacking context. Never remove `z-index` from `#nav`.
 ```
 Nav (z:600) → Dropdowns (z:300 inside nav)
-Body backdrops (z:499)
+Help Panel (z:1000)
+SetsailAI panel (z:900), overlay (z:899)
 Modals (z:500–601)
+Body backdrops (z:499)
 Sidebar (z:150)
 ```
 
@@ -275,7 +320,7 @@ Every feature that changes workflow **must update**:
 
 ```bash
 # Syntax check all JS files
-node --check worker.js strategy.js keywords.js briefs.js sitemap.js copy.js research.js layout.js schema.js images.js export.js prompts.js
+node --check worker.js strategy.js keywords.js briefs.js sitemap.js copy.js research.js layout.js schema.js images.js export.js prompts.js setsailai.js
 
 # Check index.html inline JS
 python3 -c "

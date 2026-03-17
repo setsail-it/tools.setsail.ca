@@ -86,9 +86,15 @@ function setSaiMode(mode) {
   if (inputRow) inputRow.style.display = (mode === 'audit') ? 'none' : '';
   if (sendBtn) sendBtn.style.display = (mode === 'audit') ? 'none' : '';
 
+  /* Toggle explain-mode highlight class on body */
+  document.body.classList.toggle('sai-explain', mode === 'explain');
+
+  var hintArea = document.getElementById('sai-explain-hint');
+  if (hintArea) hintArea.style.display = (mode === 'explain') ? '' : 'none';
+
   if (mode === 'audit') _renderAuditPanel();
   if (mode === 'explain') {
-    _addSaiSystemMsg('Explain mode active — click any element with an explanation tag to learn about it.');
+    _addSaiSystemMsg('Explain mode active — click any highlighted element to learn about it.');
   }
 }
 
