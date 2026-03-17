@@ -695,7 +695,7 @@ var SAI_AUDIT_CHECKS = [
     fix_action: { stage: 'strategy' } },
   { id: 'st-no-econ', stage: 'strategy', severity: 'warning', message: 'Unit economics (CPL) not calculated',
     test: function() { return S && S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0 && !(S.strategy.unit_economics && S.strategy.unit_economics.cpl); },
-    fix_action: { stage: 'strategy', tab: 'unit_economics' } },
+    fix_action: { stage: 'strategy', tab: 'economics' } },
   { id: 'st-no-perception', stage: 'strategy', severity: 'info', message: 'Category perception analysis not available',
     test: function() { return S && S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0 && !(S.strategy.positioning && S.strategy.positioning.category_perception); },
     fix_action: { stage: 'strategy', tab: 'positioning' } },
@@ -1000,14 +1000,27 @@ function _updateSaiBadge() {
 
 function _saiGoToIssue(issue) {
   if (!issue || !issue.fix_action) return;
-  if (typeof goTo === 'function') goTo(issue.fix_action.stage);
+  var stage = issue.fix_action.stage;
+  /* Keywords lives inside strategy stage */
+  if (stage === 'keywords') stage = 'strategy';
+  if (typeof goTo === 'function') goTo(stage);
   if (issue.fix_action.tab) {
     setTimeout(function() {
-      /* Try clicking the matching strategy tab */
-      var tabBtn = document.querySelector('[data-strat-tab="' + issue.fix_action.tab + '"], [data-tab="' + issue.fix_action.tab + '"]');
+      var tab = issue.fix_action.tab;
+      /* Strategy tabs: set _sTab directly and re-render */
+      if (stage === 'strategy' && typeof _sTab !== 'undefined') {
+        _sTab = tab;
+        if (typeof renderStrategyNav === 'function') renderStrategyNav();
+        if (typeof renderStrategyTabContent === 'function') renderStrategyTabContent();
+        return;
+      }
+      /* Fallback: try clicking a matching tab button */
+      var tabBtn = document.querySelector('[data-strat-tab="' + tab + '"], [data-tab="' + tab + '"]');
       if (tabBtn) tabBtn.click();
     }, 300);
   }
+  /* Close the SetsailAI panel so the user can see the destination */
+  if (_sai.open) toggleSai();
 }
 
 /* ---------- 5. Explain Mode ---------- */
