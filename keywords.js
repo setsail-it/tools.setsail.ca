@@ -938,6 +938,9 @@ async function fetchKwVolumes() {
 }
 
 // ── Google Keyword Planner enrichment ──────────────────────────────────
+function _getGeoTargetId() {
+  return (S && S.setup && S.setup.geoMetro) ? S.setup.geoMetro : '';
+}
 var _gkpConfigured = null; // cached from /api/gkp-status
 
 async function _checkGkpStatus() {
@@ -969,7 +972,7 @@ async function enrichWithGKP() {
       var res = await fetch('/api/gkp-ideas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seeds: batch, country: country })
+        body: JSON.stringify({ seeds: batch, country: country, geoTargetId: _getGeoTargetId() })
       });
       var data = await res.json();
       if (data.error) {
@@ -1019,7 +1022,7 @@ async function fetchGKPFromURL(url) {
     var res = await fetch('/api/gkp-ideas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url.trim(), country: country })
+      body: JSON.stringify({ url: url.trim(), country: country, geoTargetId: _getGeoTargetId() })
     });
     var data = await res.json();
     if (data.error) {
@@ -1064,7 +1067,7 @@ async function fetchGKPForecast() {
     var res = await fetch('/api/gkp-forecast', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: forecastKws, dailyBudget: dailyBudget, country: country })
+      body: JSON.stringify({ keywords: forecastKws, dailyBudget: dailyBudget, country: country, geoTargetId: _getGeoTargetId() })
     });
     var data = await res.json();
     if (data.error) {
@@ -3288,7 +3291,7 @@ async function _pipelineGkpEnrich() {
     var res = await fetch('/api/gkp-ideas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seeds: batch, country: country })
+      body: JSON.stringify({ seeds: batch, country: country, geoTargetId: _getGeoTargetId() })
     });
     var data = await res.json();
     if (data.error) { console.warn('[kwPipeline] GKP batch error:', data.error); continue; }

@@ -32,6 +32,11 @@ var RESEARCH_FIELD_META = {
   booking_flow_description:  { tab:'audience',    label:'Booking / Intake Flow',    importance:'optional', source:'ai' },
   primary_goal:              { tab:'audience',    label:'Primary Goal',             importance:'critical', source:'ai' },
   secondary_goals:           { tab:'audience',    label:'Secondary Goals',          importance:'normal',   source:'ai' },
+  goal_statement:            { tab:'audience',    label:'Success Statement (Client Voice)', importance:'normal', source:'auto' },
+  goal_target:               { tab:'audience',    label:'Measurable Target',        importance:'normal',   source:'auto' },
+  goal_baseline:             { tab:'audience',    label:'Current Baseline',         importance:'normal',   source:'auto' },
+  goal_timeline:             { tab:'audience',    label:'Goal Timeline',            importance:'normal',   source:'auto' },
+  goal_kpi:                  { tab:'audience',    label:'Primary KPI',              importance:'normal',   source:'auto' },
   current_customer_profile:  { tab:'audience',    label:'Current Customer Profiles', importance:'normal',  source:'ai' },
   'geography.primary':       { tab:'audience',    label:'Primary City / Region',    importance:'normal',   source:'ai' },
   'geography.secondary':     { tab:'audience',    label:'Secondary Cities',         importance:'optional', source:'ai' },
@@ -327,6 +332,16 @@ function initResearch() {
     S.research.client_name = S.setup.client;
     scheduleSave();
   }
+  // Auto-populate goal fields from Setup (one-way sync, only if empty)
+  if (S.setup) {
+    var _goalSync = false;
+    if (!S.research.goal_statement && S.setup.goalStatement) { S.research.goal_statement = S.setup.goalStatement; _goalSync = true; }
+    if (!S.research.goal_target && S.setup.goalTarget) { S.research.goal_target = S.setup.goalTarget; _goalSync = true; }
+    if (!S.research.goal_baseline && S.setup.goalBaseline) { S.research.goal_baseline = S.setup.goalBaseline; _goalSync = true; }
+    if (!S.research.goal_timeline && S.setup.goalTimeline) { S.research.goal_timeline = S.setup.goalTimeline; _goalSync = true; }
+    if (!S.research.goal_kpi && S.setup.goalKpi) { S.research.goal_kpi = S.setup.goalKpi; _goalSync = true; }
+    if (_goalSync) scheduleSave();
+  }
   _rTab = _rTab || 'business';
   renderResearchNav();
   renderResearchTabContent();
@@ -350,6 +365,7 @@ function researchDefaults() {
     current_qualification:'', close_rate_estimate:'',
     top_reasons_leads_dont_close:'', booking_flow_description:'',
     primary_goal:'', secondary_goals:[], current_customer_profile:[],
+    goal_statement:'', goal_target:'', goal_baseline:'', goal_timeline:'', goal_kpi:'',
     geography:{ primary:'', secondary:[] },
     // Unit economics (manual)
     monthly_marketing_budget:'', average_deal_size:'',
@@ -932,6 +948,13 @@ function renderRAudience(r) {
     rField('current_qualification','Current Lead Qualification', r.current_qualification, 'textarea', {rows:2}) +
     rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
     rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
+  );
+  html += rSec('Client Success Definition',
+    rField('goal_statement','Success Statement (Client Voice)', r.goal_statement, 'textarea', {rows:3}) +
+    rField('goal_target','Measurable Target', r.goal_target) +
+    rField('goal_baseline','Current Baseline', r.goal_baseline) +
+    rField('goal_timeline','Goal Timeline', r.goal_timeline, 'select', {options:['','3 months','6 months','12 months','18 months','ongoing']}) +
+    rField('goal_kpi','Primary KPI', r.goal_kpi, 'select', {options:['','qualified_leads','revenue','cpl','organic_traffic','rankings','bookings','calls','brand_awareness']})
   );
   // Economics readiness panel
   html += renderEconReadiness(r);

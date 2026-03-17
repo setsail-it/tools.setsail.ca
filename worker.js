@@ -1037,7 +1037,7 @@ export default {
         });
       }
       try {
-        const { seeds, url: pageUrl, country } = await request.json();
+        const { seeds, url: pageUrl, country, geoTargetId } = await request.json();
         if ((!seeds || !seeds.length) && !pageUrl) {
           return new Response(JSON.stringify({ error: 'seeds or url required' }), {
             status: 400, headers: { 'Content-Type': 'application/json', ...cors }
@@ -1046,7 +1046,8 @@ export default {
 
         const token = await getGoogleAdsToken(env);
         const customerId = env.GOOGLE_ADS_CUSTOMER_ID.replace(/-/g, '');
-        const locCode = getLocationCode(country);
+        // Use city-level geoTargetId if provided, otherwise fall back to country
+        const locCode = geoTargetId || getLocationCode(country);
 
         // Build seed — URL-based or keyword-based
         const seedPayload = pageUrl
@@ -1124,7 +1125,7 @@ export default {
         });
       }
       try {
-        const { keywords, dailyBudget, country } = await request.json();
+        const { keywords, dailyBudget, country, geoTargetId } = await request.json();
         if (!keywords || !keywords.length) {
           return new Response(JSON.stringify({ error: 'keywords required' }), {
             status: 400, headers: { 'Content-Type': 'application/json', ...cors }
@@ -1133,7 +1134,8 @@ export default {
 
         const token = await getGoogleAdsToken(env);
         const customerId = env.GOOGLE_ADS_CUSTOMER_ID.replace(/-/g, '');
-        const locCode = getLocationCode(country);
+        // Use city-level geoTargetId if provided, otherwise fall back to country
+        const locCode = geoTargetId || getLocationCode(country);
         const budgetMicros = String(Math.round((dailyBudget || 50) * 1000000));
 
         const forecastRes = await fetch(

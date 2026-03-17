@@ -1289,6 +1289,15 @@ async function generatePageBrief(pageIdx) {
   if ((R.publications_media||[]).length) _proofLines.push('Media: '+R.publications_media.slice(0,3).join(', '));
   var ctxProof = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS\n'+_proofLines.join('\n') : '';
 
+  // Client goals context
+  var _goalLines = [];
+  if (R.goal_statement) _goalLines.push('Client says: "' + R.goal_statement + '"');
+  if (R.goal_target) _goalLines.push('Target: ' + R.goal_target);
+  if (R.goal_baseline) _goalLines.push('Baseline: ' + R.goal_baseline);
+  if (R.goal_timeline) _goalLines.push('Timeline: ' + R.goal_timeline);
+  if (R.goal_kpi) _goalLines.push('KPI: ' + R.goal_kpi.replace(/_/g, ' '));
+  var ctxGoals = _goalLines.length ? '\n\n## CLIENT SUCCESS GOALS (every page should drive toward this)\n' + _goalLines.join('\n') : '';
+
   // CTA architecture context
   var _ctaLines = [];
   var _pCta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
@@ -1458,7 +1467,7 @@ async function generatePageBrief(pageIdx) {
       + (_webStrategy ? '\n\n## WEBSITE STRATEGY\n'+_webStrategy : '')
       + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n'+_pageGoal : '')
-      + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
+      + ctxProof + ctxGoals + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
       + ctxAwareness
       + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
@@ -1517,7 +1526,7 @@ async function generatePageBrief(pageIdx) {
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
       + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
-      + ctxProof + ctxCTA
+      + ctxProof + ctxGoals + ctxCTA
       + ctxAwareness
       + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
@@ -1577,7 +1586,7 @@ async function generatePageBrief(pageIdx) {
       + '\n## BUSINESS CONTEXT\n'+ctxBusiness
       + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
-      + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
+      + ctxProof + ctxGoals + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
       + ctxAwareness
       + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience

@@ -431,6 +431,73 @@ textarea.inp{resize:vertical}
         <div>
           <label style="font-size:12px;display:block;margin-bottom:5px">Primary Market <span style="color:var(--n2)">— default geo for all pages, overrideable per page in Sitemap</span></label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC">
         </div>
+        <div style="margin-top:10px">
+          <label style="font-size:12px;display:block;margin-bottom:5px">Metro / City Target <span style="color:var(--n2)">— city-level targeting for Google Keyword Planner volume data</span></label>
+          <select class="inp" id="f-geo-metro" style="width:100%">
+            <option value="">— Use country-level (default)</option>
+            <optgroup label="Canada">
+              <option value="1002289">Vancouver, BC</option>
+              <option value="1002366">Victoria, BC</option>
+              <option value="1002191">Kelowna, BC</option>
+              <option value="1002304">Surrey, BC</option>
+              <option value="1002338">Toronto, ON</option>
+              <option value="1002244">Ottawa, ON</option>
+              <option value="1002227">Mississauga, ON</option>
+              <option value="1002167">Hamilton, ON</option>
+              <option value="1002228">Montreal, QC</option>
+              <option value="1002253">Quebec City, QC</option>
+              <option value="1002078">Calgary, AB</option>
+              <option value="1002110">Edmonton, AB</option>
+              <option value="1002373">Winnipeg, MB</option>
+              <option value="1002166">Halifax, NS</option>
+              <option value="1002259">Regina, SK</option>
+              <option value="1002271">Saskatoon, SK</option>
+            </optgroup>
+            <optgroup label="United States">
+              <option value="1014221">New York, NY</option>
+              <option value="1014218">Los Angeles, CA</option>
+              <option value="1016367">Chicago, IL</option>
+              <option value="1026339">Houston, TX</option>
+              <option value="1026083">Dallas, TX</option>
+              <option value="1023776">Miami, FL</option>
+              <option value="1024977">Seattle, WA</option>
+              <option value="1012873">Denver, CO</option>
+              <option value="1025202">Boston, MA</option>
+              <option value="1014895">San Francisco, CA</option>
+              <option value="1013962">Austin, TX</option>
+              <option value="1026421">Phoenix, AZ</option>
+              <option value="1015116">Atlanta, GA</option>
+            </optgroup>
+            <optgroup label="United Kingdom">
+              <option value="1006886">London</option>
+              <option value="1006821">Manchester</option>
+              <option value="1006543">Birmingham</option>
+              <option value="1006798">Leeds</option>
+              <option value="1007140">Edinburgh</option>
+              <option value="1007144">Glasgow</option>
+            </optgroup>
+            <optgroup label="Australia">
+              <option value="1000286">Sydney, NSW</option>
+              <option value="1000199">Melbourne, VIC</option>
+              <option value="1000060">Brisbane, QLD</option>
+              <option value="1000250">Perth, WA</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-mark"><span class="section-mark-label">Client Goals</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Capture what success looks like in the client's own words. This flows into strategy, proposals, briefs, and copy — so the entire pipeline is aligned to their goals.</p>
+        <label style="font-size:12px;display:block;margin-bottom:5px">What does success look like? <span style="color:var(--n2);font-weight:400">— in the client's own words from the discovery call</span></label>
+        <textarea class="inp" id="f-goal-statement" rows="3" placeholder="e.g. &quot;I want to stop relying on referrals and get 40 qualified leads a month from people searching for renovation contractors in Vancouver. I need jobs over $50K, not handyman work.&quot;" style="margin-bottom:10px"></textarea>
+        <div class="grid-2" style="margin-bottom:10px">
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Measurable Target <span style="color:var(--n2);font-weight:400">— the number</span></label><input class="inp" id="f-goal-target" placeholder="e.g. 40 qualified leads/month"></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Current Baseline <span style="color:var(--n2);font-weight:400">— where they are now</span></label><input class="inp" id="f-goal-baseline" placeholder="e.g. 15 leads/month, mostly referrals"></div>
+        </div>
+        <div class="grid-2" style="margin-bottom:10px">
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Timeline</label><select class="inp" id="f-goal-timeline"><option value="">—</option><option value="3 months">3 months</option><option value="6 months">6 months</option><option value="12 months">12 months</option><option value="18 months">18 months</option><option value="ongoing">Ongoing</option></select></div>
+          <div><label style="font-size:12px;display:block;margin-bottom:5px">Primary KPI <span style="color:var(--n2);font-weight:400">— what we measure</span></label><select class="inp" id="f-goal-kpi"><option value="">—</option><option value="qualified_leads">Qualified Leads / Month</option><option value="revenue">Revenue Growth</option><option value="cpl">Cost per Lead</option><option value="organic_traffic">Organic Traffic</option><option value="rankings">Keyword Rankings</option><option value="bookings">Bookings / Appointments</option><option value="calls">Phone Calls</option><option value="brand_awareness">Brand Awareness</option></select></div>
+        </div>
       </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Discovery &amp; Pain Context</span><div class="section-mark-line"></div></div>
@@ -1233,6 +1300,13 @@ function prefillSetup() {
   document.getElementById('f-client').value = s.client || '';
   document.getElementById('f-url').value = s.url || '';
   document.getElementById('f-geo').value = s.geo || '';
+  var fgm = document.getElementById('f-geo-metro'); if(fgm) fgm.value = s.geoMetro || '';
+  // Client goals
+  var fgs = document.getElementById('f-goal-statement'); if(fgs) fgs.value = s.goalStatement || '';
+  var fgt = document.getElementById('f-goal-target'); if(fgt) fgt.value = s.goalTarget || '';
+  var fgb = document.getElementById('f-goal-baseline'); if(fgb) fgb.value = s.goalBaseline || '';
+  var fgtl = document.getElementById('f-goal-timeline'); if(fgtl) fgtl.value = s.goalTimeline || '';
+  var fgk = document.getElementById('f-goal-kpi'); if(fgk) fgk.value = s.goalKpi || '';
   // Discovery notes
   var fdn = document.getElementById('f-discovery-notes'); if(fdn) fdn.value = s.discoveryNotes || '';
   // Sales qualification
@@ -2229,9 +2303,16 @@ function setupNext() {
   S.setup = {
     client, url: document.getElementById('f-url').value.trim(),
     geo: document.getElementById('f-geo').value.trim(),
+    geoMetro: (document.getElementById('f-geo-metro')?.value||''),
     strategy: prev.strategy || '', // preserved for backward compat but no longer editable in Setup
     discoveryNotes: (document.getElementById('f-discovery-notes')?.value||'').trim(),
     docs: prev.docs || [],
+    // Client goals (client-voiced)
+    goalStatement: (document.getElementById('f-goal-statement')?.value||'').trim(),
+    goalTarget: (document.getElementById('f-goal-target')?.value||'').trim(),
+    goalBaseline: (document.getElementById('f-goal-baseline')?.value||'').trim(),
+    goalTimeline: (document.getElementById('f-goal-timeline')?.value||''),
+    goalKpi: (document.getElementById('f-goal-kpi')?.value||''),
     // preserved from previous save or downstream stages
     pricing: prev.pricing || '', voice: prev.voice || '',
     competitors: prev.competitors || '', imageStyle: prev.imageStyle || '',

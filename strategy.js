@@ -2344,8 +2344,15 @@ function _stratCtx() {
   if (r.geography && r.geography.primary) ctx += 'PRIMARY GEO: ' + r.geography.primary + '\n';
   if (r.geography && r.geography.secondary) ctx += 'SECONDARY GEO: ' + (Array.isArray(r.geography.secondary) ? r.geography.secondary.join(', ') : r.geography.secondary) + '\n';
   if (r.target_geography) ctx += 'TARGET GEO SCOPE: ' + r.target_geography + '\n';
+  if (s.geoMetro) ctx += 'METRO TARGET (city-level): ' + (s.geo || s.geoMetro) + ' [GKP geo ID: ' + s.geoMetro + ']\n';
   if (r.primary_goal) ctx += 'PRIMARY GOAL: ' + r.primary_goal + '\n';
   if (r.secondary_goals && r.secondary_goals.length) ctx += 'SECONDARY GOALS: ' + (Array.isArray(r.secondary_goals) ? r.secondary_goals.join(', ') : r.secondary_goals) + '\n';
+  // Structured client goals (client-voiced, from Setup)
+  if (r.goal_statement) ctx += 'CLIENT SUCCESS STATEMENT: "' + r.goal_statement + '"\n';
+  if (r.goal_target) ctx += 'MEASURABLE TARGET: ' + r.goal_target + '\n';
+  if (r.goal_baseline) ctx += 'CURRENT BASELINE: ' + r.goal_baseline + '\n';
+  if (r.goal_timeline) ctx += 'GOAL TIMELINE: ' + r.goal_timeline + '\n';
+  if (r.goal_kpi) ctx += 'PRIMARY KPI: ' + r.goal_kpi.replace(/_/g, ' ') + '\n';
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'TOP PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
   if (r.objections_top5 && r.objections_top5.length) ctx += 'TOP OBJECTIONS: ' + (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5) + '\n';
   if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || c.name || 'Client') + ': ' + (c.result || c.outcome || ''); }).join('; ') + '\n';
@@ -2717,6 +2724,9 @@ function buildDiagnosticPrompt(num) {
       + '- Customer lifetime value: ' + (r.customer_lifetime_value || 'UNKNOWN \u2014 estimate from deal size') + '\n'
       + '- Lead quality (% sales-qualified): ' + (r.lead_quality_percentage || 'UNKNOWN \u2014 assume 30%') + '\n'
       + '- Primary goal: ' + (r.primary_goal || '') + '\n'
+      + (r.goal_target ? '- Measurable target: ' + r.goal_target + '\n' : '')
+      + (r.goal_baseline ? '- Current baseline: ' + r.goal_baseline + '\n' : '')
+      + (r.goal_timeline ? '- Goal timeline: ' + r.goal_timeline + '\n' : '')
       + '- Current lead volume: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
       + cpcBlock
       + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '')
@@ -7351,6 +7361,13 @@ async function compileStrategyOutput() {
   if (r.buyer_roles && r.buyer_roles.length) ctx += 'BUYER ROLES: ' + r.buyer_roles.join('; ') + '\n';
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
   if (r.objections_top5 && r.objections_top5.length) ctx += 'BUYER OBJECTIONS: ' + r.objections_top5.join('; ') + '\n';
+  // Client goals
+  if (r.goal_statement) ctx += '\nCLIENT SUCCESS DEFINITION:\n';
+  if (r.goal_statement) ctx += 'In their words: "' + r.goal_statement + '"\n';
+  if (r.goal_target) ctx += 'Target: ' + r.goal_target + '\n';
+  if (r.goal_baseline) ctx += 'Current baseline: ' + r.goal_baseline + '\n';
+  if (r.goal_timeline) ctx += 'Timeline: ' + r.goal_timeline + '\n';
+  if (r.goal_kpi) ctx += 'Primary KPI: ' + r.goal_kpi.replace(/_/g, ' ') + '\n';
 
   // Proof & E-E-A-T signals
   if (r.existing_proof && r.existing_proof.length) ctx += 'PROOF POINTS: ' + r.existing_proof.join('; ') + '\n';

@@ -408,6 +408,12 @@ function _assembleSaiContext(question, hasFiles) {
   if (S && S.strategy && S.strategy.positioning) {
     l0.selected_direction = S.strategy.positioning.selected_direction || '';
   }
+  // Client goals (from Setup → Research)
+  if (S && S.research && S.research.goal_statement) {
+    l0.client_goal = S.research.goal_statement;
+    if (S.research.goal_target) l0.goal_target = S.research.goal_target;
+    if (S.research.goal_timeline) l0.goal_timeline = S.research.goal_timeline;
+  }
   l0.current_stage = (S && S.stage) || 'unknown';
   ctx += 'CORE:\n' + JSON.stringify(l0, null, 0) + '\n\n';
 

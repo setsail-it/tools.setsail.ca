@@ -215,6 +215,13 @@ function buildCopyPrompt(page) {
   if (r.team_credentials) _cpProof.push('Team credentials: '+r.team_credentials);
   if (r.founder_bio) _cpProof.push('Founder: '+r.founder_bio);
   var cpProofBlock = _cpProof.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n'+_cpProof.join('\n') : '';
+  // Client goals context
+  var _cpGoalLines = [];
+  if (r.goal_statement) _cpGoalLines.push('Client says: "' + r.goal_statement + '"');
+  if (r.goal_target) _cpGoalLines.push('Target: ' + r.goal_target);
+  if (r.goal_baseline) _cpGoalLines.push('Baseline: ' + r.goal_baseline);
+  if (r.goal_timeline) _cpGoalLines.push('Timeline: ' + r.goal_timeline);
+  var cpGoalBlock = _cpGoalLines.length ? '\n\n## CLIENT SUCCESS GOALS (copy must drive toward this outcome)\n' + _cpGoalLines.join('\n') : '';
   var _cpCta = [];
   var _cpPcta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
   var _cpSctas = getStrategyField('positioning.secondary_ctas', 'secondary_ctas') || getStrategyField('positioning.secondary_cta', 'secondary_cta') || [];
@@ -371,7 +378,7 @@ function buildCopyPrompt(page) {
       + _voiceBlock
       + '\nNOTES: ' + (page.notes||'')
       + questionsBlock + briefBlock + serpBlock
-      + cpProofBlock + cpCtaBlock
+      + cpProofBlock + cpGoalBlock + cpCtaBlock
       + ((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy) ? '\n\n## WEBSITE STRATEGY\n'+((S.strategy&&S.strategy.webStrategy)||(S.setup&&S.setup.webStrategy)) : '')
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
