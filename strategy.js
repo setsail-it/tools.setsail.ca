@@ -1303,17 +1303,15 @@ function _mountScopePanel() {
 // ── Constants ─────────────────────────────────────────────────────────
 
 var STRATEGY_TABS = [
-  { id:'audience',     label:'Audience',     icon:'ti-users' },
-  { id:'positioning',  label:'Positioning',  icon:'ti-target' },
-  { id:'economics',    label:'Economics',    icon:'ti-calculator' },
-  { id:'subtraction',  label:'Subtraction',  icon:'ti-scissors' },
-  { id:'channels',     label:'Channels',     icon:'ti-chart-dots-3' },
-  { id:'growth',       label:'Growth Plan',  icon:'ti-trending-up' },
-  { id:'execution',    label:'Execution',    icon:'ti-checklist' },
-  { id:'brand',        label:'Brand',        icon:'ti-palette' },
-  { id:'risks',        label:'Risks',        icon:'ti-alert-triangle' },
-  { id:'keywords',     label:'Keywords',     icon:'ti-tags' },
-  { id:'output',       label:'Output',       icon:'ti-file-text' }
+  { id:'audience',     label:'Audience',           icon:'ti-users' },
+  { id:'positioning',  label:'Positioning',        icon:'ti-target' },
+  { id:'economics',    label:'Economics',          icon:'ti-calculator' },
+  { id:'subtraction',  label:'Subtraction',        icon:'ti-scissors' },
+  { id:'channels',     label:'Channels',           icon:'ti-chart-dots-3' },
+  { id:'execution',    label:'Website',            icon:'ti-checklist' },
+  { id:'brand',        label:'Content & Authority', icon:'ti-palette' },
+  { id:'risks',        label:'Risks',              icon:'ti-alert-triangle' },
+  { id:'output',       label:'Output',             icon:'ti-file-text' }
 ];
 
 var STRATEGY_SECTION_WEIGHTS = {
@@ -1321,10 +1319,9 @@ var STRATEGY_SECTION_WEIGHTS = {
   positioning:  0.18,
   economics:    0.14,
   subtraction:  0.12,
-  channels:     0.18,
-  growth:       0.12,
-  execution:    0.08,
-  brand:        0.08,
+  channels:     0.22,
+  execution:    0.10,
+  brand:        0.10,
   risks:        0.10
 };
 
@@ -1333,8 +1330,8 @@ var STRATEGY_SECTION_LABELS = {
   positioning:  'Positioning',
   economics:    'Unit Economics',
   subtraction:  'Subtraction Analysis',
-  channels:     'Channel Strategy',
-  growth:       'Growth Plan',
+  channels:     'Channels & Growth',
+  growth:       'Growth Plan',           // kept for backwards-compat (merged into channels tab)
   execution:    'Website & CRO',
   brand:        'Content & Authority',
   risks:        'Risk Assessment'
@@ -1391,13 +1388,9 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'geography',            path:'S.research.geography',               check:'truthy' },
     { key:'cpc_estimates',        path:'S.strategy._enrichment.cpc_estimates', check:'truthy' },
     { key:'sales_cycle',          path:'S.research.sales_cycle_length',      check:'string' },
-    { key:'goal',                 path:'S.research.primary_goal',            check:'string' }
-  ],
-  growth: [
-    { key:'channel_strategy',     path:'S.strategy.channel_strategy',        check:'truthy' },
-    { key:'unit_economics',       path:'S.strategy.unit_economics',          check:'truthy' },
     { key:'goal',                 path:'S.research.primary_goal',            check:'string' },
-    { key:'budget',               path:'S.research.monthly_marketing_budget', check:'string' },
+    // Merged from growth tab
+    { key:'channel_strategy',     path:'S.strategy.channel_strategy',        check:'truthy' },
     { key:'capacity',             path:'S.research.capacity_constraints',    check:'string' },
     { key:'team_size',            path:'S.research.team_size',               check:'string' }
   ],
@@ -1458,11 +1451,11 @@ var ANTI_INFLATION_CAPS = [
       if (!S.strategy || !S.strategy.demand_validation || !S.strategy.demand_validation.strategic_revisions_needed) return false;
       return S.strategy.demand_validation.strategic_revisions_needed.some(function(r) { return r.impact_severity === 'high'; });
     } },
-  // Growth: no channel strategy means growth plan is baseless
-  { condition:'no_channel_strategy_growth', section:'growth', dimension:'confidence', cap:3,
+  // Channels: no channel strategy means growth plan is baseless
+  { condition:'no_channel_strategy_growth', section:'channels', dimension:'confidence', cap:3,
     test: function() { return !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers || !S.strategy.channel_strategy.levers.length; } },
-  // Growth: no funnel architecture means gaps in coverage
-  { condition:'no_funnel_arch', section:'growth', dimension:'data', cap:6,
+  // Channels: no funnel architecture means gaps in coverage
+  { condition:'no_funnel_arch', section:'channels', dimension:'data', cap:6,
     test: function() { var gp = S.strategy && S.strategy.growth_plan || {}; return !gp.funnel_architecture; } },
   // Risks: no high-severity mitigations is a gap
   { condition:'high_risk_unmitigated', section:'risks', dimension:'confidence', cap:5,
@@ -1845,8 +1838,8 @@ function scoreSection(section) {
   else if (section === 'positioning') sectionData = st.positioning;
   else if (section === 'economics') sectionData = st.unit_economics;
   else if (section === 'subtraction') sectionData = st.subtraction;
-  else if (section === 'channels') sectionData = st.channel_strategy;
-  else if (section === 'growth') sectionData = st.growth_plan;
+  else if (section === 'channels') sectionData = st.channel_strategy || st.growth_plan; // merged: channels + growth
+  else if (section === 'growth') sectionData = st.growth_plan; // backwards-compat
   else if (section === 'execution') sectionData = st.execution_plan;
   else if (section === 'brand') sectionData = st.brand_strategy;
   else if (section === 'risks') sectionData = st.risks;
@@ -3017,8 +3010,8 @@ function buildDiagnosticPrompt(num) {
 
 // Append strategist notes to any diagnostic prompt
 function _appendStrategistNotes(prompt, diagNum) {
-  // D4 feeds both channels and growth tabs
-  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels', 'growth'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
+  // D4 feeds channels tab (growth merged into channels)
+  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
   var tabs = diagToTabs[diagNum];
   if (!tabs) return prompt;
   var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
@@ -3437,7 +3430,29 @@ async function generateStrategy() {
     _sTab = Object.keys(STRATEGY_SECTION_WEIGHTS)[0];
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
+
+    // Step 4: Auto-run D8 (demand validation) if keyword data exists
+    var _kwR = S.kwResearch || {};
+    if (_kwR.keywords && _kwR.keywords.length >= 10 && !window._aiStopAll) {
+      aiBarStart('Running D8 Demand Validation with keyword data');
+      try { await runDiagnostic(8); } catch (e8) { console.warn('D8 auto-run skipped:', e8.message); }
+      await saveProject();
+    }
+
+    // Step 5: Auto-compile strategy document + web strategy brief
+    if (!window._aiStopAll) {
+      aiBarStart('Compiling strategy document');
+      try {
+        await compileStrategyOutput();
+        await synthesiseWebStrategy();
+        await saveProject();
+      } catch (eComp) { console.warn('Auto-compile skipped:', eComp.message); }
+    }
+
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated — doc compiled');
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Strategy generation error: ' + e.message, { duration: 5000 });
@@ -3543,10 +3558,21 @@ async function runAllDiagnostics() {
     capturePricingSnapshot();
     createStrategyVersion('rerun_all');
     await saveProject();
+
+    // Auto-compile strategy document + web strategy brief
+    if (!window._aiStopAll) {
+      aiBarStart('Compiling strategy document');
+      try {
+        await compileStrategyOutput();
+        await synthesiseWebStrategy();
+        await saveProject();
+      } catch (eComp) { console.warn('Auto-compile skipped:', eComp.message); }
+    }
+
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('All diagnostics complete \u2014 v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
+    aiBarEnd('All diagnostics complete — v' + S.strategy._meta.current_version + ' — doc compiled');
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -3661,7 +3687,7 @@ async function improveStrategy() {
 
   // Re-run diagnostics for weakest 3 sections
   var weakest = sorted.slice(0, 3);
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
 
   var diagsToRun = [];
   weakest.forEach(function(w) {
@@ -4172,23 +4198,155 @@ function renderStrategyNav() {
   el.innerHTML = html;
 }
 
+// ── Keywords Persistent Panel ─────────────────────────────────────────
+
+var _kwPanelOpen = false;
+
+function _renderKeywordsPanel() {
+  var wrap = document.getElementById('strategy-kw-panel');
+  if (!wrap) return;
+
+  var kwR = S.kwResearch || {};
+  var hasKw = kwR.keywords && kwR.keywords.length > 0;
+  var kwCount = hasKw ? kwR.keywords.length : 0;
+  var clusterCount = kwR.clusters ? kwR.clusters.length : 0;
+  var selectedCount = kwR.selected ? kwR.selected.length : 0;
+
+  var html = '<div style="border:1px solid var(--border);border-radius:8px;background:var(--panel);margin-bottom:16px">';
+
+  // Header bar — always visible
+  html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer" id="kw-panel-toggle">';
+  html += '<i class="ti ti-tags" style="color:var(--n2);font-size:15px"></i>';
+  html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">Keyword Research</span>';
+
+  // Status badges
+  if (hasKw) {
+    html += '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--green)10;color:var(--green);font-weight:500">'
+      + kwCount + ' keywords</span>';
+    if (clusterCount) html += '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#409eff10;color:#409eff;font-weight:500">'
+      + clusterCount + ' clusters</span>';
+    if (selectedCount) html += '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#e6a23c10;color:#e6a23c;font-weight:500">'
+      + selectedCount + ' selected</span>';
+  } else {
+    html += '<span style="font-size:10px;color:var(--n2)">Not run yet</span>';
+  }
+
+  // Stale indicator
+  if (S.strategy && S.strategy._kwDataStale) {
+    html += '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#fef0f0;color:#f56c6c;font-weight:500">Stale — re-run diagnostics</span>';
+  }
+
+  html += '<span style="flex:1"></span>';
+  html += '<i class="ti ' + (_kwPanelOpen ? 'ti-chevron-up' : 'ti-chevron-down') + '" style="color:var(--n2);font-size:14px"></i>';
+  html += '</div>';
+
+  // Collapsible content
+  if (_kwPanelOpen) {
+    html += '<div style="border-top:1px solid var(--border);padding:0">';
+    html += '<div id="strategy-kw-wrap">'
+      + (typeof renderPipelineStatusContainer === 'function' ? renderPipelineStatusContainer() : '')
+      + '<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>'
+      + '<div id="kw-tab-content"></div>'
+      + '</div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  // Wire toggle
+  var toggleBtn = document.getElementById('kw-panel-toggle');
+  if (toggleBtn) {
+    toggleBtn.onclick = function() {
+      _kwPanelOpen = !_kwPanelOpen;
+      _renderKeywordsPanel();
+    };
+  }
+
+  // Init keywords.js if panel is open
+  if (_kwPanelOpen) {
+    initKeywords();
+    if (typeof _renderPipelineStatus === 'function') _renderPipelineStatus();
+  }
+}
+
+// ── Run Diagnostics From Here Forward ────────────────────────────────
+
+async function runDiagnosticsFrom(startDiag) {
+  if (!S.strategy) S.strategy = strategyDefaults();
+  window._aiStopAll = false;
+  aiBarStart('Loading pricing catalog');
+  await fetchPricingCatalog();
+  var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks' };
+  aiBarStart('Running diagnostics from ' + (diagLabel[startDiag] || 'D' + startDiag) + ' forward');
+  try {
+    for (var d = startDiag; d <= 7; d++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Diagnostics paused (D' + d + '/7)',
+          fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
+          args: { startFrom: d }
+        };
+        return;
+      }
+      await runDiagnostic(d);
+      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    S.strategy._kwDataStale = false;
+    capturePricingSnapshot();
+    createStrategyVersion('rerun_from_d' + startDiag);
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('Diagnostics D' + startDiag + '-D7 complete — v' + S.strategy._meta.current_version);
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+async function _resumeDiagnosticsFrom(startFrom) {
+  window._aiStopAll = false;
+  try {
+    for (var d = startFrom; d <= 7; d++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Diagnostics paused (D' + d + '/7)',
+          fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
+          args: { startFrom: d }
+        };
+        return;
+      }
+      await runDiagnostic(d);
+      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    S.strategy._kwDataStale = false;
+    capturePricingSnapshot();
+    createStrategyVersion('rerun_from_d' + startFrom);
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('Diagnostics complete — v' + S.strategy._meta.current_version);
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
 // ── UI: Tab Content ───────────────────────────────────────────────────
 
 function renderStrategyTabContent() {
   var el = document.getElementById('strategy-tab-content');
   if (!el) return;
 
-  if (_sTab === 'keywords') {
-    // Mount keywords.js into this container
-    el.innerHTML = '<div id="strategy-kw-wrap">'
-      + (typeof renderPipelineStatusContainer === 'function' ? renderPipelineStatusContainer() : '')
-      + '<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>'
-      + '<div id="kw-tab-content"></div>'
-      + '</div>';
-    initKeywords();
-    if (typeof _renderPipelineStatus === 'function') _renderPipelineStatus();
-    return;
-  }
+  // Keywords persistent panel — always render above tab content
+  _renderKeywordsPanel();
+
+  // Redirect legacy 'growth' / 'keywords' tabs to merged destinations
+  if (_sTab === 'growth') _sTab = 'channels';
+  if (_sTab === 'keywords') _sTab = 'channels';
 
   if (_sTab === 'output') {
     el.innerHTML = _renderOutput(S.strategy || {});
@@ -4199,7 +4357,7 @@ function renderStrategyTabContent() {
   var html = '';
 
   // Re-run diagnostic button
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, growth: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
   var diagLabels = {
     0: 'Audience Intelligence',
     1: 'Unit Economics',
@@ -4227,6 +4385,10 @@ function renderStrategyTabContent() {
     html += '<button class="btn btn-ghost sm" data-tip="' + (diagTips[diagNum] || '') + '" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
     if (meta.current_version > 0) {
       html += '<button class="btn btn-primary sm" data-tip="Runs all diagnostics (D0-D7) in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
+      // "From here forward" — re-run this diagnostic and all subsequent
+      if (diagNum < 7) {
+        html += '<button class="btn btn-ghost sm" data-tip="Re-runs D' + diagNum + ' through D7 sequentially" onclick="runDiagnosticsFrom(' + diagNum + ')"><i class="ti ti-player-skip-forward"></i> From here \u2192</button>';
+      }
       if (S.strategy._kwDataStale && (diagNum === 4 || diagNum === 5 || diagNum === 6)) {
         html += '<button class="btn btn-primary sm" style="background:var(--green)" data-tip="Re-runs D4, D5, D6 with keyword research data for more accurate channel, website, and content recommendations" onclick="rerunKeywordSensitiveDiagnostics()"><i class="ti ti-vocabulary"></i> Re-run with Keywords</button>';
       }
@@ -4272,8 +4434,7 @@ function renderStrategyTabContent() {
   else if (_sTab === 'positioning') html += _renderPositioning(st);
   else if (_sTab === 'economics') html += _renderEconomics(st);
   else if (_sTab === 'subtraction') html += _renderSubtraction(st);
-  else if (_sTab === 'channels') html += _renderChannels(st);
-  else if (_sTab === 'growth') html += _renderGrowth(st);
+  else if (_sTab === 'channels') { html += _renderChannels(st); html += _renderGrowth(st); }
   else if (_sTab === 'execution') html += _renderExecution(st);
   else if (_sTab === 'brand') html += _renderBrand(st);
   else if (_sTab === 'risks') html += _renderRisks(st);
@@ -4301,12 +4462,9 @@ function renderStrategyTabContent() {
     }
   }
 
-  // Mount interactive Gantt chart (DOM-based, after innerHTML)
-  if (_sTab === 'growth') {
-    _mountGantt(S.strategy || {});
-  }
-  // Mount scope panel (DOM-based, after innerHTML)
+  // Mount interactive Gantt chart (now lives in Channels tab with growth content)
   if (_sTab === 'channels') {
+    _mountGantt(S.strategy || {});
     _mountScopePanel();
   }
 }

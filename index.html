@@ -521,6 +521,8 @@ textarea.inp{resize:vertical}
       </div>
       <!-- Strategy scorecard -->
       <div id="strategy-scorecard"></div>
+      <!-- Keywords persistent panel (above tabs) -->
+      <div id="strategy-kw-panel"></div>
       <!-- Strategy tab nav -->
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto" id="strategy-tab-nav"></div>
       <!-- Strategy tab content -->
@@ -1278,12 +1280,12 @@ var STAGE_TIPS = {
     "Pass 1 auto-drafts the full strategy from Research data and enrichment. Pass 2+ targets the weakest sections for improvement.",
     "The scoring engine evaluates data completeness (35%), analytical confidence (40%), and specificity (25%) — anti-inflation caps prevent score gaming. Active caps show as red lock icons on both the scorecard and per-section views.",
     "Confidence scoring accounts for audit pass rates: 90%+ audit pass boosts confidence, below 50% penalises it. Cross-section consistency checks flag budget mismatches between Economics and Channels.",
-    "The Keywords tab inside Strategy validates demand with real search volumes — D8 runs on Pass 2+ and caps overall score at 6.5 if demand is unvalidated.",
+    "The Keywords panel (above strategy tabs) validates demand with real search volumes — D8 runs on Pass 2+ and caps overall score at 6.5 if demand is unvalidated.",
     "Approve the strategy before proceeding to Sitemap — downstream stages read positioning, CTAs, brand voice, and differentiators from S.strategy.",
     "Gap panels highlight missing inputs (e.g. no budget data for Unit Economics) with one-click auto-resolve.",
     "Version control tracks every pass — you can review what changed between iterations.",
     "Override any AI-generated field by editing it directly — overrides persist across re-generations.",
-    "Growth Plan Gantt is interactive: drag rows to reorder, click bars to edit duration and start week, click phase badges to cycle phases. Reset button clears all manual edits.",
+    "Execution Timeline Gantt (Channels tab) is interactive: drag rows to reorder, click bars to edit duration and start week, click phase badges to cycle phases. Reset button clears all manual edits.",
     "Enrichment runs automatically before diagnostics: competitor deep-dives, keyword pre-scan, CPC estimates, site performance checks.",
     "Economics tab shows Market CPC Intelligence when keyword research has been completed — real CPC data grounds CPL and paid viability estimates.",
     "Run Keywords research before re-running Economics for the most accurate unit economics — CPC data from keyword research replaces shallow estimates.",
@@ -1295,6 +1297,9 @@ var STAGE_TIPS = {
     "First-pass scores above 7.0 trigger a warning — high confidence on Pass 1 usually means anti-inflation caps were not enforced properly. Score jumps above 1.5 between passes are also flagged.",
     "Voice and hard rules are vertical-aware — content pillars and word permissions/bans can differ by audience segment via vertical overlays in the Brand tab.",
     "Customer Voice enrichment (Layer 2 of dual pain): enriches each persona executionProfile with emotional drivers, competitor frustrations, switching triggers, and decision anxiety. Combined with Layer 1 client pain via getPainContextBlock() for all downstream prompts.",
+    "From here forward button: re-runs the current diagnostic and all subsequent ones in sequence — useful after updating strategist notes or research data.",
+    "Strategy doc and web strategy brief auto-compile after Generate Full Strategy and Run All Diagnostics — no need to manually compile.",
+    "Keywords panel is always visible above tabs — expand to run keyword research, collapse to stay focused on diagnostics.",
   ],
   sitemap: [
     "Pages are ordered: Core → Services → Locations → Blog. Priority within each: P1 → P2 → P3.",
@@ -3141,10 +3146,9 @@ async function deleteAdminUser() {
 
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Section Weights</div>
       <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;margin-bottom:14px">
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Positioning</strong> — 18% &nbsp;|&nbsp; <strong>Channel Strategy</strong> — 18%</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Positioning</strong> — 18% &nbsp;|&nbsp; <strong>Channels & Growth</strong> — 22%</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Unit Economics</strong> — 14% &nbsp;|&nbsp; <strong>Subtraction</strong> — 12%</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Growth Plan</strong> — 12% &nbsp;|&nbsp; <strong>Audience</strong> — 10% &nbsp;|&nbsp; <strong>Risks</strong> — 10%</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Execution</strong> — 8% &nbsp;|&nbsp; <strong>Brand</strong> — 8%</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>Audience</strong> — 10% &nbsp;|&nbsp; <strong>Website</strong> — 10% &nbsp;|&nbsp; <strong>Content & Authority</strong> — 10% &nbsp;|&nbsp; <strong>Risks</strong> — 10%</span></div>
       </div>
 
       <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Anti-Inflation Caps <span style="font-size:9px;color:#f56c6c"><i class="ti ti-lock" style="font-size:9px"></i></span></div>
@@ -3188,7 +3192,7 @@ async function deleteAdminUser() {
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D2</strong> Positioning — presents 2-3 directions without auto-selecting, messaging blocked until direction chosen</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D3</strong> Subtraction — activities have clear stop/keep verdicts, not just summaries</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D4</strong> Channel Strategy — three budget tiers (current/growth/optimal), allocation sums to 100%, channel mix has gaps flagged</span></div>
-        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D5</strong> Growth Plan — timeline items have durations and dependencies, funnel architecture present</span></div>
+        <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D5</strong> Growth Plan (in Channels tab) — timeline items have durations and dependencies, funnel architecture present</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D6</strong> Brand — content pillars and voice rules are vertical-aware with per-segment overlays</span></div>
         <div style="display:flex;gap:8px"><span style="color:var(--mid);min-width:14px">·</span><span><strong>D7</strong> Risks — risks have severity scores and actionable mitigations</span></div>
       </div>
