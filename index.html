@@ -2346,23 +2346,48 @@ async function runSnapshot() {
   const btn = document.getElementById('snapshot-run-btn');
   const status = document.getElementById('snapshot-status');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Running Ahrefs audit…';
-  status.textContent = 'Pulling domain metrics, top pages and backlink data…';
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Running full site audit…';
+  status.textContent = 'Pulling domain metrics, tech stack, vitals, rankings and backlink data…';
 
   try {
     const geo = (S.setup?.geo || '').toUpperCase();
-    const country = geo.includes('US') ? 'US' : 'CA';
-    const res = await fetch('/api/snapshot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain, country })
-    });
-    const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error || 'Snapshot failed');
+    const country = detectCountry(S.setup?.geo || '') || 'CA';
+    var body = JSON.stringify({ domain, country });
+    var hdrs = { 'Content-Type': 'application/json' };
+
+    // Run all 5 data pulls in parallel
+    var [ahrefsRes, techRes, vitalsRes, rankingsRes, detectRes] = await Promise.all([
+      fetch('/api/snapshot', { method: 'POST', headers: hdrs, body: body }),
+      fetch('/api/snapshot-tech', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; }),
+      fetch('/api/snapshot-vitals', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; }),
+      fetch('/api/snapshot-rankings', { method: 'POST', headers: hdrs, body: body }).catch(function() { return null; }),
+      fetch('/api/snapshot-detect', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; })
+    ]);
+
+    var data = await ahrefsRes.json();
+    if (!ahrefsRes.ok || data.error) throw new Error(data.error || 'Snapshot failed');
+
+    // Merge tech stack
+    if (techRes && techRes.ok) {
+      try { var techData = await techRes.json(); data.techStack = techData.techStack || []; } catch(e) { data.techStack = []; }
+    }
+    // Merge Core Web Vitals
+    if (vitalsRes && vitalsRes.ok) {
+      try { var vitalsData = await vitalsRes.json(); data.vitals = vitalsData.vitals || null; } catch(e) { data.vitals = null; }
+    }
+    // Merge keyword rankings
+    if (rankingsRes && rankingsRes.ok) {
+      try { var rankData = await rankingsRes.json(); data.rankings = rankData.rankings || []; data.rankingsTotal = rankData.total || 0; } catch(e) { data.rankings = []; }
+    }
+    // Merge schema/sitemap detection
+    if (detectRes && detectRes.ok) {
+      try { var detectData = await detectRes.json(); data.schemas = detectData.schemas || []; data.hasRobotsTxt = detectData.hasRobotsTxt; data.hasSitemap = detectData.hasSitemap; data.sitemapUrls = detectData.sitemapUrls || []; } catch(e) {}
+    }
+
     S.snapshot = data;
     scheduleSave();
     renderSnapshot();
-    status.textContent = 'Snapshot complete — ' + data.topPages.length + ' pages captured.';
+    status.textContent = 'Snapshot complete — ' + data.topPages.length + ' pages, ' + (data.rankings || []).length + ' rankings, ' + (data.techStack || []).length + ' technologies detected.';
   } catch(e) {
     document.getElementById('snapshot-error-msg').textContent = e.message;
     document.getElementById('snapshot-error').style.display = 'flex';
@@ -2426,6 +2451,143 @@ function renderSnapshot() {
       </div>`
     ).join('');
   }
+
+  // Sales Summary + extended data sections
+  var extraWrap = document.getElementById('snapshot-extra-wrap');
+  if (!extraWrap) {
+    extraWrap = document.createElement('div');
+    extraWrap.id = 'snapshot-extra-wrap';
+    extraWrap.style.cssText = 'margin-bottom:20px';
+    bar.parentNode.insertBefore(extraWrap, bar.nextSibling);
+  }
+  var extraHtml = '';
+
+  // ── Sales Summary Card ──
+  var dm = snap.domainMetrics || {};
+  var drVal = dm.dr || 0;
+  var drColor = drVal >= 50 ? 'var(--green)' : drVal >= 20 ? 'var(--dark)' : 'var(--error)';
+  var trafficVal = dm.orgTraffic || 0;
+  var quickWins = (snap.topPages || []).filter(function(p) { return p.topKeywordPosition && p.topKeywordPosition >= 4 && p.topKeywordPosition <= 20; });
+  var perfScore = snap.vitals ? snap.vitals.performance : null;
+  var perfColor = perfScore >= 90 ? 'var(--green)' : perfScore >= 50 ? '#e67e22' : perfScore !== null ? 'var(--error)' : 'var(--n2)';
+
+  extraHtml += '<div class="card" style="padding:16px;margin-bottom:14px;border-left:3px solid var(--green)">';
+  extraHtml += '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="ti ti-chart-bar" style="margin-right:4px"></i> Sales Summary</div>';
+  extraHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px">';
+  extraHtml += '<div><span style="color:var(--n2)">Domain Strength</span><div style="font-size:18px;font-weight:600;color:' + drColor + '">DR ' + drVal + '</div></div>';
+  extraHtml += '<div><span style="color:var(--n2)">Organic Traffic</span><div style="font-size:18px;font-weight:600">' + trafficVal.toLocaleString() + '<span style="font-size:11px;color:var(--n2)">/mo</span></div></div>';
+  extraHtml += '<div><span style="color:var(--n2)">Quick Wins</span><div style="font-size:18px;font-weight:600;color:' + (quickWins.length ? 'var(--green)' : 'var(--n2)') + '">' + quickWins.length + ' pages</div></div>';
+  extraHtml += '<div><span style="color:var(--n2)">Performance</span><div style="font-size:18px;font-weight:600;color:' + perfColor + '">' + (perfScore !== null ? perfScore + '/100' : 'Not tested') + '</div></div>';
+  extraHtml += '</div>';
+  // One-line verdict
+  var verdict = [];
+  if (drVal >= 40) verdict.push('Strong domain authority');
+  else if (drVal >= 15) verdict.push('Moderate authority — buildable');
+  else verdict.push('Low authority — needs link building');
+  if (trafficVal > 5000) verdict.push('meaningful organic traffic');
+  else if (trafficVal > 500) verdict.push('some organic presence');
+  else verdict.push('minimal organic traffic');
+  if (quickWins.length >= 3) verdict.push(quickWins.length + ' quick win pages near page 1');
+  extraHtml += '<div style="margin-top:8px;font-size:11px;color:var(--n3);border-top:1px solid var(--border);padding-top:8px">' + verdict.join(' · ') + '</div>';
+  extraHtml += '</div>';
+
+  // ── Core Web Vitals ──
+  if (snap.vitals) {
+    var v = snap.vitals;
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:500;margin-bottom:8px"><i class="ti ti-gauge" style="margin-right:4px"></i> Core Web Vitals <span style="font-size:11px;color:var(--n2)">(mobile)</span></div>';
+    extraHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;font-size:12px">';
+    var cwvItems = [
+      { label: 'Performance', val: v.performance + '/100', color: v.performance >= 90 ? 'var(--green)' : v.performance >= 50 ? '#e67e22' : 'var(--error)' },
+      { label: 'LCP', val: v.lcp ? v.lcp + 's' : '?', color: v.lcp && v.lcp <= 2.5 ? 'var(--green)' : v.lcp && v.lcp <= 4 ? '#e67e22' : 'var(--error)' },
+      { label: 'CLS', val: v.cls !== null ? String(v.cls) : '?', color: v.cls !== null && v.cls <= 0.1 ? 'var(--green)' : v.cls !== null && v.cls <= 0.25 ? '#e67e22' : 'var(--error)' },
+      { label: 'TBT', val: v.tbt ? v.tbt + 'ms' : '?', color: v.tbt && v.tbt <= 200 ? 'var(--green)' : v.tbt && v.tbt <= 600 ? '#e67e22' : 'var(--error)' },
+      { label: 'Accessibility', val: v.accessibility + '/100', color: v.accessibility >= 90 ? 'var(--green)' : v.accessibility >= 70 ? '#e67e22' : 'var(--error)' },
+      { label: 'SEO', val: v.seo + '/100', color: v.seo >= 90 ? 'var(--green)' : v.seo >= 70 ? '#e67e22' : 'var(--error)' },
+    ];
+    cwvItems.forEach(function(c) { extraHtml += '<div style="text-align:center"><div style="font-size:16px;font-weight:600;color:' + c.color + '">' + c.val + '</div><div style="font-size:10px;color:var(--n2)">' + c.label + '</div></div>'; });
+    extraHtml += '</div></div>';
+  }
+
+  // ── Tech Stack ──
+  if (snap.techStack && snap.techStack.length) {
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:500;margin-bottom:8px"><i class="ti ti-code" style="margin-right:4px"></i> Tech Stack <span style="font-size:11px;color:var(--n2)">(' + snap.techStack.length + ' detected)</span></div>';
+    extraHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    // Group by category
+    var catGroups = {};
+    snap.techStack.forEach(function(t) { var cat = t.category || 'Other'; if (!catGroups[cat]) catGroups[cat] = []; catGroups[cat].push(t); });
+    Object.keys(catGroups).sort().forEach(function(cat) {
+      catGroups[cat].forEach(function(t) {
+        extraHtml += '<span style="display:inline-block;padding:2px 8px;background:var(--panel);border-radius:10px;font-size:11px;color:var(--n3)">' + esc(t.name) + (t.version ? ' <span style="color:var(--n2)">' + esc(t.version) + '</span>' : '') + '</span>';
+      });
+    });
+    extraHtml += '</div></div>';
+  }
+
+  // ── Schema & Sitemap Detection ──
+  if (snap.schemas || snap.hasSitemap !== undefined) {
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:500;margin-bottom:8px"><i class="ti ti-file-code" style="margin-right:4px"></i> Schema & Site Health</div>';
+    extraHtml += '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px">';
+    if (snap.schemas && snap.schemas.length) {
+      extraHtml += '<div><span style="color:var(--n2)">Structured Data:</span> <span style="color:var(--green)">' + snap.schemas.join(', ') + '</span></div>';
+    } else {
+      extraHtml += '<div><span style="color:var(--n2)">Structured Data:</span> <span style="color:var(--error)">None detected</span></div>';
+    }
+    extraHtml += '<div><span style="color:var(--n2)">robots.txt:</span> ' + (snap.hasRobotsTxt ? '<span style="color:var(--green)">Found</span>' : '<span style="color:var(--error)">Missing</span>') + '</div>';
+    extraHtml += '<div><span style="color:var(--n2)">Sitemap:</span> ' + (snap.hasSitemap ? '<span style="color:var(--green)">Found</span>' : '<span style="color:var(--error)">Missing</span>') + '</div>';
+    extraHtml += '</div></div>';
+  }
+
+  // ── Quick Wins (pages ranking #4-20) ──
+  if (quickWins.length) {
+    quickWins.sort(function(a, b) { return a.topKeywordPosition - b.topKeywordPosition; });
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:500;margin-bottom:8px"><i class="ti ti-target-arrow" style="margin-right:4px;color:var(--green)"></i> Quick Wins <span style="font-size:11px;color:var(--n2)">— pages ranking #4-20, close to page 1</span></div>';
+    extraHtml += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">';
+    extraHtml += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Page</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Top Keyword</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Position</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Traffic</th>';
+    extraHtml += '</tr></thead><tbody>';
+    quickWins.slice(0, 15).forEach(function(p) {
+      var posColor = p.topKeywordPosition <= 10 ? 'var(--green)' : '#e67e22';
+      extraHtml += '<tr style="border-bottom:1px solid var(--border)">';
+      extraHtml += '<td style="padding:6px 10px;font-family:monospace;font-size:11px">' + esc(p.slug || '/') + '</td>';
+      extraHtml += '<td style="padding:6px 10px">' + esc(p.topKeyword || '') + '</td>';
+      extraHtml += '<td style="padding:6px 10px;text-align:right;font-weight:600;color:' + posColor + '">#' + p.topKeywordPosition + '</td>';
+      extraHtml += '<td style="padding:6px 10px;text-align:right">' + (p.traffic || 0).toLocaleString() + '</td>';
+      extraHtml += '</tr>';
+    });
+    extraHtml += '</tbody></table></div>';
+  }
+
+  // ── Top Rankings ──
+  if (snap.rankings && snap.rankings.length) {
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:500;margin-bottom:8px"><i class="ti ti-trophy" style="margin-right:4px"></i> Keyword Footprint <span style="font-size:11px;color:var(--n2)">— top ' + Math.min(snap.rankings.length, 20) + ' of ' + (snap.rankingsTotal || snap.rankings.length).toLocaleString() + ' ranked keywords</span></div>';
+    extraHtml += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="border-bottom:1px solid var(--border)">';
+    extraHtml += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Keyword</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Pos</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Volume</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">KD</th>';
+    extraHtml += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">URL</th>';
+    extraHtml += '</tr></thead><tbody>';
+    snap.rankings.slice(0, 20).forEach(function(r) {
+      var posColor = r.position <= 3 ? 'var(--green)' : r.position <= 10 ? 'var(--dark)' : 'var(--n3)';
+      extraHtml += '<tr style="border-bottom:1px solid var(--border)">';
+      extraHtml += '<td style="padding:6px 10px">' + esc(r.keyword) + '</td>';
+      extraHtml += '<td style="padding:6px 10px;text-align:right;font-weight:600;color:' + posColor + '">#' + r.position + '</td>';
+      extraHtml += '<td style="padding:6px 10px;text-align:right">' + (r.volume || 0).toLocaleString() + '</td>';
+      extraHtml += '<td style="padding:6px 10px;text-align:right">' + (r.kd || 0) + '</td>';
+      extraHtml += '<td style="padding:6px 10px;font-family:monospace;font-size:10px;color:var(--n3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.url || '') + '</td>';
+      extraHtml += '</tr>';
+    });
+    extraHtml += '</tbody></table></div>';
+  }
+
+  extraWrap.innerHTML = extraHtml;
 
   // Top pages table
   const pagesWrap = document.getElementById('snapshot-pages-wrap');

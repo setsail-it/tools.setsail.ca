@@ -174,6 +174,7 @@ const ENDPOINT_RATE_GROUP = {
   '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
   '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
   '/api/gkp-ideas': 'data', '/api/gkp-forecast': 'data', '/api/gkp-status': 'data',
+  '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data',
   '/api/queue-submit': 'queue',
   '/api/generate-image': 'image',
 };
@@ -1947,6 +1948,159 @@ export default {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500, headers: { 'Content-Type': 'application/json', ...cors }
         });
+      }
+    }
+
+    // POST /api/snapshot-tech — tech stack detection via DataForSEO
+    if (url.pathname === '/api/snapshot-tech' && request.method === 'POST') {
+      try {
+        const { domain } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const dfsRes = await fetch('https://api.dataforseo.com/v3/domain_analytics/technologies/domain_technologies/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + getDFSCreds(env), 'Content-Type': 'application/json' },
+          body: JSON.stringify([{ target: domain, limit: 1 }])
+        });
+        const dfsData = await dfsRes.json();
+        const techs = dfsData?.tasks?.[0]?.result?.[0]?.technologies || [];
+        // Flatten into categories
+        const stack = techs.map(t => ({
+          name: t.name || t.technology || '',
+          category: t.category || t.group || '',
+          version: t.version || ''
+        })).filter(t => t.name);
+        return new Response(JSON.stringify({ techStack: stack, domain }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // POST /api/snapshot-vitals — Core Web Vitals via DataForSEO Lighthouse
+    if (url.pathname === '/api/snapshot-vitals' && request.method === 'POST') {
+      try {
+        const { domain } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const targetUrl = 'https://' + domain.replace(/^https?:\/\//, '');
+        const dfsRes = await fetch('https://api.dataforseo.com/v3/on_page/lighthouse/live/json', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + getDFSCreds(env), 'Content-Type': 'application/json' },
+          body: JSON.stringify([{ url: targetUrl, for_mobile: true, categories: ['performance', 'accessibility', 'seo'] }])
+        });
+        const dfsData = await dfsRes.json();
+        const audit = dfsData?.tasks?.[0]?.result?.[0] || {};
+        const categories = audit.categories || {};
+        const perf = categories.performance || {};
+        const access = categories.accessibility || {};
+        const seoScore = categories.seo || {};
+        // Extract CWV from audits
+        const audits = audit.audits || {};
+        const vitals = {
+          performance: Math.round((perf.score || 0) * 100),
+          accessibility: Math.round((access.score || 0) * 100),
+          seo: Math.round((seoScore.score || 0) * 100),
+          lcp: audits['largest-contentful-paint']?.numericValue ? Math.round(audits['largest-contentful-paint'].numericValue / 100) / 10 : null,
+          cls: audits['cumulative-layout-shift']?.numericValue ? Math.round(audits['cumulative-layout-shift'].numericValue * 1000) / 1000 : null,
+          fid: audits['max-potential-fid']?.numericValue ? Math.round(audits['max-potential-fid'].numericValue) : null,
+          tbt: audits['total-blocking-time']?.numericValue ? Math.round(audits['total-blocking-time'].numericValue) : null,
+          si: audits['speed-index']?.numericValue ? Math.round(audits['speed-index'].numericValue / 100) / 10 : null,
+        };
+        return new Response(JSON.stringify({ vitals, domain }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // POST /api/snapshot-rankings — top ranked keywords for domain
+    if (url.pathname === '/api/snapshot-rankings' && request.method === 'POST') {
+      try {
+        const { domain, country } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const locCode = getLocationCode(country);
+        const dfsRes = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + getDFSCreds(env), 'Content-Type': 'application/json' },
+          body: JSON.stringify([{
+            target: domain,
+            location_code: locCode,
+            language_code: 'en',
+            limit: 100,
+            order_by: ['keyword_data.keyword_info.search_volume,desc'],
+            filters: ['ranked_serp_element.serp_item.rank_group', '<=', 50]
+          }])
+        });
+        const dfsData = await dfsRes.json();
+        const items = dfsData?.tasks?.[0]?.result?.[0]?.items || [];
+        const rankings = items.map(item => ({
+          keyword: item.keyword_data?.keyword || '',
+          position: item.ranked_serp_element?.serp_item?.rank_group || 0,
+          url: item.ranked_serp_element?.serp_item?.relative_url || '',
+          volume: item.keyword_data?.keyword_info?.search_volume || 0,
+          kd: item.keyword_data?.keyword_properties?.keyword_difficulty || 0,
+          cpc: item.keyword_data?.keyword_info?.cpc || 0,
+          traffic: item.ranked_serp_element?.serp_item?.etv || 0
+        })).filter(r => r.keyword);
+        return new Response(JSON.stringify({ rankings, domain, total: dfsData?.tasks?.[0]?.result?.[0]?.total_count || 0 }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // POST /api/snapshot-detect — schema markup + sitemap detection
+    if (url.pathname === '/api/snapshot-detect' && request.method === 'POST') {
+      try {
+        const { domain } = await request.json();
+        if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const base = 'https://' + domain.replace(/^https?:\/\//, '');
+        // Parallel fetch: homepage HTML, robots.txt, sitemap.xml
+        const [htmlRes, robotsRes, sitemapRes] = await Promise.all([
+          fetch(base, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetSailBot/1.0)' }, redirect: 'follow' }).catch(() => null),
+          fetch(base + '/robots.txt', { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => null),
+          fetch(base + '/sitemap.xml', { headers: { 'User-Agent': 'Mozilla/5.0' } }).catch(() => null)
+        ]);
+        // Schema detection from homepage
+        var schemas = [];
+        if (htmlRes && htmlRes.ok) {
+          const html = await htmlRes.text();
+          // Find all application/ld+json blocks
+          const ldMatches = html.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+          ldMatches.forEach(function(m) {
+            try {
+              const inner = m.replace(/<script[^>]*>/, '').replace(/<\/script>/, '').trim();
+              const parsed = JSON.parse(inner);
+              const types = Array.isArray(parsed) ? parsed.map(function(p) { return p['@type'] || 'unknown'; }) : [parsed['@type'] || 'unknown'];
+              schemas.push(...types);
+            } catch(e) { /* invalid JSON-LD */ }
+          });
+          // Check for Open Graph
+          if (/<meta[^>]*property\s*=\s*["']og:/.test(html)) schemas.push('OpenGraph');
+          // Check for Twitter Cards
+          if (/<meta[^>]*name\s*=\s*["']twitter:/.test(html)) schemas.push('TwitterCard');
+        }
+        // Robots.txt
+        var hasRobots = !!(robotsRes && robotsRes.ok);
+        var robotsTxt = hasRobots ? (await robotsRes.text()).slice(0, 2000) : '';
+        // Sitemap detection
+        var hasSitemap = !!(sitemapRes && sitemapRes.ok && sitemapRes.headers.get('content-type')?.includes('xml'));
+        // Check robots.txt for sitemap references
+        var sitemapUrls = [];
+        var sitemapMatches = robotsTxt.match(/Sitemap:\s*(\S+)/gi) || [];
+        sitemapMatches.forEach(function(m) { sitemapUrls.push(m.replace(/Sitemap:\s*/i, '').trim()); });
+        if (hasSitemap && !sitemapUrls.length) sitemapUrls.push(base + '/sitemap.xml');
+        return new Response(JSON.stringify({
+          schemas: [...new Set(schemas)],
+          hasRobotsTxt: hasRobots,
+          hasSitemap: hasSitemap || sitemapUrls.length > 0,
+          sitemapUrls,
+          domain
+        }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
       }
     }
 

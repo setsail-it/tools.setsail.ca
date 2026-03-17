@@ -2506,6 +2506,53 @@ function _buyerIntelBlock(page) {
   return '\n\nBUYER INTELLIGENCE\n' + parts.join('\n\n') + '\n';
 }
 
+// Build snapshot context block for strategy diagnostics
+function _snapshotCtxBlock() {
+  var snap = S.snapshot || {};
+  var dm = snap.domainMetrics || {};
+  if (!dm.dr && !snap.domain_rating && !(snap.topPages && snap.topPages.length)) return '';
+  var lines = ['CURRENT DOMAIN PERFORMANCE:'];
+  var dr = dm.dr || snap.domain_rating;
+  if (dr) lines.push('- Domain Rating (DR): ' + dr);
+  var traffic = dm.orgTraffic || snap.organic_traffic;
+  if (traffic) lines.push('- Monthly organic traffic: ' + traffic);
+  var orgKws = dm.orgKeywords || snap.organic_keywords;
+  if (orgKws) lines.push('- Organic keywords ranking: ' + orgKws);
+  var refDoms = dm.liveRefdomains || snap.referring_domains;
+  if (refDoms) lines.push('- Referring domains: ' + refDoms);
+  var pages = snap.topPages || [];
+  if (pages.length) {
+    lines.push('- Top pages by traffic (' + pages.length + ' captured):');
+    pages.slice(0, 10).forEach(function(p) {
+      var line = '  ' + (p.slug || p.url || '?') + ' — traffic: ' + (p.traffic || 0);
+      if (p.topKeyword) line += ', top kw: "' + p.topKeyword + '"';
+      if (p.topKeywordPosition) line += ' (#' + p.topKeywordPosition + ')';
+      if (p.ur) line += ', UR: ' + p.ur;
+      lines.push(line);
+    });
+    // Quick wins: pages ranking #4-20 (close to page 1)
+    var quickWins = pages.filter(function(p) {
+      return p.topKeywordPosition && p.topKeywordPosition >= 4 && p.topKeywordPosition <= 20;
+    }).sort(function(a, b) { return a.topKeywordPosition - b.topKeywordPosition; });
+    if (quickWins.length) {
+      lines.push('- Quick win pages (ranking #4-20, close to page 1):');
+      quickWins.slice(0, 5).forEach(function(p) {
+        lines.push('  ' + (p.slug || p.url) + ' — "' + p.topKeyword + '" at #' + p.topKeywordPosition);
+      });
+    }
+  }
+  // Tech stack if available
+  if (snap.techStack && snap.techStack.length) {
+    lines.push('- Tech stack: ' + snap.techStack.map(function(t) { return t.name || t; }).slice(0, 10).join(', '));
+  }
+  // Core Web Vitals if available
+  if (snap.vitals) {
+    var v = snap.vitals;
+    lines.push('- Core Web Vitals: LCP ' + (v.lcp || '?') + 's, CLS ' + (v.cls || '?') + ', FID ' + (v.fid || '?') + 'ms, Performance ' + (v.performance || '?') + '/100');
+  }
+  return '\n' + lines.join('\n') + '\n';
+}
+
 function buildDiagnosticPrompt(num) {
   var r = S.research || {};
   var st = S.strategy || {};
@@ -2717,6 +2764,7 @@ function buildDiagnosticPrompt(num) {
 
     return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
       + buildPricingContextBlock()
+      + _snapshotCtxBlock()
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + '- Average deal size: ' + (r.average_deal_size || 'UNKNOWN') + '\n'
@@ -2926,6 +2974,7 @@ function buildDiagnosticPrompt(num) {
     // D4: Channel & Lever Viability
     return ctx + '\n\nDIAGNOSTIC: Channel & Lever Viability Assessment\n\n'
       + buildPricingContextBlock()
+      + _snapshotCtxBlock()
       + 'UNIT ECONOMICS: ' + JSON.stringify(st.unit_economics || 'NOT YET CALCULATED') + '\n'
       + 'COMPETITIVE POSITION: ' + (st.positioning ? st.positioning.recommended_positioning_angle || '' : 'NOT YET ASSESSED') + '\n'
       + 'BUDGET: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
@@ -3008,6 +3057,7 @@ function buildDiagnosticPrompt(num) {
   if (num === 5) {
     // D5: Website & Conversion
     return ctx + '\n\nDIAGNOSTIC: Website & Conversion Assessment\n\n'
+      + _snapshotCtxBlock()
       + 'CURRENT SITE: ' + JSON.stringify(enrich.current_presence || 'NOT ASSESSED') + '\n'
       + 'HAS SERVICE PAGES: ' + (r.has_service_pages || 'unknown') + '\n'
       + 'HAS BLOG: ' + (r.has_blog || 'unknown') + '\n'
