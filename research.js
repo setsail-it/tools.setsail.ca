@@ -638,6 +638,7 @@ function setRF(key, value) {
   let obj = S.research;
   for (let i = 0; i < parts.length - 1; i++) { obj[parts[i]] = obj[parts[i]] || {}; obj = obj[parts[i]]; }
   obj[parts[parts.length-1]] = value;
+  S.research._updatedAt = Date.now();
   scheduleSave();
   scheduleScorecard();
 }
@@ -1236,6 +1237,7 @@ async function enrichAll(forceAll, startFrom) {
     if (i < steps.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
   }
   _enriching = false;
+  S.research._updatedAt = Date.now();
   if (msgEl) msgEl.textContent = 'All sections enriched ✓';
   if (progEl) progEl.textContent = '';
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Re-enrich'; btn.setAttribute('onclick','enrichAll(true)'); }

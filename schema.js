@@ -167,7 +167,7 @@ function renderSchemaQueue() {
     const isDone = !!r.schema, isErr = !!r.error;
     const isRunning = S.schemaCurrentSlug === p.slug;
     const isExpanded = S.schemaExpandedSlug === p.slug;
-    const cirStyle = isDone?'background:var(--dark)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+    const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--green)':'background:var(--n1)';
     const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-color:rgba(255,255,255,0.3);border-top-color:white"></span>':(i+1);
     const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(0,0,0,0.18);':isErr?'border-color:rgba(229,57,53,0.22);':'';
 

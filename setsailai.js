@@ -10,10 +10,107 @@ var _sai = {
   mode: 'ask',
   messages: [],
   auditResults: [],
+  pendingFiles: [],
   _streaming: false,
   _abortCtrl: null,
   _lastAuditAt: 0
 };
+
+/* ---------- 1b. File Upload ---------- */
+
+var _SAI_MAX_IMAGE = 5 * 1024 * 1024;
+var _SAI_MAX_PDF = 10 * 1024 * 1024;
+var _SAI_MAX_TEXT = 50 * 1024;
+var _SAI_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+function saiAttachFile() {
+  var fi = document.getElementById('sai-file-input');
+  if (fi) { fi.value = ''; fi.click(); }
+}
+
+function _saiHandleFiles(fileList) {
+  if (!fileList || !fileList.length) return;
+  var pending = [];
+  for (var i = 0; i < fileList.length; i++) pending.push(fileList[i]);
+
+  pending.forEach(function(file) {
+    var ext = (file.name || '').toLowerCase().split('.').pop();
+    var category = null;
+    var maxSize = 0;
+
+    if (_SAI_IMAGE_TYPES.indexOf(file.type) !== -1) {
+      category = 'image'; maxSize = _SAI_MAX_IMAGE;
+    } else if (file.type === 'application/pdf' || ext === 'pdf') {
+      category = 'pdf'; maxSize = _SAI_MAX_PDF;
+    } else if (['txt', 'md', 'csv'].indexOf(ext) !== -1 || (file.type && file.type.startsWith('text/'))) {
+      category = 'text'; maxSize = _SAI_MAX_TEXT;
+    }
+
+    if (!category) {
+      if (typeof aiBarNotify === 'function') aiBarNotify('Unsupported file type: ' + file.name, { duration: 4000 });
+      return;
+    }
+    if (file.size > maxSize) {
+      var limitMB = (maxSize / (1024 * 1024)).toFixed(0);
+      if (typeof aiBarNotify === 'function') aiBarNotify('File too large: ' + file.name + ' (max ' + limitMB + 'MB)', { duration: 4000 });
+      return;
+    }
+
+    if (category === 'text') {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        _sai.pendingFiles.push({ name: file.name, type: file.type, category: 'text', data: e.target.result, size: file.size });
+        _saiRenderFileChips();
+      };
+      reader.readAsText(file);
+    } else {
+      var reader2 = new FileReader();
+      reader2.onload = function(e) {
+        var dataUrl = e.target.result || '';
+        var base64 = dataUrl.replace(/^data:[^;]+;base64,/, '');
+        var mediaType = category === 'pdf' ? 'application/pdf' : file.type;
+        _sai.pendingFiles.push({ name: file.name, type: mediaType, category: category, data: base64, size: file.size });
+        _saiRenderFileChips();
+      };
+      reader2.readAsDataURL(file);
+    }
+  });
+}
+
+function _saiRenderFileChips() {
+  var el = document.getElementById('sai-file-chips');
+  if (!el) return;
+  if (!_sai.pendingFiles.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  el.innerHTML = '';
+  _sai.pendingFiles.forEach(function(f, idx) {
+    var chip = document.createElement('div');
+    chip.className = 'sai-file-chip';
+    var iconClass = f.category === 'image' ? 'ti-photo' : f.category === 'pdf' ? 'ti-file-type-pdf' : 'ti-file-text';
+    var sizeLabel = f.size < 1024 ? f.size + 'B' : f.size < 1048576 ? (f.size / 1024).toFixed(0) + 'KB' : (f.size / 1048576).toFixed(1) + 'MB';
+    var icon = document.createElement('i');
+    icon.className = 'ti ' + iconClass;
+    icon.style.cssText = 'font-size:12px;flex-shrink:0';
+    var nameSpan = document.createElement('span');
+    nameSpan.textContent = f.name;
+    var sizeSpan = document.createElement('span');
+    sizeSpan.style.cssText = 'font-size:9px;color:var(--n2);flex-shrink:0';
+    sizeSpan.textContent = sizeLabel;
+    var removeBtn = document.createElement('button');
+    removeBtn.innerHTML = '&times;';
+    removeBtn.onclick = (function(i) { return function() { _saiRemoveFile(i); }; })(idx);
+    chip.appendChild(icon);
+    chip.appendChild(nameSpan);
+    chip.appendChild(sizeSpan);
+    chip.appendChild(removeBtn);
+    el.appendChild(chip);
+  });
+}
+
+function _saiRemoveFile(idx) {
+  _sai.pendingFiles.splice(idx, 1);
+  _saiRenderFileChips();
+}
 
 function initSai() {
   /* Note: toggle, send, mode buttons, and overlay already have inline onclick
@@ -25,6 +122,50 @@ function initSai() {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         saiSend();
+      }
+    });
+    /* Paste handler for images */
+    input.addEventListener('paste', function(e) {
+      var items = (e.clipboardData || {}).items;
+      if (!items) return;
+      var imageFiles = [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          var f = items[i].getAsFile();
+          if (f) imageFiles.push(f);
+        }
+      }
+      if (imageFiles.length) {
+        e.preventDefault();
+        _saiHandleFiles(imageFiles);
+      }
+    });
+  }
+
+  /* File input change handler */
+  var fileInput = document.getElementById('sai-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', function() {
+      _saiHandleFiles(this.files);
+    });
+  }
+
+  /* Drag-and-drop on panel */
+  var panel = document.getElementById('sai-panel');
+  if (panel) {
+    panel.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      panel.classList.add('sai-dragover');
+    });
+    panel.addEventListener('dragleave', function(e) {
+      e.preventDefault();
+      panel.classList.remove('sai-dragover');
+    });
+    panel.addEventListener('drop', function(e) {
+      e.preventDefault();
+      panel.classList.remove('sai-dragover');
+      if (e.dataTransfer && e.dataTransfer.files.length) {
+        _saiHandleFiles(e.dataTransfer.files);
       }
     });
   }
@@ -72,6 +213,10 @@ function setSaiMode(mode) {
   if (auditArea) auditArea.style.display = (mode === 'audit') ? '' : 'none';
   if (inputRow) inputRow.style.display = (mode === 'audit') ? 'none' : '';
   if (sendBtn) sendBtn.style.display = (mode === 'audit') ? 'none' : '';
+  var attachBtn = document.getElementById('sai-attach');
+  if (attachBtn) attachBtn.style.display = (mode === 'audit') ? 'none' : '';
+  var chipRow = document.getElementById('sai-file-chips');
+  if (chipRow && mode === 'audit') chipRow.style.display = 'none';
 
   /* Toggle explain-mode highlight class on body */
   document.body.classList.toggle('sai-explain', mode === 'explain');
@@ -107,7 +252,7 @@ function _saiCallClaude(system, userMsg, onChunk) {
     model: 'claude-sonnet-4-20250514',
     system: system,
     messages: [{ role: 'user', content: userMsg }],
-    max_tokens: 2048,
+    max_tokens: Array.isArray(userMsg) ? 4096 : 2048,
     stream: true
   };
 
@@ -165,17 +310,46 @@ function saiSend() {
   var input = document.getElementById('sai-input');
   if (!input) return;
   var text = input.value.trim();
-  if (!text || _sai._streaming) return;
+  var hasFiles = _sai.pendingFiles.length > 0;
+  if ((!text && !hasFiles) || _sai._streaming) return;
   input.value = '';
 
-  _sai.messages.push({ role: 'user', content: text, ts: Date.now() });
-  _addChatBubble('user', text, false);
+  /* Build content blocks when files are attached */
+  var userContent = text;
+  var historyContent = text;
+  var bubbleContent = text;
 
-  var system = _assembleSaiContext(text);
+  if (hasFiles) {
+    var contentBlocks = [];
+    var fileDescriptions = [];
+
+    _sai.pendingFiles.forEach(function(f) {
+      if (f.category === 'image') {
+        contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: f.type, data: f.data } });
+        fileDescriptions.push('[Attached image: ' + f.name + ']');
+      } else if (f.category === 'pdf') {
+        contentBlocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } });
+        fileDescriptions.push('[Attached PDF: ' + f.name + ']');
+      } else if (f.category === 'text') {
+        contentBlocks.push({ type: 'text', text: '--- File: ' + f.name + ' ---\n' + f.data });
+        fileDescriptions.push('[Attached text: ' + f.name + ']');
+      }
+    });
+
+    if (text) contentBlocks.push({ type: 'text', text: text });
+    userContent = contentBlocks;
+    historyContent = (fileDescriptions.length ? fileDescriptions.join('\n') + '\n' : '') + text;
+    bubbleContent = (fileDescriptions.length ? fileDescriptions.join(' ') + (text ? '\n' + text : '') : text);
+  }
+
+  _sai.messages.push({ role: 'user', content: historyContent, ts: Date.now() });
+  _addChatBubble('user', bubbleContent, false);
+
+  var system = _assembleSaiContext(text, hasFiles);
   var bubble = _addChatBubble('assistant', '', true);
   var fullText = '';
 
-  _saiCallClaude(system, text, function(chunk) {
+  _saiCallClaude(system, userContent, function(chunk) {
     fullText += chunk;
     /* Hide action block from live render — show only the explanation */
     var displayText = fullText.replace(/:::ACTION[\s\S]*?:::END/g, '\n\n*Preparing proposed changes…*').replace(/:::ACTION[\s\S]*$/g, '\n\n*Preparing proposed changes…*');
@@ -184,6 +358,9 @@ function saiSend() {
     if (area) area.scrollTop = area.scrollHeight;
   }).then(function() {
     _sai.messages.push({ role: 'assistant', content: fullText, ts: Date.now() });
+    /* Clear staged files */
+    _sai.pendingFiles = [];
+    _saiRenderFileChips();
     /* Parse and render any action blocks */
     var actionMatch = fullText.match(/:::ACTION\s*([\s\S]*?)\s*:::END/);
     var displayText = fullText.replace(/:::ACTION[\s\S]*?:::END/g, '').trim();
@@ -209,7 +386,7 @@ function saiSend() {
   });
 }
 
-function _assembleSaiContext(question) {
+function _assembleSaiContext(question, hasFiles) {
   var ctx = '';
   var q = (question || '').toLowerCase();
 
@@ -372,6 +549,15 @@ function _assembleSaiContext(question) {
     + '- If the user is vague, ask clarifying questions INSTEAD of proposing an action.\n\n'
     + 'PROJECT CONTEXT:\n' + ctx;
 
+  if (hasFiles) {
+    systemPrompt += '\n\nFILE ATTACHMENTS:\n'
+      + 'The user has attached files to this message. Analyse them thoroughly.\n'
+      + '- If it is a sitemap or page list, you can propose a sitemap_replace or sitemap_add action.\n'
+      + '- If it is a document with research data, you can propose a research_update action.\n'
+      + '- If it is a screenshot or image, describe what you see and relate it to the project context.\n'
+      + '- Always summarise the key content of the file before proposing actions.\n';
+  }
+
   return systemPrompt;
 }
 
@@ -492,6 +678,17 @@ var SAI_AUDIT_CHECKS = [
   { id: 'st-kw-stale', stage: 'strategy', severity: 'warning', message: 'Strategy may be stale — keywords changed since last run',
     test: function() { return S && S.strategy && S.strategy._kwDataStale === true; },
     fix_action: { stage: 'strategy' } },
+  { id: 'st-research-stale', stage: 'strategy', severity: 'warning', message: 'Research was updated after strategy was generated — strategy may be based on outdated data',
+    test: function() {
+      if (!(S && S.strategy && S.strategy._meta && S.strategy._meta._completedAt && S.research && S.research._updatedAt)) return false;
+      return S.research._updatedAt > S.strategy._meta._completedAt;
+    },
+    detail: function() {
+      var rDate = new Date(S.research._updatedAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      var sDate = new Date(S.strategy._meta._completedAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return 'Research updated ' + rDate + ' — Strategy last run ' + sDate;
+    },
+    fix_action: { stage: 'strategy' } },
   { id: 'st-no-econ', stage: 'strategy', severity: 'warning', message: 'Unit economics (CPL) not calculated',
     test: function() { return S && S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0 && !(S.strategy.unit_economics && S.strategy.unit_economics.cpl); },
     fix_action: { stage: 'strategy', tab: 'unit_economics' } },
@@ -561,6 +758,17 @@ var SAI_AUDIT_CHECKS = [
       return S.pages.some(function(p) { return !p.awareness_stage; });
     },
     fix_action: { stage: 'sitemap' } },
+  { id: 'sm-strategy-stale', stage: 'sitemap', severity: 'warning', message: 'Strategy was updated after sitemap was built — sitemap may not reflect current strategy',
+    test: function() {
+      if (!(S && S._sitemapBuiltAt && S.strategy && S.strategy._meta && S.strategy._meta._completedAt)) return false;
+      return S.strategy._meta._completedAt > S._sitemapBuiltAt;
+    },
+    detail: function() {
+      var smDate = new Date(S._sitemapBuiltAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      var stDate = new Date(S.strategy._meta._completedAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return 'Sitemap built ' + smDate + ' — Strategy updated ' + stDate;
+    },
+    fix_action: { stage: 'sitemap' } },
 
   /* --- BRIEFS --- */
   { id: 'br-missing', stage: 'briefs', severity: 'warning', message: 'Some pages do not have briefs generated',
@@ -574,14 +782,19 @@ var SAI_AUDIT_CHECKS = [
       return S.pages.filter(function(p) { return !(S.briefs && S.briefs[p.slug]); }).map(function(p) { return p.slug; }).slice(0, 15).join(', ');
     },
     fix_action: { stage: 'briefs' } },
-  { id: 'br-stale', stage: 'briefs', severity: 'info', message: 'Some briefs may be outdated — strategy was updated after they were generated',
+  { id: 'br-stale', stage: 'briefs', severity: 'warning', message: 'Some briefs may be outdated — strategy was updated after they were generated',
     test: function() {
-      if (!(S && S.briefs && S.strategy && S.strategy._meta)) return false;
-      var stratVer = S.strategy._meta.current_version || 0;
-      return Object.keys(S.briefs).some(function(slug) {
-        var b = S.briefs[slug];
-        return b && b._strategyVersion && b._strategyVersion < stratVer;
+      if (!(S && S.strategy && S.strategy._meta && S.strategy._meta._completedAt)) return false;
+      var stratAt = S.strategy._meta._completedAt;
+      if (!S.pages || !S.pages.length) return false;
+      return S.pages.some(function(p) {
+        return p.brief && p.brief.generatedAt && p.brief.generatedAt < stratAt;
       });
+    },
+    detail: function() {
+      var stratAt = S.strategy._meta._completedAt;
+      var stale = (S.pages || []).filter(function(p) { return p.brief && p.brief.generatedAt && p.brief.generatedAt < stratAt; });
+      return stale.map(function(p) { return p.slug; }).slice(0, 10).join(', ');
     },
     fix_action: { stage: 'briefs' } },
 
@@ -627,6 +840,15 @@ var SAI_AUDIT_CHECKS = [
   /* --- LATER STAGES --- */
   { id: 'ly-none', stage: 'layout', severity: 'info', message: 'Layout stage has not been started',
     test: function() { return !(S && S.layout && Object.keys(S.layout).length); },
+    fix_action: { stage: 'layout' } },
+  { id: 'ly-brief-stale', stage: 'layout', severity: 'warning', message: 'Some layouts were generated before their briefs were updated',
+    test: function() {
+      if (!(S && S.layout && S.pages && S.pages.length)) return false;
+      return S.pages.some(function(p) {
+        var ly = S.layout[p.slug];
+        return ly && ly.generatedAt && p.brief && p.brief.generatedAt && ly.generatedAt < p.brief.generatedAt;
+      });
+    },
     fix_action: { stage: 'layout' } },
   { id: 'sc-none', stage: 'schema', severity: 'info', message: 'Schema markup has not been generated',
     test: function() { return !(S && S.schema && Object.keys(S.schema).length); },
@@ -702,7 +924,7 @@ function _renderAuditPanel() {
 
     items.forEach(function(issue) {
       var card = document.createElement('div');
-      card.style.cssText = 'margin:4px 10px;padding:10px 12px;background:#fff;border-radius:8px;border:1px solid #e8eaee;display:flex;align-items:flex-start;gap:8px;font-size:13px;';
+      card.style.cssText = 'margin:4px 10px;padding:10px 12px;background:var(--white);border-radius:8px;border:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;font-size:13px;';
 
       var icon = '';
       if (issue.severity === 'error') {
@@ -1086,6 +1308,7 @@ function _execSitemapReplace(action) {
     return page;
   });
 
+  S._sitemapBuiltAt = Date.now();
   _saiReRenderAndSave('sitemap');
   return { ok: true, message: 'Sitemap replaced with ' + S.pages.length + ' pages. Review and assign keywords.' };
 }

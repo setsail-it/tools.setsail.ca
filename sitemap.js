@@ -688,6 +688,7 @@ function buildSitemapFromClusters() {
   });
 
   S.pages = pages;
+  S._sitemapBuiltAt = Date.now();
 
   // Auto-assign target persona and voice overlay from strategy audience data
   var _hasAudience = S.strategy && S.strategy.audience && S.strategy.audience.personas && S.strategy.audience.personas.length;
@@ -736,6 +737,7 @@ function attemptSitemapParseFromText(text) {
   }
   if (parsed && Array.isArray(parsed) && parsed.length) {
     S.pages = parsed;
+    S._sitemapBuiltAt = Date.now();
     enrichSitemapWithKwData();
     document.getElementById('sitemap-stream-wrap').style.display = 'none';
     renderSitemapResults(false);
@@ -780,6 +782,7 @@ function attemptSitemapParse() {
   }
   if (parsed) {
     S.pages = Array.isArray(parsed) ? parsed : parsed;
+    S._sitemapBuiltAt = Date.now();
     enrichSitemapWithKwData();
     wrap.style.display = 'none';
     renderSitemapResults(false);
@@ -867,7 +870,7 @@ async function runSitemap(withRevisions) {
     const result = await callClaude(P.sitemap, prompt, t => { streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; }, 8000);
     const parsed = safeParseJSON(result);
     if (Array.isArray(parsed) && parsed.length) {
-      S.pages = parsed; enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
+      S.pages = parsed; S._sitemapBuiltAt = Date.now(); enrichSitemapWithKwData(); wrap.style.display = 'none'; renderSitemapResults(false); scheduleSave(); enrichSitemapWithLiveData();
     } else {
       streamEl.textContent = result;
       // Auto-attempt parse before showing error
@@ -1392,7 +1395,7 @@ function _renderSitemapResultsInner(approved) {
   const hasKwData = S.kwResearch?.keywords?.length > 0;
 
   let html = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap">';
-  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+allPages.length+' pages</span>';
+  html += '<span style="background:var(--green);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px">'+allPages.length+' pages</span>';
   html += '<span class="chip green">P1: '+p1+'</span><span class="chip warn">P2: '+p2+'</span><span class="chip">P3: '+p3+'</span>';
   if (zeroVol > 0) html += '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(220,50,47,0.2)">⚠ '+zeroVol+' zero-vol</span>';
   // Alignment stats

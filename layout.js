@@ -81,7 +81,7 @@ function renderLayoutQueue() {
       const isRunning = layoutCurrentPage === p.slug;
       const isExpanded = S.layoutExpandedSlug === p.slug;
       const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--green)':'background:var(--n1)';
       const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
       const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
 
@@ -119,7 +119,7 @@ function renderLayoutQueue() {
             + (hasNewImgs ? '<button class="btn btn-ghost sm" onclick="reinjectImages(\''+p.slug+'\')" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>' : '')
             + '<button class="btn btn-danger sm" onclick="redoWireframe(\''+p.slug+'\')"><i class="ti ti-refresh"></i> Redo</button>'
             + '</div>'
-            + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">'
+            + '<div id="layout-preview-'+p.slug+'" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--white)">'
             + makeWireframeIframe(r.html)
             + '</div>'
             + '<div id="layout-code-'+p.slug+'" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">'+esc(r.html)+'</div>'
@@ -207,7 +207,7 @@ function expandLayoutCard(slug) {
       ${hasNewImgs ? `<button class="btn btn-ghost sm" onclick="reinjectImages(${sq})" style="border-color:var(--green);color:var(--green)"><i class="ti ti-photo-check"></i> Reinject Images</button>` : ''}
       <button class="btn btn-danger sm" onclick="redoWireframe(${sq})"><i class="ti ti-refresh"></i> Redo</button>
     </div>
-    <div id="layout-preview-${slug}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:white">
+    <div id="layout-preview-${slug}" style="border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--white)">
       <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--n2);font-size:12px"><span class="spinner" style="width:12px;height:12px"></span></div>
     </div>
     <div id="layout-code-${slug}" style="display:none;margin-top:8px;max-height:240px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)"></div>

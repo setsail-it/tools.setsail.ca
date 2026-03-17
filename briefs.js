@@ -16,10 +16,10 @@ function briefTogglePicker(pidx, type) {
     return;
   }
   // Position el directly — it's already position:absolute inside a position:relative wrapper
-  el.style.cssText = 'display:block;position:absolute;top:calc(100% + 3px);left:0;min-width:260px;max-width:380px;z-index:9999;border:1px solid var(--border);border-radius:6px;background:white;box-shadow:0 6px 20px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;overflow-x:hidden';
+  el.style.cssText = 'display:block;position:absolute;top:calc(100% + 3px);left:0;min-width:260px;max-width:380px;z-index:9999;border:1px solid var(--border);border-radius:6px;background:var(--white);box-shadow:0 6px 20px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;overflow-x:hidden';
   var html = '<div>';
   // Search input
-  html += '<div style="padding:5px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:white;z-index:1">';
+  html += '<div style="padding:5px 6px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--white);z-index:1">';
   html += '<input id="brief-'+type+'-search-'+pidx+'" data-pidx="'+pidx+'" data-type="'+type+'" placeholder="Filter…" class="brief-picker-search" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:3px;padding:3px 7px;font-family:var(--font);outline:none;box-sizing:border-box">';
   html += '</div>';
   // Items
@@ -34,9 +34,9 @@ function briefTogglePicker(pidx, type) {
   });
   html += '</div>';
   // Footer
-  html += '<div style="padding:5px 8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:white;position:sticky;bottom:0">';
+  html += '<div style="padding:5px 8px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--white);position:sticky;bottom:0">';
   html += '<span id="brief-'+type+'-selcount-'+pidx+'" style="font-size:9.5px;color:var(--n2)">0 selected</span>';
-  html += '<button class="brief-add-selected-btn" data-pidx="'+pidx+'" data-type="'+type+'" style="background:var(--dark);color:white;border:none;border-radius:3px;padding:3px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">Add Selected</button>';
+  html += '<button class="brief-add-selected-btn" data-pidx="'+pidx+'" data-type="'+type+'" style="background:var(--green);color:#fff;border:none;border-radius:3px;padding:3px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font)">Add Selected</button>';
   html += '</div>';
   html += '</div>';
   el.innerHTML = html;
@@ -821,7 +821,7 @@ function renderBriefs() {
 
   var approved = seoPages.filter(function(p){ return p.brief && p.brief.approved; }).length;
   html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
-  html += '<span style="background:var(--dark);color:white;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
+  html += '<span style="background:var(--green);color:#fff;font-size:11px;padding:3px 10px;border-radius:4px">'+seoPages.length+' pages</span>';
   html += '<span class="chip">'+hasKws+' with keywords</span>';
   html += '<span class="chip">'+hasQs+' with questions</span>';
   html += '<span class="chip '+(briefed===seoPages.length&&briefed>0?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
@@ -1006,12 +1006,12 @@ function renderBriefs() {
       + '<span style="font-size:10px;font-weight:500;color:var(--n2);text-transform:uppercase;letter-spacing:.06em">Page Context</span>'
       + '<span style="font-size:10px;color:var(--n2)">— paste case study data, stats, claims, or instructions. Injected verbatim into brief + copy.</span>'
       + '</div>'
-      + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--n2);cursor:pointer;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:white" data-tip="Upload a text file or image. Text files are extracted and appended to Page Context. Images are noted as available for the copy prompt.">'
+      + '<label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--n2);cursor:pointer;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--white)" data-tip="Upload a text file or image. Text files are extracted and appended to Page Context. Images are noted as available for the copy prompt.">'
       + '<i class="ti ti-upload" style="font-size:11px"></i> Upload file'
       + '<input type="file" accept=".txt,.md,.pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="briefContextUpload('+pidx+',this)">'
       + '</label>'
       + '</div>'
-      + '<textarea id="brief-ctx-'+pidx+'" data-pidx="'+pidx+'" class="brief-ctx-ta" placeholder="e.g. Case study: reduced CAC by 43% in 90 days. Client: Meridian Health. Lead with this in intro. Never mention competitor X by name." style="width:100%;min-height:52px;font-size:11px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);line-height:1.5;resize:vertical;background:white;color:var(--dark);box-sizing:border-box">' + esc(p.pageContext||'') + '</textarea>'
+      + '<textarea id="brief-ctx-'+pidx+'" data-pidx="'+pidx+'" class="brief-ctx-ta" placeholder="e.g. Case study: reduced CAC by 43% in 90 days. Client: Meridian Health. Lead with this in intro. Never mention competitor X by name." style="width:100%;min-height:52px;font-size:11px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);line-height:1.5;resize:vertical;background:var(--white);color:var(--dark);box-sizing:border-box">' + esc(p.pageContext||'') + '</textarea>'
       + (p.pageFiles && p.pageFiles.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.pageFiles.map(function(f,fi){ return '<span style="font-size:10px;padding:2px 8px;background:var(--n1);border-radius:4px;display:flex;align-items:center;gap:4px"><i class="ti '+(f.type==='image'?'ti-photo':'ti-file-text')+'" style="font-size:10px"></i>'+esc(f.name)+'<button onclick="briefContextRemoveFile('+pidx+','+fi+')" style="background:none;border:none;cursor:pointer;color:var(--n2);padding:0;line-height:1;font-size:11px">&times;</button></span>'; }).join('') + '</div>' : '')
       + '</div>'
       + '</div>';

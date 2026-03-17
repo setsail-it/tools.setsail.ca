@@ -1192,7 +1192,7 @@ function renderCopyQueue() {
       const isRunning = S.copyCurrentSlug === p.slug;
       const isExpanded = S.copyExpandedSlug === p.slug;
       const pColor = p.priority==='P1'?'var(--green)':p.priority==='P2'?'var(--warn)':'var(--n2)';
-      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--dark)':'background:var(--n1)';
+      const cirStyle = isDone?'background:var(--green)':isErr?'background:var(--error)':isRunning?'background:var(--green)':'background:var(--n1)';
       const cirContent = isDone?'&#10003;':isErr?'!':isRunning?'<span class="spinner" style="width:8px;height:8px;border-top-color:white;border-color:rgba(255,255,255,0.3)"></span>':globalIdx;
       const rowBorder = isExpanded?'border-color:var(--dark);':isDone?'border-color:rgba(21,142,29,0.3);':isErr?'border-color:rgba(229,57,53,0.22);':'';
       const rowBg = isExpanded&&!isDone&&!isRunning?'background:rgba(0,0,0,0.015);':'';
@@ -1400,7 +1400,7 @@ function renderCopyQueue() {
           html += '<button onclick="redoCopyPage(\''+p.slug+'\')" class="btn '+(_stale?'btn-primary':'btn-ghost')+' sm"><i class="ti ti-refresh" style="font-size:10px"></i> Redo</button>';
           html += '<button id="serp-intel-btn-'+p.slug+'" onclick="runSerpIntel(\''+p.slug+'\')" style="font-size:9px;font-weight:600;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:'+(_siWDone?'rgba(21,142,29,0.08)':'rgba(0,0,0,0.04)')+';color:'+(_siWDone?'var(--green)':'var(--n2)')+';cursor:pointer;font-family:var(--font)">'+(_siWDone?'↻ Refresh SERP Intel':'⟳ Run SERP Intel')+'</button>';
           html += '<span id="serp-intel-status-'+p.slug+'" style="font-size:9px;color:var(--n2)"></span>';
-          html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 14px;font-size:11px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:'+(_approved?'var(--green)':'var(--dark)')+';color:white">'+(_approved?'✓ Approved':'Approve for Schema')+'</button>';
+          html += '<button id="copy-approve-btn-'+p.slug+'" onclick="copyApprove(\''+p.slug+'\')" style="margin-left:auto;padding:5px 14px;font-size:11px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:'+(_approved?'var(--green)':'var(--green)')+';color:#fff">'+(_approved?'✓ Approved':'Approve for Schema')+'</button>';
           html += '</div>';
 
           // NEXT PAGE

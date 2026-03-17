@@ -528,7 +528,7 @@ function showMarginModal() {
   backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding-top:80px';
   // Modal
   var modal = document.createElement('div');
-  modal.style.cssText = 'background:white;border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)';
+  modal.style.cssText = 'background:var(--white);border-radius:12px;padding:24px;max-width:640px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)';
   // Header
   var header = document.createElement('div');
   header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:16px';
@@ -1996,6 +1996,7 @@ function createStrategyVersion(trigger, overrides) {
 
   meta.current_version = version.version;
   meta.overall_score = scores.overall;
+  meta._completedAt = Date.now();
   meta.versions.push(version);
 
   return version;
@@ -7903,7 +7904,7 @@ function _markdownToHtml(md) {
     // H1 — document title
     .replace(/^# (.+)$/gm, '<h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--dark);letter-spacing:-0.02em">$1</h2>')
     // H2 with numbered sections — major section headers
-    .replace(/^## (\d+)\.\s+(.+)$/gm, '<div style="border-top:2px solid var(--border);margin:24px 0 12px;padding-top:16px"><h3 style="font-size:13px;font-weight:600;color:var(--dark);margin:0;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--dark);color:white;font-size:10px;font-weight:700;flex-shrink:0">$1</span>$2</h3></div>')
+    .replace(/^## (\d+)\.\s+(.+)$/gm, '<div style="border-top:2px solid var(--border);margin:24px 0 12px;padding-top:16px"><h3 style="font-size:13px;font-weight:600;color:var(--dark);margin:0;display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;font-size:10px;font-weight:700;flex-shrink:0">$1</span>$2</h3></div>')
     // H2 — other headings
     .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:600;margin:20px 0 8px;color:var(--dark)">$1</h3>')
     // H3 — sub-headings
