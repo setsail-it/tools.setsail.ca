@@ -1299,7 +1299,7 @@ function renderCopyQueue() {
           }
 
           // AI AUDIT
-          html += '<div id="copy-audit-'+p.slug+'" style="padding:8px 14px;border-bottom:1px solid var(--border)">';
+          html += '<div id="copy-audit-'+p.slug+'" data-copilot-explain="copy-audit:' + esc(p.slug || '') + '" style="padding:8px 14px;border-bottom:1px solid var(--border)">';
           if (_audit) {
             var _aPct = Math.round((_audit.passed/_audit.total)*100);
             var _aClr = _aPct>=80?'var(--green)':_aPct>=55?'var(--warn)':'#e5534b';

@@ -1517,7 +1517,7 @@ function _renderSitemapResultsInner(approved) {
       volHtml = '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
     }
 
-    html += '<div>'; // page block
+    html += '<div data-copilot-explain="page:' + esc(p.slug || '') + '">'; // page block
 
     // ── MAIN ROW ──
     html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:8px 14px;align-items:start;background:'+rowBg+'">';

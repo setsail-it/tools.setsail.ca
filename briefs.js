@@ -1098,7 +1098,7 @@ function renderBriefs() {
         var rowBg    = isApproved ? 'rgba(21,142,29,0.02)' : 'var(--white)';
         var rowBorder = isApproved ? '2px solid var(--green)' : isOpen ? '1px solid var(--dark)' : '1px solid var(--border)';
 
-        html += '<div style="border:'+rowBorder+';border-radius:6px;margin-bottom:4px;background:'+rowBg+'">';
+        html += '<div data-copilot-explain="brief:' + esc(p.slug || '') + '" style="border:'+rowBorder+';border-radius:6px;margin-bottom:4px;background:'+rowBg+'">';
 
         // Collapsed header — always visible
         html += '<div data-brief-slug="'+esc(p.slug)+'" class="brief-row-header" style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;user-select:none">';

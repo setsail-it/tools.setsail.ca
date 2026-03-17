@@ -1254,7 +1254,7 @@ function _renderKwClustersTab() {
     var badgeClr = c.qualifies === false ? 'var(--n2)' : (c.recommendation === 'improve_existing' ? 'var(--warn)' : 'var(--green)');
     var badgeTxt = c.qualifies === false ? 'LOW VOL' : (c.recommendation === 'improve_existing' ? 'IMPROVE' : 'BUILD NEW');
     var ptIcon = (ptIcons[c.pageType] || 'ti-file');
-    html += '<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:var(--bg)">';
+    html += '<div data-copilot-explain="cluster:' + esc(c.name || c.label || '') + '" style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:var(--bg)">';
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
     html += '<div style="display:flex;gap:8px;align-items:center"><i class="ti ' + ptIcon + '" style="color:var(--n2);font-size:13px"></i>';
     html += '<div><div style="font-size:13px;font-weight:500">' + esc(c.name || '') + '</div>';
