@@ -1919,6 +1919,8 @@ async function _processDocExtractQueue() {
     }
     renderDocsList();
     scheduleSave();
+    // Delay between docs to avoid rate limit bursts
+    if (_docExtractQueue.length) await new Promise(function(r) { setTimeout(r, 3000); });
   }
   _docExtracting = false;
 }
@@ -1926,33 +1928,45 @@ async function _processDocExtractQueue() {
 async function _extractDocSync(content, docName) {
   var systemPrompt = 'You are a document analyst for a marketing agency. Extract ALL factual information from the provided document into these categories. Each category is an array of concise strings. Preserve every fact, number, name, quote, and detail — compress format, not content. If a category has no relevant content, return an empty array.\n\nOutput ONLY valid JSON with these keys:\n- facts: business facts, history, metrics, pricing, team size, years in operation\n- decisions: decisions made, agreements, approvals, rejections\n- requirements: stated requirements, must-haves, constraints, dealbreakers\n- quotes: notable direct quotes preserving exact client language (attribute speaker if known)\n- objections: concerns, hesitations, pushback, red flags raised\n- competitors: competitor names, comparisons, market positioning\n- audience: target audience, demographics, customer types, pain points, personas\n- services: services, products, offerings, pricing, differentiators\n- goals: goals, objectives, desired outcomes, KPIs, timelines, success metrics';
   var userPrompt = 'Document: "' + docName + '"\n\n' + content;
-  try {
-    var resp = await fetch('/api/claude-sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }]
-      })
-    });
-    if (!resp.ok) return null;
-    var data = await resp.json();
-    var text = '';
-    if (data.content && data.content[0]) text = data.content[0].text || '';
-    // Parse JSON from response
-    var jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    var parsed = JSON.parse(jsonMatch[0]);
-    // Validate structure
-    var cats = ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals'];
-    var valid = {};
-    cats.forEach(function(c) { valid[c] = Array.isArray(parsed[c]) ? parsed[c] : []; });
-    return valid;
-  } catch(e) {
-    return null;
+  var maxRetries = 3;
+  for (var attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      var resp = await fetch('/api/claude-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }]
+        })
+      });
+      if (resp.status === 429) {
+        // Rate limited — wait with exponential backoff then retry
+        var backoff = Math.min(15000 * Math.pow(2, attempt), 60000);
+        console.warn('[doc-extract] 429 rate limited, retrying in ' + (backoff / 1000) + 's (attempt ' + (attempt + 1) + '/' + maxRetries + ')');
+        await new Promise(function(r) { setTimeout(r, backoff); });
+        continue;
+      }
+      if (!resp.ok) return null;
+      var data = await resp.json();
+      var text = '';
+      if (data.content && data.content[0]) text = data.content[0].text || '';
+      // Parse JSON from response
+      var jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      var parsed = JSON.parse(jsonMatch[0]);
+      // Validate structure
+      var cats = ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals'];
+      var valid = {};
+      cats.forEach(function(c) { valid[c] = Array.isArray(parsed[c]) ? parsed[c] : []; });
+      return valid;
+    } catch(e) {
+      if (attempt < maxRetries - 1) continue;
+      return null;
+    }
   }
+  return null;
 }
 
 // Helper: build context from doc extracts for downstream stages
