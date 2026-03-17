@@ -7,3 +7,11 @@ DATAFORSEO_PASSWORD=your-dataforseo-password
 GEMINI_API_KEY=AIza...
 ADMIN_EMAIL=jason@setsail.ca
 # CF_ACCESS_TEAM_DOMAIN=setsail  # Uncomment to enable JWT validation locally
+
+# Google Keyword Planner (optional — GKP features hidden when absent)
+# GOOGLE_ADS_DEVELOPER_TOKEN=your-developer-token
+# GOOGLE_ADS_CLIENT_ID=your-client-id.apps.googleusercontent.com
+# GOOGLE_ADS_CLIENT_SECRET=your-client-secret
+# GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token
+# GOOGLE_ADS_CUSTOMER_ID=1234567890
+# GOOGLE_ADS_LOGIN_CUSTOMER_ID=9876543210  # Only if using a manager (MCC) account

@@ -67,6 +67,64 @@ function getDFSCreds(env) {
   return 'aXRAc2V0c2FpbC5jYToxM2JkNDk4YTgxYWU3MzI1';
 }
 
+// ── Google Ads API (Keyword Planner) helpers ────────────────────────────
+function hasGoogleAdsCreds(env) {
+  return !!(env.GOOGLE_ADS_DEVELOPER_TOKEN && env.GOOGLE_ADS_CLIENT_ID
+    && env.GOOGLE_ADS_CLIENT_SECRET && env.GOOGLE_ADS_REFRESH_TOKEN
+    && env.GOOGLE_ADS_CUSTOMER_ID);
+}
+
+async function getGoogleAdsToken(env) {
+  const cached = await env.SETSAIL_OS.get('gads:access_token');
+  if (cached) return cached;
+  const res = await fetch('https://www.googleapis.com/oauth2/v3/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=refresh_token'
+      + '&client_id=' + encodeURIComponent(env.GOOGLE_ADS_CLIENT_ID)
+      + '&client_secret=' + encodeURIComponent(env.GOOGLE_ADS_CLIENT_SECRET)
+      + '&refresh_token=' + encodeURIComponent(env.GOOGLE_ADS_REFRESH_TOKEN)
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error('Google token exchange failed: ' + (data.error_description || data.error || 'unknown'));
+  await env.SETSAIL_OS.put('gads:access_token', data.access_token, { expirationTtl: 3300 });
+  return data.access_token;
+}
+
+function gadsHeaders(env, token) {
+  const h = {
+    'Authorization': 'Bearer ' + token,
+    'developer-token': env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    'Content-Type': 'application/json'
+  };
+  if (env.GOOGLE_ADS_LOGIN_CUSTOMER_ID) h['login-customer-id'] = env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+  return h;
+}
+
+function _mapGkpResults(gadsData) {
+  const results = gadsData.results || [];
+  const keywords = results.map(r => {
+    const m = r.keywordIdeaMetrics || {};
+    return {
+      keyword: r.text || '',
+      gkp_volume: parseInt(m.avgMonthlySearches || 0, 10),
+      ad_competition: m.competition || 'UNSPECIFIED',
+      ad_competition_idx: parseInt(m.competitionIndex || 0, 10),
+      low_bid: parseInt(m.lowTopOfPageBidMicros || 0, 10) / 1000000,
+      high_bid: parseInt(m.highTopOfPageBidMicros || 0, 10) / 1000000,
+      gkp_monthly: (m.monthlySearchVolumes || []).map(v => ({
+        year: v.year, month: v.month, volume: parseInt(v.monthlySearches || 0, 10)
+      }))
+    };
+  }).filter(k => k.keyword);
+  return { keywords, source: 'google-keyword-planner' };
+}
+
+function _gadsDateStr(daysFromNow) {
+  const d = new Date(Date.now() + daysFromNow * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
 function detectCountryFromGeo(geo) {
   const g = (geo || '').toLowerCase();
   if (/australia|sydney|melbourne|brisbane|perth|adelaide/.test(g)) return 'AU';
@@ -115,6 +173,7 @@ const ENDPOINT_RATE_GROUP = {
   '/api/snapshot': 'data', '/api/kw-expand': 'data', '/api/paa': 'data',
   '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
   '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
+  '/api/gkp-ideas': 'data', '/api/gkp-forecast': 'data', '/api/gkp-status': 'data',
   '/api/queue-submit': 'queue',
   '/api/generate-image': 'image',
 };
@@ -961,7 +1020,172 @@ export default {
     }
 
 
+    // ── GOOGLE KEYWORD PLANNER ─────────────────────────────────────────
 
+    // GET /api/gkp-status — check if Google Ads credentials are configured
+    if (url.pathname === '/api/gkp-status' && request.method === 'GET') {
+      return new Response(JSON.stringify({ configured: hasGoogleAdsCreds(env) }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
+    // POST /api/gkp-ideas — keyword ideas + metrics from Google Keyword Planner
+    if (url.pathname === '/api/gkp-ideas' && request.method === 'POST') {
+      if (!hasGoogleAdsCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google Ads API not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        const { seeds, url: pageUrl, country } = await request.json();
+        if ((!seeds || !seeds.length) && !pageUrl) {
+          return new Response(JSON.stringify({ error: 'seeds or url required' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const token = await getGoogleAdsToken(env);
+        const customerId = env.GOOGLE_ADS_CUSTOMER_ID.replace(/-/g, '');
+        const locCode = getLocationCode(country);
+
+        // Build seed — URL-based or keyword-based
+        const seedPayload = pageUrl
+          ? { urlSeed: { url: pageUrl } }
+          : { keywordSeed: { keywords: seeds.slice(0, 20) } };
+
+        const gadsRes = await fetch(
+          'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordIdeas',
+          {
+            method: 'POST',
+            headers: gadsHeaders(env, token),
+            body: JSON.stringify({
+              ...seedPayload,
+              geoTargetConstants: ['geoTargetConstants/' + locCode],
+              language: 'languageConstants/1000',
+              keywordPlanNetwork: 'GOOGLE_SEARCH',
+              pageSize: 500
+            })
+          }
+        );
+
+        if (!gadsRes.ok) {
+          const errBody = await gadsRes.text();
+          // If token expired, clear cache and retry once
+          if (gadsRes.status === 401) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            const retryToken = await getGoogleAdsToken(env);
+            const retryRes = await fetch(
+              'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordIdeas',
+              {
+                method: 'POST',
+                headers: gadsHeaders(env, retryToken),
+                body: JSON.stringify({
+                  ...seedPayload,
+                  geoTargetConstants: ['geoTargetConstants/' + locCode],
+                  language: 'languageConstants/1000',
+                  keywordPlanNetwork: 'GOOGLE_SEARCH',
+                  pageSize: 500
+                })
+              }
+            );
+            if (!retryRes.ok) {
+              const retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'Google Ads API error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            const retryData = await retryRes.json();
+            return new Response(JSON.stringify(_mapGkpResults(retryData)), {
+              headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
+          return new Response(JSON.stringify({ error: 'Google Ads API error', detail: errBody.slice(0, 500) }), {
+            status: gadsRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const gadsData = await gadsRes.json();
+        return new Response(JSON.stringify(_mapGkpResults(gadsData)), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/gkp-forecast — traffic forecast from Google Keyword Planner
+    if (url.pathname === '/api/gkp-forecast' && request.method === 'POST') {
+      if (!hasGoogleAdsCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google Ads API not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        const { keywords, dailyBudget, country } = await request.json();
+        if (!keywords || !keywords.length) {
+          return new Response(JSON.stringify({ error: 'keywords required' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const token = await getGoogleAdsToken(env);
+        const customerId = env.GOOGLE_ADS_CUSTOMER_ID.replace(/-/g, '');
+        const locCode = getLocationCode(country);
+        const budgetMicros = String(Math.round((dailyBudget || 50) * 1000000));
+
+        const forecastRes = await fetch(
+          'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordForecastMetrics',
+          {
+            method: 'POST',
+            headers: gadsHeaders(env, token),
+            body: JSON.stringify({
+              keywords: keywords.slice(0, 50).map(k => ({ text: k, matchType: 'BROAD' })),
+              forecastPeriod: { startDate: _gadsDateStr(0), endDate: _gadsDateStr(30) },
+              campaign: {
+                keywordPlanNetwork: 'GOOGLE_SEARCH',
+                biddingStrategy: { manualCpcBiddingStrategy: { dailyBudgetMicros: budgetMicros } },
+                geoTargets: [{ geoTargetConstant: 'geoTargetConstants/' + locCode }],
+                languageConstants: ['languageConstants/1000']
+              }
+            })
+          }
+        );
+
+        if (!forecastRes.ok) {
+          const errBody = await forecastRes.text();
+          return new Response(JSON.stringify({ error: 'Google Ads forecast error', detail: errBody.slice(0, 500) }), {
+            status: forecastRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const forecastData = await forecastRes.json();
+        const items = (forecastData.keywordForecasts || []).map((f, i) => ({
+          keyword: keywords[i] || '',
+          clicks: parseFloat(f.metrics?.clicks || 0),
+          impressions: parseFloat(f.metrics?.impressions || 0),
+          cost: parseFloat(f.metrics?.costMicros || 0) / 1000000,
+          ctr: parseFloat(f.metrics?.ctr || 0),
+          avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000
+        }));
+
+        return new Response(JSON.stringify({
+          forecasts: items,
+          period: '30d',
+          budget: (dailyBudget || 50) * 30,
+          source: 'google-keyword-planner'
+        }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
 
     // ── KW DEBUG ───────────────────────────────────────────────────────
     if (url.pathname === '/api/kw-debug' && request.method === 'POST') {

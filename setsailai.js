@@ -442,7 +442,7 @@ function _assembleSaiContext(question, hasFiles) {
     kwSummary.seeds_count = (S.kwResearch.seeds || []).length;
     kwSummary.keywords_count = (S.kwResearch.keywords || []).length;
     var sorted = (S.kwResearch.keywords || []).slice().sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
-    kwSummary.top_20_by_volume = sorted.slice(0, 20).map(function(k) { return { kw: k.kw, vol: k.vol, kd: k.kd }; });
+    kwSummary.top_20_by_volume = sorted.slice(0, 20).map(function(k) { return { kw: k.kw, vol: k.vol, kd: k.kd, bid: k.high_bid || null, ad_comp: k.ad_competition || null }; });
     kwSummary.cluster_names = (S.kwResearch.clusters || []).map(function(c) { return c.name || c.label; });
     ctx += 'KEYWORDS:\n' + JSON.stringify(kwSummary, null, 0) + '\n\n';
   } else if (stage === 'sitemap' && S && S.pages) {
@@ -664,6 +664,9 @@ var SAI_AUDIT_CHECKS = [
   { id: 'kw-low-count', stage: 'keywords', severity: 'warning', message: 'Fewer than 20 keywords — consider expanding',
     test: function() { return S && S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.length > 0 && S.kwResearch.keywords.length < 20; },
     fix_action: { stage: 'keywords' } },
+  { id: 'kw-no-gkp', stage: 'keywords', severity: 'info', message: 'Keywords not enriched with Google Ads bid data — enrich for more accurate CPC estimates',
+    test: function() { return S && S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.length > 10 && !S.kwResearch.keywords.some(function(k) { return k.low_bid; }); },
+    fix_action: { stage: 'strategy', tab: 'economics' } },
 
   /* --- STRATEGY --- */
   { id: 'st-not-run', stage: 'strategy', severity: 'error', message: 'Strategy has not been generated yet',

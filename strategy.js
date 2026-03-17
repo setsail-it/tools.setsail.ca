@@ -1053,11 +1053,19 @@ function _computeServiceROI(svcEntry) {
     }
   }
 
-  // Estimate leads from expected_cpl
+  // Estimate leads from expected_cpl — prefer GKP bid data when available
   var bt = (S.strategy.channel_strategy && S.strategy.channel_strategy.budget_tiers) || {};
   var currentTier = bt.current_budget || {};
   var expectedCpl = parseFloat(currentTier.expected_cpl) || cac;
   if (expectedCpl <= 0) expectedCpl = cac;
+  // If GKP bid data exists, use avg high_bid * typical CPL multiplier (5-10x CPC)
+  var kwR = S.kwResearch || {};
+  var kwsWithBids = (kwR.keywords || []).filter(function(k) { return k.high_bid && k.high_bid > 0; });
+  if (kwsWithBids.length >= 3) {
+    var gkpAvgBid = kwsWithBids.reduce(function(s,k){return s+k.high_bid;},0) / kwsWithBids.length;
+    var gkpCpl = gkpAvgBid * 7; // 7x CPC-to-CPL multiplier (industry standard)
+    if (!expectedCpl || expectedCpl === cac) expectedCpl = gkpCpl;
+  }
 
   var svcCost = _scopeCostForTier(svcEntry.cost, svcEntry.scope);
   if (!svcCost || svcEntry.cost.isProject) {
@@ -1425,7 +1433,7 @@ var ANTI_INFLATION_CAPS = [
   { condition:'estimated_close_rate', section:'economics', dimension:'data', cap:7,
     test: function() { var r=S.research||{}; return !r.close_rate_estimate || r.close_rate_estimate.indexOf('estimate')>=0 || r.close_rate_estimate.indexOf('~')>=0; } },
   { condition:'no_cpc_data_econ', section:'economics', dimension:'confidence', cap:6,
-    test: function() { var e=S.strategy&&S.strategy._enrichment||{}; var kw=S.kwResearch||{}; return !e.cpc_estimates && (!kw.keywords || kw.keywords.filter(function(k){return k.cpc>0;}).length < 3); } },
+    test: function() { var e=S.strategy&&S.strategy._enrichment||{}; var kw=S.kwResearch||{}; return !e.cpc_estimates && (!kw.keywords || kw.keywords.filter(function(k){return k.cpc>0||k.high_bid>0;}).length < 3); } },
   { condition:'no_cpc_data', section:'channels', dimension:'confidence', cap:6,
     test: function() { return !S.strategy || !S.strategy._enrichment || !S.strategy._enrichment.cpc_estimates; } },
   { condition:'no_fathom_transcript', section:'_all', dimension:'specificity', cap:6,
@@ -2662,6 +2670,30 @@ function buildDiagnosticPrompt(num) {
           + '- Top keywords by CPC:\n'
           + topByCpc.map(function(k) { return '  * "' + k.kw + '" \u2014 CPC: $' + k.cpc + ', vol: ' + (k.vol || 0) + '/mo'; }).join('\n') + '\n'
           + '- CPC data confidence: HIGH (from full keyword research with ' + kwR.keywords.length + ' keywords)\n';
+        // Append Google Keyword Planner bid data if available
+        var kwsWithBids = kwR.keywords.filter(function(k) { return k.high_bid && k.high_bid > 0; });
+        if (kwsWithBids.length >= 3) {
+          var avgLowBid = Math.round((kwsWithBids.reduce(function(s,k){return s+(k.low_bid||0);},0) / kwsWithBids.length) * 100) / 100;
+          var avgHighBid = Math.round((kwsWithBids.reduce(function(s,k){return s+k.high_bid;},0) / kwsWithBids.length) * 100) / 100;
+          var lowCount = kwsWithBids.filter(function(k){return k.ad_competition==='LOW';}).length;
+          var medCount = kwsWithBids.filter(function(k){return k.ad_competition==='MEDIUM';}).length;
+          var highCount = kwsWithBids.filter(function(k){return k.ad_competition==='HIGH';}).length;
+          cpcBlock += '\nGOOGLE ADS BID DATA (from Google Keyword Planner, ' + kwsWithBids.length + ' keywords):\n'
+            + '- Avg top-of-page bid range: $' + avgLowBid + ' - $' + avgHighBid + '\n'
+            + '- Ad competition: ' + lowCount + ' LOW, ' + medCount + ' MEDIUM, ' + highCount + ' HIGH\n'
+            + '- Bid data confidence: VERY HIGH (direct from Google Keyword Planner)\n';
+        }
+        // Append forecast data if available
+        var fc = kwR.forecasts;
+        if (fc && fc.items && fc.items.length) {
+          var fcClicks = 0, fcCost = 0;
+          fc.items.forEach(function(f) { fcClicks += f.clicks; fcCost += f.cost; });
+          var fcAvgCpc = fcClicks > 0 ? Math.round((fcCost / fcClicks) * 100) / 100 : 0;
+          cpcBlock += '\nGOOGLE ADS FORECAST (' + fc.items.length + ' keywords, $' + Math.round(fc.budget) + '/mo budget):\n'
+            + '- Predicted clicks/mo: ' + Math.round(fcClicks) + '\n'
+            + '- Predicted cost/mo: $' + Math.round(fcCost) + '\n'
+            + '- Avg CPC (forecast): $' + fcAvgCpc + '\n';
+        }
       } else {
         cpcBlock = '- CPC data: Limited \u2014 only ' + kwsWithCpc.length + ' keywords have CPC data\n';
       }

@@ -275,6 +275,8 @@ function initKeywords() {
   renderKwTabContent();
   var proceedBtn = document.getElementById('kw-proceed-btn');
   if (proceedBtn) proceedBtn.style.display = (S.kwResearch.clusters && S.kwResearch.clusters.length) ? '' : 'none';
+  // Check Google Keyword Planner availability
+  _checkGkpStatus().then(function(ok) { if (ok) _showGkpButtons(); });
 }
 
 function buildKwSeeds() {
@@ -582,10 +584,21 @@ function _renderKwSeedsTab() {
   if (_hasQs) {
     html += '<button class="btn btn-ghost sm" data-tip="Pull from Questions extracts the intent keyword from each question — stripping the question framing so it becomes a phrase DataForSEO can look up. Example: ‘how much does dental marketing cost’ becomes ‘dental marketing cost’. Results go into the Questions bucket. Run Fetch Volumes after." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-arrow-left"></i> Pull from Questions</button>';
   }
+  // Google Keyword Planner buttons (hidden when not configured)
+  html += '<span id="gkp-seed-btns" style="display:none">';
+  html += '<button class="btn btn-ghost" data-tip="Enrich with Google Ads fetches bid ranges and ad competition data from Google Keyword Planner for all existing keywords. Run after Fetch Volumes." onclick="enrichWithGKP()" style="border-color:#4285F4;color:#4285F4"><i class="ti ti-brand-google"></i> Enrich with Google Ads</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Ideas from URL uses Google Keyword Planner to discover keywords from any landing page URL. Results go into the Google Ads seed bucket." onclick="_openGkpUrlInput()" style="color:#4285F4"><i class="ti ti-link"></i> Ideas from URL</button>';
+  html += '</span>';
   html += '<div style="display:flex;gap:6px;align-items:center">';
   html += '<input id="kw-seed-add-input" type="text" placeholder="Add seed..." autocomplete="off" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:180px;background:var(--bg);color:var(--dark)" onkeydown="_kwSeedKeydown(event,this)">';
   html += '<button class="btn btn-ghost sm" onclick="_kwSeedAddBtn()"><i class="ti ti-plus"></i></button>';
   html += '</div></div>';
+  // GKP URL input row (hidden by default)
+  html += '<div id="gkp-url-row" style="display:none;margin-bottom:8px;display:none;align-items:center;gap:6px">';
+  html += '<input id="gkp-url-input" type="url" placeholder="https://competitor.com/services" style="flex:1;padding:6px 10px;border:1px solid #4285F4;border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark)" onkeydown="if(event.key===\'Enter\'){fetchGKPFromURL(this.value);this.value=\'\';document.getElementById(\'gkp-url-row\').style.display=\'none\'}">';
+  html += '<button class="btn btn-ghost sm" onclick="fetchGKPFromURL(document.getElementById(\'gkp-url-input\').value);document.getElementById(\'gkp-url-input\').value=\'\';document.getElementById(\'gkp-url-row\').style.display=\'none\'">Fetch</button>';
+  html += '<button class="btn btn-ghost sm" onclick="document.getElementById(\'gkp-url-row\').style.display=\'none\'">&times;</button>';
+  html += '</div>';
   if (fetched) {
     html += '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:' + (kwCount > 0 ? 'rgba(21,142,29,0.1)' : 'var(--panel)') + ';border-radius:20px;font-size:11px;color:' + (kwCount > 0 ? 'var(--green)' : 'var(--n2)') + ';margin-bottom:10px">'
       + '<i class="ti ti-' + (kwCount > 0 ? 'check' : 'alert-circle') + '"></i> Volumes fetched — ' + kwCount + ' keywords</div>';
@@ -617,8 +630,8 @@ function _renderKwSeedsTab() {
 
   // Table layout
   var srcsData = S.kwResearch && S.kwResearch.seedSources ? S.kwResearch.seedSources : {};
-  var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b', questions: '#8b5cf6' };
-  var srcLabels = { mechanical: 'Mechanical', ai: 'AI', competitor: 'Competitor', questions: 'Questions' };
+  var srcBadgeColors = { mechanical: 'var(--n2)', ai: 'var(--green)', competitor: '#f59e0b', questions: '#8b5cf6', gkp: '#4285F4' };
+  var srcLabels = { mechanical: 'Mechanical', ai: 'AI', competitor: 'Competitor', questions: 'Questions', gkp: 'Google Ads' };
   var srcCounts = {
     mechanical: (srcsData.mechanical || []).length,
     ai: (srcsData.ai || []).length,
@@ -924,6 +937,165 @@ async function fetchKwVolumes() {
   } catch(e) { if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>'; }
 }
 
+// ── Google Keyword Planner enrichment ──────────────────────────────────
+var _gkpConfigured = null; // cached from /api/gkp-status
+
+async function _checkGkpStatus() {
+  if (_gkpConfigured !== null) return _gkpConfigured;
+  try {
+    var res = await fetch('/api/gkp-status');
+    var d = await res.json();
+    _gkpConfigured = !!d.configured;
+  } catch(e) { _gkpConfigured = false; }
+  return _gkpConfigured;
+}
+
+async function enrichWithGKP() {
+  if (!S.kwResearch || !S.kwResearch.keywords || !S.kwResearch.keywords.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Fetch volumes first, then enrich with Google Ads.', { isError: true, duration: 3000 });
+    return;
+  }
+  if (typeof aiBarStart === 'function') aiBarStart('Enriching with Google Keyword Planner…');
+  var statusEl = document.getElementById('kw-seeds-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching Google Ads bid data…';
+  var country = (S.kwResearch.country) || _autoDetectKwCountry();
+  var allKws = S.kwResearch.keywords.map(function(k) { return k.kw; });
+  // Batch in groups of 20 (Google Ads API limit per request for keyword seeds)
+  var enriched = 0;
+  try {
+    for (var i = 0; i < allKws.length; i += 20) {
+      if (window._aiStopAll) break;
+      var batch = allKws.slice(i, i + 20);
+      var res = await fetch('/api/gkp-ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seeds: batch, country: country })
+      });
+      var data = await res.json();
+      if (data.error) {
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: ' + esc(data.error) + '</span>';
+        if (typeof aiBarEnd === 'function') aiBarEnd();
+        return;
+      }
+      // Build lookup from GKP results
+      var gkpMap = {};
+      (data.keywords || []).forEach(function(g) { gkpMap[g.keyword.toLowerCase().trim()] = g; });
+      // Merge into existing keywords
+      S.kwResearch.keywords.forEach(function(k) {
+        var match = gkpMap[k.kw.toLowerCase().trim()];
+        if (match) {
+          k.gkp_volume = match.gkp_volume;
+          k.low_bid = match.low_bid;
+          k.high_bid = match.high_bid;
+          k.ad_competition = match.ad_competition;
+          k.ad_competition_idx = match.ad_competition_idx;
+          k.gkp_monthly = match.gkp_monthly;
+          if (match.high_bid && (!k.cpc || k.cpc === 0)) k.cpc = match.high_bid;
+          enriched++;
+        }
+      });
+      if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Google Ads: ' + Math.min(i + 20, allKws.length) + '/' + allKws.length + ' keywords…';
+    }
+    S.kwResearch.gkpEnrichedAt = Date.now();
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + enriched + ' keywords enriched with Google Ads bid data</span>';
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: ' + esc(e.message) + '</span>';
+  }
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+}
+
+async function fetchGKPFromURL(url) {
+  if (!url || !url.trim()) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Enter a URL first.', { isError: true, duration: 2000 });
+    return;
+  }
+  if (typeof aiBarStart === 'function') aiBarStart('Getting keyword ideas from URL…');
+  var statusEl = document.getElementById('kw-seeds-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Fetching keyword ideas from URL…';
+  var country = (S.kwResearch && S.kwResearch.country) || _autoDetectKwCountry();
+  try {
+    var res = await fetch('/api/gkp-ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url.trim(), country: country })
+    });
+    var data = await res.json();
+    if (data.error) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: ' + esc(data.error) + '</span>';
+      if (typeof aiBarEnd === 'function') aiBarEnd();
+      return;
+    }
+    var newSeeds = (data.keywords || []).map(function(k) { return k.keyword; }).filter(Boolean);
+    if (!S.kwResearch) S.kwResearch = { seeds: [], seedSources: { mechanical: [], ai: [], competitor: [], questions: [], gkp: [] }, activeSources: ['mechanical', 'ai', 'competitor', 'questions', 'gkp'], keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null };
+    if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [], questions: [], gkp: [] };
+    if (!S.kwResearch.seedSources.gkp) S.kwResearch.seedSources.gkp = [];
+    var gkpSet = new Set(S.kwResearch.seedSources.gkp.map(function(s) { return s.toLowerCase(); }));
+    var added = 0;
+    newSeeds.forEach(function(s) {
+      if (s.length > 2 && !gkpSet.has(s.toLowerCase())) { gkpSet.add(s.toLowerCase()); S.kwResearch.seedSources.gkp.push(s); added++; }
+    });
+    if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor', 'questions', 'gkp'];
+    if (S.kwResearch.activeSources.indexOf('gkp') < 0) S.kwResearch.activeSources.push('gkp');
+    _rebuildSeeds();
+    scheduleSave();
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + added + ' keyword ideas from URL added to GKP seeds</span>';
+    renderKwTabContent();
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: ' + esc(e.message) + '</span>';
+  }
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+}
+
+async function fetchGKPForecast() {
+  var kws = S.kwResearch && S.kwResearch.keywords ? S.kwResearch.keywords : [];
+  var selected = S.kwResearch && S.kwResearch.selected ? S.kwResearch.selected : [];
+  var forecastKws = selected.length >= 5 ? selected : kws.slice(0, 50).map(function(k) { return k.kw; });
+  if (!forecastKws.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Need keywords first.', { isError: true, duration: 2000 });
+    return;
+  }
+  var budgetInput = document.getElementById('gkp-budget-input');
+  var dailyBudget = budgetInput ? parseFloat(budgetInput.value) || 50 : 50;
+  if (typeof aiBarStart === 'function') aiBarStart('Getting Google Ads forecast…');
+  var country = (S.kwResearch && S.kwResearch.country) || _autoDetectKwCountry();
+  try {
+    var res = await fetch('/api/gkp-forecast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords: forecastKws, dailyBudget: dailyBudget, country: country })
+    });
+    var data = await res.json();
+    if (data.error) {
+      if (typeof aiBarNotify === 'function') aiBarNotify('Forecast error: ' + data.error, { isError: true, duration: 4000 });
+      if (typeof aiBarEnd === 'function') aiBarEnd();
+      return;
+    }
+    S.kwResearch.forecasts = {
+      fetchedAt: Date.now(),
+      budget: data.budget || dailyBudget * 30,
+      period: data.period || '30d',
+      items: data.forecasts || []
+    };
+    scheduleSave();
+    renderKwTabContent();
+  } catch(e) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Forecast error: ' + e.message, { isError: true, duration: 4000 });
+  }
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+}
+
+function _openGkpUrlInput() {
+  var row = document.getElementById('gkp-url-row');
+  if (row) { row.style.display = 'flex'; var inp = document.getElementById('gkp-url-input'); if (inp) inp.focus(); }
+}
+
+function _showGkpButtons() {
+  var el = document.getElementById('gkp-seed-btns');
+  if (el) el.style.display = '';
+}
+
 function sortKwOpps(col) {
   if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
   if (S.kwSort.col === col) {
@@ -962,11 +1134,14 @@ function _renderKwOppsTab() {
     var score = k.vol >= 10 ? Math.round((Math.log(k.vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
     return Object.assign({}, k, { score: score });
   });
+  var hasGkp = kws.some(function(k) { return k.low_bid; });
   var sortedKws = kws.slice().sort(function(a, b) {
     var av, bv;
     if (sortCol === 'vol') { av = a.vol; bv = b.vol; }
     else if (sortCol === 'kd') { av = a.kd === 0 ? 999 : a.kd; bv = b.kd === 0 ? 999 : b.kd; }
     else if (sortCol === 'cpc') { av = a.cpc || 0; bv = b.cpc || 0; }
+    else if (sortCol === 'bid') { av = a.high_bid || 0; bv = b.high_bid || 0; }
+    else if (sortCol === 'adcomp') { av = a.ad_competition_idx || 0; bv = b.ad_competition_idx || 0; }
     else { av = a.score; bv = b.score; }
     return sortDir === 'asc' ? av - bv : bv - av;
   });
@@ -976,7 +1151,9 @@ function _renderKwOppsTab() {
     var clr = active ? 'var(--dark)' : 'var(--n3)';
     return '<span onclick="sortKwOpps(\'' + col + '\')" style="cursor:pointer;color:' + clr + ';user-select:none;white-space:nowrap" title="Sort by ' + label + '">' + label + arrow + '</span>';
   }
-  html += '<div style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span style="color:var(--n3)">Keyword</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
+  var gridCols = hasGkp ? '28px 1fr 76px 44px 58px 70px 44px 54px 56px' : '28px 1fr 76px 44px 58px 54px 56px';
+  var gkpHdr = hasGkp ? hdrBtn('Bid','bid') + hdrBtn('Ad','adcomp') : '';
+  html += '<div style="display:grid;grid-template-columns:' + gridCols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span style="color:var(--n3)">Keyword</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + gkpHdr + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
   sortedKws.slice(0, 200).forEach(function(k, i) {
     var isSel = selected.has(k.kw);
     // DR-aware rankability: Green=rankable, Yellow=stretch, Red=out of range, Grey=no data
@@ -1007,18 +1184,68 @@ function _renderKwOppsTab() {
       var tr = k.monthly[k.monthly.length - 1] > k.monthly[0] ? '<span style="color:var(--green)">&#x2191;</span>' : '<span style="color:var(--error)">&#x2193;</span>';
       spark = '<span style="display:inline-flex;align-items:flex-end;gap:1px">' + k.monthly.slice(-6).map(function(v) { var h = mx > 0 ? Math.round((v / mx) * 14) + 2 : 2; return '<span style="display:inline-block;width:4px;height:' + h + 'px;background:var(--n1);border-radius:1px;vertical-align:bottom"></span>'; }).join('') + '</span>' + tr;
     } else spark = '<span style="color:var(--n1)">-</span>';
-        html += '<div class="kw-row" data-kw="' + esc(k.kw) + '" onclick="_toggleKwByAttr(this)" style="display:grid;grid-template-columns:28px 1fr 76px 44px 58px 54px 56px;padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px;transition:background .1s">'
+    // GKP columns (bid range + ad competition)
+    var gkpCells = '';
+    if (hasGkp) {
+      var bidStr = k.low_bid ? '$' + k.low_bid.toFixed(2) + '–' + (k.high_bid || 0).toFixed(2) : '<span style="color:var(--n1)">-</span>';
+      var adLetter = '', adClr = 'var(--n1)';
+      if (k.ad_competition === 'LOW') { adLetter = 'L'; adClr = 'var(--green)'; }
+      else if (k.ad_competition === 'MEDIUM') { adLetter = 'M'; adClr = 'var(--warn)'; }
+      else if (k.ad_competition === 'HIGH') { adLetter = 'H'; adClr = 'var(--error)'; }
+      else { adLetter = '-'; }
+      gkpCells = '<span style="font-size:10px;color:var(--n3);white-space:nowrap">' + bidStr + '</span>'
+        + '<span style="font-size:11px;font-weight:600;color:' + adClr + '" title="Ad competition: ' + (k.ad_competition || 'N/A') + ' (' + (k.ad_competition_idx || 0) + '/100)">' + adLetter + '</span>';
+    }
+        html += '<div class="kw-row" data-kw="' + esc(k.kw) + '" onclick="_toggleKwByAttr(this)" style="display:grid;grid-template-columns:' + gridCols + ';padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px;transition:background .1s">'
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
       + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
       + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.noData ? '—' : (k.vol || 0).toLocaleString()) + '</span>'
       + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + (typeof kdLabel2 !== 'undefined' ? kdLabel2 : '') + '</span>'
       + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
+      + gkpCells
       + '<span style="font-size:11px">' + spark + '</span>'
       + '<span style="font-size:11px;color:var(--n2)">' + k.score + '</span>'
       + '</div>';
   });
   if (sortedKws.length > 200) html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (sortedKws.length - 200) + ' more available</div>';
-  html += '</div></div>';
+  html += '</div>';
+
+  // GKP badge
+  if (hasGkp) {
+    html += '<div style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(66,133,244,0.1);border-radius:20px;font-size:11px;color:#4285F4"><i class="ti ti-brand-google" style="font-size:12px"></i> Google Ads bid data enriched (' + kws.filter(function(k){return k.low_bid;}).length + '/' + kws.length + ' keywords)</div>';
+  }
+
+  // Forecast card
+  if (_gkpConfigured) {
+    var fc = S.kwResearch && S.kwResearch.forecasts;
+    html += '<div style="margin-top:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border)">';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--dark)"><i class="ti ti-chart-line" style="margin-right:4px;color:#4285F4"></i>Google Ads Forecast</span>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span style="font-size:11px;color:var(--n2)">Daily budget $</span>';
+    html += '<input id="gkp-budget-input" type="number" min="10" step="10" value="' + (fc ? Math.round(fc.budget / 30) : 50) + '" style="width:60px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--bg);color:var(--dark)">';
+    html += '<button class="btn btn-ghost sm" onclick="fetchGKPForecast()" style="color:#4285F4;border-color:#4285F4">Forecast</button>';
+    html += '</div></div>';
+    if (fc && fc.items && fc.items.length) {
+      var totalClicks = 0, totalImpressions = 0, totalCost = 0;
+      fc.items.forEach(function(f) { totalClicks += f.clicks; totalImpressions += f.impressions; totalCost += f.cost; });
+      var avgCpc = totalClicks > 0 ? totalCost / totalClicks : 0;
+      var avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+      html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border)">';
+      html += '<div style="padding:8px 12px;background:var(--bg);text-align:center"><div style="font-size:10px;color:var(--n2)">Clicks/mo</div><div style="font-size:14px;font-weight:600;color:var(--dark)">' + Math.round(totalClicks).toLocaleString() + '</div></div>';
+      html += '<div style="padding:8px 12px;background:var(--bg);text-align:center"><div style="font-size:10px;color:var(--n2)">Impressions</div><div style="font-size:14px;font-weight:600;color:var(--dark)">' + Math.round(totalImpressions).toLocaleString() + '</div></div>';
+      html += '<div style="padding:8px 12px;background:var(--bg);text-align:center"><div style="font-size:10px;color:var(--n2)">Cost/mo</div><div style="font-size:14px;font-weight:600;color:var(--dark)">$' + Math.round(totalCost).toLocaleString() + '</div></div>';
+      html += '<div style="padding:8px 12px;background:var(--bg);text-align:center"><div style="font-size:10px;color:var(--n2)">Avg CPC</div><div style="font-size:14px;font-weight:600;color:var(--dark)">$' + avgCpc.toFixed(2) + '</div></div>';
+      html += '<div style="padding:8px 12px;background:var(--bg);text-align:center"><div style="font-size:10px;color:var(--n2)">Avg CTR</div><div style="font-size:14px;font-weight:600;color:var(--dark)">' + avgCtr.toFixed(1) + '%</div></div>';
+      html += '</div>';
+      html += '<div style="padding:4px 12px;font-size:10px;color:var(--n2);background:var(--bg)">Forecast for ' + fc.items.length + ' keywords at $' + Math.round(fc.budget).toLocaleString() + '/mo budget (' + fc.period + ' period)</div>';
+    } else {
+      html += '<div style="padding:16px 12px;text-align:center;font-size:12px;color:var(--n2)">Enter a daily budget and click Forecast to see predicted clicks, impressions, and cost from Google Ads.</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
   return html;
 }
 

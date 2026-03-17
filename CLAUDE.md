@@ -84,6 +84,7 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 - **Project CRUD:** `/api/projects[/:id]`
 - **AI proxy:** `/api/claude` (streaming), `/api/claude-sync` (non-streaming) — model-locked and token-capped
 - **DataForSEO:** `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
+- **Google Keyword Planner:** `/api/gkp-ideas` (keyword ideas + bid data), `/api/gkp-forecast` (traffic forecasts), `/api/gkp-status` (credential check) — all gracefully hidden when Google Ads env vars not set
 - **Ahrefs:** `/api/snapshot`, `/api/ahrefs`
 - **Queue:** `/api/queue-submit`, `/api/queue-status`
 - **Image gen:** `/api/generate-image`
@@ -372,6 +373,12 @@ Note: Cloudflare Access auth headers are not present locally. The worker falls b
 | `DATAFORSEO_LOGIN` | DataForSEO username (email) | worker.js `getDFSCreds()` → all `/api/kw-*`, `/api/serp-intel`, `/api/snapshot` | **Yes** — keyword/SERP features break |
 | `DATAFORSEO_PASSWORD` | DataForSEO password | worker.js `getDFSCreds()` (same routes) | **Yes** — paired with LOGIN |
 | `GEMINI_API_KEY` | Google Gemini image generation | worker.js `/api/generate-image` | **Yes** — images stage breaks |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API developer token | worker.js `/api/gkp-*` routes | No — GKP features hidden when absent |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth 2.0 client ID | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
+| `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth 2.0 client secret | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
+| `GOOGLE_ADS_REFRESH_TOKEN` | Google Ads OAuth 2.0 refresh token | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
+| `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer ID (10-digit, no dashes) | worker.js `/api/gkp-*` routes | No — paired with other GOOGLE_ADS vars |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Google Ads MCC manager ID (optional) | worker.js `gadsHeaders()` | No — only for manager accounts |
 | `ADMIN_EMAIL` | Owner email — bypasses role check, gets admin by default | worker.js auth + `/api/admin/users` | Recommended |
 | `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team name (e.g. `setsail`) | worker.js JWT validation | Production only — omit locally |
 
@@ -396,6 +403,10 @@ headers: { 'Authorization': 'Basic ' + getDFSCreds(env) }
 
 // Gemini — always via env.GEMINI_API_KEY in query string
 fetch(`https://generativelanguage.googleapis.com/...?key=${env.GEMINI_API_KEY}`)
+
+// Google Ads API — always via getGoogleAdsToken(env) + gadsHeaders(env, token)
+const token = await getGoogleAdsToken(env); // caches in KV for 55 min
+headers: gadsHeaders(env, token) // Bearer token + developer-token + login-customer-id
 
 // Auth — always via env.CF_ACCESS_TEAM_DOMAIN + env.ADMIN_EMAIL
 ```
@@ -432,6 +443,7 @@ All user data prefixed `u:{email}:`.
 | `u:{email}:img:{projectId}:{slug}` | Image data per page |
 | `admin:user:{email}` | User profile: name, role, projects |
 | `rl:{email}:{group}` | Rate limit bucket (auto-expiring) |
+| `gads:access_token` | Google Ads OAuth access token (55 min TTL) |
 
 **External KV (read-only):**
 
