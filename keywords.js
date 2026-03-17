@@ -1114,7 +1114,8 @@ function _renderKwOppsTab() {
   var html = '<div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" data-tip="Cluster Selected groups your checked keywords by search intent and topic, using AI to name each cluster and identify the anchor keyword. Each cluster becomes one page in the sitemap. Select P1 and P2 keywords first — P3 can be added to existing clusters later." onclick="clusterSelectedKws()"><i class="ti ti-stack-2"></i> Cluster Selected <span style="font-size:10px;opacity:0.7">(' + selected.size + ')</span></button>';
-  html += '<button class="btn btn-ghost sm" data-tip="Select Top 50 auto-checks the 50 highest-scoring keywords by rankability score (log volume ÷ max KD). Use as a starting point, then manually add strategic low-volume terms — high CPC, direct buyer intent, or named services — before clustering." onclick="selectTopKws(50)">Select Top 50</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="AI-Select uses Claude to pick the best keywords based on business context, intent, brand filtering, and commercial signals. No fixed count — selects however many genuinely deserve a page." onclick="_runAISelectUI()"><i class="ti ti-brain"></i> AI-Select</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Quick-select the top 50 keywords by score as a starting point" onclick="selectTopKws(50)">Top 50</button>';
   html += '<button class="btn btn-ghost sm" onclick="selectTopKws(0)">Clear</button>';
   html += '<span id="kw-cluster-status" style="font-size:11px;color:var(--n2);display:inline-flex;align-items:center;gap:6px"></span>';
   // DR input for rankability indicator
@@ -1198,7 +1199,7 @@ function _renderKwOppsTab() {
     }
         html += '<div class="kw-row" data-kw="' + esc(k.kw) + '" onclick="_toggleKwByAttr(this)" style="display:grid;grid-template-columns:' + gridCols + ';padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px;transition:background .1s">'
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
-      + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(k.kw) + '</span>'
+      + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px">' + esc(k.kw) + (function(){ var t = S.kwResearch._selectionTiers && S.kwResearch._selectionTiers[k.kw]; if (!t || !isSel) return ''; var tc = t.tier === 'must-have' ? 'var(--green)' : t.tier === 'high-value' ? '#4285F4' : 'var(--n2)'; return ' <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + tc + ';color:#fff;white-space:nowrap;flex-shrink:0" title="' + esc(t.reason || '') + '">' + esc(t.tier) + '</span>'; })() + '</span>'
       + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.noData ? '—' : (k.vol || 0).toLocaleString()) + '</span>'
       + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + (typeof kdLabel2 !== 'undefined' ? kdLabel2 : '') + '</span>'
       + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
@@ -1210,7 +1211,28 @@ function _renderKwOppsTab() {
   if (sortedKws.length > 200) html += '<div style="padding:6px 12px;font-size:11px;color:var(--n2);background:var(--bg)">+' + (sortedKws.length - 200) + ' more available</div>';
   html += '</div>';
 
-  // GKP badge
+  // AI Selection summary + GKP badge row
+  var _aiSelMethod = S.kwResearch._selectionMethod;
+  var _aiTiers = S.kwResearch._selectionTiers || {};
+  var _aiRejected = S.kwResearch._rejectedExamples || [];
+  if (_aiSelMethod === 'ai' && selected.size > 0) {
+    var _mh = 0, _hv = 0, _sp = 0;
+    selected.forEach(function(kw) { var t = _aiTiers[kw]; if (!t) return; if (t.tier === 'must-have') _mh++; else if (t.tier === 'high-value') _hv++; else _sp++; });
+    html += '<div style="margin-top:10px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--panel)">';
+    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">';
+    html += '<i class="ti ti-brain" style="color:var(--green);font-size:14px"></i>';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">AI-Selected ' + selected.size + ' keywords</span>';
+    html += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--green);color:#fff">' + _mh + ' must-have</span>';
+    html += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#4285F4;color:#fff">' + _hv + ' high-value</span>';
+    html += '<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--n1);color:var(--dark)">' + _sp + ' supporting</span>';
+    html += '</div>';
+    if (_aiRejected.length) {
+      html += '<div style="font-size:11px;color:var(--n2);margin-top:4px"><strong>Filtered out:</strong> ';
+      html += _aiRejected.map(function(r) { return '<span style="color:var(--n3)" title="' + esc(r.reason || '') + '">' + esc(r.kw) + '</span>'; }).join(', ');
+      html += '</div>';
+    }
+    html += '</div>';
+  }
   if (hasGkp) {
     html += '<div style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(66,133,244,0.1);border-radius:20px;font-size:11px;color:#4285F4"><i class="ti ti-brand-google" style="font-size:12px"></i> Google Ads bid data enriched (' + kws.filter(function(k){return k.low_bid;}).length + '/' + kws.length + ' keywords)</div>';
   }
@@ -1275,7 +1297,30 @@ function _toggleKwSel(kwEncoded) {
 function selectTopKws(n) {
   if (!S.kwResearch) return;
   S.kwResearch.selected = n > 0 ? S.kwResearch.keywords.slice(0, n).map(function(k) { return k.kw; }) : [];
+  // Clear AI selection metadata when manually overriding
+  S.kwResearch._selectionMethod = n > 0 ? 'manual' : null;
+  S.kwResearch._selectionTiers = {};
+  S.kwResearch._rejectedExamples = [];
   renderKwTabContent();
+}
+
+async function _runAISelectUI() {
+  if (!S.kwResearch || !S.kwResearch.keywords || !S.kwResearch.keywords.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Fetch volumes first, then run AI-Select.', { isError: true, duration: 3000 });
+    return;
+  }
+  var statusEl = document.getElementById('kw-cluster-status');
+  if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> AI analysing keywords…';
+  if (typeof aiBarStart === 'function') aiBarStart('AI-Select: analysing keywords…');
+  try {
+    await _pipelineAISelect();
+    scheduleSave();
+    renderKwTabContent();
+    if (typeof aiBarNotify === 'function') aiBarNotify('AI selected ' + (S.kwResearch.selected || []).length + ' keywords', { duration: 4000 });
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">AI-Select error: ' + esc(e.message) + '</span>';
+  }
+  if (typeof aiBarEnd === 'function') aiBarEnd();
 }
 
 async function clusterSelectedKws() {
@@ -2881,7 +2926,8 @@ var KW_PIPELINE_STEPS = [
   { id: 'competitors', label: 'Pull Competitor Keywords',  icon: 'ti-building-store' },
   { id: 'merge',       label: 'Merge All Sources',        icon: 'ti-git-merge' },
   { id: 'volumes',     label: 'Fetch Volumes',            icon: 'ti-chart-bar' },
-  { id: 'select',      label: 'Auto-select Top Keywords', icon: 'ti-check' },
+  { id: 'gkp_enrich',  label: 'Enrich with Google Ads',   icon: 'ti-brand-google' },
+  { id: 'select',      label: 'AI-Select Keywords',       icon: 'ti-brain' },
   { id: 'cluster',     label: 'Cluster into Pages',       icon: 'ti-stack-2' },
   { id: 'audit',       label: 'Run Audit',                icon: 'ti-clipboard-check' }
 ];
@@ -3042,17 +3088,28 @@ async function runFullKeywordPipeline(startFrom) {
         await _pipelineFetchVolumes();
         pl.volumes = { done: true, count: (S.kwResearch.keywords || []).length, at: Date.now() };
 
+      } else if (step.id === 'gkp_enrich') {
+        // Enrich with Google Keyword Planner (skip if not configured)
+        var gkpOk = await _checkGkpStatus();
+        if (gkpOk && S.kwResearch.keywords && S.kwResearch.keywords.length) {
+          await _pipelineGkpEnrich();
+          pl.gkp_enrich = { done: true, count: S.kwResearch.keywords.filter(function(k) { return k.low_bid; }).length, at: Date.now() };
+        } else {
+          pl.gkp_enrich = { done: true, count: 0, skipped: gkpOk ? 'no keywords' : 'Google Ads not configured', at: Date.now() };
+          console.log('[kwPipeline] GKP enrichment skipped —', gkpOk ? 'no keywords' : 'not configured');
+        }
+
       } else if (step.id === 'select') {
-        // Auto-select top keywords by score (already sorted by _pipelineFetchVolumes)
+        // AI-validated keyword selection (replaces old top-50 logic)
         var kws = S.kwResearch.keywords || [];
         if (!kws.length) {
           console.warn('[kwPipeline] Select skipped — no keywords with volumes');
+          pl.select = { done: true, count: 0, at: Date.now() };
+        } else {
+          await _pipelineAISelect();
+          console.log('[kwPipeline] AI-Selected', S.kwResearch.selected.length, 'of', kws.length, 'keywords');
+          pl.select = { done: true, count: S.kwResearch.selected.length, at: Date.now() };
         }
-        // Take top 50 sorted by score, filter out zero-volume
-        var selectable = kws.filter(function(k) { return k.vol > 0; });
-        S.kwResearch.selected = selectable.slice(0, 50).map(function(k) { return k.kw; });
-        console.log('[kwPipeline] Selected', S.kwResearch.selected.length, 'of', kws.length, 'keywords');
-        pl.select = { done: true, count: S.kwResearch.selected.length, at: Date.now() };
 
       } else if (step.id === 'cluster') {
         if (S.kwResearch.selected.length >= 5) {
@@ -3101,9 +3158,11 @@ async function runFullKeywordPipeline(startFrom) {
   if (typeof aiBarEnd === 'function') aiBarEnd();
   if (typeof aiBarNotify === 'function') {
     var kwCount = (S.kwResearch.keywords || []).length;
+    var selCount = (S.kwResearch.selected || []).length;
     var clCount = (S.kwResearch.clusters || []).length;
+    var selMethod = S.kwResearch._selectionMethod === 'ai' ? ' (AI-selected)' : '';
     var staleMsg = (S.strategy && S.strategy._kwDataStale) ? ' — re-run D4-D6 to use keyword data' : '';
-    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + clCount + ' clusters' + staleMsg, { duration: 8000 });
+    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + selCount + ' selected' + selMethod + ', ' + clCount + ' clusters' + staleMsg, { duration: 8000 });
   }
 }
 
@@ -3216,7 +3275,158 @@ async function _pipelineFetchVolumes() {
   var deduped = scored.filter(function(k) { if (seen.has(k.kw)) return false; seen.add(k.kw); return true; }).slice(0, 300);
   S.kwResearch.keywords = deduped;
   S.kwResearch.fetchedAt = Date.now();
-  S.kwResearch.selected = deduped.slice(0, 50).map(function(k) { return k.kw; });
+  // Don't auto-select here — the AI-Select step handles selection
+}
+
+async function _pipelineGkpEnrich() {
+  var country = (S.kwResearch.country) || _autoDetectKwCountry();
+  var allKws = S.kwResearch.keywords.map(function(k) { return k.kw; });
+  var enriched = 0;
+  for (var i = 0; i < allKws.length; i += 20) {
+    if (window._aiStopAll) break;
+    var batch = allKws.slice(i, i + 20);
+    var res = await fetch('/api/gkp-ideas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seeds: batch, country: country })
+    });
+    var data = await res.json();
+    if (data.error) { console.warn('[kwPipeline] GKP batch error:', data.error); continue; }
+    var gkpMap = {};
+    (data.keywords || []).forEach(function(g) { gkpMap[g.keyword.toLowerCase().trim()] = g; });
+    S.kwResearch.keywords.forEach(function(k) {
+      var match = gkpMap[k.kw.toLowerCase().trim()];
+      if (match) {
+        k.gkp_volume = match.gkp_volume;
+        k.low_bid = match.low_bid;
+        k.high_bid = match.high_bid;
+        k.ad_competition = match.ad_competition;
+        k.ad_competition_idx = match.ad_competition_idx;
+        k.gkp_monthly = match.gkp_monthly;
+        if (match.high_bid && (!k.cpc || k.cpc === 0)) k.cpc = match.high_bid;
+        enriched++;
+      }
+    });
+  }
+  S.kwResearch.gkpEnrichedAt = Date.now();
+  console.log('[kwPipeline] GKP enriched', enriched, 'of', allKws.length, 'keywords');
+}
+
+async function _pipelineAISelect() {
+  var kws = S.kwResearch.keywords || [];
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var geo = (r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '')).replace(/,.*$/, '').trim();
+
+  // Build brand terms to flag competitor keywords
+  var brandTerms = [];
+  (r.competitors || []).forEach(function(c) {
+    var name = (c.name || '').toLowerCase().trim();
+    if (name.length > 2) brandTerms.push(name);
+    var url = (c.url || c.domain || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '').replace(/\.\w+$/, '').toLowerCase().trim();
+    if (url.length > 2) brandTerms.push(url);
+  });
+
+  // Prepare top 200 keywords sorted by score for AI evaluation
+  var candidates = kws.filter(function(k) { return k.vol > 0; }).slice(0, 200);
+  if (candidates.length < 5) {
+    // Fallback: not enough data for AI selection — use simple score-based
+    S.kwResearch.selected = kws.filter(function(k) { return k.vol > 0; }).slice(0, 50).map(function(k) { return k.kw; });
+    S.kwResearch._selectionMethod = 'fallback';
+    return;
+  }
+
+  var kwBlock = 'kw | vol | kd | cpc | score';
+  var hasGkp = candidates.some(function(k) { return k.low_bid; });
+  if (hasGkp) kwBlock += ' | bid_high | ad_comp';
+  kwBlock += '\n';
+  candidates.forEach(function(k) {
+    kwBlock += k.kw + ' | ' + k.vol + ' | ' + (k.kd || 0) + ' | ' + (k.cpc || 0).toFixed(2) + ' | ' + k.score;
+    if (hasGkp) kwBlock += ' | ' + (k.high_bid || 0).toFixed(2) + ' | ' + (k.ad_competition || 'N/A');
+    kwBlock += '\n';
+  });
+
+  var services = (r.primary_services || []).join(', ');
+  var sdList = (r.services_detail || []).map(function(sd) { return sd.name || ''; }).filter(Boolean).join(', ');
+  var positioning = '';
+  if (S.strategy && S.strategy.positioning) {
+    if (S.strategy.positioning.selected_direction) positioning = S.strategy.positioning.selected_direction;
+    if (S.strategy.positioning.core_value_proposition) positioning += ' — ' + S.strategy.positioning.core_value_proposition;
+  }
+
+  var systemPrompt = 'You are an expert SEO strategist performing keyword selection for a website build. Your job is to select the BEST keywords from a list — not a fixed number, but however many genuinely deserve a dedicated page or supporting role.\n\n'
+    + 'SELECTION RULES:\n'
+    + '1. MUST-HAVE: Any keyword that combines a primary service with the target geography — always select regardless of volume.\n'
+    + '2. BRAND FILTER: REJECT any keyword containing a competitor brand name. The following are competitor brands: ' + (brandTerms.length ? brandTerms.join(', ') : 'none identified') + '\n'
+    + '3. INTENT FILTER: Prioritise commercial and transactional intent. Informational keywords (how to, what is, tips, guide) are OK only if they support a blog content strategy.\n'
+    + '4. DIMINISHING RETURNS: Do not select 10 variations of the same phrase. Pick the 2-3 best variations per topic.\n'
+    + '5. COMMERCIAL SIGNAL: Keywords with high CPC or high Google Ads bid = strong commercial intent. Weight these higher.\n'
+    + '6. VOLUME FLOOR: Do not select keywords with vol < 10 unless they are a must-have service term.\n'
+    + '7. NO FIXED COUNT: Select as many as genuinely qualify. Could be 20, could be 80. Quality over quantity.\n\n'
+    + 'TIER LABELS for each selected keyword:\n'
+    + '- "must-have": Primary service + geo, core business keyword — must build a page for this\n'
+    + '- "high-value": Strong volume + commercial intent, clear page opportunity\n'
+    + '- "supporting": Good keyword that supports a cluster or blog, not a standalone page\n\n'
+    + 'Return ONLY a raw JSON object with this schema (no markdown, no explanation):\n'
+    + '{"selected":[{"kw":"keyword","tier":"must-have|high-value|supporting","reason":"short reason"}],"rejected_examples":[{"kw":"keyword","reason":"competitor brand"}]}\n'
+    + 'Include 3-5 rejected_examples to show why certain high-scoring keywords were excluded.';
+
+  var userPrompt = 'CLIENT: ' + (setup.client || r.client_name || 'business') + '\n'
+    + 'INDUSTRY: ' + (r.industry || '') + '\n'
+    + 'GEO: ' + (geo || 'N/A') + '\n'
+    + 'SERVICES: ' + (sdList || services || 'professional services') + '\n'
+    + (positioning ? 'POSITIONING: ' + positioning + '\n' : '')
+    + '\nKEYWORDS (' + candidates.length + '):\n' + kwBlock;
+
+  try {
+    var res = await fetch('/api/claude-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 8000, system: systemPrompt, messages: [{ role: 'user', content: userPrompt }] })
+    });
+    var resData = await res.json();
+    var text = (resData.content && resData.content[0] && resData.content[0].text) ? resData.content[0].text : '';
+    // Robust JSON extraction
+    var cleaned = text.trim().replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+    var parsed = safeParseJSON(cleaned);
+    if (!parsed && text.indexOf('{') >= 0) {
+      var start = text.indexOf('{');
+      var depth = 0, end = -1;
+      for (var ci = start; ci < text.length; ci++) {
+        if (text[ci] === '{') depth++;
+        else if (text[ci] === '}') { depth--; if (depth === 0) { end = ci; break; } }
+      }
+      if (end > start) parsed = safeParseJSON(text.slice(start, end + 1));
+    }
+
+    if (parsed && parsed.selected && Array.isArray(parsed.selected)) {
+      S.kwResearch.selected = parsed.selected.map(function(s) { return s.kw; }).filter(Boolean);
+      // Store tier data for downstream use (cluster priority, brief importance)
+      S.kwResearch._selectionTiers = {};
+      parsed.selected.forEach(function(s) { if (s.kw) S.kwResearch._selectionTiers[s.kw] = { tier: s.tier || 'supporting', reason: s.reason || '' }; });
+      S.kwResearch._selectionMethod = 'ai';
+      S.kwResearch._rejectedExamples = parsed.rejected_examples || [];
+      console.log('[kwPipeline] AI selected', S.kwResearch.selected.length, '— tiers:', JSON.stringify({
+        'must-have': parsed.selected.filter(function(s){return s.tier==='must-have';}).length,
+        'high-value': parsed.selected.filter(function(s){return s.tier==='high-value';}).length,
+        'supporting': parsed.selected.filter(function(s){return s.tier==='supporting';}).length
+      }));
+    } else {
+      throw new Error('Invalid AI selection response');
+    }
+  } catch(e) {
+    console.warn('[kwPipeline] AI-Select failed, falling back to score-based:', e.message);
+    // Fallback: score-based top selection (no fixed 50 — use natural breakpoint)
+    var selectable = kws.filter(function(k) { return k.vol > 0; });
+    // Find natural score breakpoint: select keywords scoring above 20% of max score
+    var maxScore = selectable.length ? selectable[0].score : 0;
+    var threshold = maxScore * 0.15;
+    var fallback = selectable.filter(function(k) { return k.score >= threshold; });
+    // Cap at 80 to prevent runaway selection
+    S.kwResearch.selected = fallback.slice(0, 80).map(function(k) { return k.kw; });
+    S.kwResearch._selectionMethod = 'fallback';
+    S.kwResearch._selectionTiers = {};
+  }
 }
 
 async function _pipelineCluster() {
@@ -3293,8 +3503,13 @@ function _renderPipelineStatus() {
       pl.status = 'complete';
       if (!pl.completedAt) pl.completedAt = Date.now();
     } else {
+      // Find the first incomplete step to resume from
+      var firstIncomplete = null;
+      for (var _fi = 0; _fi < steps.length; _fi++) {
+        if (!pl[steps[_fi].id] || !pl[steps[_fi].id].done) { firstIncomplete = steps[_fi].id; break; }
+      }
       pl.status = 'paused';
-      pl.pausedAt = pl.currentStep || steps[0].id;
+      pl.pausedAt = firstIncomplete || pl.currentStep || steps[0].id;
     }
     if (typeof scheduleSave === 'function') scheduleSave();
   }
@@ -3350,10 +3565,11 @@ function _renderPipelineStatus() {
     var isCurrent = isRunning && pl.currentStep === s.id;
     var hasError = stepData && stepData.error;
 
-    var bg = isDone ? 'rgba(21,142,29,0.04)' : isCurrent ? 'rgba(216,255,41,0.08)' : 'transparent';
-    var iconClr = isDone ? 'var(--green)' : isCurrent ? 'var(--dark)' : hasError ? 'var(--error)' : 'var(--n1)';
-    var statusIcon = isDone ? 'ti-circle-check-filled' : isCurrent ? '' : hasError ? 'ti-alert-circle' : 'ti-circle';
-    var labelClr = isDone || isCurrent ? 'var(--dark)' : 'var(--n2)';
+    var isSkipped = stepData && stepData.done && stepData.skipped;
+    var bg = isDone && !isSkipped ? 'rgba(21,142,29,0.04)' : isCurrent ? 'rgba(216,255,41,0.08)' : hasError ? 'rgba(239,68,68,0.04)' : 'transparent';
+    var iconClr = isDone && !isSkipped ? 'var(--green)' : isSkipped ? 'var(--n2)' : isCurrent ? 'var(--dark)' : hasError ? 'var(--error)' : 'var(--n1)';
+    var statusIcon = isDone && !isSkipped ? 'ti-circle-check-filled' : isSkipped ? 'ti-circle-minus' : isCurrent ? '' : hasError ? 'ti-alert-circle-filled' : 'ti-circle';
+    var labelClr = isDone || isCurrent ? 'var(--dark)' : hasError ? 'var(--error)' : 'var(--n2)';
 
     html += '<div style="padding:8px 12px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);background:' + bg + ';display:flex;align-items:center;gap:8px">';
     if (isCurrent) {
@@ -3363,11 +3579,13 @@ function _renderPipelineStatus() {
     }
     html += '<div style="min-width:0">';
     html += '<div style="font-size:11px;font-weight:500;color:' + labelClr + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + s.label + '</div>';
-    if (isDone && stepData.count != null) {
+    if (isSkipped) {
+      html += '<div style="font-size:10px;color:var(--n2)">Skipped</div>';
+    } else if (isDone && stepData.count != null) {
       html += '<div style="font-size:10px;color:var(--n2)">' + stepData.count + ' items</div>';
     }
     if (hasError) {
-      html += '<div style="font-size:10px;color:var(--error);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(stepData.error) + '">Error</div>';
+      html += '<div style="font-size:10px;color:var(--error);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(stepData.error) + '">Error — click Resume</div>';
     }
     html += '</div></div>';
   });
