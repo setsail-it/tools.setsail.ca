@@ -16,11 +16,8 @@ var _sai = {
 };
 
 function initSai() {
-  var toggle = document.getElementById('sai-toggle');
-  if (toggle) toggle.addEventListener('click', toggleSai);
-
-  var sendBtn = document.getElementById('sai-send');
-  if (sendBtn) sendBtn.addEventListener('click', saiSend);
+  /* Note: toggle, send, mode buttons, and overlay already have inline onclick
+     handlers in index.html. Do NOT add duplicate addEventListener here. */
 
   var input = document.getElementById('sai-input');
   if (input) {
@@ -31,16 +28,6 @@ function initSai() {
       }
     });
   }
-
-  var modeAsk = document.getElementById('sai-mode-ask');
-  var modeAudit = document.getElementById('sai-mode-audit');
-  var modeExplain = document.getElementById('sai-mode-explain');
-  if (modeAsk) modeAsk.addEventListener('click', function() { setSaiMode('ask'); });
-  if (modeAudit) modeAudit.addEventListener('click', function() { setSaiMode('audit'); });
-  if (modeExplain) modeExplain.addEventListener('click', function() { setSaiMode('explain'); });
-
-  var overlay = document.getElementById('sai-overlay');
-  if (overlay) overlay.addEventListener('click', toggleSai);
 
   document.addEventListener('click', _saiExplainHandler, true);
 
