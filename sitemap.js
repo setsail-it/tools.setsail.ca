@@ -1207,14 +1207,12 @@ async function updatePrimaryKw(idx, rawKw) {
   scheduleSave(); renderSitemapResults(S.sitemapApproved);
 }
 
-function showMermaidModal() {
+function _buildMermaidCode() {
   const pages = S.pages || [];
   const safeId = s => ('N_'+s).replace(/[^a-zA-Z0-9_]/g,'_');
   const pStroke = p => p.priority==='P1'?'#158E1D':p.priority==='P2'?'#e69900':'#aaa';
   let lines = ['graph TD'];
-  // Collect parent groups
   const parents = [...new Set(pages.filter(p=>(p.slug||'').includes('/')).map(p=>p.slug.split('/')[0]))];
-  // Home
   const home = pages.find(p => !p.slug || p.slug==='' || p.slug==='/');
   const homeId = 'Home';
   if (home) {
@@ -1222,15 +1220,12 @@ function showMermaidModal() {
     lines.push(`  ${homeId}["🏠 Home${kl}"]`);
     lines.push(`  style ${homeId} fill:#D8FF29,stroke:#158E1D,color:#111111`);
   }
-  // Parent group nodes
   parents.forEach(g => {
     const id = safeId(g);
-    const label = g.charAt(0).toUpperCase()+g.slice(1);
     lines.push(`  ${id}["📁 /${g}"]`);
     lines.push(`  style ${id} fill:#f0f0f0,stroke:#ccc,color:#333`);
     if (home) lines.push(`  ${homeId} --> ${id}`);
   });
-  // Pages
   pages.forEach(p => {
     if (!p.slug && home) return;
     const slug = p.slug || '';
@@ -1247,51 +1242,136 @@ function showMermaidModal() {
       if (home) lines.push(`  ${homeId} --> ${id}`);
     }
   });
-  const mermaid = lines.join('\n');
-  // Build modal
-  let modal = document.getElementById('mermaid-modal');
+  return lines.join('\n');
+}
+
+// Load mermaid.js CDN once and cache
+var _mermaidLoaded = false;
+function _ensureMermaid(cb) {
+  if (_mermaidLoaded && window.mermaid) { cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+  s.onload = function() {
+    window.mermaid.initialize({ startOnLoad: false, theme: 'neutral', flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' } });
+    _mermaidLoaded = true;
+    cb();
+  };
+  document.head.appendChild(s);
+}
+
+function showMermaidModal() {
+  var mermaidCode = _buildMermaidCode();
+  var modal = document.getElementById('mermaid-modal');
   if (modal) modal.remove();
   modal = document.createElement('div');
   modal.id = 'mermaid-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
-  modal.innerHTML = `<div style="background:var(--white);border-radius:12px;padding:24px;max-width:720px;width:100%;max-height:82vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.2)">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-      <div>
-        <div style="font-size:14px;font-weight:500;color:var(--dark)">🌿 Mermaid Sitemap Export</div>
-        <div style="font-size:11.5px;color:var(--n2);margin-top:3px">In FigJam: <strong>Insert → Mermaid diagram</strong> → paste → Done</div>
-      </div>
-      <button id="mermaid-close-btn" style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:var(--n2);white-space:nowrap">✕ Close</button>
-    </div>
-    <pre id="mermaid-output" style="background:var(--panel);border-radius:8px;padding:14px 16px;font-size:10.5px;font-family:monospace;overflow:auto;white-space:pre;color:var(--dark);border:1px solid var(--border);line-height:1.65;flex:1;max-height:52vh"></pre>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="mermaid-copy-btn"><i class="ti ti-copy"></i> Copy to Clipboard</button>
-      <a href="https://www.figma.com/figjam/" target="_blank" class="btn btn-ghost" style="text-decoration:none"><i class="ti ti-external-link"></i> Open FigJam</a>
-    </div>
-  </div>`;
-  // Set mermaid text via textContent (safe, no HTML injection)
-  modal.querySelector('#mermaid-output').textContent = mermaid;
-  // Wire close button
-  modal.querySelector('#mermaid-close-btn').onclick = function() {
-    document.getElementById('mermaid-modal').remove();
-  };
-  // Wire copy button with fallback — use mermaid var from closure, not DOM read
-  modal.querySelector('#mermaid-copy-btn').onclick = function() {
-    var btn = this;
-    var text = mermaid;
+  modal.addEventListener('click', function(e) { if(e.target===modal) modal.remove(); });
+
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:var(--white);border-radius:12px;padding:24px;max-width:95vw;width:100%;max-height:90vh;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,0.2)';
+
+  // Header
+  var header = document.createElement('div');
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px';
+  var titleWrap = document.createElement('div');
+  titleWrap.innerHTML = '<div style="font-size:15px;font-weight:600;color:var(--dark)"><i class="ti ti-sitemap" style="margin-right:4px"></i> Site Architecture</div><div style="font-size:11px;color:var(--n2);margin-top:2px">' + (S.pages||[]).length + ' pages · visual hierarchy diagram</div>';
+  header.appendChild(titleWrap);
+
+  // Tab buttons
+  var tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;gap:0;margin-left:auto';
+  var _mmTab = 'visual';
+  function _setMmTab(t) {
+    _mmTab = t;
+    vizWrap.style.display = t === 'visual' ? 'block' : 'none';
+    codeWrap.style.display = t === 'code' ? 'block' : 'none';
+    tabVisual.style.cssText = 'background:none;border:none;border-bottom:2px solid ' + (t==='visual'?'var(--green)':'transparent') + ';padding:4px 12px;font-size:12px;font-family:var(--font);color:' + (t==='visual'?'var(--green)':'var(--n2)') + ';cursor:pointer;font-weight:' + (t==='visual'?'500':'400');
+    tabCode.style.cssText = 'background:none;border:none;border-bottom:2px solid ' + (t==='code'?'var(--green)':'transparent') + ';padding:4px 12px;font-size:12px;font-family:var(--font);color:' + (t==='code'?'var(--green)':'var(--n2)') + ';cursor:pointer;font-weight:' + (t==='code'?'500':'400');
+  }
+  var tabVisual = document.createElement('button');
+  tabVisual.textContent = 'Visual';
+  tabVisual.onclick = function() { _setMmTab('visual'); };
+  var tabCode = document.createElement('button');
+  tabCode.textContent = 'Code';
+  tabCode.onclick = function() { _setMmTab('code'); };
+  tabBar.appendChild(tabVisual);
+  tabBar.appendChild(tabCode);
+  header.appendChild(tabBar);
+
+  var closeBtn = document.createElement('button');
+  closeBtn.textContent = '\u00d7';
+  closeBtn.style.cssText = 'background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:16px;color:var(--n2);line-height:1';
+  closeBtn.onclick = function() { document.getElementById('mermaid-modal').remove(); };
+  header.appendChild(closeBtn);
+  inner.appendChild(header);
+
+  // Visual diagram container
+  var vizWrap = document.createElement('div');
+  vizWrap.style.cssText = 'flex:1;overflow:auto;max-height:68vh;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:16px;min-height:200px';
+  vizWrap.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--n2);font-size:12px;padding:40px"><span class="spinner" style="width:14px;height:14px"></span> Rendering diagram...</div>';
+  inner.appendChild(vizWrap);
+
+  // Code container (hidden by default)
+  var codeWrap = document.createElement('div');
+  codeWrap.style.cssText = 'flex:1;overflow:auto;max-height:68vh;display:none';
+  var pre = document.createElement('pre');
+  pre.id = 'mermaid-output';
+  pre.style.cssText = 'background:var(--panel);border-radius:8px;padding:14px 16px;font-size:10.5px;font-family:monospace;overflow:auto;white-space:pre;color:var(--dark);border:1px solid var(--border);line-height:1.65;margin:0';
+  pre.textContent = mermaidCode;
+  codeWrap.appendChild(pre);
+  inner.appendChild(codeWrap);
+
+  // Buttons
+  var btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+  var copyBtn = document.createElement('button');
+  copyBtn.className = 'btn btn-primary';
+  copyBtn.innerHTML = '<i class="ti ti-copy"></i> Copy Code';
+  copyBtn.onclick = function() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function() {
-        btn.innerHTML = '<i class="ti ti-check"></i> Copied!';
-        setTimeout(function() { btn.innerHTML = '<i class="ti ti-copy"></i> Copy to Clipboard'; }, 2200);
-      }).catch(function(err) {
-        console.warn('[mermaid] clipboard API failed, using fallback:', err);
-        _mermaidFallbackCopy(text, btn);
-      });
-    } else {
-      _mermaidFallbackCopy(text, btn);
-    }
+      navigator.clipboard.writeText(mermaidCode).then(function() {
+        copyBtn.innerHTML = '<i class="ti ti-check"></i> Copied!';
+        setTimeout(function() { copyBtn.innerHTML = '<i class="ti ti-copy"></i> Copy Code'; }, 2200);
+      }).catch(function() { _mermaidFallbackCopy(mermaidCode, copyBtn); });
+    } else { _mermaidFallbackCopy(mermaidCode, copyBtn); }
   };
+  btnWrap.appendChild(copyBtn);
+  var downloadBtn = document.createElement('button');
+  downloadBtn.className = 'btn btn-ghost';
+  downloadBtn.innerHTML = '<i class="ti ti-download"></i> Download SVG';
+  downloadBtn.onclick = function() {
+    var svg = vizWrap.querySelector('svg');
+    if (!svg) { if (typeof aiBarNotify === 'function') aiBarNotify('Diagram not rendered yet', { isError: true, duration: 2000 }); return; }
+    var blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (S.setup && S.setup.client ? S.setup.client.replace(/[^a-zA-Z0-9]/g,'-') : 'sitemap') + '-architecture.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  btnWrap.appendChild(downloadBtn);
+  inner.appendChild(btnWrap);
+  modal.appendChild(inner);
   document.body.appendChild(modal);
+  _setMmTab('visual');
+
+  // Render visual diagram with mermaid.js
+  _ensureMermaid(function() {
+    try {
+      var id = 'mermaid-viz-' + Date.now();
+      window.mermaid.render(id, mermaidCode).then(function(result) {
+        vizWrap.innerHTML = result.svg;
+        // Make SVG responsive
+        var svg = vizWrap.querySelector('svg');
+        if (svg) { svg.style.maxWidth = '100%'; svg.style.height = 'auto'; }
+      }).catch(function(err) {
+        vizWrap.innerHTML = '<div style="color:var(--error);font-size:12px;padding:20px">Render error: ' + (err.message || err) + '</div>';
+      });
+    } catch(err) {
+      vizWrap.innerHTML = '<div style="color:var(--error);font-size:12px;padding:20px">Render error: ' + (err.message || err) + '</div>';
+    }
+  });
 }
 
 function _mermaidFallbackCopy(text, btn) {
@@ -1461,7 +1541,7 @@ function _renderSitemapResultsInner(approved) {
       html += '<button class="btn btn-ghost sm" data-tip="Accept all ' + _suggestCount + ' priority suggestions from strategy at once." style="font-size:11px;padding:2px 8px;color:#3b82f6;border-color:rgba(59,130,246,0.3)" onclick="acceptAllPrioritySuggestions()"><i class="ti ti-checks"></i> Accept ' + _suggestCount + '</button>';
     }
   }
-  html += '<button class="btn btn-ghost sm" data-tip="Generates a visual hierarchy diagram of the sitemap — shows parent/child page relationships. Useful for client presentations and IA review." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Mermaid</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="Opens a visual site architecture diagram showing page hierarchy and relationships. Includes rendered preview, SVG download, and Mermaid code for FigJam." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Architecture</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
   html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
