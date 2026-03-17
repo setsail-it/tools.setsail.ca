@@ -4205,7 +4205,7 @@ function renderStrategyScorecard() {
   var meta = S.strategy._meta;
   var colour = overall >= 7 ? 'var(--green)' : overall >= 4 ? '#e6a23c' : '#f56c6c';
 
-  var html = '<div class="card" data-copilot-explain="strategy:score" style="margin-bottom:14px;padding:14px 18px">';
+  var html = '<div class="card" data-sai-explain="strategy:score" style="margin-bottom:14px;padding:14px 18px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
   html += '<div style="display:flex;align-items:center;gap:10px">';
   html += '<span style="font-size:28px;font-weight:600;color:' + colour + '">' + overall + '</span>';
@@ -4592,14 +4592,14 @@ function renderStrategyTabContent() {
   }
 
   // Section content
-  if (_sTab === 'audience') html += '<div data-copilot-explain="diagnostic:D0">' + _renderAudience(st) + '</div>';
-  else if (_sTab === 'positioning') html += '<div data-copilot-explain="diagnostic:D2">' + _renderPositioning(st) + '</div>';
-  else if (_sTab === 'economics') html += '<div data-copilot-explain="diagnostic:D1">' + _renderEconomics(st) + '</div>';
-  else if (_sTab === 'subtraction') html += '<div data-copilot-explain="diagnostic:D3">' + _renderSubtraction(st) + '</div>';
-  else if (_sTab === 'channels') { html += '<div data-copilot-explain="diagnostic:D4">' + _renderChannels(st) + _renderGrowth(st) + '</div>'; }
-  else if (_sTab === 'execution') html += '<div data-copilot-explain="diagnostic:D5">' + _renderExecution(st) + '</div>';
-  else if (_sTab === 'brand') html += '<div data-copilot-explain="diagnostic:D6">' + _renderBrand(st) + '</div>';
-  else if (_sTab === 'risks') html += '<div data-copilot-explain="diagnostic:D7">' + _renderRisks(st) + '</div>';
+  if (_sTab === 'audience') html += '<div data-sai-explain="diagnostic:D0">' + _renderAudience(st) + '</div>';
+  else if (_sTab === 'positioning') html += '<div data-sai-explain="diagnostic:D2">' + _renderPositioning(st) + '</div>';
+  else if (_sTab === 'economics') html += '<div data-sai-explain="diagnostic:D1">' + _renderEconomics(st) + '</div>';
+  else if (_sTab === 'subtraction') html += '<div data-sai-explain="diagnostic:D3">' + _renderSubtraction(st) + '</div>';
+  else if (_sTab === 'channels') { html += '<div data-sai-explain="diagnostic:D4">' + _renderChannels(st) + _renderGrowth(st) + '</div>'; }
+  else if (_sTab === 'execution') html += '<div data-sai-explain="diagnostic:D5">' + _renderExecution(st) + '</div>';
+  else if (_sTab === 'brand') html += '<div data-sai-explain="diagnostic:D6">' + _renderBrand(st) + '</div>';
+  else if (_sTab === 'risks') html += '<div data-sai-explain="diagnostic:D7">' + _renderRisks(st) + '</div>';
 
   // Strategist override panel (all scored tabs)
   if (diagNum !== undefined && diagNum !== null) {
@@ -5351,7 +5351,7 @@ function _renderPositioning(st) {
   var html = '';
 
   // ── Positioning Direction section (top of tab) ──
-  html += '<div class="card" data-copilot-explain="positioning:direction" style="margin-bottom:18px;padding:16px 18px;border-left:3px solid #6b21a8">';
+  html += '<div class="card" data-sai-explain="positioning:direction" style="margin-bottom:18px;padding:16px 18px;border-left:3px solid #6b21a8">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
   html += '<div style="font-size:13px;font-weight:600;color:#6b21a8"><i class="ti ti-compass" style="margin-right:4px"></i> Positioning Direction</div>';
   if (p.selected_direction) {

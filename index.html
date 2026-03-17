@@ -62,25 +62,25 @@ input::placeholder,textarea::placeholder{color:#bbb}
 
 /* MAIN */
 #main{padding:32px 32px 80px;margin-top:56px;margin-left:0;transition:margin-left .2s,margin-right .25s}body.in-project #main{margin-left:188px}
-body.copilot-open #main{margin-right:400px}
-@media(max-width:1100px){body.copilot-open #main{margin-right:0}}
+body.sai-open #main{margin-right:400px}
+@media(max-width:1100px){body.sai-open #main{margin-right:0}}
 
-/* COPILOT PANEL */
-#copilot-panel{position:fixed;top:56px;right:-400px;bottom:0;width:400px;z-index:900;background:var(--white);border-left:1px solid var(--border);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,0.08);font-family:var(--font);transition:right .25s ease}
-#copilot-panel.open{right:0}
-#copilot-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.2);z-index:899}
-@media(max-width:1100px){#copilot-overlay.active{display:block}}
-#copilot-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
-#copilot-mode-tabs{display:flex;gap:2px;flex:1}
-#copilot-mode-tabs button{padding:4px 10px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--n3);cursor:pointer;font-family:var(--font);transition:all .15s}
-#copilot-mode-tabs button.active{background:var(--dark);color:var(--white);border-color:var(--dark)}
-#copilot-ask-area{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
-#copilot-audit-area{flex:1;overflow-y:auto;padding:12px 14px;display:none}
-#copilot-input-bar{padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:6px;align-items:flex-end}
-#copilot-input{flex:1;font-size:12px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;padding:8px 10px;resize:none;min-height:36px;max-height:120px;outline:none;transition:border .15s}
-#copilot-input:focus{border-color:var(--green)}
-#copilot-send{width:32px;height:32px;border-radius:6px;border:none;background:var(--green);color:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#copilot-send:hover{opacity:.85}
+/* SETSAILAI PANEL */
+#sai-panel{position:fixed;top:56px;right:-400px;bottom:0;width:400px;z-index:900;background:var(--white);border-left:1px solid var(--border);display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,0.08);font-family:var(--font);transition:right .25s ease}
+#sai-panel.open{right:0}
+#sai-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.2);z-index:899}
+@media(max-width:1100px){#sai-overlay.active{display:block}}
+#sai-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+#sai-mode-tabs{display:flex;gap:2px;flex:1}
+#sai-mode-tabs button{padding:4px 10px;font-size:10px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--n3);cursor:pointer;font-family:var(--font);transition:all .15s}
+#sai-mode-tabs button.active{background:var(--dark);color:var(--white);border-color:var(--dark)}
+#sai-ask-area{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+#sai-audit-area{flex:1;overflow-y:auto;padding:12px 14px;display:none}
+#sai-input-bar{padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:6px;align-items:flex-end}
+#sai-input{flex:1;font-size:12px;font-family:var(--font);border:1px solid var(--border);border-radius:6px;padding:8px 10px;resize:none;min-height:36px;max-height:120px;outline:none;transition:border .15s}
+#sai-input:focus{border-color:var(--green)}
+#sai-send{width:32px;height:32px;border-radius:6px;border:none;background:var(--green);color:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#sai-send:hover{opacity:.85}
 .cp-bubble{font-size:12px;line-height:1.55;border-radius:8px;padding:8px 12px;max-width:92%;word-wrap:break-word}
 .cp-bubble.user{background:var(--dark);color:var(--white);align-self:flex-end;border-bottom-right-radius:2px}
 .cp-bubble.assistant{background:var(--bg);color:var(--dark);align-self:flex-start;border-bottom-left-radius:2px}
@@ -93,11 +93,11 @@ body.copilot-open #main{margin-right:400px}
 .cp-audit-stage-hdr:first-child{margin-top:0}
 .cp-audit-go{font-size:9px;padding:2px 6px;border-radius:3px;border:1px solid var(--border);background:var(--white);color:var(--n3);cursor:pointer;font-family:var(--font);float:right;margin-top:-2px}
 .cp-audit-go:hover{background:var(--bg);color:var(--dark)}
-body.copilot-open [data-copilot-explain]{cursor:help}
-body.copilot-explain [data-copilot-explain]:hover{outline:1px dashed var(--green);outline-offset:2px;border-radius:3px}
+body.sai-open [data-sai-explain]{cursor:help}
+body.sai-explain [data-sai-explain]:hover{outline:1px dashed var(--green);outline-offset:2px;border-radius:3px}
 .cp-empty{text-align:centre;color:var(--n2);font-size:12px;padding:40px 20px;line-height:1.6}
 .cp-empty i{font-size:24px;display:block;margin-bottom:8px;opacity:.4}
-#copilot-badge{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;font-size:9px;font-weight:700;color:var(--white);display:none;align-items:center;justify-content:center;padding:0 4px}
+#sai-badge{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;font-size:9px;font-weight:700;color:var(--white);display:none;align-items:center;justify-content:center;padding:0 4px}
 .screen{animation:fadeIn .25s ease;display:none}.screen.active{display:block}
 
 /* TYPE */
@@ -291,7 +291,7 @@ textarea.inp{resize:vertical}
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
-    <button onclick="toggleCopilot()" id="copilot-toggle" title="AI Copilot" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> Copilot<span id="copilot-badge"></span></button>
+    <button onclick="toggleSai()" id="sai-toggle" title="SetsailAI" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> SetsailAI<span id="sai-badge"></span></button>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
     <div id="user-pill" onclick="toggleUserDropdown(event)" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3)" title="Account">
       <i class="ti ti-user-circle" style="font-size:13px;color:var(--green)"></i>
@@ -1241,7 +1241,7 @@ function goTo(stage) {
     }
   }
   scheduleSave();
-  if (typeof runCopilotAudit === 'function') runCopilotAudit();
+  if (typeof runSaiAudit === 'function') runSaiAudit();
 }
 
 function renderStageBar(current) {
@@ -1692,8 +1692,8 @@ function aiBarEnd(label) {
       if (fill) fill.style.width = '0%';
       // Resume stage tips after generation completes
       if (S && S.stage) startStageTips(S.stage);
-      // Copilot post-generation audit
-      if (typeof _copilotPostGenAudit === 'function') setTimeout(_copilotPostGenAudit, 500);
+      // SetsailAI post-generation audit
+      if (typeof _saiPostGenAudit === 'function') setTimeout(_saiPostGenAudit, 500);
     }
   }, 2000);
 }
@@ -2692,8 +2692,8 @@ function toggleHelpPanel() {
   overlay.style.display = isOpen ? 'none' : 'block';
   if (btn) btn.style.background = isOpen ? 'var(--white)' : 'var(--dark)';
   if (btn) btn.style.color = isOpen ? 'var(--mid)' : 'var(--white)';
-  // Close copilot when help opens
-  if (!isOpen && typeof _copilot !== 'undefined' && _copilot.open) toggleCopilot();
+  // Close SetsailAI when help opens
+  if (!isOpen && typeof _sai !== 'undefined' && _sai.open) toggleSai();
 }
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
@@ -2927,7 +2927,7 @@ async function deleteAdminUser() {
 <script src="schema.js"></script>
 <script src="copy.js"></script>
 <script src="images.js"></script>
-<script src="copilot.js"></script>
+<script src="setsailai.js"></script>
 
 <!-- Image Picker Modal -->
 <div id="img-pick-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:20px">
@@ -2945,29 +2945,29 @@ async function deleteAdminUser() {
 
 
 
-<!-- AI COPILOT PANEL -->
-<div id="copilot-overlay" onclick="toggleCopilot()"></div>
-<div id="copilot-panel">
-  <div id="copilot-header">
+<!-- SETSAILAI PANEL -->
+<div id="sai-overlay" onclick="toggleSai()"></div>
+<div id="sai-panel">
+  <div id="sai-header">
     <i class="ti ti-sparkles" style="font-size:14px;color:var(--green)"></i>
-    <span style="font-weight:600;font-size:12px;color:var(--dark);margin-right:auto">Copilot</span>
-    <div id="copilot-mode-tabs">
-      <button id="copilot-tab-ask" class="active" onclick="setCopilotMode('ask')">Ask</button>
-      <button id="copilot-tab-audit" onclick="setCopilotMode('audit')">Audit</button>
-      <button id="copilot-tab-explain" onclick="setCopilotMode('explain')">Explain</button>
+    <span style="font-weight:600;font-size:12px;color:var(--dark);margin-right:auto">SetsailAI</span>
+    <div id="sai-mode-tabs">
+      <button id="sai-tab-ask" class="active" onclick="setSaiMode('ask')">Ask</button>
+      <button id="sai-tab-audit" onclick="setSaiMode('audit')">Audit</button>
+      <button id="sai-tab-explain" onclick="setSaiMode('explain')">Explain</button>
     </div>
-    <button onclick="toggleCopilot()" style="border:none;background:none;cursor:pointer;color:var(--n2);font-size:16px;padding:2px"><i class="ti ti-x"></i></button>
+    <button onclick="toggleSai()" style="border:none;background:none;cursor:pointer;color:var(--n2);font-size:16px;padding:2px"><i class="ti ti-x"></i></button>
   </div>
-  <div id="copilot-ask-area">
-    <div class="cp-empty"><i class="ti ti-sparkles"></i>Ask anything about this project.<br>The copilot has full context of every stage.</div>
+  <div id="sai-ask-area">
+    <div class="cp-empty"><i class="ti ti-sparkles"></i>Ask anything about this project.<br>SetsailAI has full context of every stage.</div>
   </div>
-  <div id="copilot-audit-area"></div>
-  <div id="copilot-explain-hint" style="display:none;flex:1;overflow-y:auto;padding:12px 14px">
+  <div id="sai-audit-area"></div>
+  <div id="sai-explain-hint" style="display:none;flex:1;overflow-y:auto;padding:12px 14px">
     <div class="cp-empty"><i class="ti ti-click"></i>Click any highlighted element in the build to understand why it exists and what data drove it.</div>
   </div>
-  <div id="copilot-input-bar">
-    <textarea id="copilot-input" rows="1" placeholder="Ask about the strategy, sitemap, keywords..."></textarea>
-    <button id="copilot-send" onclick="copilotSend()"><i class="ti ti-send" style="font-size:14px"></i></button>
+  <div id="sai-input-bar">
+    <textarea id="sai-input" rows="1" placeholder="Ask about the strategy, sitemap, keywords..."></textarea>
+    <button id="sai-send" onclick="saiSend()"><i class="ti ti-send" style="font-size:14px"></i></button>
   </div>
 </div>
 

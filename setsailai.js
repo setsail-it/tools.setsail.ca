@@ -1,11 +1,11 @@
 /* ============================================================
-   SetSailOS — AI Copilot
+   SetSailOS — SetsailAI
    Loaded AFTER index.html + all stage files.
    ============================================================ */
 
 /* ---------- 1. State & Init ---------- */
 
-var _copilot = {
+var _sai = {
   open: false,
   mode: 'ask',
   messages: [],
@@ -15,47 +15,47 @@ var _copilot = {
   _lastAuditAt: 0
 };
 
-function initCopilot() {
-  var toggle = document.getElementById('copilot-toggle');
-  if (toggle) toggle.addEventListener('click', toggleCopilot);
+function initSai() {
+  var toggle = document.getElementById('sai-toggle');
+  if (toggle) toggle.addEventListener('click', toggleSai);
 
-  var sendBtn = document.getElementById('copilot-send');
-  if (sendBtn) sendBtn.addEventListener('click', copilotSend);
+  var sendBtn = document.getElementById('sai-send');
+  if (sendBtn) sendBtn.addEventListener('click', saiSend);
 
-  var input = document.getElementById('copilot-input');
+  var input = document.getElementById('sai-input');
   if (input) {
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        copilotSend();
+        saiSend();
       }
     });
   }
 
-  var modeAsk = document.getElementById('copilot-mode-ask');
-  var modeAudit = document.getElementById('copilot-mode-audit');
-  var modeExplain = document.getElementById('copilot-mode-explain');
-  if (modeAsk) modeAsk.addEventListener('click', function() { setCopilotMode('ask'); });
-  if (modeAudit) modeAudit.addEventListener('click', function() { setCopilotMode('audit'); });
-  if (modeExplain) modeExplain.addEventListener('click', function() { setCopilotMode('explain'); });
+  var modeAsk = document.getElementById('sai-mode-ask');
+  var modeAudit = document.getElementById('sai-mode-audit');
+  var modeExplain = document.getElementById('sai-mode-explain');
+  if (modeAsk) modeAsk.addEventListener('click', function() { setSaiMode('ask'); });
+  if (modeAudit) modeAudit.addEventListener('click', function() { setSaiMode('audit'); });
+  if (modeExplain) modeExplain.addEventListener('click', function() { setSaiMode('explain'); });
 
-  var overlay = document.getElementById('copilot-overlay');
-  if (overlay) overlay.addEventListener('click', toggleCopilot);
+  var overlay = document.getElementById('sai-overlay');
+  if (overlay) overlay.addEventListener('click', toggleSai);
 
-  document.addEventListener('click', _copilotExplainHandler, true);
+  document.addEventListener('click', _saiExplainHandler, true);
 
-  setTimeout(function() { runCopilotAudit(); }, 2000);
+  setTimeout(function() { runSaiAudit(); }, 2000);
 }
 
 /* ---------- 2. Panel Toggle & Mode Switch ---------- */
 
-function toggleCopilot() {
-  _copilot.open = !_copilot.open;
-  var panel = document.getElementById('copilot-panel');
-  var overlay = document.getElementById('copilot-overlay');
-  if (panel) panel.classList.toggle('open', _copilot.open);
-  if (overlay) overlay.classList.toggle('open', _copilot.open);
-  document.body.classList.toggle('copilot-open', _copilot.open);
+function toggleSai() {
+  _sai.open = !_sai.open;
+  var panel = document.getElementById('sai-panel');
+  var overlay = document.getElementById('sai-overlay');
+  if (panel) panel.classList.toggle('open', _sai.open);
+  if (overlay) overlay.classList.toggle('open', _sai.open);
+  document.body.classList.toggle('sai-open', _sai.open);
 
   /* Close help panel if open */
   var helpPanel = document.getElementById('help-panel');
@@ -63,23 +63,23 @@ function toggleCopilot() {
     helpPanel.classList.remove('open');
   }
 
-  if (_copilot.open && _copilot.mode === 'audit') {
+  if (_sai.open && _sai.mode === 'audit') {
     _renderAuditPanel();
   }
 }
 
-function setCopilotMode(mode) {
-  _copilot.mode = mode;
+function setSaiMode(mode) {
+  _sai.mode = mode;
   var modes = ['ask', 'audit', 'explain'];
   modes.forEach(function(m) {
-    var btn = document.getElementById('copilot-mode-' + m);
+    var btn = document.getElementById('sai-mode-' + m);
     if (btn) btn.classList.toggle('active', m === mode);
   });
 
-  var askArea = document.getElementById('copilot-ask-area');
-  var auditArea = document.getElementById('copilot-audit-area');
-  var inputRow = document.getElementById('copilot-input');
-  var sendBtn = document.getElementById('copilot-send');
+  var askArea = document.getElementById('sai-ask-area');
+  var auditArea = document.getElementById('sai-audit-area');
+  var inputRow = document.getElementById('sai-input');
+  var sendBtn = document.getElementById('sai-send');
 
   if (askArea) askArea.style.display = (mode === 'ask' || mode === 'explain') ? '' : 'none';
   if (auditArea) auditArea.style.display = (mode === 'audit') ? '' : 'none';
@@ -88,15 +88,15 @@ function setCopilotMode(mode) {
 
   if (mode === 'audit') _renderAuditPanel();
   if (mode === 'explain') {
-    _addCopilotSystemMsg('Explain mode active — click any element with an explanation tag to learn about it.');
+    _addSaiSystemMsg('Explain mode active — click any element with an explanation tag to learn about it.');
   }
 }
 
-function _addCopilotSystemMsg(text) {
-  var area = document.getElementById('copilot-ask-area');
+function _addSaiSystemMsg(text) {
+  var area = document.getElementById('sai-ask-area');
   if (!area) return;
   var div = document.createElement('div');
-  div.className = 'copilot-system-msg';
+  div.className = 'sai-system-msg';
   div.style.cssText = 'padding:8px 12px;margin:6px 0;font-size:12px;color:#8899aa;text-align:centre;font-style:italic;';
   div.textContent = text;
   area.appendChild(div);
@@ -105,10 +105,10 @@ function _addCopilotSystemMsg(text) {
 
 /* ---------- 3. Chat / Ask Mode ---------- */
 
-function _copilotCallClaude(system, userMsg, onChunk) {
-  if (_copilot._abortCtrl) _copilot._abortCtrl.abort();
-  _copilot._abortCtrl = new AbortController();
-  _copilot._streaming = true;
+function _saiCallClaude(system, userMsg, onChunk) {
+  if (_sai._abortCtrl) _sai._abortCtrl.abort();
+  _sai._abortCtrl = new AbortController();
+  _sai._streaming = true;
 
   var body = {
     model: 'claude-sonnet-4-20250514',
@@ -119,8 +119,8 @@ function _copilotCallClaude(system, userMsg, onChunk) {
   };
 
   /* Include recent conversation history (last 6 turns) for continuity */
-  if (_copilot.messages.length > 1) {
-    var hist = _copilot.messages.slice(-7, -1).map(function(m) {
+  if (_sai.messages.length > 1) {
+    var hist = _sai.messages.slice(-7, -1).map(function(m) {
       return { role: m.role, content: m.content };
     });
     body.messages = hist.concat(body.messages);
@@ -130,7 +130,7 @@ function _copilotCallClaude(system, userMsg, onChunk) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-    signal: _copilot._abortCtrl.signal
+    signal: _sai._abortCtrl.signal
   }).then(function(res) {
     if (!res.ok) throw new Error('Claude API returned ' + res.status);
     var reader = res.body.getReader();
@@ -140,7 +140,7 @@ function _copilotCallClaude(system, userMsg, onChunk) {
     function pump() {
       return reader.read().then(function(result) {
         if (result.done) {
-          _copilot._streaming = false;
+          _sai._streaming = false;
           return;
         }
         buffer += decoder.decode(result.value, { stream: true });
@@ -162,40 +162,61 @@ function _copilotCallClaude(system, userMsg, onChunk) {
     }
     return pump();
   }).catch(function(err) {
-    _copilot._streaming = false;
+    _sai._streaming = false;
     if (err.name === 'AbortError') return;
     throw err;
   });
 }
 
-function copilotSend() {
-  var input = document.getElementById('copilot-input');
+function saiSend() {
+  var input = document.getElementById('sai-input');
   if (!input) return;
   var text = input.value.trim();
-  if (!text || _copilot._streaming) return;
+  if (!text || _sai._streaming) return;
   input.value = '';
 
-  _copilot.messages.push({ role: 'user', content: text, ts: Date.now() });
+  _sai.messages.push({ role: 'user', content: text, ts: Date.now() });
   _addChatBubble('user', text, false);
 
-  var system = _assembleCopilotContext(text);
+  var system = _assembleSaiContext(text);
   var bubble = _addChatBubble('assistant', '', true);
   var fullText = '';
 
-  _copilotCallClaude(system, text, function(chunk) {
+  _saiCallClaude(system, text, function(chunk) {
     fullText += chunk;
-    bubble.innerHTML = _copilotMd(fullText);
-    var area = document.getElementById('copilot-ask-area');
+    /* Hide action block from live render — show only the explanation */
+    var displayText = fullText.replace(/:::ACTION[\s\S]*?:::END/g, '\n\n*Preparing proposed changes…*').replace(/:::ACTION[\s\S]*$/g, '\n\n*Preparing proposed changes…*');
+    bubble.innerHTML = _saiMd(displayText);
+    var area = document.getElementById('sai-ask-area');
     if (area) area.scrollTop = area.scrollHeight;
   }).then(function() {
-    _copilot.messages.push({ role: 'assistant', content: fullText, ts: Date.now() });
-    bubble.innerHTML = _copilotMd(fullText);
+    _sai.messages.push({ role: 'assistant', content: fullText, ts: Date.now() });
+    /* Parse and render any action blocks */
+    var actionMatch = fullText.match(/:::ACTION\s*([\s\S]*?)\s*:::END/);
+    var displayText = fullText.replace(/:::ACTION[\s\S]*?:::END/g, '').trim();
+    bubble.innerHTML = _saiMd(displayText);
+    if (actionMatch) {
+      try {
+        var actionJson = actionMatch[1].trim();
+        /* Strip markdown code fences if Claude wrapped it */
+        actionJson = actionJson.replace(/^```json?\s*/i, '').replace(/\s*```$/, '');
+        var action = JSON.parse(actionJson);
+        _renderActionConfirmation(action, bubble);
+      } catch (parseErr) {
+        var errDiv = document.createElement('div');
+        errDiv.style.cssText = 'margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:11px;color:#991b1b;';
+        errDiv.textContent = 'Could not parse proposed action: ' + parseErr.message;
+        bubble.appendChild(errDiv);
+      }
+    }
+    var area = document.getElementById('sai-ask-area');
+    if (area) area.scrollTop = area.scrollHeight;
   }).catch(function(err) {
     bubble.innerHTML = '<span style="color:#e74c3c;">Error: ' + esc(err.message) + '</span>';
   });
 }
 
-function _assembleCopilotContext(question) {
+function _assembleSaiContext(question) {
   var ctx = '';
   var q = (question || '').toLowerCase();
 
@@ -219,7 +240,7 @@ function _assembleCopilotContext(question) {
   /* --- Layer 1: strategy overview (~500 tokens) --- */
   if (S && S.strategy) {
     if (S.strategy.compiled_output) {
-      ctx += 'STRATEGY OVERVIEW:\n' + _copilotTruncate(S.strategy.compiled_output, 2000) + '\n\n';
+      ctx += 'STRATEGY OVERVIEW:\n' + _saiTruncate(S.strategy.compiled_output, 2000) + '\n\n';
     } else {
       var stratSummary = {};
       if (S.strategy.positioning) stratSummary.positioning = S.strategy.positioning.selected_direction || '';
@@ -236,11 +257,11 @@ function _assembleCopilotContext(question) {
   /* --- Layer 2: stage-specific context --- */
   var stage = (S && S.stage) || '';
   if (stage === 'research' && S && S.research) {
-    ctx += 'RESEARCH DATA:\n' + _copilotTruncate(S.research, 3000) + '\n\n';
+    ctx += 'RESEARCH DATA:\n' + _saiTruncate(S.research, 3000) + '\n\n';
   } else if (stage === 'strategy' && S && S.strategy) {
-    var tabKey = _copilotCurrentStrategyTab();
+    var tabKey = _saiCurrentStrategyTab();
     if (tabKey && S.strategy[tabKey]) {
-      ctx += 'CURRENT STRATEGY TAB (' + tabKey + '):\n' + _copilotTruncate(S.strategy[tabKey], 2500) + '\n\n';
+      ctx += 'CURRENT STRATEGY TAB (' + tabKey + '):\n' + _saiTruncate(S.strategy[tabKey], 2500) + '\n\n';
     }
   } else if (stage === 'keywords' && S && S.kwResearch) {
     var kwSummary = {};
@@ -256,14 +277,14 @@ function _assembleCopilotContext(question) {
     });
     ctx += 'SITEMAP (' + (S.pages || []).length + ' pages):\n' + JSON.stringify(pageCompact, null, 0) + '\n\n';
   } else if (stage === 'briefs' && S && S.briefs) {
-    var currentSlug = _copilotCurrentBriefSlug();
+    var currentSlug = _saiCurrentBriefSlug();
     if (currentSlug && S.briefs[currentSlug]) {
-      ctx += 'CURRENT BRIEF (' + currentSlug + '):\n' + _copilotTruncate(S.briefs[currentSlug], 3000) + '\n\n';
+      ctx += 'CURRENT BRIEF (' + currentSlug + '):\n' + _saiTruncate(S.briefs[currentSlug], 3000) + '\n\n';
     }
   } else if (stage === 'copy' && S && S.copy) {
-    var cpSlug = _copilotCurrentCopySlug();
+    var cpSlug = _saiCurrentCopySlug();
     if (cpSlug && S.copy[cpSlug]) {
-      ctx += 'CURRENT COPY (' + cpSlug + '):\n' + _copilotTruncate(S.copy[cpSlug], 3000) + '\n\n';
+      ctx += 'CURRENT COPY (' + cpSlug + '):\n' + _saiTruncate(S.copy[cpSlug], 3000) + '\n\n';
     }
   }
 
@@ -283,22 +304,22 @@ function _assembleCopilotContext(question) {
       var econ = {};
       if (S.strategy.unit_economics) econ.unit_economics = S.strategy.unit_economics;
       if (S.strategy.engagement_scope) econ.engagement_scope = S.strategy.engagement_scope;
-      ctx += 'ECONOMICS:\n' + _copilotTruncate(econ, 2000) + '\n\n';
+      ctx += 'ECONOMICS:\n' + _saiTruncate(econ, 2000) + '\n\n';
     }
   }
   if (q.indexOf('competitor') !== -1) {
     if (S && S.research && S.research.competitors) {
-      ctx += 'COMPETITORS:\n' + _copilotTruncate(S.research.competitors, 2000) + '\n\n';
+      ctx += 'COMPETITORS:\n' + _saiTruncate(S.research.competitors, 2000) + '\n\n';
     }
   }
   if (q.indexOf('persona') !== -1 || q.indexOf('audience') !== -1) {
     if (S && S.strategy && S.strategy.audience) {
-      ctx += 'AUDIENCE:\n' + _copilotTruncate(S.strategy.audience, 2000) + '\n\n';
+      ctx += 'AUDIENCE:\n' + _saiTruncate(S.strategy.audience, 2000) + '\n\n';
     }
   }
   if (q.indexOf('position') !== -1 || q.indexOf('brand') !== -1 || q.indexOf('direction') !== -1) {
     if (S && S.strategy && S.strategy.positioning) {
-      ctx += 'POSITIONING:\n' + _copilotTruncate(S.strategy.positioning, 2000) + '\n\n';
+      ctx += 'POSITIONING:\n' + _saiTruncate(S.strategy.positioning, 2000) + '\n\n';
     }
   }
   /* slug-specific routing */
@@ -309,12 +330,12 @@ function _assembleCopilotContext(question) {
         if (p.slug && q.indexOf(p.slug) !== -1) matchedPage = p;
       });
       if (matchedPage) {
-        ctx += 'PAGE DETAIL (' + matchedPage.slug + '):\n' + _copilotTruncate(matchedPage, 2000) + '\n\n';
+        ctx += 'PAGE DETAIL (' + matchedPage.slug + '):\n' + _saiTruncate(matchedPage, 2000) + '\n\n';
         if (S.briefs && S.briefs[matchedPage.slug]) {
-          ctx += 'BRIEF FOR ' + matchedPage.slug + ':\n' + _copilotTruncate(S.briefs[matchedPage.slug], 1500) + '\n\n';
+          ctx += 'BRIEF FOR ' + matchedPage.slug + ':\n' + _saiTruncate(S.briefs[matchedPage.slug], 1500) + '\n\n';
         }
         if (S.copy && S.copy[matchedPage.slug]) {
-          ctx += 'COPY FOR ' + matchedPage.slug + ':\n' + _copilotTruncate(S.copy[matchedPage.slug], 1500) + '\n\n';
+          ctx += 'COPY FOR ' + matchedPage.slug + ':\n' + _saiTruncate(S.copy[matchedPage.slug], 1500) + '\n\n';
         }
       }
     }
@@ -328,12 +349,40 @@ function _assembleCopilotContext(question) {
     + '- Be concise — bullet points for lists, no filler\n'
     + '- Never fabricate data. If uncertain, say so.\n'
     + '- When giving recommendations, reference specific diagnostics, scores, or metrics.\n\n'
+    + 'ACTIONS — MODIFYING THE PROJECT:\n'
+    + 'When the user asks you to CHANGE something (add pages, remove pages, rename, reassign keywords, update fields, etc.), you can propose an action.\n'
+    + 'ALWAYS explain what you are about to do BEFORE the action block. Be explicit about what will change and what the consequences are.\n'
+    + 'Output the action as a fenced JSON block with the marker :::ACTION and :::END like this:\n\n'
+    + ':::ACTION\n'
+    + '{"type":"<action_type>", ...params}\n'
+    + ':::END\n\n'
+    + 'Supported action types:\n\n'
+    + '1. **sitemap_replace** — Replace entire sitemap with new pages:\n'
+    + '   {"type":"sitemap_replace","pages":[{"slug":"/about","page_name":"About Us","page_type":"about","primary_keyword":"about company name","search_intent":"navigational"},...]}\n'
+    + '   Each page needs: slug, page_name, page_type (home/service/blog/about/contact/location/industry/case-study/faq/resource/portfolio/utility), primary_keyword (optional), search_intent (informational/commercial/transactional/navigational, optional).\n\n'
+    + '2. **sitemap_add** — Add pages to existing sitemap:\n'
+    + '   {"type":"sitemap_add","pages":[{"slug":"/new-page","page_name":"New Page","page_type":"service","primary_keyword":"target keyword"}]}\n\n'
+    + '3. **sitemap_remove** — Remove pages by slug:\n'
+    + '   {"type":"sitemap_remove","slugs":["/old-page","/unused-page"]}\n\n'
+    + '4. **sitemap_update** — Update specific fields on existing pages:\n'
+    + '   {"type":"sitemap_update","changes":[{"slug":"/services","fields":{"primary_keyword":"new keyword","page_type":"service","awareness_stage":"product_aware","target_persona":"The Decision Maker"}}]}\n\n'
+    + '5. **research_update** — Update research fields:\n'
+    + '   {"type":"research_update","fields":{"industry":"SaaS","primary_services":["SEO","PPC"]}}\n\n'
+    + '6. **strategy_update** — Update strategy fields (use carefully):\n'
+    + '   {"type":"strategy_update","path":"positioning.selected_direction","value":"The Growth Partner"}\n\n'
+    + 'SAFETY RULES FOR ACTIONS:\n'
+    + '- NEVER propose an action unless the user explicitly asks for a change.\n'
+    + '- ALWAYS explain the full impact before the action block (e.g. "This will remove 3 pages and their briefs/copy will be orphaned").\n'
+    + '- For sitemap_replace: warn that this replaces ALL existing pages, briefs, and associated data.\n'
+    + '- For destructive actions (remove, replace): list exactly what will be lost.\n'
+    + '- Only ONE action block per response. If multiple changes are needed, do them in one block or ask which to do first.\n'
+    + '- If the user is vague, ask clarifying questions INSTEAD of proposing an action.\n\n'
     + 'PROJECT CONTEXT:\n' + ctx;
 
   return systemPrompt;
 }
 
-function _copilotCurrentStrategyTab() {
+function _saiCurrentStrategyTab() {
   var tabs = document.querySelectorAll('.strategy-tab.active, .strat-tab.active, [data-strat-tab].active');
   if (tabs.length) {
     return tabs[0].getAttribute('data-strat-tab') || tabs[0].getAttribute('data-tab') || '';
@@ -341,30 +390,30 @@ function _copilotCurrentStrategyTab() {
   return '';
 }
 
-function _copilotCurrentBriefSlug() {
+function _saiCurrentBriefSlug() {
   var el = document.querySelector('.brief-active, .brief-editor[data-slug]');
   return el ? (el.getAttribute('data-slug') || '') : '';
 }
 
-function _copilotCurrentCopySlug() {
+function _saiCurrentCopySlug() {
   var el = document.querySelector('.copy-active, .copy-editor[data-slug]');
   return el ? (el.getAttribute('data-slug') || '') : '';
 }
 
-function _renderCopilotChat() {
-  var area = document.getElementById('copilot-ask-area');
+function _renderSaiChat() {
+  var area = document.getElementById('sai-ask-area');
   if (!area) return;
   area.innerHTML = '';
-  _copilot.messages.forEach(function(m) {
+  _sai.messages.forEach(function(m) {
     _addChatBubble(m.role, m.content, false);
   });
 }
 
 function _addChatBubble(role, content, streaming) {
-  var area = document.getElementById('copilot-ask-area');
+  var area = document.getElementById('sai-ask-area');
   if (!area) return null;
   var wrap = document.createElement('div');
-  wrap.className = 'copilot-msg copilot-msg-' + role;
+  wrap.className = 'sai-msg sai-msg-' + role;
   wrap.style.cssText = 'margin:8px 0;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.55;max-width:92%;word-wrap:break-word;';
   if (role === 'user') {
     wrap.style.cssText += 'background:#e8f0fe;align-self:flex-end;margin-left:auto;';
@@ -372,16 +421,16 @@ function _addChatBubble(role, content, streaming) {
     wrap.style.cssText += 'background:#f4f5f7;align-self:flex-start;';
   }
   if (streaming) {
-    wrap.innerHTML = '<span class="copilot-typing" style="opacity:0.5;">Thinking…</span>';
+    wrap.innerHTML = '<span class="sai-typing" style="opacity:0.5;">Thinking…</span>';
   } else {
-    wrap.innerHTML = role === 'user' ? esc(content) : _copilotMd(content);
+    wrap.innerHTML = role === 'user' ? esc(content) : _saiMd(content);
   }
   area.appendChild(wrap);
   area.scrollTop = area.scrollHeight;
   return wrap;
 }
 
-function _copilotMd(text) {
+function _saiMd(text) {
   if (!text) return '';
   var html = esc(text);
   /* code blocks */
@@ -404,7 +453,7 @@ function _copilotMd(text) {
 
 /* ---------- 4. Audit Engine ---------- */
 
-var COPILOT_AUDIT_CHECKS = [
+var SAI_AUDIT_CHECKS = [
   /* --- RESEARCH --- */
   { id: 'r-no-name', stage: 'research', severity: 'error', message: 'Client name is missing',
     test: function() { return !(S && S.research && S.research.client_name); },
@@ -594,9 +643,9 @@ var COPILOT_AUDIT_CHECKS = [
     fix_action: { stage: 'images' } }
 ];
 
-function runCopilotAudit() {
+function runSaiAudit() {
   var results = [];
-  COPILOT_AUDIT_CHECKS.forEach(function(check) {
+  SAI_AUDIT_CHECKS.forEach(function(check) {
     try {
       if (check.test()) {
         var item = {
@@ -618,11 +667,11 @@ function runCopilotAudit() {
   var order = { error: 0, warning: 1, info: 2 };
   results.sort(function(a, b) { return (order[a.severity] || 9) - (order[b.severity] || 9); });
 
-  _copilot.auditResults = results;
-  _copilot._lastAuditAt = Date.now();
-  _updateCopilotBadge();
+  _sai.auditResults = results;
+  _sai._lastAuditAt = Date.now();
+  _updateSaiBadge();
 
-  if (_copilot.open && _copilot.mode === 'audit') {
+  if (_sai.open && _sai.mode === 'audit') {
     _renderAuditPanel();
   }
 
@@ -630,11 +679,11 @@ function runCopilotAudit() {
 }
 
 function _renderAuditPanel() {
-  var area = document.getElementById('copilot-audit-area');
+  var area = document.getElementById('sai-audit-area');
   if (!area) return;
   area.innerHTML = '';
 
-  if (!_copilot.auditResults.length) {
+  if (!_sai.auditResults.length) {
     area.innerHTML = '<div style="padding:24px;text-align:center;color:#8899aa;font-size:13px;">No issues found — looking good!</div>';
     return;
   }
@@ -642,7 +691,7 @@ function _renderAuditPanel() {
   /* Group by stage */
   var groups = {};
   var stageOrder = [];
-  _copilot.auditResults.forEach(function(r) {
+  _sai.auditResults.forEach(function(r) {
     if (!groups[r.stage]) {
       groups[r.stage] = [];
       stageOrder.push(r.stage);
@@ -655,7 +704,7 @@ function _renderAuditPanel() {
     /* Header */
     var header = document.createElement('div');
     header.style.cssText = 'padding:10px 14px 4px;font-size:12px;font-weight:600;text-transform:uppercase;color:#667788;display:flex;align-items:center;gap:6px;margin-top:8px;';
-    header.innerHTML = '<i class="' + _copilotStageIcon(stage) + '" style="font-size:14px;"></i> ' + esc(stage) + ' <span style="background:#e8eaee;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:500;">' + items.length + '</span>';
+    header.innerHTML = '<i class="' + _saiStageIcon(stage) + '" style="font-size:14px;"></i> ' + esc(stage) + ' <span style="background:#e8eaee;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:500;">' + items.length + '</span>';
     area.appendChild(header);
 
     items.forEach(function(issue) {
@@ -681,7 +730,7 @@ function _renderAuditPanel() {
       var goBtn = document.createElement('button');
       goBtn.textContent = 'Go \u2192';
       goBtn.style.cssText = 'flex-shrink:0;background:none;border:1px solid #d0d5dd;border-radius:5px;padding:3px 10px;font-size:11px;cursor:pointer;color:#3366cc;white-space:nowrap;';
-      goBtn.onclick = (function(iss) { return function() { _copilotGoToIssue(iss); }; })(issue);
+      goBtn.onclick = (function(iss) { return function() { _saiGoToIssue(iss); }; })(issue);
       card.appendChild(goBtn);
 
       area.appendChild(card);
@@ -689,12 +738,12 @@ function _renderAuditPanel() {
   });
 }
 
-function _updateCopilotBadge() {
-  var badge = document.getElementById('copilot-badge');
+function _updateSaiBadge() {
+  var badge = document.getElementById('sai-badge');
   if (!badge) return;
   var errors = 0;
   var warnings = 0;
-  _copilot.auditResults.forEach(function(r) {
+  _sai.auditResults.forEach(function(r) {
     if (r.severity === 'error') errors++;
     if (r.severity === 'warning') warnings++;
   });
@@ -710,7 +759,7 @@ function _updateCopilotBadge() {
   }
 }
 
-function _copilotGoToIssue(issue) {
+function _saiGoToIssue(issue) {
   if (!issue || !issue.fix_action) return;
   if (typeof goTo === 'function') goTo(issue.fix_action.stage);
   if (issue.fix_action.tab) {
@@ -724,17 +773,17 @@ function _copilotGoToIssue(issue) {
 
 /* ---------- 5. Explain Mode ---------- */
 
-function _copilotExplainHandler(e) {
-  if (!_copilot.open || _copilot.mode !== 'explain') return;
+function _saiExplainHandler(e) {
+  if (!_sai.open || _sai.mode !== 'explain') return;
 
   var el = e.target;
   var depth = 0;
   while (el && depth < 8) {
-    if (el.hasAttribute && el.hasAttribute('data-copilot-explain')) {
+    if (el.hasAttribute && el.hasAttribute('data-sai-explain')) {
       e.preventDefault();
       e.stopPropagation();
-      var key = el.getAttribute('data-copilot-explain');
-      _copilotExplain(key);
+      var key = el.getAttribute('data-sai-explain');
+      _saiExplain(key);
       return;
     }
     el = el.parentElement;
@@ -742,7 +791,7 @@ function _copilotExplainHandler(e) {
   }
 }
 
-function _copilotExplain(key) {
+function _saiExplain(key) {
   if (!key) return;
   var parts = key.split(':');
   var type = parts[0] || '';
@@ -777,25 +826,25 @@ function _copilotExplain(key) {
   }
 
   /* Switch to ask mode and auto-send */
-  setCopilotMode('ask');
+  setSaiMode('ask');
   var question = 'Explain this: ' + label + '. Why does it have its current value? What data drove this?';
   if (context) question += '\n\nData:\n' + context;
 
-  _copilot.messages.push({ role: 'user', content: question, ts: Date.now() });
+  _sai.messages.push({ role: 'user', content: question, ts: Date.now() });
   _addChatBubble('user', 'Explain: ' + label, false);
 
-  var system = _assembleCopilotContext(question);
+  var system = _assembleSaiContext(question);
   var bubble = _addChatBubble('assistant', '', true);
   var fullText = '';
 
-  _copilotCallClaude(system, question, function(chunk) {
+  _saiCallClaude(system, question, function(chunk) {
     fullText += chunk;
-    bubble.innerHTML = _copilotMd(fullText);
-    var area = document.getElementById('copilot-ask-area');
+    bubble.innerHTML = _saiMd(fullText);
+    var area = document.getElementById('sai-ask-area');
     if (area) area.scrollTop = area.scrollHeight;
   }).then(function() {
-    _copilot.messages.push({ role: 'assistant', content: fullText, ts: Date.now() });
-    bubble.innerHTML = _copilotMd(fullText);
+    _sai.messages.push({ role: 'assistant', content: fullText, ts: Date.now() });
+    bubble.innerHTML = _saiMd(fullText);
   }).catch(function(err) {
     bubble.innerHTML = '<span style="color:#e74c3c;">Error: ' + esc(err.message) + '</span>';
   });
@@ -803,11 +852,11 @@ function _copilotExplain(key) {
 
 /* ---------- 6. Proactive Notifications ---------- */
 
-function _copilotPostGenAudit() {
+function _saiPostGenAudit() {
   var previousIds = {};
-  _copilot.auditResults.forEach(function(r) { previousIds[r.id] = true; });
+  _sai.auditResults.forEach(function(r) { previousIds[r.id] = true; });
 
-  var results = runCopilotAudit();
+  var results = runSaiAudit();
   var newIssues = results.filter(function(r) {
     return !previousIds[r.id] && r.severity !== 'info';
   });
@@ -818,7 +867,7 @@ function _copilotPostGenAudit() {
     var parts = [];
     if (errCount) parts.push(errCount + ' error' + (errCount > 1 ? 's' : ''));
     if (warnCount) parts.push(warnCount + ' warning' + (warnCount > 1 ? 's' : ''));
-    var msg = 'Copilot found ' + parts.join(' and ') + ' — open the copilot panel to review.';
+    var msg = 'SetsailAI found ' + parts.join(' and ') + ' — open the SetsailAI panel to review.';
     if (typeof aiBarNotify === 'function') {
       aiBarNotify(msg, { type: errCount ? 'error' : 'warning', duration: 5000 });
     }
@@ -827,7 +876,7 @@ function _copilotPostGenAudit() {
 
 /* ---------- 7. Utility ---------- */
 
-function _copilotStageIcon(stage) {
+function _saiStageIcon(stage) {
   var icons = {
     research: 'ti ti-search',
     keywords: 'ti ti-key',
@@ -843,7 +892,7 @@ function _copilotStageIcon(stage) {
   return icons[stage] || 'ti ti-circle';
 }
 
-function _copilotTruncate(obj, maxChars) {
+function _saiTruncate(obj, maxChars) {
   var str;
   if (typeof obj === 'string') {
     str = obj;
@@ -854,9 +903,367 @@ function _copilotTruncate(obj, maxChars) {
   return str;
 }
 
+/* ---------- 8. Action System — SetsailAI Modifications ---------- */
+
+/**
+ * Render an action confirmation card below the assistant bubble.
+ * Shows exactly what will change + Apply / Dismiss buttons.
+ */
+function _renderActionConfirmation(action, parentBubble) {
+  var card = document.createElement('div');
+  card.style.cssText = 'margin-top:10px;border:1px solid #d1d5db;border-radius:8px;overflow:hidden;font-size:11px;';
+
+  /* Header */
+  var header = document.createElement('div');
+  header.style.cssText = 'background:#f0fdf4;padding:8px 12px;border-bottom:1px solid #d1d5db;display:flex;align-items:center;gap:6px;';
+  header.innerHTML = '<i class="ti ti-edit" style="color:#16a34a;font-size:13px;"></i><strong style="color:#15803d;">Proposed Change</strong><span style="color:#6b7280;margin-left:auto;font-size:10px;">' + esc(action.type || 'unknown') + '</span>';
+  card.appendChild(header);
+
+  /* Impact summary */
+  var body = document.createElement('div');
+  body.style.cssText = 'padding:10px 12px;background:var(--white);';
+  var impact = _describeActionImpact(action);
+  body.innerHTML = impact;
+  card.appendChild(body);
+
+  /* Buttons */
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'padding:8px 12px;border-top:1px solid #e5e7eb;display:flex;gap:8px;justify-content:flex-end;background:#fafafa;';
+
+  var dismissBtn = document.createElement('button');
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.style.cssText = 'padding:4px 14px;border-radius:4px;border:1px solid #d1d5db;background:var(--white);color:#6b7280;font-size:11px;cursor:pointer;font-family:var(--font);';
+  dismissBtn.onclick = function() {
+    card.style.opacity = '0.5';
+    card.style.pointerEvents = 'none';
+    var lbl = document.createElement('div');
+    lbl.style.cssText = 'text-align:center;padding:6px;color:#9ca3af;font-size:10px;font-style:italic;';
+    lbl.textContent = 'Dismissed';
+    card.innerHTML = '';
+    card.appendChild(lbl);
+    card.style.opacity = '1';
+    _sai.messages.push({ role: 'assistant', content: '[Action dismissed by user]', ts: Date.now() });
+  };
+
+  var applyBtn = document.createElement('button');
+  applyBtn.textContent = 'Apply Changes';
+  applyBtn.style.cssText = 'padding:4px 14px;border-radius:4px;border:none;background:#16a34a;color:white;font-size:11px;cursor:pointer;font-family:var(--font);font-weight:600;';
+  applyBtn.onclick = function() {
+    var result = _executeAction(action);
+    card.innerHTML = '';
+    var lbl = document.createElement('div');
+    lbl.style.cssText = 'text-align:center;padding:10px;font-size:11px;';
+    if (result.ok) {
+      lbl.style.color = '#16a34a';
+      lbl.innerHTML = '<i class="ti ti-check" style="font-size:13px;margin-right:4px;"></i>' + esc(result.message);
+    } else {
+      lbl.style.color = '#dc2626';
+      lbl.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:13px;margin-right:4px;"></i>' + esc(result.message);
+    }
+    card.appendChild(lbl);
+    _sai.messages.push({ role: 'assistant', content: '[Action applied: ' + result.message + ']', ts: Date.now() });
+  };
+
+  btnRow.appendChild(dismissBtn);
+  btnRow.appendChild(applyBtn);
+  card.appendChild(btnRow);
+
+  parentBubble.appendChild(card);
+}
+
+/**
+ * Generate a human-readable impact description for an action.
+ */
+function _describeActionImpact(action) {
+  var html = '';
+  var t = action.type || '';
+
+  if (t === 'sitemap_replace') {
+    var newPages = action.pages || [];
+    var existing = (S.pages || []).length;
+    html += '<div style="margin-bottom:6px;color:#991b1b;font-weight:600;"><i class="ti ti-alert-triangle" style="font-size:11px;"></i> This will replace all ' + existing + ' existing pages with ' + newPages.length + ' new pages.</div>';
+    html += '<div style="margin-bottom:4px;color:#6b7280;">Existing briefs and copy for removed pages will be orphaned.</div>';
+    html += '<div style="margin-top:6px;font-weight:600;">New pages:</div><ul style="margin:4px 0 0 16px;">';
+    newPages.forEach(function(p) {
+      html += '<li><code>' + esc(p.slug || '') + '</code> — ' + esc(p.page_name || '') + ' <span style="color:#6b7280;">(' + esc(p.page_type || '?') + ')</span></li>';
+    });
+    html += '</ul>';
+  } else if (t === 'sitemap_add') {
+    var addPages = action.pages || [];
+    html += '<div style="margin-bottom:6px;">Adding <strong>' + addPages.length + ' page' + (addPages.length !== 1 ? 's' : '') + '</strong> to the sitemap:</div>';
+    html += '<ul style="margin:0 0 0 16px;">';
+    addPages.forEach(function(p) {
+      html += '<li><code>' + esc(p.slug || '') + '</code> — ' + esc(p.page_name || '') + ' <span style="color:#6b7280;">(' + esc(p.page_type || '?') + ')</span></li>';
+    });
+    html += '</ul>';
+  } else if (t === 'sitemap_remove') {
+    var slugs = action.slugs || [];
+    html += '<div style="margin-bottom:6px;color:#991b1b;"><i class="ti ti-alert-triangle" style="font-size:11px;"></i> Removing <strong>' + slugs.length + ' page' + (slugs.length !== 1 ? 's' : '') + '</strong>:</div>';
+    html += '<ul style="margin:0 0 0 16px;">';
+    slugs.forEach(function(sl) {
+      html += '<li><code>' + esc(sl) + '</code></li>';
+    });
+    html += '</ul>';
+    html += '<div style="margin-top:4px;color:#6b7280;">Briefs and copy for these pages will remain but become orphaned.</div>';
+  } else if (t === 'sitemap_update') {
+    var changes = action.changes || [];
+    html += '<div style="margin-bottom:6px;">Updating <strong>' + changes.length + ' page' + (changes.length !== 1 ? 's' : '') + '</strong>:</div>';
+    changes.forEach(function(ch) {
+      html += '<div style="margin:4px 0;"><code>' + esc(ch.slug || '') + '</code>:';
+      var fields = ch.fields || {};
+      Object.keys(fields).forEach(function(k) {
+        html += ' <span style="color:#6b7280;">' + esc(k) + '</span> → <strong>' + esc(String(fields[k])) + '</strong>';
+      });
+      html += '</div>';
+    });
+  } else if (t === 'research_update') {
+    var fields = action.fields || {};
+    var keys = Object.keys(fields);
+    html += '<div style="margin-bottom:6px;">Updating <strong>' + keys.length + ' research field' + (keys.length !== 1 ? 's' : '') + '</strong>:</div>';
+    keys.forEach(function(k) {
+      var val = fields[k];
+      var display = Array.isArray(val) ? val.join(', ') : String(val);
+      if (display.length > 80) display = display.slice(0, 80) + '…';
+      html += '<div style="margin:2px 0;"><span style="color:#6b7280;">' + esc(k) + '</span> → <strong>' + esc(display) + '</strong></div>';
+    });
+  } else if (t === 'strategy_update') {
+    html += '<div style="margin-bottom:6px;">Updating strategy field:</div>';
+    html += '<div><span style="color:#6b7280;">' + esc(action.path || '') + '</span> → <strong>' + esc(String(action.value || '').slice(0, 120)) + '</strong></div>';
+  } else {
+    html += '<div style="color:#6b7280;">Unknown action type: ' + esc(t) + '</div>';
+  }
+
+  return html;
+}
+
+/**
+ * Execute a confirmed action — modifies S.* state, re-renders, saves.
+ * Returns {ok: bool, message: string}
+ */
+function _executeAction(action) {
+  var t = action.type || '';
+
+  try {
+    if (t === 'sitemap_replace') {
+      return _execSitemapReplace(action);
+    } else if (t === 'sitemap_add') {
+      return _execSitemapAdd(action);
+    } else if (t === 'sitemap_remove') {
+      return _execSitemapRemove(action);
+    } else if (t === 'sitemap_update') {
+      return _execSitemapUpdate(action);
+    } else if (t === 'research_update') {
+      return _execResearchUpdate(action);
+    } else if (t === 'strategy_update') {
+      return _execStrategyUpdate(action);
+    }
+    return { ok: false, message: 'Unknown action type: ' + t };
+  } catch (err) {
+    return { ok: false, message: 'Error: ' + err.message };
+  }
+}
+
+/* --- Sitemap Replace --- */
+function _execSitemapReplace(action) {
+  var newPages = action.pages || [];
+  if (!newPages.length) return { ok: false, message: 'No pages provided' };
+
+  S.pages = newPages.map(function(p) {
+    var page = {
+      slug: (p.slug || '').replace(/^\//, '/'),
+      page_name: p.page_name || p.slug || '',
+      page_type: p.page_type || 'utility',
+      primary_keyword: p.primary_keyword || '',
+      search_intent: p.search_intent || '',
+      keywords: [],
+      supporting_keywords: [],
+      vol: 0,
+      priority: p.priority || 'medium',
+      target_persona: p.target_persona || '',
+      voice_overlay: p.voice_overlay || '',
+      awareness_stage: p.awareness_stage || '',
+      page_goal: p.page_goal || '',
+      brief: null,
+      content_pillar: p.content_pillar || ''
+    };
+    /* Auto-infer awareness stage if not provided */
+    if (!page.awareness_stage && typeof _inferAwarenessStage === 'function') {
+      page.awareness_stage = _inferAwarenessStage(page);
+    }
+    return page;
+  });
+
+  _saiReRenderAndSave('sitemap');
+  return { ok: true, message: 'Sitemap replaced with ' + S.pages.length + ' pages. Review and assign keywords.' };
+}
+
+/* --- Sitemap Add --- */
+function _execSitemapAdd(action) {
+  var newPages = action.pages || [];
+  if (!newPages.length) return { ok: false, message: 'No pages to add' };
+  if (!S.pages) S.pages = [];
+
+  /* Check for duplicate slugs */
+  var existingSlugs = {};
+  S.pages.forEach(function(p) { existingSlugs[p.slug] = true; });
+  var added = 0;
+
+  newPages.forEach(function(p) {
+    var slug = (p.slug || '').replace(/^([^/])/, '/$1');
+    if (existingSlugs[slug]) return; /* skip duplicates */
+    var page = {
+      slug: slug,
+      page_name: p.page_name || slug,
+      page_type: p.page_type || 'utility',
+      primary_keyword: p.primary_keyword || '',
+      search_intent: p.search_intent || '',
+      keywords: [],
+      supporting_keywords: [],
+      vol: 0,
+      priority: p.priority || 'medium',
+      target_persona: p.target_persona || '',
+      voice_overlay: p.voice_overlay || '',
+      awareness_stage: p.awareness_stage || '',
+      page_goal: p.page_goal || '',
+      brief: null,
+      content_pillar: p.content_pillar || ''
+    };
+    if (!page.awareness_stage && typeof _inferAwarenessStage === 'function') {
+      page.awareness_stage = _inferAwarenessStage(page);
+    }
+    S.pages.push(page);
+    existingSlugs[slug] = true;
+    added++;
+  });
+
+  _saiReRenderAndSave('sitemap');
+  return { ok: true, message: 'Added ' + added + ' page' + (added !== 1 ? 's' : '') + '. Total: ' + S.pages.length };
+}
+
+/* --- Sitemap Remove --- */
+function _execSitemapRemove(action) {
+  var slugs = action.slugs || [];
+  if (!slugs.length) return { ok: false, message: 'No slugs to remove' };
+  if (!S.pages) return { ok: false, message: 'No sitemap exists' };
+
+  var removeSet = {};
+  slugs.forEach(function(s) { removeSet[s] = true; });
+  var before = S.pages.length;
+  S.pages = S.pages.filter(function(p) { return !removeSet[p.slug]; });
+  var removed = before - S.pages.length;
+
+  _saiReRenderAndSave('sitemap');
+  return { ok: true, message: 'Removed ' + removed + ' page' + (removed !== 1 ? 's' : '') + '. ' + S.pages.length + ' remaining.' };
+}
+
+/* --- Sitemap Update --- */
+function _execSitemapUpdate(action) {
+  var changes = action.changes || [];
+  if (!changes.length) return { ok: false, message: 'No changes specified' };
+  if (!S.pages) return { ok: false, message: 'No sitemap exists' };
+
+  var updated = 0;
+  var slugIndex = {};
+  S.pages.forEach(function(p, i) { slugIndex[p.slug] = i; });
+
+  changes.forEach(function(ch) {
+    var idx = slugIndex[ch.slug];
+    if (idx === undefined) return;
+    var fields = ch.fields || {};
+    /* Whitelist of safe fields to update */
+    var SAFE_FIELDS = ['page_name', 'page_type', 'primary_keyword', 'search_intent', 'priority',
+      'target_persona', 'voice_overlay', 'awareness_stage', 'page_goal', 'content_pillar', 'slug'];
+    Object.keys(fields).forEach(function(k) {
+      if (SAFE_FIELDS.indexOf(k) === -1) return; /* skip unsafe fields */
+      S.pages[idx][k] = fields[k];
+    });
+    updated++;
+  });
+
+  _saiReRenderAndSave('sitemap');
+  return { ok: true, message: 'Updated ' + updated + ' page' + (updated !== 1 ? 's' : '') + '.' };
+}
+
+/* --- Research Update --- */
+function _execResearchUpdate(action) {
+  var fields = action.fields || {};
+  var keys = Object.keys(fields);
+  if (!keys.length) return { ok: false, message: 'No fields to update' };
+  if (!S.research) S.research = {};
+
+  /* Whitelist of safe research fields */
+  var SAFE_RESEARCH = ['client_name', 'industry', 'primary_services', 'secondary_services',
+    'primary_audience_description', 'service_areas', 'pain_points_top5', 'buying_triggers',
+    'decision_factors', 'unique_value_proposition', 'brand_voice_tone', 'brand_personality',
+    'tagline', 'content_themes', 'notable_clients', 'awards'];
+  var updated = 0;
+
+  keys.forEach(function(k) {
+    if (SAFE_RESEARCH.indexOf(k) === -1) return;
+    S.research[k] = fields[k];
+    updated++;
+  });
+
+  _saiReRenderAndSave('research');
+  return { ok: true, message: 'Updated ' + updated + ' research field' + (updated !== 1 ? 's' : '') + '.' };
+}
+
+/* --- Strategy Update --- */
+function _execStrategyUpdate(action) {
+  var path = action.path || '';
+  var value = action.value;
+  if (!path) return { ok: false, message: 'No path specified' };
+  if (!S.strategy) return { ok: false, message: 'Strategy not initialised' };
+
+  /* Only allow safe top-level paths */
+  var SAFE_PATHS = ['positioning.selected_direction', 'positioning.value_proposition',
+    'brand_strategy.voice', 'brand_strategy.tone', 'channel_strategy.recommended_tier'];
+  if (SAFE_PATHS.indexOf(path) === -1) {
+    return { ok: false, message: 'Path "' + path + '" is not modifiable via SetsailAI. Only these are allowed: ' + SAFE_PATHS.join(', ') };
+  }
+
+  var parts = path.split('.');
+  var obj = S.strategy;
+  for (var i = 0; i < parts.length - 1; i++) {
+    if (!obj[parts[i]]) obj[parts[i]] = {};
+    obj = obj[parts[i]];
+  }
+  obj[parts[parts.length - 1]] = value;
+
+  _saiReRenderAndSave('strategy');
+  return { ok: true, message: 'Updated strategy.' + path };
+}
+
+/**
+ * Re-render the relevant stage and trigger save after an action.
+ */
+function _saiReRenderAndSave(stage) {
+  /* Re-render current stage if it matches, or the target stage */
+  if (S.stage === stage) {
+    if (typeof renderStageContent === 'function') renderStageContent(stage);
+    if (stage === 'sitemap' && typeof renderSitemapResults === 'function') {
+      setTimeout(function() {
+        var sr = document.getElementById('sitemap-results');
+        if (sr) sr.style.display = '';
+        renderSitemapResults(true);
+      }, 100);
+    }
+    if (stage === 'research' && typeof renderResearch === 'function') {
+      setTimeout(function() { renderResearch(); }, 100);
+    }
+    if (stage === 'strategy') {
+      if (typeof renderStrategyScorecard === 'function') renderStrategyScorecard();
+      if (typeof renderStrategyTabContent === 'function') renderStrategyTabContent();
+    }
+  }
+  scheduleSave();
+  /* Re-run audit to catch any new/resolved issues */
+  setTimeout(function() { if (typeof runSaiAudit === 'function') runSaiAudit(); }, 300);
+}
+
 /* ---------- Auto-init ---------- */
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  initCopilot();
+  initSai();
 } else {
-  document.addEventListener('DOMContentLoaded', initCopilot);
+  document.addEventListener('DOMContentLoaded', initSai);
 }
