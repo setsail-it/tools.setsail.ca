@@ -269,6 +269,8 @@ function initKeywords() {
   if (S.kwResearch.keywords.length && (!S.kwResearch.selected || !S.kwResearch.selected.length)) {
     S.kwResearch.selected = S.kwResearch.keywords.slice(0, 50).map(function(k) { return k.kw; });
   }
+  // Migrate legacy question storage on init
+  _migrateQuestions();
   renderKwTabNav();
   renderKwTabContent();
   var proceedBtn = document.getElementById('kw-proceed-btn');
@@ -1147,8 +1149,37 @@ async function clusterSelectedKws() {
   if (!_strategicServices.length) _strategicServices = (r.primary_services || []).slice(0, 8);
   var _strategicLine = _strategicServices.length ? _strategicServices.join(', ') : '';
 
+  // Positioning direction context for brand-aligned clustering
+  var _posDir = '';
+  if (S.strategy && S.strategy.positioning) {
+    var _pos = S.strategy.positioning;
+    if (_pos.selected_direction) _posDir += '\nPOSITIONING DIRECTION: ' + _pos.selected_direction;
+    if (_pos.recommended_positioning_angle) _posDir += '\nPOSITIONING ANGLE: ' + _pos.recommended_positioning_angle;
+    if (_pos.core_value_proposition) _posDir += '\nVALUE PROPOSITION: ' + _pos.core_value_proposition;
+    if (_pos.messaging_hierarchy && _pos.messaging_hierarchy.primary_message) _posDir += '\nPRIMARY MESSAGE: ' + _pos.messaging_hierarchy.primary_message;
+  }
+  // Audience segments for intent validation
+  var _audCtx = '';
+  if (S.strategy && S.strategy.audience && S.strategy.audience.segments) {
+    var _activeSegs = S.strategy.audience.segments.filter(function(s) { return s.status !== 'deprioritised'; });
+    if (_activeSegs.length) {
+      _audCtx = '\nACTIVE AUDIENCE SEGMENTS: ' + _activeSegs.map(function(s) {
+        return (s.name || '') + (s.vertical ? ' (' + s.vertical + ')' : '');
+      }).join(', ');
+    }
+  }
+  // Pain points for relevance scoring
+  var _painCtx = '';
+  if (r.pain_points_top5 && r.pain_points_top5.length) _painCtx = '\nCLIENT PAIN POINTS: ' + r.pain_points_top5.join('; ');
+
   var systemPrompt = 'SEO architect. Cluster keywords into page groups. Return ONLY raw JSON array, no markdown.'
-    + '\n\nRules:'
+    + '\n\nBRAND ALIGNMENT RULES (CRITICAL — these override pure volume/KD scoring):'
+    + '\n- Every cluster MUST serve the brand positioning. A high-volume keyword that does not align with the business services, audience, or positioning direction should be DEPRIORITISED or disqualified.'
+    + '\n- Score clusters by STRATEGIC FIT first, volume second. A 200/mo keyword that perfectly matches the positioning direction is more valuable than a 2,000/mo keyword that is tangentially relevant.'
+    + '\n- If a keyword relates to a service the business does NOT offer, disqualify it even if volume is high. Set disqualifyReason="Not aligned with business services".'
+    + '\n- If the POSITIONING DIRECTION is provided, clusters should reinforce that direction. Keywords that would undermine the positioning angle should be flagged.'
+    + (_posDir || '') + (_audCtx || '') + (_painCtx || '')
+    + '\n\nPage Type Rules:'
     + '\n- Homepage(/): broadest brand/agency keyword. Never a specific service term.'
     + '\n- Service(/services/slug): specific service+city. vol>0 required.'
     + '\n- Location(/locations/slug): city+marketing. vol>100 required.'
@@ -1615,7 +1646,11 @@ function _clearAllQuestions() {
 }
 
 function _getQuestionsArray() {
-  // Primary: contentIntel PAA (from Research stage)
+  // Primary: kwResearch.questions (canonical location)
+  if (S.kwResearch && S.kwResearch.questions && S.kwResearch.questions.length) {
+    return S.kwResearch.questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
+  }
+  // Fallback: contentIntel PAA (legacy location)
   if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length) {
     return S.contentIntel.paa.questions.map(function(q) { return typeof q === 'object' ? (q.question || '') : q; }).filter(Boolean);
   }
@@ -1629,6 +1664,16 @@ function _getQuestionsArray() {
     return _faqSrc.map(function(f) { return typeof f === 'object' ? (f.question || '') : f; }).filter(Boolean);
   }
   return [];
+}
+
+// Migrate questions from legacy contentIntel location to kwResearch
+function _migrateQuestions() {
+  if (!S.kwResearch) return;
+  if (S.kwResearch.questions && S.kwResearch.questions.length) return; // already migrated
+  if (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length) {
+    S.kwResearch.questions = S.contentIntel.paa.questions.slice();
+    console.log('[kw] Migrated ' + S.kwResearch.questions.length + ' questions to kwResearch.questions');
+  }
 }
 
 function _addQuestionAsSeed(i) {
@@ -2800,11 +2845,21 @@ async function runFullKeywordPipeline(startFrom) {
   // Refresh the tab content
   renderKwTabContent();
 
+  // Migrate questions to canonical location
+  _migrateQuestions();
+
+  // Flag diagnostics as stale if they were already run before keyword data existed
+  if (S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0) {
+    S.strategy._kwDataStale = true;
+    scheduleSave();
+  }
+
   if (typeof aiBarEnd === 'function') aiBarEnd();
   if (typeof aiBarNotify === 'function') {
     var kwCount = (S.kwResearch.keywords || []).length;
     var clCount = (S.kwResearch.clusters || []).length;
-    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + clCount + ' clusters', { duration: 8000 });
+    var staleMsg = (S.strategy && S.strategy._kwDataStale) ? ' — re-run D4-D6 to use keyword data' : '';
+    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + clCount + ' clusters' + staleMsg, { duration: 8000 });
   }
 }
 
@@ -2818,16 +2873,30 @@ async function _pipelineGenerateQuestions() {
   var _qTa = r.current_customer_profile || r.target_audience || [];
   var audience = (Array.isArray(_qTa) && _qTa.length ? (_qTa[0].persona || _qTa[0].primary || '') : '') || '';
 
-  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real business owners type into Google when evaluating or hiring this type of business. Bottom-of-funnel only. Return ONLY a JSON array of 20 question strings, no markdown.';
-  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nLocation: ' + (geo || 'N/A') + '\nServices: ' + (services || 'professional services') + '\nAudience: ' + (audience || 'business owners') + '\n\nGenerate 20 buyer-intent questions.';
+  // Enrich with strategy context if available
+  var _qStrat = '';
+  if (S.strategy && S.strategy.positioning) {
+    if (S.strategy.positioning.selected_direction) _qStrat += '\nPositioning: ' + S.strategy.positioning.selected_direction;
+    if (S.strategy.positioning.core_value_proposition) _qStrat += '\nValue Prop: ' + S.strategy.positioning.core_value_proposition;
+  }
+  if (r.pain_points_top5 && r.pain_points_top5.length) _qStrat += '\nPain Points: ' + r.pain_points_top5.join('; ');
+  if (r.objections_top5 && r.objections_top5.length) _qStrat += '\nCommon Objections: ' + (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5);
+  var _sdList = (r.services_detail || []).map(function(sd) { return (sd.name||'') + (sd.differentiator ? ' (' + sd.differentiator + ')' : ''); }).filter(Boolean);
+  if (_sdList.length) _qStrat += '\nService differentiators: ' + _sdList.join(', ');
+
+  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real people type into Google when evaluating or hiring this type of business. Focus on questions that align with the business positioning and services. Bottom-of-funnel and mid-funnel questions. Return ONLY a JSON array of 20 question strings, no markdown.';
+  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nLocation: ' + (geo || 'N/A') + '\nServices: ' + (services || 'professional services') + '\nAudience: ' + (audience || 'business owners') + (_qStrat || '') + '\n\nGenerate 20 buyer-intent questions that are specifically relevant to this business and its positioning.';
 
   var result = await callClaude(systemPrompt, userPrompt, null, 1000);
   var raw = result.replace(/```json|```/g, '').trim();
   var questions = safeParseJSON(raw);
   if (!Array.isArray(questions) || !questions.length) return;
 
+  var qObjs = questions.map(function(q) { return { question: q }; });
+  // Dual-write: canonical location + legacy location
   if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
-  S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q }; }), fetchedAt: Date.now(), source: 'pipeline' };
+  S.contentIntel.paa = { questions: qObjs, fetchedAt: Date.now(), source: 'pipeline' };
+  S.kwResearch.questions = qObjs;
 }
 
 async function _pipelineAISeeds() {

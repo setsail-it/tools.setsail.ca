@@ -114,6 +114,93 @@ function getPackageFit(monthlyBudget) {
   return null;
 }
 
+// ── Keyword context injection for diagnostic prompts ──────────────────────
+// Generates keyword research context for D4/D5/D6 when data exists.
+// mode: 'channels' (D4), 'website' (D5), 'content' (D6)
+function _kwContextBlock(mode) {
+  var kwR = S.kwResearch || {};
+  var kws = kwR.keywords || [];
+  var clusters = kwR.clusters || [];
+  var questions = (typeof _getQuestionsArray === 'function') ? _getQuestionsArray() : [];
+  if (kws.length < 5 && clusters.length === 0) return '';
+
+  var qualifiedClusters = clusters.filter(function(c) { return c.qualifies !== false; });
+  var totalVol = 0;
+  qualifiedClusters.forEach(function(c) { totalVol += (c.primaryVol || 0); });
+
+  // Cluster breakdown by page type
+  var byType = {};
+  qualifiedClusters.forEach(function(c) {
+    var t = c.pageType || 'other';
+    if (!byType[t]) byType[t] = 0;
+    byType[t]++;
+  });
+  var typeStr = Object.keys(byType).map(function(t) { return t + ': ' + byType[t]; }).join(', ');
+
+  // Quick wins: high volume, low difficulty
+  var quickWins = kws.filter(function(k) { return k.vol >= 100 && k.kd <= 20; });
+
+  var block = '\n\nKEYWORD RESEARCH DATA (' + kws.length + ' keywords, ' + qualifiedClusters.length + ' qualified clusters):\n';
+  block += '- Total addressable monthly volume: ' + totalVol.toLocaleString() + '\n';
+  block += '- Clusters by page type: ' + (typeStr || 'none') + '\n';
+  block += '- Quick wins (vol>=100, KD<=20): ' + quickWins.length + '\n';
+
+  if (mode === 'channels') {
+    // D4: top clusters + CPC landscape for budget allocation
+    block += '- Top clusters by volume:\n';
+    qualifiedClusters.slice().sort(function(a,b) { return (b.primaryVol||0) - (a.primaryVol||0); }).slice(0, 10).forEach(function(c) {
+      block += '  · "' + (c.primaryKw || c.name) + '" — ' + (c.primaryVol||0).toLocaleString() + '/mo, KD:' + (c.primaryKd||'?') + ' [' + (c.pageType||'?') + ']\n';
+    });
+    // Organic demand summary for channel allocation decisions
+    var avgKd = kws.length ? Math.round(kws.reduce(function(s,k){return s+(k.kd||0);},0)/kws.length) : 0;
+    block += '- Avg keyword difficulty: ' + avgKd + '/100\n';
+    block += '- IMPLICATION: Use this keyword data to validate organic SEO as a channel — if avg KD is low and volume is high, organic is a strong lever. If avg KD is very high, paid may be more realistic.\n';
+  }
+
+  if (mode === 'website') {
+    // D5: page architecture from clusters + questions for FAQ/form strategy
+    block += '- Recommended page architecture from clusters:\n';
+    Object.keys(byType).forEach(function(t) {
+      var typeClust = qualifiedClusters.filter(function(c) { return (c.pageType||'other') === t; });
+      block += '  · ' + t + ' pages (' + typeClust.length + '): ';
+      block += typeClust.slice(0, 5).map(function(c) { return '/' + (c.suggestedSlug || c.existingSlug || c.primaryKw); }).join(', ');
+      if (typeClust.length > 5) block += ' +' + (typeClust.length - 5) + ' more';
+      block += '\n';
+    });
+    var buildNew = qualifiedClusters.filter(function(c) { return c.recommendation === 'build_new'; });
+    var improveExisting = qualifiedClusters.filter(function(c) { return c.recommendation === 'improve_existing'; });
+    block += '- New pages to build: ' + buildNew.length + ', Existing to improve: ' + improveExisting.length + '\n';
+    if (questions.length) {
+      block += '- Top buyer questions (' + questions.length + ' total):\n';
+      questions.slice(0, 10).forEach(function(q) { block += '  · ' + q + '\n'; });
+      block += '- IMPLICATION: Use these questions for FAQ sections, form pre-qualification, and content planning.\n';
+    }
+  }
+
+  if (mode === 'content') {
+    // D6: content pillars from clusters + questions for topic generation
+    block += '- Keyword clusters for content pillar mapping:\n';
+    qualifiedClusters.slice(0, 15).forEach(function(c) {
+      block += '  · "' + (c.primaryKw || c.name) + '" [' + (c.pageType||'?') + '] — ' + (c.primaryVol||0).toLocaleString() + '/mo, KD:' + (c.primaryKd||'?');
+      if (c.supportingKws && c.supportingKws.length) block += ' + ' + c.supportingKws.length + ' supporting';
+      block += '\n';
+    });
+    if (questions.length) {
+      block += '- Buyer-intent questions for content topics (' + questions.length + ' total):\n';
+      questions.slice(0, 15).forEach(function(q) { block += '  · ' + q + '\n'; });
+    }
+    if (quickWins.length) {
+      block += '- Quick-win keywords (blog/content targets):\n';
+      quickWins.slice(0, 8).forEach(function(k) {
+        block += '  · "' + k.kw + '" — ' + (k.vol||0).toLocaleString() + '/mo, KD:' + (k.kd||0) + '\n';
+      });
+    }
+    block += '- IMPLICATION: Use actual cluster data to define content pillars rather than guessing. Each content pillar should map to one or more keyword clusters. Quick wins are immediate blog opportunities.\n';
+  }
+
+  return block;
+}
+
 function buildPricingContextBlock() {
   if (!_pricingCatalog || _pricingStatus !== 'live') return '';
   var block = '\n\nSERVICE PRICING (from internal pricing engine — real costs in CAD):\n';
@@ -2706,6 +2793,7 @@ function buildDiagnosticPrompt(num) {
         }
         return '';
       })() + '\n'
+      + _kwContextBlock('channels')
       + 'TASK: Score ALL 13 levers on fit (1-10), economics (1-10), competitive_reality (1-10), goal_impact (1-10). '
       + 'Calculate priority scores. Check funnel coverage. Produce TIERED budget allocation.\n\n'
       + 'CRITICAL BUDGET RULES:\n'
@@ -2774,8 +2862,9 @@ function buildDiagnosticPrompt(num) {
       + 'HAS FAQ: ' + (r.has_faq_section || 'unknown') + '\n'
       + 'BOOKING FLOW: ' + (r.booking_flow_description || 'unknown') + '\n'
       + 'SERVICES: ' + JSON.stringify((r.services_detail || []).map(function(s) { return s.name; })) + '\n'
-      + 'AUDIENCE: ' + (r.primary_audience_description || '') + '\n\n'
-      + 'TASK: Assess website and conversion infrastructure. Recommend build type, form strategy, page architecture.\n\n'
+      + 'AUDIENCE: ' + (r.primary_audience_description || '') + '\n'
+      + _kwContextBlock('website')
+      + '\nTASK: Assess website and conversion infrastructure. Recommend build type, form strategy, page architecture.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "build_type": "redesign | refresh | new_build | optimise_existing",\n'
       + '  "prerequisite_work": ["string"],\n'
@@ -2842,6 +2931,7 @@ function buildDiagnosticPrompt(num) {
       + 'IMPORTANT: Include ALL competitors listed above in dr_gap_analysis.competitor_drs, not just the ones with known DR. Estimate DR for competitors where it is unknown based on their domain age, backlink profile, and industry position.\n'
       + 'COMPETITOR DEEP-DIVE: ' + JSON.stringify(enrich.competitor_deep_dive || 'NOT YET AVAILABLE') + '\n'
       + 'KEYWORD LANDSCAPE: ' + (kwData || 'NOT YET SCANNED') + '\n'
+      + _kwContextBlock('content')
       + 'TEAM SIZE: ' + (r.team_size || 'unknown') + '\n'
       + 'INDUSTRY: ' + (r.industry || 'unknown') + '\n'
       + 'ACTIVE AUDIENCE SEGMENTS: ' + (st.audience && st.audience.segments ? st.audience.segments.filter(function(s){return s.status !== 'deprioritised';}).map(function(s){return s.name + ' (' + (s.vertical||'') + ')';}).join(', ') : 'not yet analysed') + '\n'
@@ -3224,6 +3314,13 @@ async function generateStrategy() {
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
 
+  // Soft sequencing: notify if keyword data is missing (D4-D6 benefit from it)
+  var _kwR = S.kwResearch || {};
+  if (!_kwR.keywords || _kwR.keywords.length < 10) {
+    aiBarNotify('Keyword research not run yet — D4-D6 will use shallow estimates. Run keywords first for better accuracy.', { duration: 6000 });
+    await new Promise(function(r) { setTimeout(r, 3000); });
+  }
+
   // Step 1: Run enrichment
   aiBarStart('Strategy enrichment');
   var r = S.research || {};
@@ -3442,6 +3539,7 @@ async function runAllDiagnostics() {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    S.strategy._kwDataStale = false; // D4-D6 now have latest keyword data
     capturePricingSnapshot();
     createStrategyVersion('rerun_all');
     await saveProject();
@@ -3476,6 +3574,72 @@ async function _resumeAllDiagnostics(startFrom) {
     renderStrategyNav();
     renderStrategyTabContent();
     aiBarEnd('All diagnostics complete \u2014 v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+// Re-run only D4, D5, D6 with keyword data — used after keyword pipeline completes
+async function rerunKeywordSensitiveDiagnostics() {
+  if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version < 1) {
+    aiBarNotify('Generate a full strategy first', { isError: true, duration: 3000 });
+    return;
+  }
+  window._aiStopAll = false;
+  aiBarStart('Re-running keyword-sensitive diagnostics (D4, D5, D6)');
+  try {
+    var diagNums = [4, 5, 6];
+    for (var i = 0; i < diagNums.length; i++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Keyword diagnostics paused (' + (i + 1) + '/3)',
+          fn: function(args) { _resumeKwDiagnostics(args.startIdx); },
+          args: { startIdx: i }
+        };
+        return;
+      }
+      await runDiagnostic(diagNums[i]);
+      if (i < diagNums.length - 1) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Clear staleness flag
+    S.strategy._kwDataStale = false;
+    capturePricingSnapshot();
+    createStrategyVersion('kw_refresh');
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('D4-D6 updated with keyword data \u2014 v' + S.strategy._meta.current_version);
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+async function _resumeKwDiagnostics(startIdx) {
+  window._aiStopAll = false;
+  var diagNums = [4, 5, 6];
+  try {
+    for (var i = startIdx; i < diagNums.length; i++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Keyword diagnostics paused (' + (i + 1) + '/3)',
+          fn: function(args) { _resumeKwDiagnostics(args.startIdx); },
+          args: { startIdx: i }
+        };
+        return;
+      }
+      await runDiagnostic(diagNums[i]);
+      if (i < diagNums.length - 1) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    S.strategy._kwDataStale = false;
+    createStrategyVersion('kw_refresh');
+    await saveProject();
+    renderStrategyScorecard();
+    renderStrategyNav();
+    renderStrategyTabContent();
+    aiBarEnd('D4-D6 updated with keyword data');
   } catch (e) {
     if (e.name === 'AbortError') return;
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -3712,6 +3876,28 @@ async function synthesiseWebStrategy() {
   if (r.case_studies && r.case_studies.length) ctx += 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || 'Client') + ': ' + (c.result || '') + (c.timeframe ? ' (' + c.timeframe + ')' : ''); }).join('; ') + '\n';
   if (r.notable_clients && r.notable_clients.length) ctx += 'NOTABLE CLIENTS: ' + r.notable_clients.join(', ') + '\n';
   if (r.awards_certifications && r.awards_certifications.length) ctx += 'AWARDS/CERTS: ' + r.awards_certifications.join(', ') + '\n';
+
+  // Keyword intelligence (from keyword research pipeline)
+  var kwR = S.kwResearch || {};
+  var kwCl = (kwR.clusters || []).filter(function(c) { return c.qualifies !== false; });
+  if (kwCl.length) {
+    var kwTotalVol = 0;
+    kwCl.forEach(function(c) { kwTotalVol += (c.primaryVol || 0); });
+    ctx += '\nKEYWORD INTELLIGENCE (' + kwCl.length + ' clusters, ' + kwTotalVol.toLocaleString() + ' monthly volume):\n';
+    ctx += '- Top clusters:\n';
+    kwCl.slice().sort(function(a,b){return (b.primaryVol||0)-(a.primaryVol||0);}).slice(0,12).forEach(function(c) {
+      ctx += '  · "' + (c.primaryKw||c.name) + '" [' + (c.pageType||'?') + '] — ' + (c.primaryVol||0).toLocaleString() + '/mo → ' + (c.recommendation==='improve_existing' ? 'improve' : 'build') + ' /' + (c.suggestedSlug||c.existingSlug||'') + '\n';
+    });
+    var kwQuickWins = (kwR.keywords||[]).filter(function(k){return k.vol>=100 && k.kd<=20;});
+    if (kwQuickWins.length) {
+      ctx += '- Quick-win keywords (' + kwQuickWins.length + '): ' + kwQuickWins.slice(0,5).map(function(k){return '"'+k.kw+'" '+k.vol+'/mo KD:'+k.kd;}).join(', ') + '\n';
+    }
+  }
+  var kwQuestions = (typeof _getQuestionsArray === 'function') ? _getQuestionsArray() : [];
+  if (kwQuestions.length) {
+    ctx += '\nBUYER QUESTIONS (' + kwQuestions.length + '):\n';
+    kwQuestions.slice(0, 12).forEach(function(q) { ctx += '- ' + q + '\n'; });
+  }
 
   // Risks
   if (st.risks && st.risks.risks && st.risks.risks.length) {
@@ -4041,6 +4227,9 @@ function renderStrategyTabContent() {
     html += '<button class="btn btn-ghost sm" data-tip="' + (diagTips[diagNum] || '') + '" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
     if (meta.current_version > 0) {
       html += '<button class="btn btn-primary sm" data-tip="Runs all diagnostics (D0-D7) in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
+      if (S.strategy._kwDataStale && (diagNum === 4 || diagNum === 5 || diagNum === 6)) {
+        html += '<button class="btn btn-primary sm" style="background:var(--green)" data-tip="Re-runs D4, D5, D6 with keyword research data for more accurate channel, website, and content recommendations" onclick="rerunKeywordSensitiveDiagnostics()"><i class="ti ti-vocabulary"></i> Re-run with Keywords</button>';
+      }
     } else {
       html += '<button class="btn btn-primary sm" data-tip="Runs enrichment then all diagnostics (D0-D7) in sequence" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Full Strategy</button>';
     }
@@ -7065,6 +7254,24 @@ async function compileStrategyOutput() {
       ctx += '\nMARKET CPC DATA (' + kwsC2.length + ' keywords):\n';
       ctx += '- Avg CPC: $' + avgC2 + '\n';
       ctx += '- Top by CPC: ' + topC2.map(function(k){return '"'+k.kw+'" $'+k.cpc;}).join(', ') + '\n';
+    }
+  }
+
+  // Buyer questions from keyword research
+  var compileQs = (typeof _getQuestionsArray === 'function') ? _getQuestionsArray() : [];
+  if (compileQs.length) {
+    ctx += '\nBUYER QUESTIONS (' + compileQs.length + ' validated):\n';
+    compileQs.slice(0, 15).forEach(function(q) { ctx += '- ' + q + '\n'; });
+  }
+
+  // Quick-win keywords (high volume, low difficulty)
+  if (kwR2.keywords && kwR2.keywords.length) {
+    var compileQW = kwR2.keywords.filter(function(k) { return k.vol >= 100 && k.kd <= 20; });
+    if (compileQW.length) {
+      ctx += '\nQUICK-WIN KEYWORDS (' + compileQW.length + ' — vol>=100, KD<=20):\n';
+      compileQW.slice(0, 10).forEach(function(k) {
+        ctx += '- "' + k.kw + '" — ' + k.vol.toLocaleString() + '/mo, KD:' + k.kd + '\n';
+      });
     }
   }
 
