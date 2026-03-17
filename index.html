@@ -11,8 +11,24 @@
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
 <style>
 :root{--bg:#ffffff;--white:#fff;--panel:#E8E7E1;--n1:#E2E2DC;--n2:#999990;--n3:#555550;--dark:#111;--green:#158E1D;--lime:#D8FF29;--dg:#002A0F;--border:rgba(0,0,0,0.09);--error:#E53935;--warn:#c07000;--font:'Geist',-apple-system,BlinkMacSystemFont,sans-serif}
+body.dark{--bg:#1a1a1a;--white:#242424;--panel:#2a2a2a;--n1:#333;--n2:#888;--n3:#bbb;--dark:#f0f0f0;--green:#2bb535;--lime:#c8ee22;--dg:#a3f0b5;--border:rgba(255,255,255,0.1);--error:#f87171;--warn:#fbbf24}
+body.dark{background:#1a1a1a;color-scheme:dark}
+body.dark #nav{background:#1e1e1e}
+body.dark .logo-mark{background:var(--green)}
+body.dark #user-dropdown{background:#2a2a2a}
+body.dark .card,body.dark [class*="card"]{background:var(--white)}
+body.dark input,body.dark textarea,body.dark select{background:#2a2a2a;color:var(--dark);border-color:var(--border)}
+body.dark input::placeholder,body.dark textarea::placeholder{color:#666}
+body.dark ::-webkit-scrollbar-thumb{background:#444}
+body.dark pre,body.dark code{background:#2a2a2a}
+body.dark #help-panel{background:#1e1e1e}
+body.dark #sai-panel{background:#1e1e1e}
+body.dark .cp-bubble.assistant{background:#2a2a2a}
+body.dark .cp-bubble.user{background:var(--green)}
+body.dark #mobile-nav-drawer{background:#1e1e1e}
+body.dark .ud-item:hover{background:rgba(255,255,255,0.06)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--font);background:#ffffff;color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:var(--n1);border-radius:4px}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
@@ -20,7 +36,7 @@ input,textarea,button,select{font-family:var(--font)!important}
 input::placeholder,textarea::placeholder{color:#bbb}
 
 /* NAV / TOPBAR */
-#nav{display:grid;grid-template-columns:1fr 320px 1fr;align-items:center;padding:0 20px;height:56px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:600;background:#ffffff;backdrop-filter:blur(10px)}
+#nav{display:grid;grid-template-columns:1fr 320px 1fr;align-items:center;padding:0 20px;height:56px;border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:600;background:var(--bg);backdrop-filter:blur(10px)}
 .nav-logo{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:500;letter-spacing:-0.01em}
 .logo-mark{width:22px;height:22px;background:var(--dark);border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nav-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--n2)}
@@ -190,7 +206,7 @@ textarea.inp{resize:vertical}
 
 /* USER DROPDOWN */
 #user-pill{position:relative;cursor:pointer!important}
-#user-dropdown{display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:180px;z-index:300;padding:6px;overflow:hidden}
+#user-dropdown{display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--white);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.1);min-width:180px;z-index:300;padding:6px;overflow:hidden}
 #user-dropdown.open{display:block}
 .ud-header{padding:8px 10px 6px;border-bottom:1px solid var(--border);margin-bottom:4px}
 .ud-email{font-size:11px;color:var(--n2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -302,6 +318,9 @@ textarea.inp{resize:vertical}
           <div class="ud-name" id="ud-name">—</div>
           <div class="ud-email" id="ud-email">—</div>
         </div>
+        <button class="ud-item" onclick="toggleDarkMode()">
+          <i class="ti ti-moon" id="dark-mode-icon" style="font-size:13px"></i> <span id="dark-mode-label">Dark mode</span>
+        </button>
         <button class="ud-item" onclick="goToAdmin();closeUserDropdown()">
           <i class="ti ti-shield-cog" style="font-size:13px"></i> Admin
         </button>
@@ -2619,6 +2638,26 @@ function closeUserDropdown() {
   var bd = document.getElementById('user-backdrop');
   if (bd) bd.style.display='none';
 }
+
+/* ── Dark Mode ── */
+function toggleDarkMode() {
+  var isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('setsail_dark', isDark ? '1' : '0');
+  var icon = document.getElementById('dark-mode-icon');
+  var label = document.getElementById('dark-mode-label');
+  if (icon) icon.className = isDark ? 'ti ti-sun' : 'ti ti-moon';
+  if (label) label.textContent = isDark ? 'Light mode' : 'Dark mode';
+}
+/* Restore on load */
+(function() {
+  if (localStorage.getItem('setsail_dark') === '1') {
+    document.body.classList.add('dark');
+    var icon = document.getElementById('dark-mode-icon');
+    var label = document.getElementById('dark-mode-label');
+    if (icon) icon.className = 'ti ti-sun';
+    if (label) label.textContent = 'Light mode';
+  }
+})();
 // Use mousedown so it fires before any child stopPropagation handlers
 document.addEventListener('mousedown', function(e) {
   var sw = document.getElementById('proj-switcher');
