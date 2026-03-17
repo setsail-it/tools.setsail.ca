@@ -62,6 +62,7 @@ var RESEARCH_FIELD_META = {
   team_credentials:          { tab:'brand',       label:'Team Credentials',         importance:'normal',   source:'ai' },
   founder_bio:               { tab:'brand',       label:'Founder Bio',              importance:'normal',   source:'ai' },
   publications_media:        { tab:'brand',       label:'Publications & Media',     importance:'optional', source:'ai' },
+  voc_swipe_raw:             { tab:'brand',       label:'VoC Swipe File',           importance:'optional', source:'manual' },
   reference_brands:          { tab:'brand',       label:'Reference Brands',         importance:'optional', source:'manual' },
   // Schema & Local
   schema_business_type:      { tab:'schema',      label:'Business Type',            importance:'critical', source:'ai' },
@@ -365,7 +366,7 @@ function researchDefaults() {
     reference_brands:[],
     // Proof & E-E-A-T
     case_studies:[], notable_clients:[], awards_certifications:[],
-    team_credentials:'', founder_bio:'', publications_media:[],
+    team_credentials:'', founder_bio:'', publications_media:[], voc_swipe_raw:'',
     // Schema
     schema_business_type:'', schema_primary_category:'',
     schema_price_range:'', schema_payment_methods:[],
@@ -483,7 +484,8 @@ function rField(key, label, value, type, opts) {
   let input = '';
 
   if (type === 'textarea') {
-    input = `<textarea id="${id}" rows="${opts.rows||3}" style="${base}" onchange="setRF('${key}',this.value)">${esc(value||'')}</textarea>`;
+    var phAttr = opts.placeholder ? ` placeholder="${esc(opts.placeholder)}"` : '';
+    input = `<textarea id="${id}" rows="${opts.rows||3}" style="${base}"${phAttr} onchange="setRF('${key}',this.value)">${esc(value||'')}</textarea>`;
   } else if (type === 'textarea-array') {
     const v = Array.isArray(value) ? value.join('\n') : (value||'');
     input = `<textarea id="${id}" rows="${opts.rows||4}" style="${base}" onchange="setRFArr('${key}',this.value)">${esc(v)}</textarea>`;
@@ -970,6 +972,9 @@ function renderRBrand(r) {
     rField('awards_certifications','Awards & Certifications (one per line)', r.awards_certifications, 'textarea-array', {rows:4}) +
     rField('notable_clients','Notable Clients (one per line)', r.notable_clients, 'textarea-array', {rows:4}) +
     rField('publications_media','Publications & Media Mentions (one per line)', r.publications_media, 'textarea-array', {rows:3})
+  );
+  html += rSec('Voice of Customer',
+    rField('voc_swipe_raw','Voice of Customer \u2014 Swipe File', r.voc_swipe_raw || '', 'textarea', {rows:5, placeholder:'Paste real customer quotes, review excerpts, or sales call transcripts \u2014 one per line\ne.g. "I just need someone who picks up the phone"\n"We wasted $30k on the last agency and got nothing"'})
   );
   html += rRepGroup('case_studies','Case Studies',
     [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'}],

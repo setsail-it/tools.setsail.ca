@@ -1557,7 +1557,8 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'has_buying_motions',label:'Buying motions mapped',                       check: function(d) { return d.buying_motions && d.buying_motions.length >= 2; } },
     { id:'has_triggers',      label:'Purchase triggers identified',                check: function(d) { return d.purchase_triggers && d.purchase_triggers.length >= 2; } },
     { id:'has_objections',    label:'Objection handling mapped to segments',       check: function(d) { return d.objection_map && d.objection_map.length >= 2; } },
-    { id:'has_validation',    label:'Segment validation criteria defined',         check: function(d) { return d.validation && (d.validation.primary_segment || d.validation.recommended_focus); } }
+    { id:'has_validation',    label:'Segment validation criteria defined',         check: function(d) { return d.validation && (d.validation.primary_segment || d.validation.recommended_focus); } },
+    { id:'has_perceived_alternatives', label:'Perceived alternatives mapped (3+)', check: function(d) { return d.perceived_alternatives && d.perceived_alternatives.length >= 3; } }
   ],
   1: [ // D1: Unit Economics
     { id:'has_max_cpl',       label:'Max allowable CPL calculated',           check: function(d) { return d.max_allowable_cpl > 0; } },
@@ -1577,7 +1578,8 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'has_voice',         label:'Brand voice direction specified',         check: function(d) { return d.brand_voice_direction && d.brand_voice_direction.style; } },
     { id:'has_messaging',     label:'Messaging hierarchy defined',            check: function(d) { return d.messaging_hierarchy && d.messaging_hierarchy.primary_message; } },
     { id:'rejected_tested',   label:'Rejected differentiators analysed',      check: function(d) { return d.rejected_differentiators && d.rejected_differentiators.length >= 1; } },
-    { id:'proof_plan',        label:'Proof-building strategy included',       check: function(d) { return d.proof_strategy && d.proof_strategy.length >= 1; } }
+    { id:'proof_plan',        label:'Proof-building strategy included',       check: function(d) { return d.proof_strategy && d.proof_strategy.length >= 1; } },
+    { id:'has_category_perception', label:'Category perception gap assessed', check: function(d) { return d.category_perception && d.category_perception.buyer_frame && d.category_perception.reframing_language; } }
   ],
   3: [ // D3: Subtraction Analysis
     { id:'has_audit',         label:'Current activities audited with costs',   check: function(d) { return d.current_activities_audit && d.current_activities_audit.length >= 1; } },
@@ -2355,6 +2357,24 @@ function _stratCtx() {
       ctx += painBlock;
     }
   }
+  // VoC swipe file — real buyer language from docs and manual input
+  var _vocFile = (S.strategy && S.strategy._enrichment && S.strategy._enrichment.voc_swipe_file) || [];
+  // Merge manual entries from research
+  var _vocRaw = (S.research && S.research.voc_swipe_raw) || '';
+  if (_vocRaw && typeof _vocRaw === 'string') {
+    _vocRaw.split('\n').filter(function(l) { return l.trim().length > 5; }).forEach(function(l) {
+      var phrase = l.trim().replace(/^["'\u201c\u201d]|["'\u201c\u201d]$/g, '');
+      if (!_vocFile.some(function(v) { return (v.quote || v.phrase || '') === phrase; })) {
+        _vocFile.push({ quote: phrase, source_type: 'manual' });
+      }
+    });
+  }
+  if (_vocFile.length) {
+    ctx += '\nVOICE OF CUSTOMER (real buyer language \u2014 use where natural, never fabricate):\n';
+    _vocFile.slice(0, 10).forEach(function(v) {
+      ctx += '- "' + (v.quote || v.phrase || '') + '"' + (v.context ? ' (' + v.context + ')' : '') + '\n';
+    });
+  }
   return ctx;
 }
 
@@ -2391,6 +2411,83 @@ function _versionLearningCtx(num) {
   ctx += '\nPREVIOUS OUTPUT (improve on this, do not just copy it):\n';
   ctx += JSON.stringify(prevOutput, null, 0).slice(0, 4000) + '\n';
   return ctx;
+}
+
+// ── Buyer Intelligence Block ─────────────────────────────────────────
+// Combines awareness stage + category perception + perceived alternatives + VoC
+// into a single context block for brief and copy prompts.
+
+function _buyerIntelBlock(page) {
+  var parts = [];
+  var st = S.strategy || {};
+
+  // 1. Awareness stage — sets page structure
+  if (page.awareness_stage) {
+    var _biGuide = {
+      'unaware': 'Lead with education, industry trends, provocative questions. Do NOT pitch the service immediately. Educate first, then bridge to the problem.',
+      'problem_aware': 'Lead with the pain point. Agitate cost of inaction. Introduce the solution category before the company. CTA: low-commitment (guide, checklist, assessment).',
+      'solution_aware': 'Lead with what makes this approach different. Explain methodology. Use comparison framing. CTA: mid-commitment (consultation, demo, audit).',
+      'product_aware': 'Lead with proof — results, case studies, testimonials, metrics. Address top objections directly. CTA: direct (get started, book a call, request quote).',
+      'most_aware': 'Lead with the offer and CTA above the fold. Urgency and risk reversal. Minimise education. Remove friction from conversion path.'
+    };
+    parts.push('AWARENESS STAGE: ' + page.awareness_stage.replace(/_/g, ' ')
+      + '\n' + (_biGuide[page.awareness_stage] || ''));
+  }
+
+  // 2. Category perception gap — sets opening hook
+  if (st.positioning && st.positioning.category_perception) {
+    var _biCp = st.positioning.category_perception;
+    if (_biCp.gap_severity && _biCp.gap_severity !== 'none' && _biCp.buyer_frame) {
+      var pt = (page.page_type || '').toLowerCase();
+      // Only inject on pages where reframing matters
+      if (pt === 'home' || pt === 'homepage' || pt === 'service' || pt === 'industry' || pt === 'about') {
+        parts.push('CATEGORY PERCEPTION GAP:\n'
+          + '- Buyer enters thinking they need: ' + _biCp.buyer_frame + '\n'
+          + '- We are actually selling: ' + (_biCp.actual_frame || '') + '\n'
+          + '- Reframing language: ' + (_biCp.reframing_language || ''));
+      }
+    }
+  }
+
+  // 3. Perceived alternatives — sets objection handling
+  if (st.audience && st.audience.perceived_alternatives && st.audience.perceived_alternatives.length) {
+    var _biAlts = st.audience.perceived_alternatives;
+    // Filter to page persona segment if assigned
+    if (page.target_persona && st.audience && st.audience.personas) {
+      var _biPersona = st.audience.personas.find(function(p) { return p.archetype_label === page.target_persona || p.name === page.target_persona; });
+      if (_biPersona && _biPersona.segment) {
+        var _biSegAlts = _biAlts.filter(function(a) { return a.segments_affected && a.segments_affected.indexOf(_biPersona.segment) >= 0; });
+        if (_biSegAlts.length) _biAlts = _biSegAlts;
+      }
+    }
+    parts.push('PERCEIVED ALTERNATIVES (address on this page):\n'
+      + _biAlts.slice(0, 4).map(function(a) {
+        return '- ' + (a.alternative || '') + ': ' + (a.counter_positioning || a.failure_mode || '');
+      }).join('\n'));
+  }
+
+  // 4. VoC swipe file — sets language texture
+  var _biEnrich = st._enrichment || {};
+  var _biVoc = (_biEnrich.voc_swipe_file || []).slice();
+  // Merge manual VoC
+  var _biVocRaw = (S.research && S.research.voc_swipe_raw) || '';
+  if (_biVocRaw && typeof _biVocRaw === 'string') {
+    _biVocRaw.split('\n').filter(function(l) { return l.trim().length > 5; }).forEach(function(l) {
+      var phrase = l.trim().replace(/^["'\u201c\u201d]|["'\u201c\u201d]$/g, '');
+      if (!_biVoc.some(function(v) { return (v.quote || '') === phrase; })) {
+        _biVoc.push({ quote: phrase, source_type: 'manual' });
+      }
+    });
+  }
+  if (_biVoc.length) {
+    parts.push('VOICE OF CUSTOMER (use this real buyer language where natural — never fabricate):\n'
+      + _biVoc.slice(0, 5).map(function(v) {
+        return '- "' + (v.quote || '') + '"';
+      }).join('\n'));
+  }
+
+  if (!parts.length) return '';
+  return '\n\nBUYER INTELLIGENCE\n' + parts.join('\n\n') + '\n';
 }
 
 function buildDiagnosticPrompt(num) {
@@ -2441,6 +2538,7 @@ function buildDiagnosticPrompt(num) {
       + '- Buying motions describe HOW each segment purchases (research process, decision committee, timeline).\n'
       + '- Purchase triggers are the events that move someone from "aware" to "actively looking".\n'
       + '- Objection map ties each objection to specific segments and provides counter-messaging.\n'
+      + '- Beyond direct competitors, identify 3-5 perceived alternatives the buyer considers: doing nothing, hiring in-house, using a freelancer, DIY tools, or other non-competitor options. For each, explain why it is attractive, how it typically fails, and provide counter-positioning language.\n'
       + '- Validation must recommend which segment(s) to prioritise and why.\n'
       + '- If data is limited, say so explicitly — do not fabricate specifics.\n\n'
       + 'JSON SCHEMA:\n{\n'
@@ -2509,6 +2607,15 @@ function buildDiagnosticPrompt(num) {
       + '      "frequency": "rare | common | universal",\n'
       + '      "counter_message": "how to address it",\n'
       + '      "proof_needed": "what evidence overcomes this"\n'
+      + '    }\n'
+      + '  ],\n'
+      + '  "perceived_alternatives": [\n'
+      + '    {\n'
+      + '      "alternative": "what the buyer considers instead (e.g. do nothing, hire in-house, use a DIY tool, hire a freelancer)",\n'
+      + '      "why_considered": "why this alternative is attractive to the buyer",\n'
+      + '      "failure_mode": "how this alternative typically fails or underdelivers",\n'
+      + '      "threat_level": "low | medium | high",\n'
+      + '      "counter_positioning": "1-2 sentences positioning the company against this alternative"\n'
       + '    }\n'
       + '  ],\n'
       + '  "vertical_coverage_check": ["Warning: [vertical] listed in intake but missing from strategy — add or deprioritise"],\n'
@@ -2681,7 +2788,8 @@ function buildDiagnosticPrompt(num) {
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
       + hypCtx
-      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory.'
+      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory. '
+      + 'Analyse the gap between what the buyer thinks they are buying and what the company actually sells. Most buyers enter with a commodity mental model (e.g. "I need a website" or "I need SEO"). Identify the buyer\'s starting category frame, the company\'s actual value frame, the severity of the gap, and generate reframing language that bridges it.'
       + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "market_position": "where client sits vs competitors",\n'
@@ -2708,6 +2816,14 @@ function buildDiagnosticPrompt(num) {
       + '    "words_to_avoid": ["string"],\n'
       + '    "voice_rationale": "string",\n'
       + '    "vertical_overlays": [{"vertical": "segment or vertical name", "adjustments": "what changes for this vertical", "words_permitted": ["words OK in this vertical but banned globally"], "words_banned": ["additional bans for this vertical"]}]\n'
+      + '  },\n'
+      + '  "category_perception": {\n'
+      + '    "buyer_frame": "what the buyer thinks they are shopping for (their mental category)",\n'
+      + '    "actual_frame": "what the company is actually selling (the real value proposition)",\n'
+      + '    "perception_gap": "description of the gap between buyer frame and actual frame",\n'
+      + '    "gap_severity": "none | mild | significant | fundamental",\n'
+      + '    "reframing_language": "2-3 sentences that bridge from buyer category to actual value — use on homepage and landing pages",\n'
+      + '    "reframing_trigger_pages": ["homepage", "service pages where reframing matters most"]\n'
       + '  },\n'
       + '  "proof_strategy": ["proof to build that does not exist yet"],\n'
       + '  "confidence": "high | medium | low"\n}';
@@ -3359,6 +3475,44 @@ async function generateStrategy() {
       return;
     }
 
+    // Passive VoC extraction from uploaded docs
+    var _vocSources = '';
+    if (s.discoveryNotes) _vocSources += s.discoveryNotes + '\n';
+    if (S.strategy._enrichment.doc_extraction) _vocSources += JSON.stringify(S.strategy._enrichment.doc_extraction).slice(0, 3000);
+    if (_vocSources.trim().length > 50) {
+      aiBarStart('Extracting buyer language');
+      try {
+        var _vocRaw = '';
+        await callClaude(
+          'You extract real customer voice phrases from business documents. Return ONLY a JSON array.\n'
+          + 'Rules:\n'
+          + '- Only include phrases that sound like a real person said them\n'
+          + '- Include direct quotes, complaints, praise, objections, emotional statements\n'
+          + '- Do NOT fabricate or paraphrase \u2014 extract verbatim or skip\n'
+          + '- Max 8 items\n'
+          + 'Schema: [{"quote":"exact text","context":"situation/topic","source_type":"extracted"}]',
+          _vocSources.slice(0, 4000),
+          function(c) { _vocRaw += c; },
+          2000, 'VoC extraction'
+        );
+        var _vocJson = _vocRaw.match(/\[[\s\S]*\]/);
+        if (_vocJson) {
+          var _vocParsed = JSON.parse(_vocJson[0]);
+          if (Array.isArray(_vocParsed) && _vocParsed.length) {
+            if (!S.strategy._enrichment) S.strategy._enrichment = {};
+            S.strategy._enrichment.voc_swipe_file = _vocParsed.map(function(v) {
+              return { quote: v.quote || '', context: v.context || '', source_type: 'extracted' };
+            });
+          }
+        }
+      } catch(e) { console.warn('VoC extraction skipped:', e.message); }
+    }
+
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Strategy paused (enrichment)', fn: function() { generateStrategy(); }, args: {} };
+      return;
+    }
+
     // CPC estimates
     var svcNames = (r.primary_services || []).slice(0, 5);
     var geo = r.geography && r.geography.primary ? r.geography.primary : s.geo || '';
@@ -3799,6 +3953,14 @@ async function synthesiseWebStrategy() {
       if (mh.primary_message) ctx += '- Primary message: ' + mh.primary_message + '\n';
       if (mh.supporting_messages) ctx += '- Supporting messages: ' + JSON.stringify(mh.supporting_messages) + '\n';
       if (mh.proof_points) ctx += '- Proof points: ' + JSON.stringify(mh.proof_points) + '\n';
+    }
+    if (st.positioning.category_perception && st.positioning.category_perception.gap_severity !== 'none') {
+      var _cp = st.positioning.category_perception;
+      ctx += '\nCATEGORY PERCEPTION GAP:\n';
+      ctx += '- Buyer thinks they are buying: ' + (_cp.buyer_frame || '') + '\n';
+      ctx += '- We are actually selling: ' + (_cp.actual_frame || '') + '\n';
+      ctx += '- Gap severity: ' + (_cp.gap_severity || '') + '\n';
+      ctx += '- Reframing language: ' + (_cp.reframing_language || '') + '\n';
     }
   }
 
@@ -5137,6 +5299,24 @@ function _renderAudience(st) {
     });
   }
 
+  // Perceived Alternatives
+  if (a.perceived_alternatives && a.perceived_alternatives.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin:16px 0 8px"><i class="ti ti-arrows-split" style="font-size:12px"></i> PERCEIVED ALTERNATIVES</div>';
+    html += '<div class="card" style="margin-bottom:16px"><table style="width:100%;font-size:11px;border-collapse:collapse">';
+    html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;font-weight:600">Alternative</th><th style="text-align:left;padding:4px 8px;font-weight:600">Why Considered</th><th style="text-align:left;padding:4px 8px;font-weight:600">Failure Mode</th><th style="text-align:left;padding:4px 8px;font-weight:600">Threat</th><th style="text-align:left;padding:4px 8px;font-weight:600">Counter-Positioning</th></tr>';
+    a.perceived_alternatives.forEach(function(alt) {
+      var threatColour = alt.threat_level === 'high' ? '#dc2626' : alt.threat_level === 'medium' ? '#b45309' : '#6b7280';
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:4px 8px;font-weight:500">' + esc(alt.alternative || '') + '</td>';
+      html += '<td style="padding:4px 8px">' + esc(alt.why_considered || '') + '</td>';
+      html += '<td style="padding:4px 8px">' + esc(alt.failure_mode || '') + '</td>';
+      html += '<td style="padding:4px 8px"><span style="font-size:10px;color:' + threatColour + ';padding:1px 6px;border-radius:3px;background:#f9fafb">' + esc(alt.threat_level || '') + '</span></td>';
+      html += '<td style="padding:4px 8px">' + esc(alt.counter_positioning || '') + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
   // Parked Segments
   if (a.parked_segments && a.parked_segments.length) {
     html += '<div style="font-size:12px;font-weight:600;color:var(--n2);margin:16px 0 8px"><i class="ti ti-clock-pause" style="font-size:12px"></i> PARKED SEGMENTS (deprioritised)</div>';
@@ -5378,6 +5558,52 @@ function _renderPositioning(st) {
     // D2 explicitly flagged that direction is needed
     html += '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#92400e">'
       + '<i class="ti ti-lock" style="font-size:12px"></i> Messaging, value proposition, and proof strategy are placeholders. Select a positioning direction above, then re-run D2 to generate finalised outputs.</div>';
+  }
+
+  // ── Category Perception Gap card ──
+  if (p.category_perception && p.category_perception.buyer_frame) {
+    var _cp = p.category_perception;
+    var _cpSev = _cp.gap_severity || 'none';
+    var _cpBorder = _cpSev === 'fundamental' ? '#dc2626' : _cpSev === 'significant' ? '#f59e0b' : _cpSev === 'mild' ? '#9ca3af' : '#16a34a';
+    var _cpBadgeBg = _cpSev === 'fundamental' ? 'rgba(220,38,38,0.08)' : _cpSev === 'significant' ? 'rgba(245,158,11,0.08)' : _cpSev === 'mild' ? 'rgba(156,163,175,0.08)' : 'rgba(22,163,74,0.08)';
+    var _cpBadgeCol = _cpSev === 'fundamental' ? '#dc2626' : _cpSev === 'significant' ? '#f59e0b' : _cpSev === 'mild' ? '#6b7280' : '#16a34a';
+    html += '<div class="card" style="margin-bottom:18px;padding:16px 18px;border-left:3px solid ' + _cpBorder + '">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);text-transform:uppercase;letter-spacing:.06em">Category Perception Gap</div>';
+    html += '<span style="background:' + _cpBadgeBg + ';color:' + _cpBadgeCol + ';font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid;font-weight:500">' + esc(_cpSev) + '</span>';
+    html += '</div>';
+    // Two-column: buyer sees → we actually sell
+    html += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:centre;margin-bottom:12px">';
+    html += '<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px">';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Buyer sees</div>';
+    html += '<div style="font-size:12px;color:var(--dark);font-weight:500">' + esc(_cp.buyer_frame) + '</div>';
+    html += '</div>';
+    html += '<div style="font-size:18px;color:var(--n2);padding-top:12px">\u2192</div>';
+    html += '<div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px">';
+    html += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">We actually sell</div>';
+    html += '<div style="font-size:12px;color:var(--dark);font-weight:500">' + esc(_cp.actual_frame) + '</div>';
+    html += '</div>';
+    html += '</div>';
+    // Gap description
+    if (_cp.perception_gap) {
+      html += '<div style="font-size:12px;color:var(--n3);margin-bottom:10px">' + esc(_cp.perception_gap) + '</div>';
+    }
+    // Reframing language
+    if (_cp.reframing_language) {
+      html += '<div style="background:rgba(59,130,246,0.06);border-left:2px solid #3b82f6;padding:8px 12px;font-size:12px;color:var(--dark);margin-bottom:10px;border-radius:0 6px 6px 0">';
+      html += '<div style="font-size:10px;color:#3b82f6;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Reframing Language</div>';
+      html += esc(_cp.reframing_language);
+      html += '</div>';
+    }
+    // Trigger pages as chips
+    if (_cp.reframing_trigger_pages && _cp.reframing_trigger_pages.length) {
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      _cp.reframing_trigger_pages.forEach(function(pg) {
+        html += '<span style="background:rgba(107,33,168,0.06);color:#6b21a8;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(107,33,168,0.15)">' + esc(pg) + '</span>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
   }
 
   html += _stratSection('Positioning',
@@ -7126,6 +7352,12 @@ async function compileStrategyOutput() {
         ctx += '- ' + bm.segment + ': ' + (bm.decision_process || '') + ', timeline ' + (bm.typical_timeline || '?') + '\n';
       });
     }
+    if (st.audience.perceived_alternatives && st.audience.perceived_alternatives.length) {
+      ctx += 'Perceived alternatives:\n';
+      st.audience.perceived_alternatives.forEach(function(alt) {
+        ctx += '- ' + alt.alternative + ' (' + (alt.threat_level || '?') + '): ' + (alt.counter_positioning || alt.failure_mode || '') + '\n';
+      });
+    }
     if (st.audience.validation) {
       ctx += 'Focus: ' + (st.audience.validation.recommended_focus || st.audience.validation.primary_segment || '') + '\n';
     }
@@ -7195,6 +7427,17 @@ async function compileStrategyOutput() {
       ctx += '- Voice: ' + (bvd.style || '') + ' / ' + (bvd.tone_detail || '') + '\n';
       if (bvd.words_to_avoid && bvd.words_to_avoid.length) ctx += '- Words to avoid: ' + bvd.words_to_avoid.join(', ') + '\n';
       if (bvd.words_to_use && bvd.words_to_use.length) ctx += '- Words to use: ' + bvd.words_to_use.join(', ') + '\n';
+    }
+    if (st.positioning.category_perception && st.positioning.category_perception.gap_severity !== 'none') {
+      var _cpC = st.positioning.category_perception;
+      ctx += '\nCATEGORY PERCEPTION GAP:\n';
+      ctx += '- Buyer thinks they are buying: ' + (_cpC.buyer_frame || '') + '\n';
+      ctx += '- We are actually selling: ' + (_cpC.actual_frame || '') + '\n';
+      ctx += '- Gap severity: ' + (_cpC.gap_severity || '') + '\n';
+      ctx += '- Reframing language: ' + (_cpC.reframing_language || '') + '\n';
+      if (_cpC.reframing_trigger_pages && _cpC.reframing_trigger_pages.length) {
+        ctx += '- Trigger pages: ' + _cpC.reframing_trigger_pages.join(', ') + '\n';
+      }
     }
   }
 

@@ -267,6 +267,19 @@ function buildCopyPrompt(page) {
     }
   }
 
+  // Awareness stage context
+  var _cpAwarenessGuide = {
+    'unaware': 'Lead with a provocative question or industry trend. Do NOT pitch the service immediately. Educate first, then bridge to the problem.',
+    'problem_aware': 'Lead with the pain point. Agitate cost of inaction. Introduce the solution category before the company. CTA: low-commitment (guide, checklist, assessment).',
+    'solution_aware': 'Lead with what makes this approach different. Explain methodology. Use comparison framing. CTA: mid-commitment (consultation, demo, audit).',
+    'product_aware': 'Lead with proof — results, case studies, testimonials, specific metrics. Address top objections directly. CTA: direct (get started, book a call, request quote).',
+    'most_aware': 'Lead with the offer and CTA above the fold. Use urgency and risk reversal. Minimise education. Remove friction from conversion path.'
+  };
+  var _awarenessBlock = '';
+  if (page.awareness_stage && _cpAwarenessGuide[page.awareness_stage]) {
+    _awarenessBlock = '\n\nBUYER AWARENESS STAGE: ' + page.awareness_stage.replace(/_/g, ' ') + '\n' + _cpAwarenessGuide[page.awareness_stage];
+  }
+
   // Fix 4: Voice overlay
   var _voiceOverlay = page.voice_overlay || 'base';
   var _voiceBlock = '';
@@ -363,6 +376,8 @@ function buildCopyPrompt(page) {
       + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
       + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
       + _personaBlock
+      + _awarenessBlock
+      + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -395,6 +410,8 @@ function buildCopyPrompt(page) {
     + (page.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+page.pageContext : '')
     + (page.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n'+page.page_goal : '')
     + _personaBlock
+    + _awarenessBlock
+    + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
     + '\n\n' + briefInstruction;
 }
 
@@ -766,6 +783,15 @@ async function runCopyAudit(slug) {
       id: 'persona_alignment',
       label: 'Copy addresses ' + _auditPersona.name + ' specific pains (not generic problems). Look for: ' + (_auditPersona.frustrations ? _auditPersona.frustrations.slice(0, 2).join('; ') : 'persona-specific language') + '. Problem/Agitation should reference this persona.',
       display: 'Persona alignment — addresses ' + _auditPersona.name + ' pains'
+    });
+  }
+
+  // Awareness stage alignment check
+  if (p.awareness_stage) {
+    checks.push({
+      id: 'awareness_alignment',
+      label: 'Awareness alignment: Does the copy lead with the correct hook for a ' + p.awareness_stage.replace(/_/g, ' ') + ' reader? Check hero, intro, and CTA match this stage.',
+      display: 'Awareness alignment — ' + p.awareness_stage.replace(/_/g, ' ') + ' reader'
     });
   }
 

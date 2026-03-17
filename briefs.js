@@ -1353,6 +1353,19 @@ async function generatePageBrief(pageIdx) {
     if (_econLines.length) ctxEconomics = '\n\n## ECONOMICS CONTEXT (calibrate CTA aggressiveness)\n' + _econLines.join('\n');
   }
 
+  // Awareness stage context
+  var _awarenessGuide = {
+    'unaware': 'Lead with a provocative question or industry trend. Do NOT pitch the service immediately. Educate first, then bridge to the problem.',
+    'problem_aware': 'Lead with the pain point. Agitate cost of inaction. Introduce the solution category before the company. CTA: low-commitment (guide, checklist, assessment).',
+    'solution_aware': 'Lead with what makes this approach different. Explain methodology. Use comparison framing. CTA: mid-commitment (consultation, demo, audit).',
+    'product_aware': 'Lead with proof — results, case studies, testimonials, specific metrics. Address top objections directly. CTA: direct (get started, book a call, request quote).',
+    'most_aware': 'Lead with the offer and CTA above the fold. Use urgency and risk reversal. Minimise education. Remove friction from conversion path.'
+  };
+  var ctxAwareness = '';
+  if (p.awareness_stage && _awarenessGuide[p.awareness_stage]) {
+    ctxAwareness = '\n\n## BUYER AWARENESS STAGE: ' + p.awareness_stage.replace(/_/g, ' ') + '\n' + _awarenessGuide[p.awareness_stage];
+  }
+
   var ctxAudience = [
     'Primary audience: '+(R.primary_audience_description||((R.current_customer_profile||R.target_audience||[])[0])||''),
     'Best customer example: '+(R.best_customer_examples||''),
@@ -1446,6 +1459,8 @@ async function generatePageBrief(pageIdx) {
       + (_pageCtx ? '\n\n## PAGE-SPECIFIC CONTEXT\n'+_pageCtx : '')
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — every section of the brief must serve this goal)\n'+_pageGoal : '')
       + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
+      + ctxAwareness
+      + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
@@ -1503,6 +1518,8 @@ async function generatePageBrief(pageIdx) {
       + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + ctxProof + ctxCTA
+      + ctxAwareness
+      + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
@@ -1561,6 +1578,8 @@ async function generatePageBrief(pageIdx) {
       + _clientPainCtx
       + (_pageGoal ? '\n\n## PAGE GOAL (this is the strategic purpose — the entire brief must serve this goal)\n'+_pageGoal : '')
       + ctxProof + ctxCTA + ctxServicesDetail + ctxSubtraction + ctxEconomics
+      + ctxAwareness
+      + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(p) : '')
       + '\n\n## AUDIENCE\n'+ctxAudience
       + '\n\n## KEYWORDS\n'+ctxKeywords
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions

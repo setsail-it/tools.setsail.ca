@@ -28,6 +28,28 @@ function _renderScopeWarning() {
   return '';
 }
 
+// ── AWARENESS STAGE INFERENCE ─────────────────────────────────────────
+
+function _inferAwarenessStage(page) {
+  var pt = (page.page_type || '').toLowerCase();
+  var intent = (page.search_intent || page.intent || '').toLowerCase();
+  // Intent overrides page-type defaults
+  if (intent === 'transactional') return 'most_aware';
+  if (intent === 'commercial' || intent === 'commercial investigation') return 'product_aware';
+  if (intent === 'navigational') return 'most_aware';
+  // Page type defaults
+  if (pt === 'home' || pt === 'homepage') return 'solution_aware';
+  if (pt === 'service') return 'product_aware';
+  if (pt === 'location') return 'product_aware';
+  if (pt === 'industry') return 'solution_aware';
+  if (pt === 'blog' || pt === 'resource') return 'problem_aware';
+  if (pt === 'about') return 'product_aware';
+  if (pt === 'contact') return 'most_aware';
+  if (pt === 'case-study' || pt === 'case-studies' || pt === 'portfolio') return 'product_aware';
+  if (pt === 'faq') return 'problem_aware';
+  return 'solution_aware';
+}
+
 // ── PERSONA, VOICE, POSITIONING HELPERS ───────────────────────────────
 
 // Slugify a string for voice overlay IDs
@@ -490,6 +512,7 @@ function assignAllPersonas() {
     if (!p.voice_overlay || p.voice_overlay === 'base') {
       p.voice_overlay = _autoAssignVoiceOverlay(p);
     }
+    if (!p.awareness_stage) p.awareness_stage = _inferAwarenessStage(p);
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -672,6 +695,7 @@ function buildSitemapFromClusters() {
     S.pages.forEach(function(p) {
       if (!p.target_persona) p.target_persona = _autoAssignPersona(p);
       if (!p.voice_overlay) p.voice_overlay = _autoAssignVoiceOverlay(p);
+      if (!p.awareness_stage) p.awareness_stage = _inferAwarenessStage(p);
     });
   }
 
@@ -1019,7 +1043,8 @@ function addPageFromGap(slug, name, persona) {
     supporting_keywords: [], search_intent: _pt === 'blog' ? 'informational' : 'commercial',
     word_count_target: 1500, notes: 'Source: Persona Coverage Gap',
     targetGeo: '', page_goal: '',
-    target_persona: persona || '', voice_overlay: _autoAssignVoiceOverlay({ page_type: _pt, target_persona: persona, slug: slug })
+    target_persona: persona || '', voice_overlay: _autoAssignVoiceOverlay({ page_type: _pt, target_persona: persona, slug: slug }),
+    awareness_stage: _inferAwarenessStage({ page_type: _pt, search_intent: _pt === 'blog' ? 'informational' : 'commercial' })
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -1034,7 +1059,8 @@ function addNewPage() {
     supporting_keywords: [], search_intent: 'commercial',
     word_count_target: 1500, notes: '', meta_title: '', meta_description: '',
     targetGeo: '', page_goal: '',
-    target_persona: '', voice_overlay: 'base'
+    target_persona: '', voice_overlay: 'base',
+    awareness_stage: _inferAwarenessStage({ page_type: 'service', search_intent: 'commercial' })
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
@@ -1534,6 +1560,12 @@ function _renderSitemapResultsInner(approved) {
         _voiceSegs.forEach(function(vs) { var id = _slugifyOverlay(vs); if (!_seenVoice[id]) { _seenVoice[id] = true; html += '<option value="'+esc(id)+'"'+(p.voice_overlay===id?' selected':'')+'>Voice: '+esc(vs)+'</option>'; } });
         html += '</select>';
       }
+      // Awareness stage dropdown
+      html += '<select onchange="updatePageField('+i+',\'awareness_stage\',this.value)" style="font-size:10px;color:#0d9488;background:rgba(13,148,136,0.04);border:1px solid rgba(13,148,136,0.2);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
+      var _awStages = ['unaware','problem_aware','solution_aware','product_aware','most_aware'];
+      var _awCurrent = p.awareness_stage || '';
+      _awStages.forEach(function(stg) { html += '<option value="'+stg+'"'+(_awCurrent===stg?' selected':'')+'>'+stg.replace(/_/g,' ')+'</option>'; });
+      html += '</select>';
       // Icon-only reorder/delete
       html += '<div style="display:flex;gap:3px;margin-top:1px">';
       html += `<button onclick="movePage(${i},-1)" ${i===0?'disabled':''} title="Move up" style="${btnS};opacity:${i===0?'0.25':'0.7'}" onmouseover="if(!this.disabled)this.style.opacity='1'" onmouseout="if(!this.disabled)this.style.opacity='0.7'">↑</button>`;
@@ -1590,6 +1622,10 @@ function _renderSitemapResultsInner(approved) {
       // Voice overlay badge (if not base)
       if (p.voice_overlay && p.voice_overlay !== 'base') {
         _badges += '<span style="background:rgba(234,88,12,0.08);border:1px solid rgba(234,88,12,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#c2410c;font-weight:500"><i class="ti ti-microphone" style="font-size:8px;margin-right:2px"></i>'+esc(p.voice_overlay)+'</span>';
+      }
+      // Awareness stage badge
+      if (p.awareness_stage) {
+        _badges += '<span style="background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#0d9488;font-weight:500"><i class="ti ti-eye" style="font-size:8px;margin-right:2px"></i>'+esc(p.awareness_stage.replace(/_/g,' '))+'</span>';
       }
       if (_badges) html += '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+_badges+'</div>';
       html += '</div>';
@@ -2261,7 +2297,8 @@ function addBlogPagesToSitemap() {
       word_count_target: 1200,
       notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`,
       target_persona: '',
-      voice_overlay: 'base'
+      voice_overlay: 'base',
+      awareness_stage: _inferAwarenessStage({ page_type: 'blog', search_intent: 'informational' })
     });
     added++;
   });
