@@ -2872,6 +2872,8 @@ function removeKeyword(pageIdx, kw) {
 //         fetch volumes → auto-select → cluster → audit
 // Follows the stop/resume pattern from CLAUDE.md
 
+var _kwPipelineActive = false; // runtime-only flag — true only while pipeline is executing
+
 var KW_PIPELINE_STEPS = [
   { id: 'questions',   label: 'Generate Questions',       icon: 'ti-help-circle' },
   { id: 'ai_seeds',    label: 'AI Generate Seeds',        icon: 'ti-sparkles' },
@@ -2961,6 +2963,7 @@ async function _autoCompetitorSeeds() {
 }
 
 async function runFullKeywordPipeline(startFrom) {
+  _kwPipelineActive = true;
   window._aiStopAll = false;
   if (!S.kwResearch) {
     S.kwResearch = { seeds: [], seedSources: { mechanical: [], ai: [], competitor: [], questions: [] }, activeSources: ['mechanical', 'ai', 'competitor', 'questions'], keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
@@ -2988,6 +2991,7 @@ async function runFullKeywordPipeline(startFrom) {
       };
       pl.status = 'paused';
       pl.pausedAt = steps[i].id;
+      _kwPipelineActive = false;
       scheduleSave();
       _renderPipelineStatus();
       return;
@@ -3078,6 +3082,7 @@ async function runFullKeywordPipeline(startFrom) {
 
   pl.status = 'complete';
   pl.completedAt = Date.now();
+  _kwPipelineActive = false;
   scheduleSave();
   _renderPipelineStatus();
 
@@ -3279,6 +3284,21 @@ function _renderPipelineStatus() {
   if (!el) return;
   var pl = (S.kwResearch && S.kwResearch._pipeline) || {};
   var steps = KW_PIPELINE_STEPS;
+
+  // Auto-correct stale "running" state (page was reloaded mid-pipeline)
+  if (pl.status === 'running' && !_kwPipelineActive) {
+    // Check if all steps completed despite status being stuck
+    var allDone = steps.every(function(s) { return pl[s.id] && pl[s.id].done; });
+    if (allDone) {
+      pl.status = 'complete';
+      if (!pl.completedAt) pl.completedAt = Date.now();
+    } else {
+      pl.status = 'paused';
+      pl.pausedAt = pl.currentStep || steps[0].id;
+    }
+    if (typeof scheduleSave === 'function') scheduleSave();
+  }
+
   var isRunning = pl.status === 'running';
   var isComplete = pl.status === 'complete';
   var isPaused = pl.status === 'paused';
