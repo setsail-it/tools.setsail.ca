@@ -2491,6 +2491,20 @@ function renderSnapshot() {
   extraHtml += '<div style="margin-top:8px;font-size:11px;color:var(--n3);border-top:1px solid var(--border);padding-top:8px">' + verdict.join(' · ') + '</div>';
   extraHtml += '</div>';
 
+  // ── Site Architecture Diagram ──
+  if ((snap.topPages || []).length >= 2) {
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    var archLabel = snap.topPages.length > 40 ? 'top 40 of ' + snap.topPages.length + ' pages by traffic' : snap.topPages.length + ' pages';
+    extraHtml += '<div style="font-size:13px;font-weight:500"><i class="ti ti-hierarchy-2" style="margin-right:4px"></i> Current Site Architecture <span style="font-size:11px;color:var(--n2)">(' + archLabel + ')</span></div>';
+    extraHtml += '<div style="display:flex;gap:6px">';
+    extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="downloadSnapshotSvg()"><i class="ti ti-download"></i> SVG</button>';
+    extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="copySnapshotMermaid()"><i class="ti ti-copy"></i> Code</button>';
+    extraHtml += '</div></div>';
+    extraHtml += '<div id="snap-arch-diagram" style="overflow:auto;max-height:500px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:12px;min-height:100px"><div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--n2);font-size:12px;padding:30px"><span class="spinner" style="width:12px;height:12px"></span> Rendering diagram...</div></div>';
+    extraHtml += '</div>';
+  }
+
   // ── Core Web Vitals ──
   if (snap.vitals) {
     var v = snap.vitals;
@@ -2589,6 +2603,10 @@ function renderSnapshot() {
 
   extraWrap.innerHTML = extraHtml;
 
+  // Render site architecture diagram if container exists
+  var archDiagram = document.getElementById('snap-arch-diagram');
+  if (archDiagram) _renderSnapshotArchDiagram(archDiagram, snap.topPages || []);
+
   // Top pages table
   const pagesWrap = document.getElementById('snapshot-pages-wrap');
   const tbody = document.getElementById('snap-pages-tbody');
@@ -2662,6 +2680,132 @@ function renderRedirectMap() {
       <td style="padding:7px 10px;text-align:center">${statusBadge}</td>
     </tr>`;
   }).join('');
+}
+
+// ── Snapshot Site Architecture Diagram ─────────────────────────────
+function _buildSnapshotMermaid(allPages) {
+  var safeId = function(s) { return ('N_' + s).replace(/[^a-zA-Z0-9_]/g, '_'); };
+  var lines = ['graph TD'];
+  var domain = (S.setup && S.setup.url ? S.setup.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'site');
+  // Limit to top 40 pages by traffic to keep diagram readable
+  var pages = allPages.slice().sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); }).slice(0, 40);
+  // Root node
+  var totalTraffic = allPages.reduce(function(s, p) { return s + (p.traffic || 0); }, 0);
+  lines.push('  ROOT["' + domain + '\\n' + totalTraffic.toLocaleString() + ' total traffic/mo"]');
+  lines.push('  style ROOT fill:#D8FF29,stroke:#158E1D,color:#111111');
+  // Build tree from slugs
+  var sections = {};
+  pages.forEach(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    if (!slug || slug === '/') return; // skip homepage
+    var parts = slug.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      var sec = parts[0];
+      if (!sections[sec]) sections[sec] = [];
+      sections[sec].push(p);
+    }
+  });
+  // Top-level pages (no section)
+  var topLevel = pages.filter(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    if (!slug || slug === '/') return false;
+    var parts = slug.split('/').filter(Boolean);
+    return parts.length === 1;
+  });
+  // Render section folders
+  Object.keys(sections).sort().forEach(function(sec) {
+    var secId = safeId(sec);
+    var count = sections[sec].length;
+    lines.push('  ' + secId + '["/' + sec + '/ (' + count + ' pages)"]');
+    lines.push('  style ' + secId + ' fill:#f0f0f0,stroke:#999,color:#333');
+    lines.push('  ROOT --> ' + secId);
+    // Child pages in this section
+    sections[sec].forEach(function(p) {
+      var slug = (p.slug || '').replace(/^\//, '');
+      var id = safeId(slug);
+      var label = slug.split('/').pop() || slug;
+      var trafficLabel = p.traffic > 0 ? '\\n' + p.traffic.toLocaleString() + '/mo' : '';
+      var kwLabel = p.topKeyword ? '\\n' + p.topKeyword : '';
+      lines.push('  ' + id + '["' + label + kwLabel + trafficLabel + '"]');
+      var strokeColor = p.traffic > 100 ? '#158E1D' : p.traffic > 0 ? '#e69900' : '#ccc';
+      lines.push('  style ' + id + ' fill:#ffffff,stroke:' + strokeColor + ',color:#111111');
+      lines.push('  ' + secId + ' --> ' + id);
+    });
+  });
+  // Top-level pages (directly under root)
+  topLevel.forEach(function(p) {
+    var slug = (p.slug || '').replace(/^\//, '');
+    var id = safeId(slug);
+    var trafficLabel = p.traffic > 0 ? '\\n' + p.traffic.toLocaleString() + '/mo' : '';
+    var kwLabel = p.topKeyword ? '\\n' + p.topKeyword : '';
+    lines.push('  ' + id + '["/' + slug + kwLabel + trafficLabel + '"]');
+    var strokeColor = p.traffic > 100 ? '#158E1D' : p.traffic > 0 ? '#e69900' : '#ccc';
+    lines.push('  style ' + id + ' fill:#ffffff,stroke:' + strokeColor + ',color:#111111');
+    lines.push('  ROOT --> ' + id);
+  });
+  // Homepage node if it exists
+  var hasHome = pages.find(function(p) { return !p.slug || p.slug === '/' || p.slug === ''; });
+  if (hasHome) {
+    lines.push('  HOMEPAGE["/\\nHomepage' + (hasHome.traffic > 0 ? '\\n' + hasHome.traffic.toLocaleString() + '/mo' : '') + '"]');
+    lines.push('  style HOMEPAGE fill:#ffffff,stroke:#158E1D,color:#111111');
+    lines.push('  ROOT --> HOMEPAGE');
+  }
+  return lines.join('\n');
+}
+
+var _snapMermaidLoaded = false;
+function _ensureSnapMermaid(cb) {
+  if (_snapMermaidLoaded && window.mermaid) { cb(); return; }
+  // Check if sitemap.js already loaded it
+  if (window.mermaid && typeof window.mermaid.render === 'function') { _snapMermaidLoaded = true; cb(); return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+  s.onload = function() {
+    window.mermaid.initialize({ startOnLoad: false, theme: 'neutral', flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' } });
+    _snapMermaidLoaded = true;
+    cb();
+  };
+  document.head.appendChild(s);
+}
+
+function _renderSnapshotArchDiagram(container, pages) {
+  if (!pages || pages.length < 2) return;
+  var code = _buildSnapshotMermaid(pages);
+  _ensureSnapMermaid(function() {
+    try {
+      var id = 'snap-arch-' + Date.now();
+      window.mermaid.render(id, code).then(function(result) {
+        container.innerHTML = result.svg;
+        var svg = container.querySelector('svg');
+        if (svg) { svg.style.maxWidth = '100%'; svg.style.height = 'auto'; }
+      }).catch(function(err) {
+        container.innerHTML = '<div style="color:var(--error);font-size:12px;padding:16px">Could not render diagram: ' + (err.message || err) + '</div>';
+      });
+    } catch(err) {
+      container.innerHTML = '<div style="color:var(--error);font-size:12px;padding:16px">Could not render diagram: ' + (err.message || err) + '</div>';
+    }
+  });
+}
+
+function downloadSnapshotSvg() {
+  var svg = document.querySelector('#snap-arch-diagram svg');
+  if (!svg) { aiBarNotify('Diagram not rendered yet', { isError: true, duration: 2000 }); return; }
+  var blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (S.setup && S.setup.client ? S.setup.client.replace(/[^a-zA-Z0-9]/g, '-') : 'site') + '-current-architecture.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function copySnapshotMermaid() {
+  var pages = (S.snapshot && S.snapshot.topPages) || [];
+  var code = _buildSnapshotMermaid(pages);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(function() {
+      aiBarNotify('Mermaid code copied — paste into FigJam', { duration: 3000 });
+    });
+  }
 }
 
 function updateRedirectSlug(idx, val) {
