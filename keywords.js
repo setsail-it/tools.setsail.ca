@@ -1680,13 +1680,25 @@ function _addQuestionAsSeed(i) {
   var qs = _getQuestionsArray();
   var q = qs[i];
   if (!q) return;
+  // Extract keyword intent from question — never send raw question as seed
+  var kw = _questionToSeedKeyword(q);
+  if (!kw) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('Could not extract keyword from question — too long or too short', { duration: 3000 });
+    return;
+  }
   if (!S.kwResearch) S.kwResearch = { seeds: [], keywords: [], selected: [], clusters: [] };
   if (!S.kwResearch.seeds) S.kwResearch.seeds = [];
-  if (S.kwResearch.seeds.indexOf(q) === -1) {
-    S.kwResearch.seeds.push(q);
-    scheduleSave();
+  if (!S.kwResearch.seedSources) S.kwResearch.seedSources = { mechanical: [], ai: [], competitor: [], questions: [] };
+  if (!S.kwResearch.seedSources.questions) S.kwResearch.seedSources.questions = [];
+  if (S.kwResearch.seeds.indexOf(kw) === -1) {
+    S.kwResearch.seeds.push(kw);
   }
+  if (S.kwResearch.seedSources.questions.indexOf(kw) === -1) {
+    S.kwResearch.seedSources.questions.push(kw);
+  }
+  scheduleSave();
   renderKwTabContent();
+  if (typeof aiBarNotify === 'function') aiBarNotify('Extracted "' + kw + '" from question', { duration: 3000 });
 }
 
 // Extracts the core search-intent keyword from a question.
