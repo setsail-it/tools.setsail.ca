@@ -103,7 +103,7 @@ function _addSaiSystemMsg(text) {
   if (!area) return;
   var div = document.createElement('div');
   div.className = 'sai-system-msg';
-  div.style.cssText = 'padding:8px 12px;margin:6px 0;font-size:12px;color:#8899aa;text-align:centre;font-style:italic;';
+  div.style.cssText = 'padding:8px 12px;margin:6px 0;font-size:12px;color:#8899aa;text-align:center;font-style:italic;';
   div.textContent = text;
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;

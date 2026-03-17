@@ -5346,7 +5346,7 @@ function _renderAudience(st) {
 function _renderPositioning(st) {
   var p = st.positioning || {};
   if (!p.core_value_proposition && !p.recommended_positioning_angle && !p.hypotheses_input && !p.hypothesis_evaluations) {
-    return '<div class="card" style="color:var(--n2);text-align:centre"><p>No positioning data yet. Generate strategy to populate.</p></div>';
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No positioning data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
 
@@ -5649,7 +5649,7 @@ function _renderPositioning(st) {
 function _renderEconomics(st) {
   var ue = st.unit_economics || {};
   if (!ue.max_allowable_cpl && !ue.recommendation) {
-    return '<div class="card" style="color:var(--n2);text-align:centre"><p>No economics data yet. Generate strategy to populate.</p></div>';
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No economics data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
   // Pricing source indicator
@@ -5792,7 +5792,7 @@ function _renderEconomics(st) {
 function _renderChannels(st) {
   var cs = st.channel_strategy || {};
   if (!cs.levers || !cs.levers.length) {
-    return '<div class="card" style="color:var(--n2);text-align:centre"><p>No channel data yet. Generate strategy to populate.</p></div>';
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No channel data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
 
@@ -7227,7 +7227,7 @@ function _renderBrand(st) {
 function _renderRisks(st) {
   var ri = st.risks || {};
   if (!ri.risks || !ri.risks.length) {
-    return '<div class="card" style="color:var(--n2);text-align:centre"><p>No risk data yet. Generate strategy to populate.</p></div>';
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No risk data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px">';
