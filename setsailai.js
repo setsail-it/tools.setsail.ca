@@ -210,7 +210,7 @@ function setSaiMode(mode) {
   var sendBtn = document.getElementById('sai-send');
 
   if (askArea) askArea.style.display = (mode === 'ask' || mode === 'explain') ? '' : 'none';
-  if (auditArea) auditArea.style.display = (mode === 'audit') ? '' : 'none';
+  if (auditArea) auditArea.style.display = (mode === 'audit') ? 'block' : 'none';
   if (inputRow) inputRow.style.display = (mode === 'audit') ? 'none' : '';
   if (sendBtn) sendBtn.style.display = (mode === 'audit') ? 'none' : '';
   var attachBtn = document.getElementById('sai-attach');
@@ -224,7 +224,11 @@ function setSaiMode(mode) {
   var hintArea = document.getElementById('sai-explain-hint');
   if (hintArea) hintArea.style.display = (mode === 'explain') ? '' : 'none';
 
-  if (mode === 'audit') _renderAuditPanel();
+  if (mode === 'audit') {
+    /* Always run a fresh audit when switching to audit mode */
+    if (S && S.projectId) runSaiAudit();
+    _renderAuditPanel();
+  }
   if (mode === 'explain') {
     _addSaiSystemMsg('Explain mode active — click any highlighted element to learn about it.');
   }
@@ -859,6 +863,14 @@ var SAI_AUDIT_CHECKS = [
 ];
 
 function runSaiAudit() {
+  /* Skip audit when no project is loaded — checks would fire against empty state */
+  if (!(S && S.projectId)) {
+    _sai.auditResults = [];
+    _sai._lastAuditAt = 0;
+    _updateSaiBadge();
+    if (_sai.open && _sai.mode === 'audit') _renderAuditPanel();
+    return [];
+  }
   var results = [];
   SAI_AUDIT_CHECKS.forEach(function(check) {
     try {
@@ -899,7 +911,19 @@ function _renderAuditPanel() {
   area.innerHTML = '';
 
   if (!_sai.auditResults.length) {
-    area.innerHTML = '<div style="padding:24px;text-align:center;color:#8899aa;font-size:13px;">No issues found — looking good!</div>';
+    if (!(S && S.projectId)) {
+      area.innerHTML = '<div style="padding:32px 20px;text-align:center;color:#8899aa;font-size:13px;line-height:1.6;">'
+        + '<i class="ti ti-folder-open" style="font-size:28px;display:block;margin-bottom:10px;opacity:0.5"></i>'
+        + 'Open a project to run the audit.<br>'
+        + '<span style="font-size:11px;">The audit checks research, strategy, sitemap, briefs, and copy for gaps, staleness, and issues.</span>'
+        + '</div>';
+    } else {
+      area.innerHTML = '<div style="padding:32px 20px;text-align:center;color:var(--green);font-size:13px;line-height:1.6;">'
+        + '<i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:10px"></i>'
+        + 'No issues found — looking good!<br>'
+        + '<span style="font-size:11px;color:#8899aa;">' + SAI_AUDIT_CHECKS.length + ' checks passed across all stages.</span>'
+        + '</div>';
+    }
     return;
   }
 
