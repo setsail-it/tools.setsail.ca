@@ -1265,7 +1265,7 @@ async function resumeProject(id) {
   goTo(S.stage);
 
   // Re-render stage content
-  if (S.stage === 'snapshot' && S.snapshot) renderSnapshot();
+  if (S.stage === 'snapshot') { if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
   if (S.stage === 'research') { initResearch(); }
   if (S.stage === 'strategy') { strategyInit(); }
   if (S.stage === 'sitemap') {
@@ -1667,7 +1667,10 @@ function navToStage(stage) {
 }
 
 function renderStageContent(stage) {
-  if (stage === 'snapshot' && S.snapshot) renderSnapshot();
+  if (stage === 'snapshot') {
+    if (S.snapshot) { renderSnapshot(); }
+    else { _clearSnapshotUI(); }
+  }
   if (stage === 'research') { initResearch(); }
   if (stage === 'strategy') { strategyInit(); }
   if (stage === 'sitemap') {
@@ -2425,6 +2428,15 @@ function addSnapshotPage(slug) {
   var input = document.getElementById('snap-add-page-input');
   if (input) input.value = '';
   renderSnapshot();
+}
+
+function _clearSnapshotUI() {
+  var bar = document.getElementById('snapshot-metrics-bar'); if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+  var extra = document.getElementById('snapshot-extra-wrap'); if (extra) extra.innerHTML = '';
+  var pw = document.getElementById('snapshot-pages-wrap'); if (pw) pw.style.display = 'none';
+  var rw = document.getElementById('snapshot-redirects-wrap'); if (rw) rw.style.display = 'none';
+  var aw = document.getElementById('snap-add-page-wrap'); if (aw) aw.style.display = 'none';
+  var nw = document.getElementById('snapshot-next-wrap'); if (nw) nw.style.display = 'none';
 }
 
 function renderSnapshot() {
