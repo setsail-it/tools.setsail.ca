@@ -649,6 +649,150 @@ function _getTierRange() {
   return { tier: tier, range: range, websiteInScope: websiteInScope };
 }
 
+// ── STALENESS DETECTION + REALIGN ──────────────────────────────────
+
+function _isSitemapStale() {
+  if (!S || !S._sitemapBuiltAt || !S.strategy || !S.strategy._meta || !S.strategy._meta._completedAt) return false;
+  return S.strategy._meta._completedAt > S._sitemapBuiltAt;
+}
+
+function _renderStalenessWarning() {
+  if (!_isSitemapStale()) return '';
+  var stratDate = new Date(S.strategy._meta._completedAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var smDate = new Date(S._sitemapBuiltAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return '<div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:11.5px;color:#92400e;display:flex;align-items:center;gap:10px">'
+    + '<i class="ti ti-alert-triangle" style="font-size:16px;flex-shrink:0;color:var(--warn)"></i>'
+    + '<div style="flex:1"><strong>Strategy updated after sitemap was built</strong>'
+    + '<div style="font-size:10.5px;margin-top:2px;color:var(--n2)">Strategy: ' + esc(stratDate) + ' · Sitemap: ' + esc(smDate) + '</div>'
+    + '<div style="font-size:10.5px;margin-top:1px;color:var(--n2)">Priorities, D5 pages, CTA stubs, and personas may be outdated.</div></div>'
+    + '<button class="btn btn-ghost sm" style="font-size:11px;padding:4px 12px;border-color:rgba(245,166,35,0.4);color:#92400e;white-space:nowrap" onclick="realignSitemap()">'
+    + '<i class="ti ti-refresh-dot"></i> Realign</button></div>';
+}
+
+// Realign: light pass that updates strategy-derived metadata without rebuilding
+function realignSitemap() {
+  if (!S.pages || !S.pages.length) {
+    aiBarNotify('No sitemap to realign — generate one first', { duration: 3000 });
+    return;
+  }
+  if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version === 0) {
+    aiBarNotify('No strategy data — run strategy diagnostics first', { duration: 3000 });
+    return;
+  }
+
+  var changes = { priorities: 0, d5Added: 0, ctaAdded: 0, cutsMarked: 0, personasSet: 0, d5Removed: 0 };
+  var existingSlugs = new Set(S.pages.map(function(p) { return _normSlug(p.slug); }));
+
+  // 1. Re-run priority suggestions and auto-apply
+  S.pages.forEach(function(p) {
+    var suggested = _suggestPriority(p);
+    if (suggested && suggested !== p.priority) {
+      p._previousPriority = p.priority;
+      p.priority = suggested;
+      changes.priorities++;
+    }
+  });
+
+  // 2. Inject new D5 recommended pages
+  var d5Pages = _getD5RecommendedPages();
+  d5Pages.forEach(function(dp) {
+    if (existingSlugs.has(dp.slug)) return;
+    S.pages.push(dp);
+    existingSlugs.add(dp.slug);
+    changes.d5Added++;
+  });
+
+  // 3. Flag D5 pages that are no longer recommended
+  var currentD5Slugs = new Set(d5Pages.map(function(p) { return p.slug; }));
+  S.pages.forEach(function(p) {
+    if (p._d5_source && !currentD5Slugs.has(p.slug)) {
+      p._d5_stale = true;
+      p.notes = (p.notes || '') + ' [D5 no longer recommends this page]';
+      changes.d5Removed++;
+    }
+  });
+
+  // 4. Inject new CTA stubs
+  var ctaStubs = _getCTAStubPages(S.pages);
+  ctaStubs.forEach(function(cp) {
+    if (existingSlugs.has(cp.slug)) return;
+    S.pages.push(cp);
+    existingSlugs.add(cp.slug);
+    changes.ctaAdded++;
+  });
+
+  // 5. Re-run pages-to-cut
+  var cutSlugs = _getD5PagesToCut();
+  if (cutSlugs.size) {
+    S.pages.forEach(function(p) {
+      if (p._d5_cut) return; // already marked
+      var pSlug = _normSlug(p.slug);
+      cutSlugs.forEach(function(cutFrag) {
+        if (pSlug === cutFrag || pSlug.indexOf(cutFrag) >= 0) {
+          p.priority = 'P3';
+          p._priorityNote = 'D5: recommended to cut';
+          p._d5_cut = true;
+          changes.cutsMarked++;
+        }
+      });
+    });
+  }
+
+  // 6. Re-assign personas, voice overlays, awareness stages
+  var _hasAudience = S.strategy && S.strategy.audience && S.strategy.audience.personas && S.strategy.audience.personas.length;
+  if (_hasAudience) {
+    S.pages.forEach(function(p) {
+      var oldPersona = p.target_persona;
+      p.target_persona = _autoAssignPersona(p);
+      p.voice_overlay = _autoAssignVoiceOverlay(p);
+      p.awareness_stage = _inferAwarenessStage(p);
+      if (p.target_persona !== oldPersona) changes.personasSet++;
+    });
+  }
+
+  // 7. Re-run tier enforcement
+  var _tierInfo = _getTierRange();
+  if (_tierInfo && _tierInfo.range) {
+    var activePages = S.pages.filter(function(p) { return p.priority !== 'P3'; });
+    if (activePages.length > _tierInfo.range.max) {
+      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source; });
+      demotable.sort(function(a, b) { return (a.score || 0) - (b.score || 0); });
+      var excess = activePages.length - _tierInfo.range.max;
+      for (var di = 0; di < Math.min(excess, demotable.length); di++) {
+        demotable[di].priority = 'P3';
+        demotable[di]._priorityNote = 'Tier cap (' + _tierInfo.range.label + ' max ' + _tierInfo.range.max + ' pages)';
+      }
+    }
+  }
+
+  // 8. Update scope note
+  if (_tierInfo && !_tierInfo.websiteInScope) {
+    S._sitemapScopeNote = 'Website is not in engagement scope \u2014 sitemap is informational only';
+  } else {
+    S._sitemapScopeNote = null;
+  }
+
+  // 9. Update timestamp so staleness clears
+  S._sitemapBuiltAt = Date.now();
+
+  // 10. Build summary message
+  var parts = [];
+  if (changes.priorities) parts.push(changes.priorities + ' priorities updated');
+  if (changes.d5Added) parts.push(changes.d5Added + ' D5 pages added');
+  if (changes.d5Removed) parts.push(changes.d5Removed + ' D5 pages flagged stale');
+  if (changes.ctaAdded) parts.push(changes.ctaAdded + ' CTA pages added');
+  if (changes.cutsMarked) parts.push(changes.cutsMarked + ' pages marked to cut');
+  if (changes.personasSet) parts.push(changes.personasSet + ' personas reassigned');
+  var msg = parts.length ? 'Realigned: ' + parts.join(', ') : 'Sitemap is already aligned with strategy';
+
+  renderSitemapResults(S.sitemapApproved);
+  scheduleSave();
+  // Hide realign button since staleness is cleared
+  var realignBtn = document.getElementById('sitemap-realign-btn');
+  if (realignBtn) realignBtn.style.display = 'none';
+  aiBarNotify(msg, { duration: 5000 });
+}
+
 // ── PERSISTENCE ────────────────────────────────────────────────────
 let saveTimer = null;
 function _normSlug(url) {
@@ -1678,6 +1822,9 @@ function renderSitemapResults(approved) {
     const el = document.getElementById('sitemap-results');
     if (el) { el.innerHTML = '<div style="padding:20px;color:red;font-family:monospace;font-size:12px;background:#fff1f0;border:1px solid #ffccc7;border-radius:8px;margin:8px 0"><strong>\u26A0 Render error</strong><br>' + esc(err.message) + '<br><br><small>' + esc((err.stack||'').split('\n').slice(0,4).join('\n')).replace(/\n/g,'<br>') + '</small></div>'; el.style.display='block'; }
   }
+  // Update Realign button visibility
+  var _realignBtn = document.getElementById('sitemap-realign-btn');
+  if (_realignBtn) _realignBtn.style.display = (_isSitemapStale() && S.pages && S.pages.length) ? '' : 'none';
 }
 function _renderSitemapResultsInner(approved) {
   const allPages = S.pages;
@@ -1734,6 +1881,7 @@ function _renderSitemapResultsInner(approved) {
   html += '<span id="sitemap-enrich-badge" style="display:none;background:rgba(21,142,29,0.08);color:var(--green);font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid rgba(21,142,29,0.2);align-items:center;gap:5px"><span class="spinner" style="width:8px;height:8px"></span> <span id="sitemap-enrich-text">Fetching keyword volumes</span></span>';
   html += '</div>';
   html += _renderScopeWarning();
+  html += _renderStalenessWarning();
 
   // Category tabs
   const _tabCounts = {

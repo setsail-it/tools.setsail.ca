@@ -703,6 +703,7 @@ textarea.inp{resize:vertical}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-building-estate"></i> Existing Site</button>
           <button class="btn btn-ghost sm" id="sitemap-clear-btn" style="display:none;color:var(--error)" onclick="clearAllSitemapPages()"><i class="ti ti-trash"></i> Clear All</button>
+          <button class="btn btn-ghost sm" id="sitemap-realign-btn" style="display:none;color:#92400e;border-color:rgba(245,166,35,0.4)" onclick="realignSitemap()"><i class="ti ti-refresh-dot"></i> Realign</button>
           <button class="btn btn-primary" id="sitemap-run-btn" onclick="confirmRunSitemap()"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
         </div>
       </div>
@@ -1280,6 +1281,9 @@ async function resumeProject(id) {
       document.getElementById('sitemap-results').style.display = '';
       renderSitemapResults(true);
     }
+    // Show/hide Realign button based on staleness
+    var realignBtn = document.getElementById('sitemap-realign-btn');
+    if (realignBtn) realignBtn.style.display = (typeof _isSitemapStale === 'function' && _isSitemapStale() && S.pages && S.pages.length) ? '' : 'none';
   }
   if (S.stage === 'briefs' && S.pages.length) { initBriefs(); }
   if (S.stage === 'copy' && S.pages.length) { initCopy(); }
