@@ -2449,13 +2449,15 @@ async function runSnapshot() {
     var body = JSON.stringify({ domain, country });
     var hdrs = { 'Content-Type': 'application/json' };
 
-    // Run all 5 data pulls in parallel
-    var [ahrefsRes, techRes, vitalsRes, rankingsRes, detectRes] = await Promise.all([
+    // Run all 6 data pulls in parallel
+    var _brandName = (S.setup && S.setup.client) ? S.setup.client : domain.replace(/\.(com|ca|co|io|net|org|au).*$/, '');
+    var [ahrefsRes, techRes, vitalsRes, rankingsRes, detectRes, brandSerpRes] = await Promise.all([
       fetch('/api/snapshot', { method: 'POST', headers: hdrs, body: body }),
       fetch('/api/snapshot-tech', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; }),
       fetch('/api/snapshot-vitals', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; }),
       fetch('/api/snapshot-rankings', { method: 'POST', headers: hdrs, body: body }).catch(function() { return null; }),
-      fetch('/api/snapshot-detect', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; })
+      fetch('/api/snapshot-detect', { method: 'POST', headers: hdrs, body: JSON.stringify({ domain }) }).catch(function() { return null; }),
+      fetch('/api/snapshot-brand-serp', { method: 'POST', headers: hdrs, body: JSON.stringify({ keyword: _brandName, country }) }).catch(function() { return null; })
     ]);
 
     var data = await ahrefsRes.json();
@@ -2478,6 +2480,10 @@ async function runSnapshot() {
       try { var detectData = await detectRes.json(); data.schemas = detectData.schemas || []; data.hasRobotsTxt = detectData.hasRobotsTxt; data.hasSitemap = detectData.hasSitemap; data.sitemapUrls = detectData.sitemapUrls || []; } catch(e) {}
     }
 
+    // Merge brand SERP / Knowledge Panel
+    if (brandSerpRes && brandSerpRes.ok) {
+      try { data.brandSerp = await brandSerpRes.json(); } catch(e) { data.brandSerp = null; }
+    }
     S.snapshot = data;
     scheduleSave();
     renderSnapshot();
@@ -2612,6 +2618,72 @@ function renderSnapshot() {
   if (quickWins.length >= 3) verdict.push(quickWins.length + ' quick win pages near page 1');
   extraHtml += '<div style="margin-top:8px;font-size:11px;color:var(--n3);border-top:1px solid var(--border);padding-top:8px">' + verdict.join(' · ') + '</div>';
   extraHtml += '</div>';
+
+  // ── Brand SERP / Knowledge Panel ──
+  if (snap.brandSerp) {
+    var bs = snap.brandSerp;
+    var kp = bs.knowledgePanel;
+    extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
+    extraHtml += '<div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="ti ti-search" style="margin-right:4px"></i> Brand SERP <span style="font-size:11px;font-weight:400;color:var(--n2)">Search: "' + esc(bs.keyword || '') + '"</span></div>';
+    extraHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;font-size:12px;margin-bottom:10px">';
+    // Knowledge Panel status
+    var kpCol = bs.hasKnowledgePanel ? 'var(--green)' : 'var(--error)';
+    extraHtml += '<div><span style="color:var(--n2)">Knowledge Panel</span><div style="font-size:16px;font-weight:600;color:' + kpCol + '">' + (bs.hasKnowledgePanel ? '<i class="ti ti-circle-check-filled" style="font-size:14px"></i> Yes' : '<i class="ti ti-circle-x-filled" style="font-size:14px"></i> No') + '</div></div>';
+    // Owns position 1
+    var p1Col = bs.ownsPosition1 ? 'var(--green)' : 'var(--error)';
+    extraHtml += '<div><span style="color:var(--n2)">Owns #1 Result</span><div style="font-size:16px;font-weight:600;color:' + p1Col + '">' + (bs.ownsPosition1 ? '<i class="ti ti-circle-check-filled" style="font-size:14px"></i> Yes' : '<i class="ti ti-circle-x-filled" style="font-size:14px"></i> No') + '</div></div>';
+    // SERP features count
+    extraHtml += '<div><span style="color:var(--n2)">SERP Features</span><div style="font-size:16px;font-weight:600">' + (bs.serpFeatures || []).length + '</div></div>';
+    // Rating (if available)
+    if (kp && kp.rating && kp.rating.value) {
+      extraHtml += '<div><span style="color:var(--n2)">Rating</span><div style="font-size:16px;font-weight:600;color:var(--green)">' + kp.rating.value + ' <span style="font-size:10px;color:var(--n2)">(' + (kp.rating.count || 0).toLocaleString() + ')</span></div></div>';
+    }
+    extraHtml += '</div>';
+    // Knowledge Panel details
+    if (kp) {
+      extraHtml += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg);margin-bottom:8px">';
+      if (kp.title) extraHtml += '<div style="font-size:12px;font-weight:600">' + esc(kp.title) + (kp.subtitle ? ' <span style="font-weight:400;color:var(--n2)">' + esc(kp.subtitle) + '</span>' : '') + '</div>';
+      if (kp.category) extraHtml += '<div style="font-size:11px;color:var(--n2);margin-top:2px">' + esc(kp.category) + '</div>';
+      if (kp.description) extraHtml += '<div style="font-size:11.5px;color:var(--n3);margin-top:6px;line-height:1.5">' + esc(kp.description.length > 200 ? kp.description.slice(0, 200) + '\u2026' : kp.description) + '</div>';
+      // Social profiles
+      if (kp.socialProfiles && kp.socialProfiles.length) {
+        extraHtml += '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+        kp.socialProfiles.forEach(function(sp) {
+          extraHtml += '<a href="' + esc(sp.url) + '" target="_blank" style="font-size:10px;color:#3b82f6;text-decoration:none;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:3px;padding:1px 6px">' + esc(sp.platform || 'Link') + '</a>';
+        });
+        extraHtml += '</div>';
+      }
+      // Attributes
+      var attrKeys = kp.attributes ? Object.keys(kp.attributes) : [];
+      if (attrKeys.length) {
+        extraHtml += '<div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px">';
+        attrKeys.slice(0, 8).forEach(function(k) {
+          extraHtml += '<div style="font-size:10.5px"><span style="color:var(--n2)">' + esc(k) + ':</span> ' + esc(kp.attributes[k]) + '</div>';
+        });
+        extraHtml += '</div>';
+      }
+      extraHtml += '</div>';
+    }
+    // SERP features list
+    if (bs.serpFeatures && bs.serpFeatures.length) {
+      extraHtml += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+      bs.serpFeatures.forEach(function(f) {
+        var fLabel = f.replace(/_/g, ' ').replace(/^\w/, function(c) { return c.toUpperCase(); });
+        extraHtml += '<span style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)">' + esc(fLabel) + '</span>';
+      });
+      extraHtml += '</div>';
+    }
+    // People also search for
+    if (bs.alsoSearchFor && bs.alsoSearchFor.length) {
+      extraHtml += '<div style="margin-top:6px"><span style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.05em">People also search for:</span>';
+      extraHtml += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">';
+      bs.alsoSearchFor.forEach(function(s) {
+        extraHtml += '<span style="background:rgba(21,142,29,0.06);border:1px solid rgba(21,142,29,0.15);border-radius:3px;font-size:10px;padding:1px 6px;color:var(--green)">' + esc(s) + '</span>';
+      });
+      extraHtml += '</div></div>';
+    }
+    extraHtml += '</div>';
+  }
 
   // ── Site Architecture ──
   if ((snap.topPages || []).length >= 2) {

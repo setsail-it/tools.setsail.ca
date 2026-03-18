@@ -174,7 +174,7 @@ const ENDPOINT_RATE_GROUP = {
   '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
   '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
   '/api/gkp-ideas': 'data', '/api/gkp-forecast': 'data', '/api/gkp-status': 'data',
-  '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data',
+  '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data', '/api/snapshot-brand-serp': 'data',
   '/api/queue-submit': 'queue',
   '/api/generate-image': 'image',
 };
@@ -2237,6 +2237,109 @@ export default {
     }
 
     // ── SERP INTEL — top-3 competitor on-page analysis ────────────
+    // ── Brand SERP: Knowledge Panel + SERP features for brand name ──
+    if (url.pathname === '/api/snapshot-brand-serp' && request.method === 'POST') {
+      try {
+        if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
+          return new Response(JSON.stringify({ error: 'No DataForSEO credentials' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const { keyword, country } = await request.json();
+        if (!keyword) return new Response(JSON.stringify({ error: 'keyword required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+
+        const creds = getDFSCreds(env);
+        const locationCode = getLocationCode(country);
+
+        const serpRes = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + creds, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'en', depth: 10 }])
+        });
+        const serpData = await serpRes.json();
+        const result = serpData?.tasks?.[0]?.result?.[0] || {};
+        const items = result.items || [];
+
+        // Extract Knowledge Panel
+        const kgItem = items.find(i => i.type === 'knowledge_graph');
+        let knowledgePanel = null;
+        if (kgItem) {
+          knowledgePanel = {
+            title: kgItem.title || '',
+            subtitle: kgItem.sub_title || '',
+            description: kgItem.description || '',
+            url: kgItem.url || '',
+            imageUrl: kgItem.image_url || '',
+            category: kgItem.category || '',
+            attributes: {},
+            socialProfiles: [],
+            rating: null
+          };
+          // Extract attributes (hours, phone, address, etc.)
+          if (kgItem.items && Array.isArray(kgItem.items)) {
+            kgItem.items.forEach(sub => {
+              if (sub.type === 'knowledge_graph_description_item' || sub.type === 'knowledge_graph_row') {
+                const k = sub.title || sub.name || '';
+                const v = sub.text || sub.value || sub.description || '';
+                if (k && v) knowledgePanel.attributes[k] = v;
+              }
+              if (sub.type === 'knowledge_graph_social_profile_item' || sub.social_profiles) {
+                const profiles = sub.social_profiles || (sub.items || []);
+                profiles.forEach(p => {
+                  if (p.url) knowledgePanel.socialProfiles.push({ platform: p.type || p.name || '', url: p.url });
+                });
+              }
+            });
+          }
+          // Rating
+          if (kgItem.rating) {
+            knowledgePanel.rating = { value: kgItem.rating.value || kgItem.rating.rating_value, count: kgItem.rating.votes_count || kgItem.rating.rating_count, source: kgItem.rating.source || '' };
+          }
+        }
+
+        // Extract SERP features present
+        const featureTypes = new Set();
+        items.forEach(i => { if (i.type) featureTypes.add(i.type); });
+
+        // People Also Search For
+        const pasf = items.find(i => i.type === 'people_also_search');
+        const alsoSearchFor = pasf && pasf.items ? pasf.items.map(s => s.title || s.seed_keyword || s).filter(Boolean).slice(0, 12) : [];
+
+        // People Also Ask
+        const paa = items.find(i => i.type === 'people_also_ask');
+        const alsoAsk = paa && paa.items ? paa.items.map(q => q.title || q.question || q).filter(Boolean).slice(0, 6) : [];
+
+        // Related Searches
+        const related = items.find(i => i.type === 'related_searches');
+        const relatedSearches = related && related.items ? related.items.map(r => r.title || r).filter(Boolean).slice(0, 10) : [];
+
+        // Check if brand owns position 1
+        const org1 = items.find(i => i.type === 'organic' && i.rank_group === 1);
+        const ownsPosition1 = org1 ? true : false;
+        const position1Domain = org1 ? (org1.domain || '') : '';
+
+        return new Response(JSON.stringify({
+          keyword,
+          hasKnowledgePanel: !!knowledgePanel,
+          knowledgePanel,
+          serpFeatures: [...featureTypes],
+          alsoSearchFor,
+          alsoAsk,
+          relatedSearches,
+          ownsPosition1,
+          position1Domain,
+          totalResults: result.se_results_count || 0
+        }), { headers: { 'Content-Type': 'application/json', ...cors } });
+
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     if (url.pathname === '/api/serp-intel' && request.method === 'POST') {
       try {
         if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
