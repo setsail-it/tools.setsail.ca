@@ -1099,6 +1099,8 @@ function _showGkpButtons() {
   if (el) el.style.display = '';
 }
 
+var _kwSelectedFirst = false;
+
 function sortKwOpps(col) {
   if (!S.kwSort) S.kwSort = { col: 'score', dir: 'desc' };
   if (S.kwSort.col === col) {
@@ -1107,6 +1109,11 @@ function sortKwOpps(col) {
     S.kwSort.col = col;
     S.kwSort.dir = 'desc';
   }
+  renderKwTabContent();
+}
+
+function toggleKwSelectedFirst() {
+  _kwSelectedFirst = !_kwSelectedFirst;
   renderKwTabContent();
 }
 
@@ -1140,6 +1147,12 @@ function _renderKwOppsTab() {
   });
   var hasGkp = kws.some(function(k) { return k.low_bid; });
   var sortedKws = kws.slice().sort(function(a, b) {
+    // Selected-first grouping when toggled
+    if (_kwSelectedFirst) {
+      var aSel = selected.has(a.kw) ? 1 : 0;
+      var bSel = selected.has(b.kw) ? 1 : 0;
+      if (aSel !== bSel) return bSel - aSel;
+    }
     var av, bv;
     if (sortCol === 'vol') { av = a.vol; bv = b.vol; }
     else if (sortCol === 'kd') { av = a.kd === 0 ? 999 : a.kd; bv = b.kd === 0 ? 999 : b.kd; }
@@ -1157,7 +1170,9 @@ function _renderKwOppsTab() {
   }
   var gridCols = hasGkp ? '28px 1fr 76px 44px 58px 70px 44px 54px 56px' : '28px 1fr 76px 44px 58px 54px 56px';
   var gkpHdr = hasGkp ? hdrBtn('Bid','bid') + hdrBtn('Ad','adcomp') : '';
-  html += '<div style="display:grid;grid-template-columns:' + gridCols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span style="color:var(--n3)">Keyword</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + gkpHdr + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
+  var _sfClr = _kwSelectedFirst ? 'var(--green)' : 'var(--n3)';
+  var _sfArrow = _kwSelectedFirst ? ' <i class="ti ti-filter-filled" style="font-size:10px"></i>' : '';
+  html += '<div style="display:grid;grid-template-columns:' + gridCols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span onclick="toggleKwSelectedFirst()" style="cursor:pointer;color:' + _sfClr + ';user-select:none" title="Show selected keywords first">Keyword' + _sfArrow + '</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + gkpHdr + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
   sortedKws.slice(0, 200).forEach(function(k, i) {
     var isSel = selected.has(k.kw);
     // DR-aware rankability: Green=rankable, Yellow=stretch, Red=out of range, Grey=no data
