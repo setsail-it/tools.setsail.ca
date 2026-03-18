@@ -598,6 +598,166 @@ function _getD5RecommendedPages() {
   return pages;
 }
 
+// ── PAGE TRIAGE — flag pages to remove during build ───────────────
+// Conservative: only flags pages with clear evidence they should go.
+// Never removes structural pages, D5-recommended pages, CTA stubs,
+// or pages with >0 traffic. Returns { keep: [], removed: [] }
+function _triagePages(pages) {
+  var keep = [];
+  var removed = [];
+  var _hasStrategy = S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0;
+
+  // Pre-compute: which primary keywords appear on multiple pages
+  var kwCount = {};
+  pages.forEach(function(p) {
+    var kw = (p.primary_keyword || '').toLowerCase().trim();
+    if (kw) kwCount[kw] = (kwCount[kw] || 0) + 1;
+  });
+
+  // Pre-compute: slug token sets for similarity check
+  var slugTokens = {};
+  pages.forEach(function(p, i) {
+    slugTokens[i] = new Set((p.slug || '').split(/[-/]/).filter(function(t) { return t.length > 2; }));
+  });
+
+  // Track which cannibalised keywords we have already kept the best page for
+  var cannibalKept = {};
+
+  pages.forEach(function(p, i) {
+    // NEVER remove: structural, D5-recommended, CTA stubs, or pages with traffic
+    if (p.is_structural || p._d5_source || p._cta_source) { keep.push(p); return; }
+    if ((p.existing_traffic || 0) > 0) { keep.push(p); return; }
+
+    var slug = (p.slug || '').toLowerCase();
+    var reason = null;
+
+    // 1. Parameter/filter pages (crawl waste)
+    if (/[\?&=]|\/page\/\d|\/tag\/|\/category\/|\/author\/|\/feed\/?$|\/amp\/?$/.test(slug)) {
+      reason = 'Parameter/filter page';
+    }
+
+    // 2. Utility bloat — privacy, terms, sitemap, thank-you, 404 etc. with no traffic
+    if (!reason && (p.page_type || '').toLowerCase() === 'utility') {
+      var isNeeded = /privacy|terms|cookie/.test(slug); // legal pages should stay
+      if (!isNeeded) reason = 'Utility page with no traffic';
+    }
+
+    // 3. Orphan team/author pages with zero traffic
+    if (!reason && /^team\/|^author\/|^staff\//.test(slug) && (p.existing_traffic || 0) === 0) {
+      // Only flag sub-pages like /team/john, not the main /team page
+      if (slug.split('/').filter(Boolean).length > 1) {
+        reason = 'Team sub-page with no traffic';
+      }
+    }
+
+    // 4. Cannibalised keywords — keep the page with highest volume, flag the rest
+    if (!reason && p.primary_keyword) {
+      var kwLower = p.primary_keyword.toLowerCase().trim();
+      if (kwCount[kwLower] > 1) {
+        if (!cannibalKept[kwLower]) {
+          // Find the best page for this keyword (highest vol, then highest score)
+          var bestIdx = -1; var bestVol = -1;
+          pages.forEach(function(pp, j) {
+            if ((pp.primary_keyword || '').toLowerCase().trim() === kwLower) {
+              var v = pp.primary_vol || 0;
+              if (v > bestVol || (v === bestVol && (pp.score || 0) > (pages[bestIdx] ? pages[bestIdx].score || 0 : 0))) {
+                bestVol = v; bestIdx = j;
+              }
+            }
+          });
+          cannibalKept[kwLower] = bestIdx;
+        }
+        if (cannibalKept[kwLower] !== i) {
+          reason = 'Cannibalised keyword "' + p.primary_keyword + '"';
+        }
+      }
+    }
+
+    // 5. Off-strategy pages (alignment = 'cut') — only if strategy exists
+    if (!reason && _hasStrategy) {
+      var align = _computeAlignment(p);
+      if (align === 'cut') {
+        reason = 'Off-strategy — lever not prioritised';
+      }
+    }
+
+    // Flag or keep
+    if (reason) {
+      p._removeReason = reason;
+      removed.push(p);
+    } else {
+      keep.push(p);
+    }
+  });
+
+  return { keep: keep, removed: removed };
+}
+
+// Restore a page from sitemapRemoved back to the active sitemap
+function restoreRemovedPage(idx) {
+  if (!S.sitemapRemoved || idx < 0 || idx >= S.sitemapRemoved.length) return;
+  var page = S.sitemapRemoved.splice(idx, 1)[0];
+  if (!page) return;
+  delete page._removeReason;
+  S.pages.push(page);
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  aiBarNotify('Restored /' + (page.slug || '') + ' to sitemap', { duration: 2000 });
+}
+
+// Restore all removed pages back to sitemap
+function restoreAllRemovedPages() {
+  if (!S.sitemapRemoved || !S.sitemapRemoved.length) return;
+  var count = S.sitemapRemoved.length;
+  S.sitemapRemoved.forEach(function(p) { delete p._removeReason; S.pages.push(p); });
+  S.sitemapRemoved = [];
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  aiBarNotify('Restored ' + count + ' pages to sitemap', { duration: 3000 });
+}
+
+// Render the Removed pages tab
+function _renderRemovedPages() {
+  var removed = S.sitemapRemoved || [];
+  if (!removed.length) {
+    return '<div style="padding:30px;text-align:center;color:var(--n2);font-size:12px"><i class="ti ti-check" style="font-size:18px;display:block;margin-bottom:6px;color:var(--green)"></i>No pages were removed — all pages passed triage</div>';
+  }
+  var html = '<div style="margin-bottom:12px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">' + removed.length + ' pages recommended to remove</div>';
+  html += '<button class="btn btn-ghost sm" id="restore-all-btn" style="font-size:10px;padding:2px 10px;color:#3b82f6;border-color:rgba(59,130,246,0.3)"><i class="ti ti-arrow-back-up"></i> Restore All</button>';
+  html += '</div>';
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  // Header
+  html += '<div style="display:grid;grid-template-columns:1fr 140px 50px;padding:7px 14px;background:var(--bg);border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase">'
+    + '<span>Page</span><span>Reason</span><span></span></div>';
+  removed.forEach(function(p, i) {
+    var reason = p._removeReason || 'Unknown';
+    var reasonCol = /cannibal/i.test(reason) ? 'var(--error)' : /off-strategy/i.test(reason) ? '#7c3aed' : /no traffic/i.test(reason) ? 'var(--warn)' : /parameter/i.test(reason) ? 'var(--n2)' : 'var(--warn)';
+    var bg = i % 2 === 0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
+    html += '<div style="display:grid;grid-template-columns:1fr 140px 50px;padding:8px 14px;align-items:center;background:' + bg + ';border-bottom:1px solid rgba(0,0,0,0.04)">';
+    html += '<div><span style="color:var(--dark);font-size:12px">' + esc(p.page_name) + '</span>';
+    html += '<div style="color:var(--n2);font-size:10px">/' + esc(p.slug || '') + '</div></div>';
+    html += '<span style="background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:3px;font-size:9px;padding:2px 6px;color:' + reasonCol + ';font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(reason) + '">' + esc(reason.length > 22 ? reason.slice(0, 22) + '\u2026' : reason) + '</span>';
+    html += '<button class="btn btn-ghost sm sm-restore-btn" data-restore-idx="' + i + '" style="font-size:10px;padding:2px 6px;color:#3b82f6">Restore</button>';
+    html += '</div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+function _mountRemovedButtons() {
+  var restoreAll = document.getElementById('restore-all-btn');
+  if (restoreAll) restoreAll.onclick = function() { restoreAllRemovedPages(); };
+  var restoreBtns = document.querySelectorAll('.sm-restore-btn');
+  restoreBtns.forEach(function(btn) {
+    btn.onclick = function() {
+      var idx = parseInt(btn.getAttribute('data-restore-idx'));
+      if (!isNaN(idx)) restoreRemovedPage(idx);
+    };
+  });
+}
+
 // Returns a Set of normalised slug fragments from D5 pages_to_cut
 function _getD5PagesToCut() {
   var ep = S.strategy && S.strategy.execution_plan;
@@ -1367,6 +1527,11 @@ function buildSitemapFromClusters() {
       });
     });
   }
+
+  // 3.6 Page triage — flag pages that should be removed (conservative)
+  var _triageResult = _triagePages(pages);
+  pages = _triageResult.keep;
+  S.sitemapRemoved = _triageResult.removed;
 
   // Sort: structurals first, then P1→P3, then by score desc
   var pOrd = {P1:0,P2:1,P3:2};
@@ -2301,21 +2466,35 @@ function _renderSitemapResultsInner(approved) {
   if (_sitemapIssuesExpanded) html += _renderIssuesPanel();
 
   // Category tabs
+  var _removedCount = (S.sitemapRemoved || []).length;
   const _tabCounts = {
     all: allPages.length,
-    service: allPages.filter(p => ['service','industry','product'].includes((p.page_type||'').toLowerCase())).length,
+    service: allPages.filter(p => ['service','industry','product','landing'].includes((p.page_type||'').toLowerCase())).length,
     location: allPages.filter(p => (p.page_type||'') === 'location').length,
     blog: allPages.filter(p => ['blog','article','recipe','event','portfolio'].includes((p.page_type||'').toLowerCase())).length,
-    core: allPages.filter(p => ['home','about','contact','utility','faq','team'].includes((p.page_type||'').toLowerCase()) || !!p.is_structural).length
+    core: allPages.filter(p => ['home','about','contact','utility','faq','team'].includes((p.page_type||'').toLowerCase()) || !!p.is_structural).length,
+    removed: _removedCount
   };
-  const _tabs = [{id:'all',label:'All'},{id:'service',label:'Services'},{id:'location',label:'Locations'},{id:'blog',label:'Blog'},{id:'core',label:'Core'}];
+  const _tabs = [{id:'all',label:'All'},{id:'service',label:'Services'},{id:'location',label:'Locations'},{id:'blog',label:'Blog'},{id:'core',label:'Core'},{id:'removed',label:'Removed'}];
   html += '<div style="display:flex;gap:0;margin-bottom:12px;border-bottom:2px solid var(--border)">';
   _tabs.forEach(t => {
     if (_tabCounts[t.id] === 0 && t.id !== 'all') return;
     const isAct = _sitemapCatTab === t.id;
-    html += '<button onclick="switchSitemapTab(\''+t.id+'\')" style="background:none;border:none;border-bottom:2px solid '+(isAct?'var(--green)':'transparent')+';margin-bottom:-2px;padding:5px 14px;font-size:11.5px;font-family:var(--font);color:'+(isAct?'var(--green)':'var(--n2)')+';cursor:pointer;font-weight:'+(isAct?'500':'400')+';white-space:nowrap">'+t.label+' <span style="font-size:10px;opacity:0.6">'+_tabCounts[t.id]+'</span></button>';
+    var _tCol = t.id === 'removed' ? 'var(--error)' : 'var(--green)';
+    var _tInact = t.id === 'removed' ? 'rgba(220,50,47,0.5)' : 'var(--n2)';
+    html += '<button onclick="switchSitemapTab(\''+t.id+'\')" style="background:none;border:none;border-bottom:2px solid '+(isAct?_tCol:'transparent')+';margin-bottom:-2px;padding:5px 14px;font-size:11.5px;font-family:var(--font);color:'+(isAct?_tCol:_tInact)+';cursor:pointer;font-weight:'+(isAct?'500':'400')+';white-space:nowrap">'+t.label+' <span style="font-size:10px;opacity:0.6">'+_tabCounts[t.id]+'</span></button>';
   });
   html += '</div>';
+
+  // Removed pages tab
+  if (_sitemapCatTab === 'removed') {
+    html += _renderRemovedPages();
+    const el = document.getElementById('sitemap-results');
+    if (el) { el.innerHTML = html; el.style.display = 'block'; }
+    _mountWorkflowStrip();
+    _mountRemovedButtons();
+    return;
+  }
 
   // Keyword opportunities table
   html += '<div style="margin-bottom:18px">';
@@ -3203,6 +3382,7 @@ function addBlogPagesToSitemap() {
 function clearAllSitemapPages() {
   if (!confirm('Clear all ' + (S.pages || []).length + ' pages? This cannot be undone.')) return;
   S.pages = [];
+  S.sitemapRemoved = [];
   S.sitemapApproved = false;
   S._sitemapBuiltAt = 0;
   scheduleSave();
