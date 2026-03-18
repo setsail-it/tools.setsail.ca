@@ -2511,14 +2511,17 @@ function renderSnapshot() {
     extraHtml += '<div style="font-size:13px;font-weight:500"><i class="ti ti-hierarchy-2" style="margin-right:4px"></i> Current Site Architecture <span style="font-size:11px;color:var(--n2)">(' + archLabel + ')</span></div>';
     extraHtml += '<div style="display:flex;gap:6px;align-items:center">';
     extraHtml += '<div id="snap-arch-tabs" style="display:flex;gap:0;margin-right:8px">';
-    extraHtml += '<button class="snap-arch-tab" data-tab="tree" onclick="switchSnapArchTab(\'tree\')" style="background:none;border:none;border-bottom:2px solid var(--green);padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--green);cursor:pointer;font-weight:500">Tree</button>';
+    extraHtml += '<button class="snap-arch-tab" data-tab="insights" onclick="switchSnapArchTab(\'insights\')" style="background:none;border:none;border-bottom:2px solid var(--green);padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--green);cursor:pointer;font-weight:500">Insights</button>';
+    extraHtml += '<button class="snap-arch-tab" data-tab="tree" onclick="switchSnapArchTab(\'tree\')" style="background:none;border:none;border-bottom:2px solid transparent;padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--n2);cursor:pointer;font-weight:400">Tree</button>';
     extraHtml += '<button class="snap-arch-tab" data-tab="diagram" onclick="switchSnapArchTab(\'diagram\')" style="background:none;border:none;border-bottom:2px solid transparent;padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--n2);cursor:pointer;font-weight:400">Diagram</button>';
     extraHtml += '</div>';
     extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="downloadSnapshotSvg()"><i class="ti ti-download"></i> SVG</button>';
     extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="copySnapshotMermaid()"><i class="ti ti-copy"></i> Code</button>';
     extraHtml += '</div></div>';
-    // Tree view (default)
-    extraHtml += '<div id="snap-arch-tree" style="overflow:auto;max-height:600px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:16px 20px">';
+    // Insights view (default — AI summary, lazy-loaded)
+    extraHtml += '<div id="snap-arch-insights" style="overflow:auto;max-height:600px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:20px;min-height:80px"><div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--n2);font-size:12px;padding:30px"><span class="spinner" style="width:12px;height:12px"></span> Analysing site structure...</div></div>';
+    // Tree view (hidden by default)
+    extraHtml += '<div id="snap-arch-tree" style="display:none;overflow:auto;max-height:600px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:16px 20px">';
     extraHtml += _buildSnapArchTree(snap.topPages);
     extraHtml += '</div>';
     // Diagram view (hidden by default)
@@ -2624,7 +2627,16 @@ function renderSnapshot() {
 
   extraWrap.innerHTML = extraHtml;
 
-  // Mermaid diagram renders lazily when Diagram tab is clicked (see switchSnapArchTab)
+  // AI insights — use cached if available, otherwise generate
+  var insightsEl = document.getElementById('snap-arch-insights');
+  if (insightsEl) {
+    if (snap._insights) {
+      insightsEl.innerHTML = sanitiseHTML(snap._insights);
+      insightsEl._rendered = true;
+    } else if (!insightsEl._rendered) {
+      _generateSnapInsights(insightsEl, snap);
+    }
+  }
 
   // Top pages table
   const pagesWrap = document.getElementById('snapshot-pages-wrap');
@@ -2703,11 +2715,12 @@ function renderRedirectMap() {
 
 // ── Snapshot Site Architecture Diagram ─────────────────────────────
 function switchSnapArchTab(tab) {
+  var insights = document.getElementById('snap-arch-insights');
   var tree = document.getElementById('snap-arch-tree');
   var diagram = document.getElementById('snap-arch-diagram');
-  if (!tree || !diagram) return;
-  tree.style.display = tab === 'tree' ? 'block' : 'none';
-  diagram.style.display = tab === 'diagram' ? 'block' : 'none';
+  if (insights) insights.style.display = tab === 'insights' ? 'block' : 'none';
+  if (tree) tree.style.display = tab === 'tree' ? 'block' : 'none';
+  if (diagram) diagram.style.display = tab === 'diagram' ? 'block' : 'none';
   // Update tab styles
   document.querySelectorAll('.snap-arch-tab').forEach(function(btn) {
     var isActive = btn.getAttribute('data-tab') === tab;
@@ -2716,9 +2729,83 @@ function switchSnapArchTab(tab) {
     btn.style.fontWeight = isActive ? '500' : '400';
   });
   // Lazy render mermaid on first switch to diagram
-  if (tab === 'diagram' && !diagram._rendered) {
+  if (tab === 'diagram' && diagram && !diagram._rendered) {
     diagram._rendered = true;
     _renderSnapshotArchDiagram(diagram, (S.snapshot && S.snapshot.topPages) || []);
+  }
+  // Lazy generate insights on first switch
+  if (tab === 'insights' && insights && !insights._rendered) {
+    _generateSnapInsights(insights, S.snapshot || {});
+  }
+}
+
+async function _generateSnapInsights(container, snap) {
+  container._rendered = true;
+  var pages = (snap.topPages || []).slice().sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); });
+  var dm = snap.domainMetrics || {};
+  var client = (S.setup && S.setup.client) || '';
+  var domain = snap.domain || (S.setup && S.setup.url ? S.setup.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : '');
+
+  // Build slug tree summary for Claude
+  var sections = {};
+  pages.slice(0, 80).forEach(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    var parts = slug.split('/').filter(Boolean);
+    var sec = parts.length >= 2 ? parts[0] : '(root)';
+    if (!sections[sec]) sections[sec] = [];
+    sections[sec].push({ slug: '/' + slug, traffic: p.traffic || 0, kw: p.topKeyword || '', pos: p.topKeywordPosition || 0 });
+  });
+
+  var siteCtx = 'DOMAIN: ' + domain + '\n';
+  siteCtx += 'CLIENT: ' + client + '\n';
+  siteCtx += 'DR: ' + (dm.dr || 'unknown') + ', Organic traffic: ' + (dm.orgTraffic || 0).toLocaleString() + '/mo\n';
+  siteCtx += 'Total pages captured: ' + pages.length + '\n';
+  if (snap.techStack && snap.techStack.length) siteCtx += 'Tech stack: ' + snap.techStack.map(function(t) { return t.name; }).slice(0, 15).join(', ') + '\n';
+  if (snap.schemas && snap.schemas.length) siteCtx += 'Schema markup: ' + snap.schemas.join(', ') + '\n';
+  if (snap.vitals) siteCtx += 'Performance: ' + snap.vitals.performance + '/100, LCP: ' + (snap.vitals.lcp || '?') + 's\n';
+  siteCtx += '\nSITE STRUCTURE (grouped by URL section):\n';
+  Object.keys(sections).sort().forEach(function(sec) {
+    var items = sections[sec];
+    siteCtx += '\n/' + (sec === '(root)' ? '' : sec + '/') + ' (' + items.length + ' pages)\n';
+    items.slice(0, 8).forEach(function(p) {
+      siteCtx += '  ' + p.slug + (p.traffic ? ' — ' + p.traffic + '/mo' : '') + (p.kw ? ' [' + p.kw + (p.pos ? ' #' + p.pos : '') + ']' : '') + '\n';
+    });
+    if (items.length > 8) siteCtx += '  ... and ' + (items.length - 8) + ' more\n';
+  });
+
+  var system = 'You are a senior SEO strategist and web analyst analysing an existing website for a client audit. Write a clear, conversational summary of the site architecture. Use Canadian spelling. Format with HTML using these exact styles — do not invent new ones:\n'
+    + '- Section headings: <div style="font-size:13px;font-weight:600;color:var(--dark);margin:16px 0 6px 0">heading</div>\n'
+    + '- Paragraphs: <p style="font-size:12px;color:var(--n3);line-height:1.7;margin:0 0 10px 0">text</p>\n'
+    + '- Key stats inline: <strong style="color:var(--dark)">value</strong>\n'
+    + '- Good signals: <span style="color:var(--green)">text</span>\n'
+    + '- Problems: <span style="color:var(--error)">text</span>\n'
+    + '- Bullet lists: <ul style="margin:4px 0 10px 16px;padding:0;list-style:disc"><li style="font-size:12px;color:var(--n3);line-height:1.7;margin-bottom:2px">item</li></ul>\n\n'
+    + 'Cover these sections:\n'
+    + '1. WHAT THIS SITE IS — one paragraph explaining the business and what this website does, written like you are explaining it to a salesperson who has never seen the site\n'
+    + '2. HOW IT IS STRUCTURED — describe the main sections, what content lives where, the URL hierarchy pattern, how deep it goes\n'
+    + '3. WHAT IS WORKING — pages/sections driving real traffic, keywords ranking well, any strong signals\n'
+    + '4. WHAT IS WEAK — thin sections, missing page types, structural issues, orphaned content, poor performance\n'
+    + '5. OPPORTUNITIES — specific actionable things that would improve this site (new sections, consolidation, content gaps, technical fixes)\n\n'
+    + 'Keep it under 400 words total. Be specific — reference actual slugs and numbers from the data. Do not be generic.';
+
+  try {
+    var result = '';
+    var _lastRender = 0;
+    await callClaude(system, siteCtx, function(chunk) {
+      result += chunk;
+      // Throttle DOM updates to every 300ms to avoid render thrashing
+      var now = Date.now();
+      if (now - _lastRender > 300) {
+        _lastRender = now;
+        container.innerHTML = sanitiseHTML(result);
+      }
+    }, 2048, 'Site insights');
+    // Final render with complete content
+    container.innerHTML = sanitiseHTML(result);
+    // Cache the result
+    if (S.snapshot) { S.snapshot._insights = result; scheduleSave(); }
+  } catch(err) {
+    container.innerHTML = '<div style="color:var(--error);font-size:12px;padding:16px">Could not generate insights: ' + esc(err.message || String(err)) + '</div>';
   }
 }
 
