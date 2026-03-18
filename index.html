@@ -701,6 +701,7 @@ textarea.inp{resize:vertical}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-ghost" id="sitemap-import-toggle-btn" onclick="toggleSitemapImport()"><i class="ti ti-building-estate"></i> Existing Site</button>
+          <button class="btn btn-ghost sm" id="sitemap-clear-btn" style="display:none;color:var(--error)" onclick="clearAllSitemapPages()"><i class="ti ti-trash"></i> Clear All</button>
           <button class="btn btn-primary" id="sitemap-run-btn" onclick="confirmRunSitemap()"><i class="ti ti-sitemap"></i> Generate Sitemap</button>
         </div>
       </div>
@@ -1368,10 +1369,14 @@ function goTo(stage) {
   if (stage === 'snapshot') { if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
   if (stage === 'briefs') initBriefs();
   if (stage === 'sitemap') {
+    var _clearBtn = document.getElementById('sitemap-clear-btn');
     if (S.pages && S.pages.length) {
       var sb = document.getElementById('sitemap-run-btn');
       if (sb) sb.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
+      if (_clearBtn) _clearBtn.style.display = '';
       setTimeout(function(){ document.getElementById('sitemap-results').style.display=''; renderSitemapResults(true); }, 80);
+    } else {
+      if (_clearBtn) _clearBtn.style.display = 'none';
     }
   }
   scheduleSave();

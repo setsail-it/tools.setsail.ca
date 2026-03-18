@@ -2052,6 +2052,7 @@ function _renderSitemapResultsInner(approved) {
     html += '<button class="btn btn-primary" onclick="approveSitemap()"><i class="ti ti-check"></i> Approve Sitemap</button>';
     html += '<button class="btn btn-primary" onclick="approveSitemap();goTo(\'briefs\')" style="background:var(--lime);color:var(--dark)"><i class="ti ti-file-description"></i> Approve &amp; Build Briefs</button>';
     html += '<button class="btn btn-dg" onclick="runSitemap(true)"><i class="ti ti-refresh"></i> Revise & Regenerate</button>';
+    html += '<button class="btn btn-ghost sm" style="color:var(--error)" onclick="clearAllSitemapPages()"><i class="ti ti-trash"></i> Clear All</button>';
     html += '</div></div>';
   } else {
     html += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">';
@@ -2389,6 +2390,21 @@ function addBlogPagesToSitemap() {
     scheduleSave();
     renderSitemapResults(S.sitemapApproved);
   }
+}
+
+function clearAllSitemapPages() {
+  if (!confirm('Clear all ' + (S.pages || []).length + ' pages? This cannot be undone.')) return;
+  S.pages = [];
+  S.sitemapApproved = false;
+  S._sitemapBuiltAt = 0;
+  scheduleSave();
+  var btn = document.getElementById('sitemap-run-btn');
+  if (btn) btn.innerHTML = '<i class="ti ti-sparkles"></i> Generate Sitemap';
+  var clearBtn = document.getElementById('sitemap-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+  var results = document.getElementById('sitemap-results');
+  if (results) { results.style.display = 'none'; results.innerHTML = ''; }
+  aiBarNotify('Sitemap cleared — ready to regenerate', { duration: 2000 });
 }
 
 function approveSitemap() {
