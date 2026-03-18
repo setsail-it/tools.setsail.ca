@@ -1365,6 +1365,7 @@ function goTo(stage) {
   startStageTips(stage);
   window.scrollTo(0,0);
   if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); }
+  if (stage === 'snapshot') { if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
   if (stage === 'briefs') initBriefs();
   if (stage === 'sitemap') {
     if (S.pages && S.pages.length) {
@@ -2491,6 +2492,7 @@ function _clearSnapshotUI() {
   var rw = document.getElementById('snapshot-redirects-wrap'); if (rw) rw.style.display = 'none';
   var aw = document.getElementById('snap-add-page-wrap'); if (aw) aw.style.display = 'none';
   var nw = document.getElementById('snapshot-next-wrap'); if (nw) nw.style.display = 'none';
+  var st = document.getElementById('snapshot-status'); if (st) st.textContent = '';
 }
 
 function renderSnapshot() {
