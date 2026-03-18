@@ -2503,17 +2503,26 @@ function renderSnapshot() {
   extraHtml += '<div style="margin-top:8px;font-size:11px;color:var(--n3);border-top:1px solid var(--border);padding-top:8px">' + verdict.join(' · ') + '</div>';
   extraHtml += '</div>';
 
-  // ── Site Architecture Diagram ──
+  // ── Site Architecture ──
   if ((snap.topPages || []).length >= 2) {
     extraHtml += '<div class="card" style="padding:14px;margin-bottom:14px">';
     extraHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     var archLabel = snap.topPages.length > 40 ? 'top 40 of ' + snap.topPages.length + ' pages by traffic' : snap.topPages.length + ' pages';
     extraHtml += '<div style="font-size:13px;font-weight:500"><i class="ti ti-hierarchy-2" style="margin-right:4px"></i> Current Site Architecture <span style="font-size:11px;color:var(--n2)">(' + archLabel + ')</span></div>';
-    extraHtml += '<div style="display:flex;gap:6px">';
+    extraHtml += '<div style="display:flex;gap:6px;align-items:center">';
+    extraHtml += '<div id="snap-arch-tabs" style="display:flex;gap:0;margin-right:8px">';
+    extraHtml += '<button class="snap-arch-tab" data-tab="tree" onclick="switchSnapArchTab(\'tree\')" style="background:none;border:none;border-bottom:2px solid var(--green);padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--green);cursor:pointer;font-weight:500">Tree</button>';
+    extraHtml += '<button class="snap-arch-tab" data-tab="diagram" onclick="switchSnapArchTab(\'diagram\')" style="background:none;border:none;border-bottom:2px solid transparent;padding:3px 10px;font-size:11px;font-family:var(--font);color:var(--n2);cursor:pointer;font-weight:400">Diagram</button>';
+    extraHtml += '</div>';
     extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="downloadSnapshotSvg()"><i class="ti ti-download"></i> SVG</button>';
     extraHtml += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="copySnapshotMermaid()"><i class="ti ti-copy"></i> Code</button>';
     extraHtml += '</div></div>';
-    extraHtml += '<div id="snap-arch-diagram" style="overflow:auto;max-height:500px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:12px;min-height:100px"><div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--n2);font-size:12px;padding:30px"><span class="spinner" style="width:12px;height:12px"></span> Rendering diagram...</div></div>';
+    // Tree view (default)
+    extraHtml += '<div id="snap-arch-tree" style="overflow:auto;max-height:600px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:16px 20px">';
+    extraHtml += _buildSnapArchTree(snap.topPages);
+    extraHtml += '</div>';
+    // Diagram view (hidden by default)
+    extraHtml += '<div id="snap-arch-diagram" style="display:none;overflow:auto;max-height:500px;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:12px;min-height:100px"><div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--n2);font-size:12px;padding:30px"><span class="spinner" style="width:12px;height:12px"></span> Rendering diagram...</div></div>';
     extraHtml += '</div>';
   }
 
@@ -2615,9 +2624,7 @@ function renderSnapshot() {
 
   extraWrap.innerHTML = extraHtml;
 
-  // Render site architecture diagram if container exists
-  var archDiagram = document.getElementById('snap-arch-diagram');
-  if (archDiagram) _renderSnapshotArchDiagram(archDiagram, snap.topPages || []);
+  // Mermaid diagram renders lazily when Diagram tab is clicked (see switchSnapArchTab)
 
   // Top pages table
   const pagesWrap = document.getElementById('snapshot-pages-wrap');
@@ -2695,6 +2702,133 @@ function renderRedirectMap() {
 }
 
 // ── Snapshot Site Architecture Diagram ─────────────────────────────
+function switchSnapArchTab(tab) {
+  var tree = document.getElementById('snap-arch-tree');
+  var diagram = document.getElementById('snap-arch-diagram');
+  if (!tree || !diagram) return;
+  tree.style.display = tab === 'tree' ? 'block' : 'none';
+  diagram.style.display = tab === 'diagram' ? 'block' : 'none';
+  // Update tab styles
+  document.querySelectorAll('.snap-arch-tab').forEach(function(btn) {
+    var isActive = btn.getAttribute('data-tab') === tab;
+    btn.style.borderBottomColor = isActive ? 'var(--green)' : 'transparent';
+    btn.style.color = isActive ? 'var(--green)' : 'var(--n2)';
+    btn.style.fontWeight = isActive ? '500' : '400';
+  });
+  // Lazy render mermaid on first switch to diagram
+  if (tab === 'diagram' && !diagram._rendered) {
+    diagram._rendered = true;
+    _renderSnapshotArchDiagram(diagram, (S.snapshot && S.snapshot.topPages) || []);
+  }
+}
+
+function _buildSnapArchTree(allPages) {
+  // Build a nested tree structure from URL slugs
+  var root = { children: {}, pages: [] };
+  var domain = (S.setup && S.setup.url ? S.setup.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'site');
+
+  // Sort by traffic descending, limit to top 60
+  var pages = allPages.slice().sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); }).slice(0, 60);
+
+  // Build tree
+  pages.forEach(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    if (!slug) { root.pages.push(p); return; }
+    var parts = slug.split('/').filter(Boolean);
+    var node = root;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (!node.children[parts[i]]) node.children[parts[i]] = { children: {}, pages: [] };
+      node = node.children[parts[i]];
+    }
+    node.pages.push(p);
+  });
+
+  var html = '';
+  // Helper: traffic badge
+  function trafficBadge(t) {
+    if (!t || t === 0) return '';
+    var color = t > 500 ? 'var(--green)' : t > 50 ? '#e67e22' : 'var(--n2)';
+    return '<span style="font-size:10px;color:' + color + ';margin-left:6px">' + t.toLocaleString() + '/mo</span>';
+  }
+  function kwBadge(kw, pos) {
+    if (!kw) return '';
+    var posStr = pos ? ' #' + pos : '';
+    return '<span style="font-size:10px;padding:1px 6px;background:var(--panel);border-radius:8px;color:var(--n3);margin-left:6px">' + esc(kw) + '<span style="color:var(--n2)">' + posStr + '</span></span>';
+  }
+
+  // Render root domain
+  var rootTraffic = allPages.reduce(function(s, p) { return s + (p.traffic || 0); }, 0);
+  html += '<div style="margin-bottom:12px">';
+  html += '<div style="font-size:14px;font-weight:600;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-world" style="font-size:15px;color:var(--green)"></i> ' + esc(domain) + trafficBadge(rootTraffic) + '</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px;margin-left:22px">' + allPages.length + ' pages indexed · ' + (pages.length < allPages.length ? 'showing top ' + pages.length + ' by traffic' : 'all pages') + '</div>';
+  html += '</div>';
+
+  // Render homepage if exists
+  root.pages.forEach(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    if (!slug || slug === '/') slug = '';
+    html += '<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;margin-left:8px">';
+    html += '<span style="color:var(--green);font-size:11px;flex-shrink:0">●</span>';
+    html += '<div>';
+    html += '<div style="font-size:12px;font-weight:500;color:var(--dark)">/ <span style="font-weight:400;color:var(--n3)">Homepage</span>' + trafficBadge(p.traffic) + kwBadge(p.topKeyword, p.topKeywordPosition) + '</div>';
+    html += '</div></div>';
+  });
+
+  // Render sections and their children
+  function renderNode(name, node, depth) {
+    var indent = (depth * 20) + 8;
+    var sectionPages = node.pages || [];
+    var childKeys = Object.keys(node.children).sort();
+    var totalInSection = sectionPages.length;
+    childKeys.forEach(function(k) { totalInSection += (node.children[k].pages || []).length; });
+
+    // Section header
+    html += '<div style="margin-left:' + indent + 'px;margin-top:' + (depth === 0 ? '14' : '6') + 'px">';
+    html += '<div style="display:flex;align-items:center;gap:5px;padding:3px 0">';
+    html += '<i class="ti ti-folder" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--dark)">/' + esc(name) + '/</span>';
+    if (totalInSection > 0) html += '<span style="font-size:10px;color:var(--n2)">' + totalInSection + ' page' + (totalInSection !== 1 ? 's' : '') + '</span>';
+    html += '</div>';
+
+    // Pages in this section
+    sectionPages.sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); });
+    sectionPages.forEach(function(p) {
+      var slug = (p.slug || '').replace(/^\//, '');
+      var leafName = slug.split('/').pop() || slug;
+      var dotColor = (p.traffic || 0) > 100 ? 'var(--green)' : (p.traffic || 0) > 0 ? '#e67e22' : 'var(--n1)';
+      html += '<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;margin-left:18px">';
+      html += '<span style="color:' + dotColor + ';font-size:9px;flex-shrink:0">●</span>';
+      html += '<div style="font-size:11.5px;color:var(--dark)">' + esc(leafName) + trafficBadge(p.traffic) + kwBadge(p.topKeyword, p.topKeywordPosition) + '</div>';
+      html += '</div>';
+    });
+
+    // Nested children
+    childKeys.forEach(function(k) { renderNode(k, node.children[k], depth + 1); });
+    html += '</div>';
+  }
+
+  Object.keys(root.children).sort().forEach(function(k) { renderNode(k, root.children[k], 0); });
+
+  // Top-level pages that are not homepage and not in a section
+  var topLevelNonHome = root.pages.filter(function(p) {
+    var slug = (p.slug || '/').replace(/^\//, '');
+    return slug && slug !== '/' && slug !== '';
+  });
+  if (topLevelNonHome.length) {
+    topLevelNonHome.sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); });
+    topLevelNonHome.forEach(function(p) {
+      var slug = (p.slug || '').replace(/^\//, '');
+      var dotColor = (p.traffic || 0) > 100 ? 'var(--green)' : (p.traffic || 0) > 0 ? '#e67e22' : 'var(--n1)';
+      html += '<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0;margin-left:8px">';
+      html += '<span style="color:' + dotColor + ';font-size:9px;flex-shrink:0">●</span>';
+      html += '<div style="font-size:11.5px;color:var(--dark)">/' + esc(slug) + trafficBadge(p.traffic) + kwBadge(p.topKeyword, p.topKeywordPosition) + '</div>';
+      html += '</div>';
+    });
+  }
+
+  return html;
+}
+
 function _buildSnapshotMermaid(allPages) {
   var safeId = function(s) { return ('N_' + s).replace(/[^a-zA-Z0-9_]/g, '_'); };
   var lines = ['graph TD'];
