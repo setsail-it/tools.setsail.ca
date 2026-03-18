@@ -1159,6 +1159,46 @@ export default {
 
         if (!forecastRes.ok) {
           const errBody = await forecastRes.text();
+          if (forecastRes.status === 401) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            const retryToken = await getGoogleAdsToken(env);
+            const retryRes = await fetch(
+              'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordForecastMetrics',
+              {
+                method: 'POST',
+                headers: gadsHeaders(env, retryToken),
+                body: JSON.stringify({
+                  keywords: keywords.slice(0, 50).map(k => ({ text: k, matchType: 'BROAD' })),
+                  forecastPeriod: { startDate: _gadsDateStr(0), endDate: _gadsDateStr(30) },
+                  campaign: {
+                    keywordPlanNetwork: 'GOOGLE_SEARCH',
+                    biddingStrategy: { manualCpcBiddingStrategy: { dailyBudgetMicros: budgetMicros } },
+                    geoTargets: [{ geoTargetConstant: 'geoTargetConstants/' + locCode }],
+                    languageConstants: ['languageConstants/1000']
+                  }
+                })
+              }
+            );
+            if (!retryRes.ok) {
+              const retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'Google Ads forecast error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            const retryData = await retryRes.json();
+            const retryItems = (retryData.keywordForecasts || []).map((f, i) => ({
+              keyword: keywords[i] || '',
+              clicks: parseFloat(f.metrics?.clicks || 0),
+              impressions: parseFloat(f.metrics?.impressions || 0),
+              cost: parseFloat(f.metrics?.costMicros || 0) / 1000000,
+              ctr: parseFloat(f.metrics?.ctr || 0),
+              avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000
+            }));
+            return new Response(JSON.stringify({
+              forecasts: retryItems, period: '30d',
+              budget: (dailyBudget || 50) * 30, source: 'google-keyword-planner'
+            }), { headers: { 'Content-Type': 'application/json', ...cors } });
+          }
           return new Response(JSON.stringify({ error: 'Google Ads forecast error', detail: errBody.slice(0, 500) }), {
             status: forecastRes.status, headers: { 'Content-Type': 'application/json', ...cors }
           });
