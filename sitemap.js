@@ -556,6 +556,86 @@ function confirmRunSitemap() {
   buildSitemapFromClusters();
 }
 
+function confirmFullBuild() {
+  if (S.pages && S.pages.length > 0) {
+    if (!confirm('Full Build rebuilds the sitemap AND runs AI enrichment:\n\n1. Build pages from clusters + strategy\n2. Apply priorities + personas\n3. AI-fix missing/zero-vol keywords\n4. Generate page goals (Claude)\n5. Assign content pillars (Claude)\n6. Fetch live volumes\n\nThis takes 3-5 minutes. Continue?')) return;
+  }
+  fullBuildSitemap();
+}
+
+async function fullBuildSitemap() {
+  var fullBtn = document.getElementById('sitemap-fullbuild-btn');
+  var regenBtn = document.getElementById('sitemap-run-btn');
+  if (fullBtn) { fullBtn.disabled = true; fullBtn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Building\u2026'; }
+  if (regenBtn) regenBtn.disabled = true;
+  window._aiStopAll = false;
+
+  try {
+    // Step 1-2: Build + auto-chain (priorities + personas + kw enrichment)
+    aiBarStart('Full Build: generating pages\u2026');
+    buildSitemapFromClusters();
+
+    // Step 3: AI-fix missing keywords
+    var noKw = (S.pages || []).filter(function(p) {
+      if (p.is_structural) return false;
+      var t = (p.page_type || '').toLowerCase();
+      if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+      return !p.primary_keyword;
+    });
+    if (noKw.length > 0 && !window._aiStopAll) {
+      await _aiFixIssue('no-kw');
+      renderSitemapResults(S.sitemapApproved);
+      scheduleSave();
+    }
+
+    // Step 4: AI-fix zero-volume keywords
+    if (!window._aiStopAll) {
+      var zeroVol = (S.pages || []).filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; });
+      if (zeroVol.length > 0) {
+        await _aiFixIssue('zero-vol');
+        renderSitemapResults(S.sitemapApproved);
+        scheduleSave();
+      }
+    }
+
+    // Step 5: Generate page goals
+    if (!window._aiStopAll) {
+      var goalsNeeded = (S.pages || []).filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
+      if (goalsNeeded > 0) {
+        await generateAllPageGoals();
+      }
+    }
+
+    // Step 6: Assign content pillars (only if <40 blog pages to avoid response overflow)
+    if (!window._aiStopAll) {
+      var _hasPillars = S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.content_pillars && S.strategy.brand_strategy.content_pillars.length;
+      var blogPages = (S.pages || []).filter(function(p) { return ['blog', 'article', 'recipe', 'event', 'portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0; });
+      if (_hasPillars && blogPages.length > 0 && blogPages.length <= 40) {
+        await assignContentPillars();
+      }
+    }
+
+    // Step 7: Fetch live volumes (async, fires in background)
+    if (!window._aiStopAll) {
+      enrichSitemapWithLiveData();
+    }
+
+    aiBarEnd();
+    renderSitemapResults(S.sitemapApproved);
+    scheduleSave();
+    var enrichPct = _computeEnrichmentPct();
+    aiBarNotify('Full Build complete \u2014 ' + (S.pages || []).length + ' pages, ' + enrichPct + '% enriched', { duration: 5000 });
+
+  } catch (err) {
+    aiBarEnd();
+    aiBarNotify('Full Build error: ' + err.message, { isError: true, duration: 5000 });
+    console.error('[fullBuildSitemap]', err);
+  }
+
+  if (fullBtn) { fullBtn.disabled = false; fullBtn.innerHTML = '<i class="ti ti-rocket"></i> Full Build'; }
+  if (regenBtn) regenBtn.disabled = false;
+}
+
 // ── Strategy-Aware Helpers ─────────────────────────────────────────
 
 // Returns page objects for pages D5 recommended but clusters did not create
