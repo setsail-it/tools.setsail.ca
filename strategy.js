@@ -267,16 +267,25 @@ function capturePricingSnapshot() {
 
 // ── Strategy Document Export ────────────────────────────────────────
 
+function _buildFullStrategyDoc() {
+  var client = (S.setup && S.setup.client) || 'Client';
+  var doc = '# ' + client + ' \u2014 Growth Strategy\n\n' + (S.strategy.compiled_output || '');
+  if (S.strategy.webStrategy && S.strategy.webStrategy.trim()) {
+    doc += '\n\n---\n\n# Website Strategy Brief\n\n' + S.strategy.webStrategy;
+  }
+  return doc;
+}
+
 function copyStrategyDoc() {
   if (!S.strategy || !S.strategy.compiled_output) return;
-  copyToClip2(S.strategy.compiled_output);
-  aiBarNotify('Strategy document copied to clipboard', { duration: 2000 });
+  copyToClip2(_buildFullStrategyDoc());
+  aiBarNotify('Strategy + web brief copied to clipboard', { duration: 2000 });
 }
 
 function downloadStrategyDoc() {
   if (!S.strategy || !S.strategy.compiled_output) return;
   var client = (S.setup && S.setup.client) || 'Client';
-  var content = '# ' + client + ' \u2014 Growth Strategy\n\n' + S.strategy.compiled_output;
+  var content = _buildFullStrategyDoc();
   var blob = new Blob([content], { type: 'text/markdown' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
