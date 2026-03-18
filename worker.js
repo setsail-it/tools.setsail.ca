@@ -206,14 +206,19 @@ async function checkRateLimit(env, userId, group) {
 // ── Pricing Engine KV (read-only) ────────────────────────────────────────
 async function getPricingCatalog(env) {
   try {
-    const raw = await env.PRICING_KV.get('global:pricing-catalog');
-    if (!raw) {
-      console.warn('Pricing catalog not found in KV');
+    // Fetch live from Pricing Engine (numbers.setsail.ca) — no auth needed
+    const res = await fetch('https://numbers.setsail.ca/api/pricing-catalog', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) {
+      console.warn('Pricing Engine returned ' + res.status);
       return null;
     }
-    return JSON.parse(raw);
+    const data = await res.json();
+    // The Pricing Engine returns { ok, catalog } or the catalog directly
+    return data.catalog || data;
   } catch (err) {
-    console.error(`Error reading pricing catalog: ${err.message}`);
+    console.error(`Error fetching pricing catalog: ${err.message}`);
     return null;
   }
 }
