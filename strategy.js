@@ -9,13 +9,15 @@ var _pricingCatalog = null; // cached pricing catalog from Pricing Engine KV
 var _pricingStatus = 'unknown'; // 'live' | 'estimated' | 'error' | 'unknown'
 
 // Maps strategy lever IDs → Pricing Engine service slugs
+// Maps AI diagnostic lever IDs → Pricing Engine service slugs.
+// PPC (google-ads) covers all paid channels: Google, Meta, LinkedIn, Display, Remarketing.
+// CRO is not a standalone service — it is embedded within other services.
 var LEVER_SERVICE_MAP = {
   google_ads_search: 'google-ads',
   google_display:    'google-ads',
-  meta_ads:          'meta-ads',
+  meta_ads:          'google-ads',
   seo:               'seo',
   website:           'website',
-  cro:               'cro',
   email:             'email-marketing',
   remarketing:       'google-ads',
   social_media:      'social-media',
@@ -65,12 +67,12 @@ function getServiceMonthlyCost(service) {
   if (p.monthly && typeof p.monthly === 'object' && p.monthly.min) {
     return { min: p.monthly.min, max: p.monthly.max || p.monthly.min, mid: Math.round(((p.monthly.min || 0) + (p.monthly.max || p.monthly.min || 0)) / 2) };
   }
-  // Tier-based pricing (e.g. social media: Visible/Known/Trusted)
+  // Tier-based pricing (e.g. social media: Visible/Known/Trusted, SEO: Growth/Authority/Dominance/Enterprise)
   if (p.tiers && p.tiers.length) {
-    var sorted = p.tiers.slice().sort(function(a, b) { return (a.monthly || 0) - (b.monthly || 0); });
-    var tMin = sorted[0].monthly || 0;
-    var tMax = sorted[sorted.length - 1].monthly || 0;
-    var tMid = sorted.length >= 2 ? (sorted[Math.floor(sorted.length / 2)].monthly || Math.round((tMin + tMax) / 2)) : Math.round((tMin + tMax) / 2);
+    var sorted = p.tiers.slice().sort(function(a, b) { return (a.monthly || a.price || 0) - (b.monthly || b.price || 0); });
+    var tMin = sorted[0].monthly || sorted[0].price || 0;
+    var tMax = sorted[sorted.length - 1].monthly || sorted[sorted.length - 1].price || 0;
+    var tMid = sorted.length >= 2 ? (sorted[Math.floor(sorted.length / 2)].monthly || sorted[Math.floor(sorted.length / 2)].price || Math.round((tMin + tMax) / 2)) : Math.round((tMin + tMax) / 2);
     return { min: tMin, max: tMax, mid: tMid, tiers: sorted };
   }
   // Flat monthly fields (legacy)
@@ -337,14 +339,15 @@ function buildInvestmentText() {
       txt += '| Service | Suggested | Realistic | Est. ROI |\n';
       txt += '|---------|-----------|-----------|----------|\n';
       monthlySvcs.forEach(function(s) {
-        var sugCost = _scopeCostForTier(s.cost, s.scope);
+        var sugCost = _scopeEffectiveCost(s);
         var rScope = s.scope;
         var rEnabled = true;
         if (s.realistic_override) {
           if (s.realistic_override.enabled === false) rEnabled = false;
           if (s.realistic_override.scope) rScope = s.realistic_override.scope;
         }
-        var realTxt = rEnabled ? '$' + _scopeCostForTier(s.cost, rScope).toLocaleString() + '/mo' : '\u2014 (cut)';
+        var _rS = Object.assign({}, s, { scope: rScope });
+        var realTxt = rEnabled ? '$' + _scopeEffectiveCost(_rS).toLocaleString() + '/mo' : '\u2014 (cut)';
         var roiTxt = s.roi && s.roi.multiplier > 0 ? s.roi.multiplier + 'x (' + s.roi.timeline + ')' : '\u2014';
         txt += '| ' + s.name + ' | $' + sugCost.toLocaleString() + '/mo (' + s.scope + ') | ' + realTxt + ' | ' + roiTxt + ' |\n';
       });
@@ -475,6 +478,7 @@ function downloadInvestmentSummary() {
 async function recalculateInvestment() {
   aiBarStart('Recalculating investment');
   await fetchPricingCatalog();
+  _buildEngagementScope();
   capturePricingSnapshot();
   await saveProject();
   renderStrategyTabContent();
@@ -617,13 +621,14 @@ function _renderInvestmentSummary() {
         + '<th style="text-align:right;padding:4px 8px;font-weight:500;color:var(--n2)">Realistic</th>'
         + '<th style="text-align:center;padding:4px 8px;font-weight:500;color:var(--n2)">ROI</th></tr>';
       monthlySvcs.forEach(function(s) {
-        var sugCost = _scopeCostForTier(s.cost, s.scope);
+        var sugCost = _scopeEffectiveCost(s);
         var rEnabled = true, rScope = s.scope;
         if (s.realistic_override) {
           if (s.realistic_override.enabled === false) rEnabled = false;
           if (s.realistic_override.scope) rScope = s.realistic_override.scope;
         }
-        var realCost = rEnabled ? _scopeCostForTier(s.cost, rScope) : 0;
+        var _rS = Object.assign({}, s, { scope: rScope });
+        var realCost = rEnabled ? _scopeEffectiveCost(_rS) : 0;
         var roiColour = (s.roi && s.roi.multiplier >= 3) ? 'var(--green)' : (s.roi && s.roi.multiplier >= 1.5) ? 'var(--warn)' : 'var(--error)';
         var roiTxt = s.roi && s.roi.multiplier > 0 ? '<span style="color:' + roiColour + ';font-weight:600">' + s.roi.multiplier + 'x</span>' : '\u2014';
         html += '<tr style="border-bottom:1px solid var(--border)">';
@@ -738,6 +743,12 @@ function _renderInvestmentSummary() {
 
 function _scopeCostForTier(cost, scope) {
   if (!cost) return 0;
+  // Named tier lookup (e.g. "growth", "authority", "visible")
+  if (cost.tiers && cost.tiers.length) {
+    var match = cost.tiers.find(function(t) { return t.id === scope; });
+    if (match) return match.monthly || match.price || 0;
+  }
+  // Fallback to low/mid/high positional
   if (scope === 'low') return cost.min || 0;
   if (scope === 'high') return cost.max || 0;
   return cost.mid || 0;
@@ -771,6 +782,22 @@ function _refreshScopePricing() {
     Object.keys(scope.services || {}).map(function(k) { return { svc: scope.services[k], slug: k }; }),
     Object.keys(scope.additional_services || {}).map(function(k) { return { svc: scope.additional_services[k], slug: k }; })
   );
+  // Build catalog slug set for filtering
+  var _catSlugs = new Set();
+  (_pricingCatalog.services || []).forEach(function(s) { _catSlugs.add(s.id); });
+
+  // Remove services not in the catalog (we do not offer them)
+  ['services', 'additional_services'].forEach(function(section) {
+    if (!scope[section]) return;
+    Object.keys(scope[section]).forEach(function(slug) {
+      if (!_catSlugs.has(slug)) {
+        delete scope[section][slug];
+        changed = true;
+      }
+    });
+  });
+
+  allEntries = allEntries.filter(function(e) { return _catSlugs.has(e.slug); });
   allEntries.forEach(function(entry) {
     var catSvc = (_pricingCatalog.services || []).find(function(s) {
       var sSlug = (s.id || s.slug || s.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -778,25 +805,40 @@ function _refreshScopePricing() {
     });
     if (!catSvc) return;
     var cost = getServiceMonthlyCost(catSvc);
-    if (cost && (!entry.svc.cost || !entry.svc.cost.min)) {
-      entry.svc.cost = { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject };
-      changed = true;
+    if (cost) {
+      // Always refresh cost from live catalog — prices change, tiers may be added
+      var newCost = { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject, tiers: cost.tiers || null };
+      if (!entry.svc.cost || entry.svc.cost.min !== newCost.min || entry.svc.cost.max !== newCost.max || (newCost.tiers && !entry.svc.cost.tiers)) {
+        entry.svc.cost = newCost;
+        changed = true;
+      }
     }
-    if (!entry.svc.description && catSvc.description) {
+    if (catSvc.description) {
       entry.svc.description = catSvc.description;
-      changed = true;
     }
     if (!entry.svc.scope_note && catSvc.description) {
       entry.svc.scope_note = catSvc.description;
       changed = true;
     }
-    if (!entry.svc.scope_includes) {
-      entry.svc.scope_includes = _buildScopeIncludes(catSvc);
-      if (entry.svc.scope_includes) changed = true;
+    // Always refresh scope includes and tier names from catalog
+    var newIncludes = _buildScopeIncludes(catSvc);
+    if (newIncludes) {
+      entry.svc.scope_includes = newIncludes;
+      changed = true;
     }
-    if (!entry.svc.tier_names) {
-      entry.svc.tier_names = _getTierNames(catSvc);
-      if (entry.svc.tier_names) changed = true;
+    var newTierNames = _getTierNames(catSvc);
+    if (newTierNames) {
+      entry.svc.tier_names = newTierNames;
+      // Migrate old low/mid/high to actual tier IDs
+      var curScope = entry.svc.scope;
+      var validScope = newTierNames.some(function(t) { return t.id === curScope; });
+      if (!validScope) {
+        if (curScope === 'low') entry.svc.scope = newTierNames[0].id;
+        else if (curScope === 'high') entry.svc.scope = newTierNames[newTierNames.length - 1].id;
+        else if (curScope === 'mid') entry.svc.scope = newTierNames[Math.floor(newTierNames.length / 2)].id;
+        else entry.svc.scope = newTierNames[0].id;
+      }
+      changed = true;
     }
   });
   if (changed) {
@@ -811,10 +853,15 @@ function _refreshScopePricing() {
 function _buildScopeIncludes(svc) {
   if (!svc) return null;
   var p = svc.pricing || {};
-  // Tier-based (e.g. social media with named tiers)
+  // Tier-based — key by tier ID (e.g. "growth", "authority", "visible")
   if (p.tiers && p.tiers.length) {
-    var sorted = p.tiers.slice().sort(function(a, b) { return (a.monthly || 0) - (b.monthly || 0); });
+    var sorted = p.tiers.slice().sort(function(a, b) { return (a.monthly || a.price || 0) - (b.monthly || b.price || 0); });
     var result = {};
+    sorted.forEach(function(t) {
+      var id = t.id || (t.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      result[id] = t.includes || [];
+    });
+    // Also provide low/mid/high fallback mapping
     if (sorted[0]) result.low = sorted[0].includes || [];
     if (sorted.length >= 2) result.mid = sorted[Math.floor(sorted.length / 2)].includes || [];
     if (sorted[sorted.length - 1]) result.high = sorted[sorted.length - 1].includes || [];
@@ -827,15 +874,14 @@ function _buildScopeIncludes(svc) {
   return null;
 }
 
-// Get named tier labels if available (e.g. Visible/Known/Trusted for social media)
+// Get tier labels from catalog. Returns array of { id, name, price } sorted by price ascending.
+// Falls back to low/mid/high when no named tiers exist.
 function _getTierNames(svc) {
   if (!svc || !svc.pricing || !svc.pricing.tiers || !svc.pricing.tiers.length) return null;
-  var sorted = svc.pricing.tiers.slice().sort(function(a, b) { return (a.monthly || 0) - (b.monthly || 0); });
-  var names = {};
-  if (sorted[0]) names.low = sorted[0].name || 'Low';
-  if (sorted.length >= 2) names.mid = sorted[Math.floor(sorted.length / 2)].name || 'Mid';
-  if (sorted[sorted.length - 1]) names.high = sorted[sorted.length - 1].name || 'High';
-  return names;
+  var sorted = svc.pricing.tiers.slice().sort(function(a, b) { return (a.monthly || a.price || 0) - (b.monthly || b.price || 0); });
+  return sorted.map(function(t) {
+    return { id: t.id || t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: t.name, price: t.monthly || t.price || 0 };
+  });
 }
 
 function _buildEngagementScope() {
@@ -851,10 +897,16 @@ function _buildEngagementScope() {
     slugToLevers[slug].push(leverKey);
   });
 
-  // Build services from lever groups
+  // Build catalog slug set — only services we actually offer
+  var _catSlugs = new Set();
+  (_pricingCatalog.services || []).forEach(function(s) { _catSlugs.add(s.id); });
+
+  // Build services from lever groups — only include services that exist in the pricing catalog
   var services = {};
   var mappedSlugs = {};
   Object.keys(slugToLevers).forEach(function(slug) {
+    // Skip services not in the pricing catalog — we do not offer them
+    if (!_catSlugs.has(slug)) return;
     var leverKeys = slugToLevers[slug];
     var matchedLevers = levers.filter(function(l) { return leverKeys.indexOf(l.lever) >= 0; });
     if (!matchedLevers.length) return;
@@ -871,19 +923,28 @@ function _buildEngagementScope() {
     var existing = (S.strategy.engagement_scope && S.strategy.engagement_scope.services) ? S.strategy.engagement_scope.services[slug] : null;
     // Build scope-level includes from catalog
     var scopeIncludes = _buildScopeIncludes(svc);
+    var tierNames = _getTierNames(svc);
+    // Default scope: first tier ID if tiers exist, otherwise 'mid'
+    var defaultScope = (tierNames && tierNames.length) ? tierNames[0].id : 'mid';
+    // Validate existing scope is still a valid tier
+    var existingScope = existing ? existing.scope : null;
+    if (existingScope && tierNames && tierNames.length) {
+      var validTier = tierNames.some(function(t) { return t.id === existingScope; });
+      if (!validTier) existingScope = null;
+    }
     services[slug] = {
       slug: slug,
       name: svcName,
       description: svc ? (svc.description || '') : '',
       enabled: existing ? existing.enabled : (avgPriority >= 5.0),
-      scope: existing ? existing.scope : 'mid',
+      scope: existingScope || defaultScope,
       scope_note: existing ? (existing.scope_note || '') : (svc ? (svc.description || '') : ''),
       scope_includes: scopeIncludes,
-      tier_names: _getTierNames(svc),
+      tier_names: tierNames,
       source_levers: leverKeys.filter(function(k) { return matchedLevers.some(function(l) { return l.lever === k; }); }),
       avg_priority: Math.round(avgPriority * 10) / 10,
       funnel_stages: funnelStages,
-      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject } : null,
+      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject, tiers: cost.tiers || null } : null,
       roi: null,
       realistic_override: null
     };
@@ -941,9 +1002,9 @@ function _recalcScopeTotals() {
   );
   allSvcs.forEach(function(svc) {
     if (!svc.cost) return;
-    // Suggested: use raw enabled + scope
+    // Suggested: use raw enabled + scope (with PPC platform multiplier)
     if (svc.enabled) {
-      var sugCost = _scopeCostForTier(svc.cost, svc.scope);
+      var sugCost = _scopeEffectiveCost(svc);
       if (svc.cost.isProject) sugProj += sugCost; else sugMo += sugCost;
     }
     // Realistic: use override if present
@@ -954,7 +1015,8 @@ function _recalcScopeTotals() {
       if (svc.realistic_override.scope) rScope = svc.realistic_override.scope;
     }
     if (rEnabled) {
-      var realCost = _scopeCostForTier(svc.cost, rScope);
+      var _rSvc = Object.assign({}, svc, { scope: rScope });
+      var realCost = _scopeEffectiveCost(_rSvc);
       if (svc.cost.isProject) realProj += realCost; else realMo += realCost;
     }
   });
@@ -1013,13 +1075,13 @@ function _computeRealisticOverrides() {
   // Sort by priority ascending (lowest gets throttled first)
   enabledMonthly.sort(function(a, b) { return (a.avg_priority || 0) - (b.avg_priority || 0); });
 
-  var total = enabledMonthly.reduce(function(sum, svc) { return sum + _scopeCostForTier(svc.cost, svc.scope); }, 0);
+  var total = enabledMonthly.reduce(function(sum, svc) { return sum + _scopeEffectiveCost(svc); }, 0);
   if (total <= budget) return; // Already fits
 
   for (var i = 0; i < enabledMonthly.length && total > budget; i++) {
     var svc = enabledMonthly[i];
     var currentScope = svc.scope;
-    var currentCost = _scopeCostForTier(svc.cost, currentScope);
+    var currentCost = _scopeEffectiveCost(svc);
 
     if (currentScope === 'high') {
       var midCost = _scopeCostForTier(svc.cost, 'mid');
@@ -1155,16 +1217,45 @@ function _renderScopePanel() {
   return html;
 }
 
+// PPC platform definitions — each platform account is billed at the base PPC rate
+var PPC_PLATFORMS = [
+  { id: 'google', label: 'Google' },
+  { id: 'meta', label: 'Meta' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'tiktok', label: 'TikTok' }
+];
+
+function _ppcTotalAccounts(svc) {
+  if (!svc.ppc_platforms) return 1;
+  var total = 0;
+  PPC_PLATFORMS.forEach(function(p) {
+    var v = svc.ppc_platforms[p.id];
+    total += (typeof v === 'number' ? v : (v ? 1 : 0));
+  });
+  return Math.max(total, 1);
+}
+
+function _scopeEffectiveCost(svc) {
+  if (!svc.cost) return 0;
+  var base = _scopeCostForTier(svc.cost, svc.scope);
+  if (svc.slug === 'google-ads') return base * _ppcTotalAccounts(svc);
+  return base;
+}
+
 function _renderScopeRow(svc, section) {
   var rowOpacity = svc.enabled ? '1' : '0.45';
-  // Show active scope cost instead of just range
+  // Show active scope cost (with PPC multiplier if applicable)
   var costTxt = '\u2014';
   if (svc.cost) {
-    var activeCost = _scopeCostForTier(svc.cost, svc.scope);
+    var activeCost = _scopeEffectiveCost(svc);
     costTxt = '$' + activeCost.toLocaleString() + (svc.cost.isProject ? '' : '/mo');
   }
   var rangeTxt = '';
-  if (svc.cost && svc.cost.min !== svc.cost.max) {
+  if (svc.slug === 'google-ads' && svc.cost) {
+    var baseCost = _scopeCostForTier(svc.cost, svc.scope);
+    var totalAccounts = _ppcTotalAccounts(svc);
+    if (totalAccounts > 1) rangeTxt = '$' + baseCost.toLocaleString() + '/mo \u00d7 ' + totalAccounts + ' accounts';
+  } else if (svc.cost && svc.cost.min !== svc.cost.max) {
     rangeTxt = '$' + svc.cost.min.toLocaleString() + ' \u2013 $' + svc.cost.max.toLocaleString() + (svc.cost.isProject ? '' : '/mo');
   }
   var roiHtml = '\u2014';
@@ -1185,30 +1276,53 @@ function _renderScopeRow(svc, section) {
     html += '<div style="font-size:9px;color:var(--n3);margin-top:1px">' + svc.funnel_stages.join(', ') + '</div>';
   }
   html += '</td>';
-  // Active cost + range below
+  // Active cost + range/multiplier below
   html += '<td style="padding:4px 6px;text-align:right;white-space:nowrap">'
     + '<div style="font-size:11px;font-weight:600;color:var(--dark)">' + costTxt + '</div>';
   if (rangeTxt) {
     html += '<div style="font-size:9px;color:var(--n3)">' + rangeTxt + '</div>';
   }
   html += '</td>';
-  // Scope toggle — show tier names if available
+
+  // Scope column — PPC gets platform checkboxes, others get tier/scope buttons
   html += '<td style="padding:4px 6px;text-align:center;white-space:nowrap">';
-  ['low', 'mid', 'high'].forEach(function(level) {
-    var isActive = svc.scope === level;
-    var label = level.charAt(0).toUpperCase() + level.slice(1);
-    if (svc.tier_names && svc.tier_names[level]) label = svc.tier_names[level];
-    // Build tooltip from includes
-    var tip = '';
-    if (svc.scope_includes && svc.scope_includes[level]) {
-      tip = svc.scope_includes[level].slice(0, 4).join(', ');
-      if (svc.scope_includes[level].length > 4) tip += ' +' + (svc.scope_includes[level].length - 4) + ' more';
-    }
-    html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(section) + '" data-scope-level="' + level + '" '
-      + (tip ? 'data-tip="' + esc(tip) + '" ' : '')
-      + 'style="font-size:9px;padding:2px 6px;border:1px solid ' + (isActive ? 'var(--green)' : 'var(--border)') + ';background:' + (isActive ? 'var(--green)' : 'transparent') + ';color:' + (isActive ? 'white' : 'var(--n2)') + ';border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
-      + esc(label) + '</button>';
-  });
+  if (svc.slug === 'google-ads') {
+    // PPC platform account counts
+    if (!svc.ppc_platforms) svc.ppc_platforms = { google: 1, meta: 0, linkedin: 0, tiktok: 0 };
+    // Migrate old boolean format to numbers
+    PPC_PLATFORMS.forEach(function(plat) {
+      var v = svc.ppc_platforms[plat.id];
+      if (v === true) svc.ppc_platforms[plat.id] = 1;
+      else if (!v) svc.ppc_platforms[plat.id] = 0;
+    });
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+    PPC_PLATFORMS.forEach(function(plat) {
+      var count = svc.ppc_platforms[plat.id] || 0;
+      html += '<div style="display:flex;align-items:center;gap:2px">'
+        + '<span style="font-size:9px;color:' + (count > 0 ? 'var(--dark)' : 'var(--n3)') + '">' + plat.label + '</span>'
+        + '<input type="number" class="ppc-plat-count" data-plat="' + plat.id + '" data-scope-slug="' + esc(svc.slug) + '" min="0" max="10" value="' + count + '" '
+        + 'style="width:32px;padding:1px 3px;border:1px solid ' + (count > 0 ? 'var(--green)' : 'var(--border)') + ';border-radius:3px;font-size:10px;text-align:center;font-family:var(--font);color:var(--dark);background:var(--white)">'
+        + '</div>';
+    });
+    html += '</div>';
+  } else {
+    // Standard tier/scope buttons
+    var _tierButtons = (svc.tier_names && Array.isArray(svc.tier_names) && svc.tier_names.length)
+      ? svc.tier_names.map(function(t) { return { id: t.id, label: t.name }; })
+      : [{ id: 'low', label: 'Low' }, { id: 'mid', label: 'Mid' }, { id: 'high', label: 'High' }];
+    _tierButtons.forEach(function(tier) {
+      var isActive = svc.scope === tier.id;
+      var tip = '';
+      if (svc.scope_includes && svc.scope_includes[tier.id]) {
+        tip = svc.scope_includes[tier.id].slice(0, 4).join(', ');
+        if (svc.scope_includes[tier.id].length > 4) tip += ' +' + (svc.scope_includes[tier.id].length - 4) + ' more';
+      }
+      html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(section) + '" data-scope-level="' + tier.id + '" '
+        + (tip ? 'data-tip="' + esc(tip) + '" ' : '')
+        + 'style="font-size:9px;padding:2px 6px;border:1px solid ' + (isActive ? 'var(--green)' : 'var(--border)') + ';background:' + (isActive ? 'var(--green)' : 'transparent') + ';color:' + (isActive ? 'white' : 'var(--n2)') + ';border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
+        + esc(tier.label) + '</button>';
+    });
+  }
   html += '</td>';
   html += '<td style="padding:4px 6px;text-align:center">' + roiHtml + '</td>';
   html += '<td style="padding:4px 6px"><input type="text" data-scope-note="' + esc(svc.slug) + '" data-scope-note-section="' + esc(section) + '" value="' + esc(svc.scope_note || '') + '" placeholder="What is included at this scope" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-family:var(--font);color:var(--dark);background:var(--white)"></td>';
@@ -1282,7 +1396,7 @@ function _mountScopePanel() {
         });
         // Update cost cell for this row
         if (svc.cost) {
-          var activeCost = _scopeCostForTier(svc.cost, level);
+          var activeCost = _scopeEffectiveCost(svc);
           var costCell = btn.closest('tr').querySelector('td:nth-child(3) div:first-child');
           if (costCell) costCell.textContent = '$' + activeCost.toLocaleString() + (svc.cost.isProject ? '' : '/mo');
         }
@@ -1290,6 +1404,45 @@ function _mountScopePanel() {
         if (bar) bar.innerHTML = _renderScopeTotalsBar();
         scheduleSave();
       }
+    };
+  });
+
+  // Wire PPC platform account count inputs
+  document.querySelectorAll('.ppc-plat-count').forEach(function(input) {
+    input.onchange = function() {
+      var platId = input.getAttribute('data-plat');
+      var slug = input.getAttribute('data-scope-slug');
+      var svc = slug && scope.services ? scope.services[slug] : null;
+      if (!svc) return;
+      if (!svc.ppc_platforms) svc.ppc_platforms = { google: 1, meta: 0, linkedin: 0, tiktok: 0 };
+      var val = parseInt(input.value, 10) || 0;
+      if (val < 0) val = 0;
+      if (val > 10) val = 10;
+      svc.ppc_platforms[platId] = val;
+      input.value = val;
+      input.style.borderColor = val > 0 ? 'var(--green)' : 'var(--border)';
+      // Update label colour
+      var label = input.closest('div').querySelector('span');
+      if (label) label.style.color = val > 0 ? 'var(--dark)' : 'var(--n3)';
+      // Update cost cell
+      var activeCost = _scopeEffectiveCost(svc);
+      var row = input.closest('tr');
+      if (row) {
+        var costDiv = row.querySelector('td:nth-child(3) div:first-child');
+        var rangeDiv = row.querySelector('td:nth-child(3) div:nth-child(2)');
+        if (costDiv) costDiv.textContent = '$' + activeCost.toLocaleString() + '/mo';
+        var totalAccounts = _ppcTotalAccounts(svc);
+        var baseCost = _scopeCostForTier(svc.cost, svc.scope);
+        if (rangeDiv) {
+          rangeDiv.textContent = totalAccounts > 1 ? '$' + baseCost.toLocaleString() + '/mo \u00d7 ' + totalAccounts + ' accounts' : '';
+        }
+      }
+      _computeServiceROI(svc);
+      _computeRealisticOverrides();
+      _recalcScopeTotals();
+      var bar = document.getElementById('scope-totals-bar');
+      if (bar) bar.innerHTML = _renderScopeTotalsBar();
+      scheduleSave();
     };
   });
 

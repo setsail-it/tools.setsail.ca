@@ -896,10 +896,13 @@ async function generateAISeeds() {
     scheduleSave();
 
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + cleaned.length + ' AI seeds generated — review then click Fetch Volumes</span>';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> AI Generate Seeds'; }
+    if (typeof aiBarEnd === 'function') aiBarEnd();
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> AI Generate Seeds'; }
+    if (typeof aiBarEnd === 'function') aiBarEnd();
   }
 }
 
