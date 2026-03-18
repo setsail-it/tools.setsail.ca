@@ -609,7 +609,7 @@ async function briefPageNicheExpand(pidx) {
 
 async function briefPageQuestions(pidx) {
   var p = S.pages[pidx];
-  if (!p || !p.primary_keyword) { alert('No primary keyword on this page.'); return; }
+  if (!p || !p.primary_keyword) { aiBarNotify('No primary keyword on this page.', {duration:3000}); return; }
   var btn = document.getElementById('brief-quest-btn-'+pidx);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Generating...'; }
   try {

@@ -1208,8 +1208,11 @@ async function showProjects() {
 
 function startNewProject() {
   S.projectId = 'proj-' + Date.now();
-  S.stage = 'setup'; S.setup = null; S.research = null;
+  S.stage = 'setup'; S.setup = null; S.snapshot = null; S.research = null;
+  S.strategy = null; S.kwResearch = null; S.kwMetrics = {};
   S.pages = []; S.copy = {}; S.schema = {}; S.images = {};
+  S.layout = {}; S.sitemapApproved = false; S.contentIntel = null;
+  S._version = 0; S._sitemapBuiltAt = 0;
   document.getElementById('projects-screen').style.display = 'none';
   goTo('setup');
 }
