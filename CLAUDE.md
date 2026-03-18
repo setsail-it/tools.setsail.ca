@@ -7,7 +7,7 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 **The 11-stage pipeline:**
 
 1. **Setup** — Client name, URL, primary market, industry, uploaded strategy docs, discovery notes, sales qualification, competitor URLs
-2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison
+2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Current Site Architecture (3 tabs: AI Insights, Tree, Diagram), Core Web Vitals, Tech Stack, Schema detection, redirect map
 3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
 4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline with cost labels, compiled 15-section strategy document, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes). 9 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D7. Auto-compiles strategy doc + web brief after full runs.
 5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, and active page import from Snapshot
@@ -65,7 +65,7 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 - `S.projectId`, `S.stage` — current project and stage
 - `S._version` — optimistic locking counter (incremented on each save)
 - `S.setup` — client info, docs, voice, competitors, sales qualification
-- `S.snapshot` — DataForSEO domain metrics
+- `S.snapshot` — DataForSEO domain metrics, `topPages`, `techStack`, `vitals`, `schemas`, `_insights` (cached AI summary)
 - `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
 - `S.strategy` — strategy engine output (audience, positioning, unit economics, channels, brand, risks, targets, demand validation)
 - `S.strategy.audience` — D0 output: segments, personas, buying motions, triggers, objections, parked segments
@@ -76,6 +76,9 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 - `S.kwResearch` — seeds, keywords, clusters, selected
 - `S.copy{}` — per-slug copy data (HTML stored in separate KV keys)
 - `S.schema{}`, `S.layout{}`, `S.images{}` — per-slug stage data
+- `S.research._updatedAt` — timestamp for staleness detection (set in research.js)
+- `S.strategy._meta._completedAt` — timestamp for staleness detection (set in strategy.js)
+- `S._sitemapBuiltAt` — timestamp for staleness detection (set in sitemap.js + setsailai.js)
 
 ### Backend (worker.js)
 
@@ -156,7 +159,7 @@ AI-powered sidepanel that persists across all 11 stages. Toggle button in the na
 
 **4 modes:**
 
-1. **Ask Mode** — Chat with Claude using tiered project context. Own streaming fetch to `/api/claude` (does not interfere with AI bar). 4-layer context assembly:
+1. **Ask Mode** — Chat with Claude using tiered project context. Own streaming fetch to `/api/claude` (does not interfere with AI bar). Supports file attachments (PDFs via `pdfs-2024-09-25` beta, images, text files) — files sent as multimodal content blocks, stored as text descriptions only in history to prevent bloat. 4-layer context assembly:
    - Layer 0 (always): client name, URL, geo, industry, services, positioning direction
    - Layer 1 (always): compiled strategy overview (truncated)
    - Layer 2 (stage-routed): full data for current stage
@@ -164,7 +167,7 @@ AI-powered sidepanel that persists across all 11 stages. Toggle button in the na
    - Conversation history: last 6 turns included for continuity
    - Grounding system prompt: must cite source tab/diagnostic or say data doesn't exist
 
-2. **Audit Mode** — 30 pure-JS programmatic checks across all stages. `SAI_AUDIT_CHECKS[]` array. Severities: error (red), warning (orange), info (grey). Results grouped by stage with "Go →" navigation buttons. Runs on: stage change, after generation completes, on demand. Badge on nav button (red for errors, orange for warnings).
+2. **Audit Mode** — 30+ pure-JS programmatic checks across all stages including pipeline staleness detection (research→strategy, strategy→sitemap, strategy→briefs, briefs→layout timestamp comparisons). `SAI_AUDIT_CHECKS[]` array. Severities: error (red), warning (orange), info (grey). Results grouped by stage with "Go →" navigation buttons that navigate to the correct stage AND tab (including strategy sub-tabs via `_sTab`). Guards against no-project-loaded state with clear empty states. Runs on: stage change, after generation completes, on demand. Badge on nav button (red for errors, orange for warnings).
 
 3. **Explain Mode** — `data-sai-explain="type:identifier"` attributes on key UI elements (diagnostic sections, positioning direction, page rows, cluster cards, brief containers, copy audit results). Capture-phase click handler intercepts, assembles targeted context, auto-sends explanation request. `body.sai-explain` class enables dashed green outline on hover.
 
@@ -180,6 +183,15 @@ AI-powered sidepanel that persists across all 11 stages. Toggle button in the na
 **Key functions:** `toggleSai()`, `saiSend()`, `setSaiMode()`, `runSaiAudit()`, `_assembleSaiContext()`, `_renderActionConfirmation()`, `_executeAction()`, `_saiPostGenAudit()`
 
 **Integration hooks in index.html:** `goTo()` calls `runSaiAudit()`, `aiBarEnd()` calls `_saiPostGenAudit()`, `toggleHelpPanel()` closes SetsailAI panel.
+
+### Snapshot Site Architecture (index.html)
+
+Current Site Architecture card has 3 tabs:
+- **Insights** (default) — AI-generated plain-English description of the site's information architecture. Calls Claude once via `_generateSnapInsights()`, result cached in `S.snapshot._insights`. Describes content axes, URL patterns, hierarchy depth, programmatic page generation. No streaming to DOM — shows spinner then renders complete result.
+- **Tree** — Styled indented hierarchy built from `_buildSnapArchTree()` with traffic badges and depth indicators.
+- **Diagram** — Mermaid flowchart rendered lazily on first tab switch via `_renderSnapshotArchDiagram()`.
+
+Tab switching via `switchSnapArchTab(tab)`. Diagram and insights lazy-load on first view.
 
 ### Shared Helpers (worker.js, top of file)
 
