@@ -23,7 +23,18 @@ function _renderScopeWarning() {
   if (pageCount > range.max) {
     return '<div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:8px">'
       + '<i class="ti ti-alert-triangle" style="font-size:14px;flex-shrink:0"></i>'
-      + '<span>' + esc(range.label) + ' engagement typically supports ' + range.min + '–' + range.max + ' pages. Current sitemap has ' + pageCount + ' pages — consider trimming lower-priority pages or upgrading the engagement tier.</span></div>';
+      + '<span>' + esc(range.label) + ' engagement typically supports ' + range.min + '\u2013' + range.max + ' pages. Current sitemap has ' + pageCount + ' pages \u2014 consider trimming lower-priority pages or upgrading the engagement tier.</span></div>';
+  }
+  if (pageCount < range.min) {
+    return '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#3b82f6;display:flex;align-items:center;gap:8px">'
+      + '<i class="ti ti-info-circle" style="font-size:14px;flex-shrink:0"></i>'
+      + '<span>' + esc(range.label) + ' engagement typically includes ' + range.min + '\u2013' + range.max + ' pages. Current sitemap has ' + pageCount + ' \u2014 consider adding more pages to fill the tier.</span></div>';
+  }
+  // Engagement scope note
+  if (S._sitemapScopeNote) {
+    return '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:#3b82f6;display:flex;align-items:center;gap:8px">'
+      + '<i class="ti ti-info-circle" style="font-size:14px;flex-shrink:0"></i>'
+      + '<span>' + esc(S._sitemapScopeNote) + '</span></div>';
   }
   return '';
 }
@@ -545,6 +556,99 @@ function confirmRunSitemap() {
   buildSitemapFromClusters();
 }
 
+// ── Strategy-Aware Helpers ─────────────────────────────────────────
+
+// Returns page objects for pages D5 recommended but clusters did not create
+function _getD5RecommendedPages() {
+  var ep = S.strategy && S.strategy.execution_plan;
+  var web = ep && ep.lever_details && ep.lever_details.website;
+  var arch = web && web.architecture_direction;
+  if (!arch) return [];
+  var pages = [];
+  var groups = [
+    { arr: arch.vertical_pages || [], type: 'industry' },
+    { arr: arch.location_pages || [], type: 'location' },
+    { arr: arch.content_pages || [], type: 'blog' }
+  ];
+  groups.forEach(function(g) {
+    g.arr.forEach(function(name) {
+      if (!name || typeof name !== 'string') return;
+      var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (!slug) return;
+      var tmp = { page_type: g.type, is_structural: false, slug: slug, page_name: name, primary_vol: 0 };
+      var priority = _suggestPriority(tmp) || 'P2';
+      pages.push({
+        page_name: name,
+        slug: slug,
+        page_type: g.type,
+        is_structural: false,
+        priority: priority,
+        action: 'build_new',
+        primary_keyword: '',
+        primary_vol: 0, primary_kd: 0, score: 0,
+        supporting_keywords: [],
+        search_intent: g.type === 'blog' ? 'informational' : 'commercial',
+        existing_traffic: 0,
+        existing_ranking_kws: [],
+        _d5_source: true,
+        notes: 'D5: recommended page'
+      });
+    });
+  });
+  return pages;
+}
+
+// Returns a Set of normalised slug fragments from D5 pages_to_cut
+function _getD5PagesToCut() {
+  var ep = S.strategy && S.strategy.execution_plan;
+  var web = ep && ep.lever_details && ep.lever_details.website;
+  var arch = web && web.architecture_direction;
+  if (!arch || !arch.pages_to_cut || !arch.pages_to_cut.length) return new Set();
+  var frags = new Set();
+  arch.pages_to_cut.forEach(function(name) {
+    if (!name || typeof name !== 'string') return;
+    var frag = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (frag && frag.length > 2) frags.add(frag);
+  });
+  return frags;
+}
+
+// Creates stub landing pages for CTA gaps not covered by existing pages
+function _getCTAStubPages(existingPages) {
+  var gaps = _checkCTAPageGaps(existingPages);
+  if (!gaps.length) return [];
+  return gaps.map(function(gap) {
+    var slug = (gap.cta || 'landing').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return {
+      page_name: gap.cta,
+      slug: slug,
+      page_type: 'landing',
+      is_structural: false,
+      priority: gap.type === 'primary' ? 'P1' : 'P2',
+      action: 'build_new',
+      primary_keyword: '',
+      primary_vol: 0, primary_kd: 0, score: 0,
+      supporting_keywords: [],
+      search_intent: 'transactional',
+      existing_traffic: 0,
+      existing_ranking_kws: [],
+      _cta_source: true,
+      notes: 'CTA landing page for ' + gap.type + ' CTA: "' + gap.cta + '"'
+    };
+  });
+}
+
+// Returns tier range + website scope info from engagement scope
+function _getTierRange() {
+  if (!S.strategy || !S.strategy.pricing_snapshot || !S.strategy.pricing_snapshot.package_fit) return null;
+  var tier = S.strategy.pricing_snapshot.package_fit.toLowerCase().replace(/\s+/g, '_');
+  var range = TIER_PAGE_RANGES[tier];
+  if (!range || tier === 'custom') return null;
+  var scope = S.strategy.engagement_scope;
+  var websiteInScope = scope && scope.services && scope.services.website && scope.services.website.enabled;
+  return { tier: tier, range: range, websiteInScope: websiteInScope };
+}
+
 // ── PERSISTENCE ────────────────────────────────────────────────────
 let saveTimer = null;
 function _normSlug(url) {
@@ -653,6 +757,25 @@ function buildSitemapFromClusters() {
     covered.add(slug);
   });
 
+  // 2.5 D5 recommended pages — inject pages from architecture_direction
+  var d5Pages = _getD5RecommendedPages();
+  d5Pages.forEach(function(dp) {
+    if (covered.has(dp.slug)) return;
+    dp.existing_traffic = existingTraffic(dp.slug);
+    dp.existing_ranking_kws = existingRankKws(dp.slug);
+    if (allExisting.has(dp.slug)) dp.action = 'improve_existing';
+    pages.push(dp);
+    covered.add(dp.slug);
+  });
+
+  // 2.7 CTA landing page stubs — create pages for unfilled CTA gaps
+  var ctaStubs = _getCTAStubPages(pages);
+  ctaStubs.forEach(function(cp) {
+    if (covered.has(cp.slug)) return;
+    pages.push(cp);
+    covered.add(cp.slug);
+  });
+
   // 3. Existing pages not matched by any cluster
   allExisting.forEach(function(slug) {
     if (covered.has(slug)) return;
@@ -677,6 +800,21 @@ function buildSitemapFromClusters() {
     });
   });
 
+  // 3.5 Mark D5 pages-to-cut
+  var cutSlugs = _getD5PagesToCut();
+  if (cutSlugs.size) {
+    pages.forEach(function(p) {
+      var pSlug = _normSlug(p.slug);
+      cutSlugs.forEach(function(cutFrag) {
+        if (pSlug === cutFrag || pSlug.indexOf(cutFrag) >= 0) {
+          p.priority = 'P3';
+          p._priorityNote = 'D5: recommended to cut';
+          p._d5_cut = true;
+        }
+      });
+    });
+  }
+
   // Sort: structurals first, then P1→P3, then by score desc
   var pOrd = {P1:0,P2:1,P3:2};
   pages.sort(function(a,b){
@@ -700,6 +838,28 @@ function buildSitemapFromClusters() {
     });
   }
 
+  // 4. Tier page count enforcement — demote excess pages to P3
+  var _tierInfo = _getTierRange();
+  if (_tierInfo && _tierInfo.range) {
+    var activePages = S.pages.filter(function(p) { return p.priority !== 'P3'; });
+    if (activePages.length > _tierInfo.range.max) {
+      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source; });
+      demotable.sort(function(a, b) { return (a.score || 0) - (b.score || 0); });
+      var excess = activePages.length - _tierInfo.range.max;
+      for (var di = 0; di < Math.min(excess, demotable.length); di++) {
+        demotable[di].priority = 'P3';
+        demotable[di]._priorityNote = 'Tier cap (' + _tierInfo.range.label + ' max ' + _tierInfo.range.max + ' pages)';
+      }
+    }
+  }
+
+  // 4.5 Engagement scope note
+  if (_tierInfo && !_tierInfo.websiteInScope) {
+    S._sitemapScopeNote = 'Website is not in engagement scope — sitemap is informational only';
+  } else {
+    S._sitemapScopeNote = null;
+  }
+
   // Inject assigned PAA questions into their matching pages
   var questions = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) || [];
   questions.forEach(function(q) {
@@ -719,6 +879,13 @@ function buildSitemapFromClusters() {
   renderSitemapResults(false);
   scheduleSave();
   enrichSitemapWithLiveData();
+
+  // 5. Auto-assign content pillars if D6 data exists and blog pages are present
+  var _hasPillars = S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.content_pillars && S.strategy.brand_strategy.content_pillars.length;
+  var _hasBlogPages = S.pages.some(function(p) { return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0; });
+  if (_hasPillars && _hasBlogPages) {
+    setTimeout(function() { assignContentPillars(); }, 100);
+  }
 }
 
 function attemptSitemapParseFromText(text) {
@@ -1459,7 +1626,7 @@ function _renderSitemapResultsInner(approved) {
   const _catFilter = p => {
     if (_sitemapCatTab === 'all') return true;
     const t = (p.page_type||'').toLowerCase();
-    if (_sitemapCatTab === 'service') return ['service','industry','product'].includes(t);
+    if (_sitemapCatTab === 'service') return ['service','industry','product','landing'].includes(t);
     if (_sitemapCatTab === 'location') return t === 'location';
     if (_sitemapCatTab === 'blog') return ['blog','article','recipe','event','portfolio'].includes(t);
     if (_sitemapCatTab === 'core') return ['home','about','contact','utility','faq','team'].includes(t) || !!p.is_structural;
@@ -1556,7 +1723,7 @@ function _renderSitemapResultsInner(approved) {
   // Display sort: Core → Service/Industry/Product → Location → Blog → rest
   // Within each type: P1 → P2 → P3, then score desc
   const _typeOrder = { home:0, about:0, contact:0, utility:0, faq:0, team:0,
-    service:1, industry:1, product:1,
+    service:1, industry:1, product:1, landing:1,
     location:2,
     blog:3, article:3, recipe:3, event:3, portfolio:3 };
   const _pOrder = { P1:0, P2:1, P3:2 };
@@ -1613,7 +1780,7 @@ function _renderSitemapResultsInner(approved) {
       html += '<input value="'+esc(p.page_name)+'" onblur="updatePageField('+i+',\'page_name\',this.value)" style="font-size:12px;color:var(--dark);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--font);outline:none;width:100%"/>';
       html += '<input value="'+esc(p.slug||'')+'" onblur="updatePageField('+i+',\'slug\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-family:var(--font);outline:none;width:100%"/>';
       html += '<select onchange="updatePageField('+i+',\'page_type\',this.value)" style="font-size:10px;color:var(--n2);background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--font);outline:none">';
-      ['home','service','industry','location','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
+      ['home','service','industry','location','landing','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
       html += '</select>';
       // Content pillar dropdown (blog-type pages only, if pillars exist)
       if (['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
@@ -1681,6 +1848,10 @@ function _renderSitemapResultsInner(approved) {
       } else if (_action === 'build_new') {
         html += '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.3);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--green);margin-left:6px;vertical-align:middle;font-weight:500">BUILD NEW</span>';
       }
+      // Source badges: D5, CTA, Cut
+      if (p._d5_source) html += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:#3b82f6;margin-left:4px;vertical-align:middle;font-weight:600">D5</span>';
+      if (p._cta_source) html += '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:var(--green);margin-left:4px;vertical-align:middle;font-weight:600">CTA</span>';
+      if (p._d5_cut) html += '<span style="background:rgba(220,50,47,0.08);border:1px solid rgba(220,50,47,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:var(--error);margin-left:4px;vertical-align:middle;font-weight:600">CUT</span>';
       html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       if (p.page_goal) html += '<div style="font-size:10px;color:#6b21a8;margin-top:2px" title="Page goal: '+esc(p.page_goal)+'"><i class="ti ti-target" style="font-size:10px;margin-right:2px"></i>'+esc(p.page_goal.length>80?p.page_goal.slice(0,80)+'…':p.page_goal)+'</div>';
