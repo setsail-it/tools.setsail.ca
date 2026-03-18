@@ -744,7 +744,7 @@ function _runSitemapHealthCheck() {
     var covResults = _runPersonaCoverageCheck(pages);
     covResults.forEach(function(r) {
       if (r.coverage !== null && r.coverage < 50) {
-        info.push({ id: 'persona-' + (r.segment || ''), category: 'gaps', severity: 'info', slug: '', description: 'Persona "' + (r.persona || r.segment) + '" has ' + r.coverage + '% page coverage', suggestion: 'Add pages addressing this audience segment', fixType: 'none' });
+        info.push({ id: 'persona-' + (r.segment || ''), category: 'gaps', severity: 'info', slug: '', description: 'Persona "' + (r.persona || r.segment) + '" has ' + Math.round(r.coverage) + '% page coverage', suggestion: 'Add pages addressing this audience segment', fixType: 'none' });
       }
     });
   }
@@ -885,7 +885,13 @@ function _renderIssuesPanel() {
       if (issue.slug) html += '<span style="font-family:monospace;color:var(--n2);font-size:10px;min-width:100px;flex-shrink:0">/' + esc(issue.slug) + '</span>';
       html += '<span style="flex:1;color:var(--dark)">' + esc(issue.description) + '</span>';
       if (issue.fixType === 'scroll' && issue.slug) {
-        html += '<button class="btn btn-ghost sm wf-issue-fix" data-fix-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px">Fix</button>';
+        html += '<button class="btn btn-ghost sm wf-issue-fix" data-fix-slug="' + esc(issue.slug) + '" data-fix-id="' + esc(issue.id) + '" style="font-size:10px;padding:2px 8px">Fix</button>';
+      }
+      if (issue.id === 'no-kw' || issue.id === 'zero-vol') {
+        html += '<button class="btn btn-ghost sm wf-issue-aifix" data-fix-id="' + esc(issue.id) + '" style="font-size:10px;padding:2px 8px;color:var(--green);border-color:rgba(21,142,29,0.3)"><i class="ti ti-sparkles" style="font-size:9px"></i> AI Fix</button>';
+      }
+      if (issue.id && issue.id.indexOf('cannibal-') === 0) {
+        html += '<button class="btn btn-ghost sm wf-issue-aifix" data-fix-id="' + esc(issue.id) + '" style="font-size:10px;padding:2px 8px;color:var(--green);border-color:rgba(21,142,29,0.3)"><i class="ti ti-sparkles" style="font-size:9px"></i> AI Fix</button>';
       }
       html += '</div>';
     });
@@ -898,13 +904,13 @@ function _renderIssuesPanel() {
 function _mountIssuesPanel() {
   var panel = document.getElementById('wf-issues-panel');
   if (!panel) return;
+  // Scroll-to-fix buttons
   var fixBtns = panel.querySelectorAll('.wf-issue-fix');
   fixBtns.forEach(function(btn) {
     btn.onclick = function() {
       var slug = btn.getAttribute('data-fix-slug');
       if (!slug) return;
       if (!sitemapEditMode) toggleSitemapEdit();
-      // Find page index
       var idx = (S.pages || []).findIndex(function(p) { return p.slug === slug; });
       if (idx >= 0) {
         var row = document.getElementById('sm-row-' + idx);
@@ -912,6 +918,159 @@ function _mountIssuesPanel() {
       }
     };
   });
+  // AI Fix buttons
+  var aiBtns = panel.querySelectorAll('.wf-issue-aifix');
+  aiBtns.forEach(function(btn) {
+    btn.onclick = function() {
+      var fixId = btn.getAttribute('data-fix-id');
+      if (!fixId) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span> Fixing\u2026';
+      _aiFixIssue(fixId).then(function() {
+        renderSitemapResults(S.sitemapApproved);
+        scheduleSave();
+      });
+    };
+  });
+}
+
+// AI-powered issue fixing
+async function _aiFixIssue(fixId) {
+  var pages = S.pages || [];
+  var kwPool = (S.kwResearch && S.kwResearch.keywords) || [];
+  var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
+
+  if (fixId === 'no-kw') {
+    // Assign best keywords to pages missing them
+    var needKw = pages.filter(function(p) {
+      if (p.is_structural) return false;
+      var t = (p.page_type || '').toLowerCase();
+      if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+      return !p.primary_keyword;
+    }).slice(0, 40); // batch limit
+    if (!needKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
+
+    var usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
+    var availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+
+    var prompt = 'Assign the best primary keyword to each page. Pick from the available keywords list. Match by relevance to the page name, slug, and type. Each keyword can only be used once.\n\n'
+      + 'PAGES NEEDING KEYWORDS:\n' + needKw.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
+      + '\n\nAVAILABLE KEYWORDS (pick from these, sorted by volume):\n' + availKws.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+      + '\n\nReturn a JSON array: [{"slug":"...","keyword":"..."}]\nOnly return the JSON array, nothing else.';
+
+    aiBarStart('AI assigning keywords to ' + needKw.length + ' pages\u2026');
+    try {
+      var result = '';
+      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result += chunk; }, 4096, 'kw-fix');
+      var parsed = JSON.parse(result.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var assigned = 0;
+      if (Array.isArray(parsed)) {
+        parsed.forEach(function(item) {
+          var page = pages.find(function(p) { return p.slug === item.slug; });
+          if (page && item.keyword) {
+            page.primary_keyword = item.keyword;
+            var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+            if (kwData) {
+              page.primary_vol = kwData.vol || 0;
+              page.primary_kd = kwData.kd || 0;
+              page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+            }
+            assigned++;
+          }
+        });
+      }
+      aiBarEnd();
+      aiBarNotify('Assigned keywords to ' + assigned + ' pages', { duration: 4000 });
+    } catch (e) {
+      aiBarEnd();
+      aiBarNotify('AI keyword assignment failed: ' + e.message, { isError: true, duration: 4000 });
+    }
+  }
+
+  else if (fixId === 'zero-vol') {
+    // Find better keywords for zero-volume pages
+    var zeroPages = pages.filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; }).slice(0, 30);
+    if (!zeroPages.length) { aiBarNotify('No zero-volume pages to fix', { duration: 2000 }); return; }
+
+    var usedKws2 = new Set(pages.filter(function(p) { return p.primary_keyword && p.primary_vol > 0; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
+    var availKws2 = kwPool.filter(function(k) { return !usedKws2.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+
+    var prompt2 = 'These pages have zero search volume on their current keyword. Find a better keyword from the available list for each page.\n\n'
+      + 'ZERO-VOLUME PAGES:\n' + zeroPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | current: "' + p.primary_keyword + '" (0 vol)'; }).join('\n')
+      + '\n\nAVAILABLE KEYWORDS WITH VOLUME:\n' + availKws2.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+      + '\n\nReturn JSON array: [{"slug":"...","keyword":"..."}]\nIf no good match exists for a page, skip it. Only return the JSON array.';
+
+    aiBarStart('AI finding better keywords for ' + zeroPages.length + ' pages\u2026');
+    try {
+      var result2 = '';
+      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 += chunk; }, 4096, 'vol-fix');
+      var parsed2 = JSON.parse(result2.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var fixed = 0;
+      if (Array.isArray(parsed2)) {
+        parsed2.forEach(function(item) {
+          var page = pages.find(function(p) { return p.slug === item.slug; });
+          if (page && item.keyword) {
+            page.primary_keyword = item.keyword;
+            var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+            if (kwData) {
+              page.primary_vol = kwData.vol || 0;
+              page.primary_kd = kwData.kd || 0;
+              page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+            }
+            fixed++;
+          }
+        });
+      }
+      aiBarEnd();
+      aiBarNotify('Fixed keywords on ' + fixed + ' pages', { duration: 4000 });
+    } catch (e) {
+      aiBarEnd();
+      aiBarNotify('AI volume fix failed: ' + e.message, { isError: true, duration: 4000 });
+    }
+  }
+
+  else if (fixId.indexOf('cannibal-') === 0) {
+    // Deduplicate cannibalised keyword
+    var cannibalKw = fixId.replace('cannibal-', '');
+    var conflicting = pages.filter(function(p) { return (p.primary_keyword || '').toLowerCase() === cannibalKw; });
+    if (conflicting.length < 2) return;
+
+    var usedKws3 = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
+    var availKws3 = kwPool.filter(function(k) { return !usedKws3.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+
+    var prompt3 = 'These pages all target the same keyword "' + cannibalKw + '" — this causes cannibalisation. Keep the keyword on the BEST page and assign different keywords to the others.\n\n'
+      + 'CONFLICTING PAGES:\n' + conflicting.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type + ' | vol: ' + (p.primary_vol || 0); }).join('\n')
+      + '\n\nAVAILABLE REPLACEMENT KEYWORDS:\n' + availKws3.slice(0, 60).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol; }).join('\n')
+      + '\n\nReturn JSON array: [{"slug":"...","keyword":"..."}] for ALL pages (keep or reassign). Only return the JSON array.';
+
+    aiBarStart('AI resolving cannibalisation for "' + cannibalKw + '"\u2026');
+    try {
+      var result3 = '';
+      await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 += chunk; }, 2048, 'cannibal-fix');
+      var parsed3 = JSON.parse(result3.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var resolved = 0;
+      if (Array.isArray(parsed3)) {
+        parsed3.forEach(function(item) {
+          var page = pages.find(function(p) { return p.slug === item.slug; });
+          if (page && item.keyword) {
+            page.primary_keyword = item.keyword;
+            var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+            if (kwData) {
+              page.primary_vol = kwData.vol || 0;
+              page.primary_kd = kwData.kd || 0;
+              page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+            }
+            resolved++;
+          }
+        });
+      }
+      aiBarEnd();
+      aiBarNotify('Resolved cannibalisation — ' + resolved + ' pages updated', { duration: 4000 });
+    } catch (e) {
+      aiBarEnd();
+      aiBarNotify('AI cannibalisation fix failed: ' + e.message, { isError: true, duration: 4000 });
+    }
+  }
 }
 
 function toggleWorkflowIssues() {
