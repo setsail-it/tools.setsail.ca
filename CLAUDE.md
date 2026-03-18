@@ -6,11 +6,11 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 
 **The 11-stage pipeline:**
 
-1. **Setup** — Client name, URL, primary market, industry, uploaded strategy docs, discovery notes, sales qualification, competitor URLs
-2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Current Site Architecture (3 tabs: AI Insights, Tree, Diagram), Core Web Vitals, Tech Stack, Schema detection, redirect map
+1. **Setup** — Client name, URL, primary market, metro/city targeting (for GKP geo data), industry, uploaded strategy docs (auto-extract to client goals), discovery notes, client goals (goal statement, measurable target, baseline, timeline, primary KPI), sales qualification, competitor URLs
+2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Current Site Architecture (3 tabs: Insights — AI-generated plain-English description of information architecture/URL patterns/hierarchy depth, Tree — indented hierarchy with traffic badges, Diagram — Mermaid flowchart), Core Web Vitals, Tech Stack, Schema detection, redirect map. Clear All button to reset snapshot data.
 3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
-4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7), scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline with cost labels, compiled 15-section strategy document, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes). 9 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D7. Auto-compiles strategy doc + web brief after full runs.
-5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, and active page import from Snapshot
+4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7) with keyword pipeline auto-inserted between D3 and D4, scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline with cost labels, compiled 13-section strategy document with 6 data appendices + revenue projection model, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes). 9 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D7. Auto-compiles strategy doc + web brief after full runs. Strategy document download includes website strategy brief.
+5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, active page import from Snapshot, and Clear All button to reset sitemap
 6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards, positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, and persona alignment scoring
 7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
 8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
@@ -37,20 +37,20 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 ## File Map
 
 ```
-worker.js        — All backend API routes + queue consumer (~2682 lines)
-index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~3249 lines)
-strategy.js      — Stage 4: strategy engine + scoring + diagnostics + web strategy brief (~5961 lines)
-keywords.js      — Keyword research (tab within Strategy stage) (~3072 lines)
-sitemap.js       — Stage 5: sitemap generation + persona/voice/positioning integration (~2379 lines)
-briefs.js        — Stage 6: brief generation + queue + strategy context integration (~1751 lines)
-copy.js          — Stage 7: copy generation + audit + strategy context integration (~1367 lines)
-research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1523 lines)
+worker.js        — All backend API routes + queue consumer (~3161 lines)
+index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar) (~4224 lines)
+strategy.js      — Stage 4: strategy engine + scoring + diagnostics + revenue model + data tables (~8469 lines)
+keywords.js      — Keyword research (tab within Strategy stage) + GKP integration (~3636 lines)
+sitemap.js       — Stage 5: sitemap generation + persona/voice/positioning integration (~2637 lines)
+briefs.js        — Stage 6: brief generation + queue + strategy context integration (~1827 lines)
+copy.js          — Stage 7: copy generation + audit + strategy context integration (~1486 lines)
+research.js      — Stage 3: AI enrichment + field metadata + scorecard (~1827 lines)
 layout.js        — Stage 9: wireframe generation (~558 lines)
-images.js        — Stage 8: image generation (~490 lines)
+images.js        — Stage 8: image generation (~1234 lines)
 schema.js        — Stage 10: schema markup (~260 lines)
 prompts.js       — Shared AI prompt templates (~121 lines)
 export.js        — Stage 11: export packaging + strategy/investment tabs (~138 lines)
-setsailai.js     — SetsailAI assistant: sidepanel with ask/audit/explain/action modes (~1270 lines)
+setsailai.js     — SetsailAI assistant: sidepanel with ask/audit/explain/action modes (~1531 lines)
 wrangler.toml    — Cloudflare deployment config
 .dev.vars        — Local dev secrets (gitignored)
 ```
@@ -64,7 +64,7 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 **Key `S` properties:**
 - `S.projectId`, `S.stage` — current project and stage
 - `S._version` — optimistic locking counter (incremented on each save)
-- `S.setup` — client info, docs, voice, competitors, sales qualification
+- `S.setup` — client info, docs, voice, competitors, sales qualification, client goals (`goalStatement`, `goalTarget`, `goalBaseline`, `goalTimeline`, `goalKpi`), metro targeting (`metroTarget`)
 - `S.snapshot` — DataForSEO domain metrics, `topPages`, `techStack`, `vitals`, `schemas`, `_insights` (cached AI summary)
 - `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
 - `S.strategy` — strategy engine output (audience, positioning, unit economics, channels, brand, risks, targets, demand validation)
@@ -87,7 +87,7 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 - **Project CRUD:** `/api/projects[/:id]`
 - **AI proxy:** `/api/claude` (streaming), `/api/claude-sync` (non-streaming) — model-locked and token-capped
 - **DataForSEO:** `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
-- **Google Keyword Planner:** `/api/gkp-ideas` (keyword ideas + bid data), `/api/gkp-forecast` (traffic forecasts), `/api/gkp-status` (credential check) — all gracefully hidden when Google Ads env vars not set
+- **Google Keyword Planner:** `/api/gkp-ideas` (keyword ideas + bid data from URL), `/api/gkp-forecast` (keyword enrichment: bid ranges, ad competition, monthly volumes), `/api/gkp-status` (credential check) — all gracefully hidden when Google Ads env vars not set. Both routes have 401 token-refresh retry logic.
 - **Ahrefs:** `/api/snapshot`, `/api/ahrefs`
 - **Queue:** `/api/queue-submit`, `/api/queue-status`
 - **Image gen:** `/api/generate-image`
@@ -99,17 +99,21 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 
 The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequentially, scores each section on three dimensions, and enforces anti-inflation caps to prevent score gaming.
 
-**Diagnostic pipeline:**
+**Diagnostic pipeline (auto-orchestrated by `generateStrategy()`):**
 - **D0 — Audience Intelligence:** Segments, personas (archetype labels, not fictional names), buying motions, purchase triggers, objection maps, vertical coverage (active + parked segments)
 - **D1 — Unit Economics:** CPL, CAC, LTV, LTV:CAC ratio, sensitivity analysis (conservative/base/optimistic), CPC intelligence, paid viability
 - **D2 — Competitive Position:** Positioning directions (never auto-selects), validated differentiators, messaging hierarchy, brand voice direction with vertical overlays
 - **D3 — Subtraction Analysis:** Current activity audit with stop/keep/restructure verdicts, recoverable budget
+- **⟳ Keyword Pipeline** (auto-runs between D3 and D4): seeds → DataForSEO expansion → volumes → GKP enrichment (if configured) → AI-Select → clustering. Uses D0-D3 context for better seed generation. Results feed into D4+ for demand-informed channel/budget decisions.
 - **D4 — Channel & Lever Viability:** 13 levers scored, three budget tiers (current/growth/optimal), funnel coverage analysis
 - **D5 — Website & CRO:** Build type, CTAs, form strategy, page architecture, tracking requirements
 - **D6 — Content & Authority:** DR gap analysis, content pillars (vertical-aware), publishing cadence, E-E-A-T strategy
 - **D7 — Risk Assessment:** Risks with severity scores, mitigations, dependencies
 
 **D0 runs first** (separate call before the D1–D7 loop). This is because D0=0 is falsy in JavaScript — all `if (diagNum)` checks must use `diagNum !== undefined && diagNum !== null` instead.
+
+**Keyword pipeline within strategy (keywords.js):**
+The keyword pipeline has 9 steps: Generate Questions → AI Generate Seeds → Build Mechanical Seeds → Pull Competitor Keywords → Merge All Sources → Fetch Volumes → GKP Enrich (optional, if configured) → AI-Select Top Keywords → Cluster into Pages. When triggered from `generateStrategy()`, it runs automatically between D3 and D4. GKP enrichment adds `low_bid`, `high_bid`, `ad_competition`, `ad_competition_idx` to each keyword. AI-Select uses GKP bid data as a commercial intent signal when available. Keyword table header is clickable to filter showing only selected keywords.
 
 **Scoring engine:** Three dimensions per section:
 - Data Completeness (35%) — are all required inputs present?
@@ -129,8 +133,36 @@ The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequ
 - `_computeServiceROI(svcEntry)` — per-service ROI from D1 unit economics (LTV, CAC, sensitivity, CPC). Returns multiplier + timeline + confidence.
 - `_recalcScopeTotals()` — computes suggested vs realistic monthly/project/year1 totals.
 
+**Compiled strategy document (strategy.js):**
+`compileStrategyOutput()` produces a sales-grade strategy document in two layers:
+
+*Layer 1 — AI-generated prose (13 sections):*
+1. Executive Summary — market opportunity + revenue projection
+2. Goal Alignment — client goals → strategy → projected ROI
+3. Market Opportunity & Demand Validation — search volume by service
+4. Audience & Buying Behaviour — segments, personas, buying motions
+5. Competitive Positioning — comparison table, win path, messaging
+6. Unit Economics & Revenue Model — CPL → leads → deals → revenue
+7. Keyword & Content Strategy — clusters, pillars, authority plan
+8. Site Architecture & Conversion — pages, CTAs, conversion pathway
+9. Channel Strategy & Budget Allocation — channel table with $ amounts
+10. Execution Roadmap — phased timeline, geo strategy
+11. Risk Register & Mitigations — severity-scored table
+12. Investment Summary — service costs + ROI
+13. Success Metrics & Measurement Plan — 3/6/12 month targets
+
+*Layer 2 — Data appendices (deterministic, no AI):*
+- A: Selected Keyword Opportunities (keyword, vol, KD, CPC, score)
+- B: Cluster → Page Map (cluster, primary kw, page type, action, slug)
+- C: Audience Segments (revenue potential, difficulty, priority)
+- D: Channel Scoring Matrix (priority, budget %, timeline)
+- E: Risk Register (severity, mitigation)
+- F: Competitive Landscape (strength, weakness, our edge)
+
+*Revenue projection model:* `_buildRevenueProjection()` computes leads/month, deals/month, monthly revenue, ROI multiplier from D1 unit economics data. Includes sensitivity analysis. Fed into AI prompt context.
+
 **Pricing pipeline export (strategy.js + export.js):**
-- `copyStrategyDoc()` / `downloadStrategyDoc()` — copy/download the compiled strategy document (.md)
+- `copyStrategyDoc()` / `downloadStrategyDoc()` — copy/download the compiled strategy document (.md) — includes website strategy brief
 - `buildInvestmentText()` — dual-column markdown (Suggested vs Realistic) when engagement_scope exists, with ROI per service and scope notes. Falls back to old lever-based format if no scope.
 - `_renderInvestmentSummary()` — dual-column HTML in Output tab. Suggested/Realistic columns with ROI badges, scope notes, 2x3 totals grid. Falls back to old format if no scope.
 - `copyInvestmentSummary()` / `downloadInvestmentSummary()` — copy/download the investment summary
@@ -187,11 +219,24 @@ AI-powered sidepanel that persists across all 11 stages. Toggle button in the na
 ### Snapshot Site Architecture (index.html)
 
 Current Site Architecture card has 3 tabs:
-- **Insights** (default) — AI-generated plain-English description of the site's information architecture. Calls Claude once via `_generateSnapInsights()`, result cached in `S.snapshot._insights`. Describes content axes, URL patterns, hierarchy depth, programmatic page generation. No streaming to DOM — shows spinner then renders complete result.
+- **Insights** (default) — AI-generated plain-English description of the site's information architecture: what the site is, how pages are organised (content axes, URL hierarchy, filtering patterns, depth), and where traffic concentrates. Under 120 words, no recommendations — just describes what exists. Calls Claude once via `_generateSnapInsights()`, result cached in `S.snapshot._insights`. Streams with 300ms throttled DOM updates.
 - **Tree** — Styled indented hierarchy built from `_buildSnapArchTree()` with traffic badges and depth indicators.
 - **Diagram** — Mermaid flowchart rendered lazily on first tab switch via `_renderSnapshotArchDiagram()`.
 
 Tab switching via `switchSnapArchTab(tab)`. Diagram and insights lazy-load on first view.
+
+### Setup Stage — Client Goals & Geo Targeting (index.html)
+
+**Client Goals** section captures the client's success definition from intake:
+- `S.setup.goalStatement` — what success looks like in their words
+- `S.setup.goalTarget` — measurable target
+- `S.setup.goalBaseline` — current baseline
+- `S.setup.goalTimeline` — timeline to achieve
+- `S.setup.goalKpi` — primary KPI (select: leads, revenue, traffic, conversions, calls, form_submissions, booked_appointments)
+
+Auto-populated from uploaded discovery documents via Claude extraction (runs once after first doc upload). Goals are injected into strategy compilation and downstream prompts.
+
+**Metro / City Target** — `S.setup.metroTarget` — optional city-level geo targeting for Google Keyword Planner volume data. Dropdown populated from `GKP_METROS` constant (major Canadian + US metros with Google Ads geo criterion IDs).
 
 ### Shared Helpers (worker.js, top of file)
 
