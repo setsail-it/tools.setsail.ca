@@ -3516,13 +3516,6 @@ async function generateStrategy() {
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
 
-  // Soft sequencing: notify if keyword data is missing (D4-D6 benefit from it)
-  var _kwR = S.kwResearch || {};
-  if (!_kwR.keywords || _kwR.keywords.length < 10) {
-    aiBarNotify('Keyword research not run yet — D4-D6 will use shallow estimates. Run keywords first for better accuracy.', { duration: 6000 });
-    await new Promise(function(r) { setTimeout(r, 3000); });
-  }
-
   // Step 1: Run enrichment
   aiBarStart('Strategy enrichment');
   var r = S.research || {};
@@ -3655,8 +3648,8 @@ async function generateStrategy() {
     await runDiagnostic(0);
     await new Promise(function(res) { setTimeout(res, 2000); });
 
-    // Step 2b: Run diagnostics D1-D7 sequentially
-    for (var d = 1; d <= 7; d++) {
+    // Step 2b: Run diagnostics D1-D3 (no keyword dependency)
+    for (var d = 1; d <= 3; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
           label: 'Strategy paused (D' + d + '/7)',
@@ -3666,7 +3659,44 @@ async function generateStrategy() {
         return;
       }
       await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+      await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+
+    // Step 2c: Auto-run keyword pipeline (sandwiched between D3 and D4)
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Strategy paused (pre-keywords)',
+        fn: function() { _resumeStrategyWithKeywords(); },
+        args: {}
+      };
+      return;
+    }
+    var _kwR = S.kwResearch || {};
+    if (!_kwR.keywords || _kwR.keywords.length < 10) {
+      if (typeof runFullKeywordPipeline === 'function') {
+        aiBarStart('Running keyword research pipeline');
+        try {
+          await runFullKeywordPipeline();
+        } catch(kwErr) {
+          console.warn('Keyword pipeline error during strategy:', kwErr.message);
+          aiBarNotify('Keyword pipeline had issues — continuing with available data', { duration: 3000 });
+        }
+        await new Promise(function(res) { setTimeout(res, 2000); });
+      }
+    }
+
+    // Step 2d: Run diagnostics D4-D7 (keyword-enriched)
+    for (var d2 = 4; d2 <= 7; d2++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Strategy paused (D' + d2 + '/7)',
+          fn: function(args) { _resumeDiagnostics(args.startFrom); },
+          args: { startFrom: d2 }
+        };
+        return;
+      }
+      await runDiagnostic(d2);
+      if (d2 < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
 
     // Step 3: Capture pricing snapshot and score
@@ -3678,9 +3708,9 @@ async function generateStrategy() {
     renderStrategyNav();
     renderStrategyTabContent();
 
-    // Step 4: Auto-run D8 (demand validation) if keyword data exists
-    var _kwR = S.kwResearch || {};
-    if (_kwR.keywords && _kwR.keywords.length >= 10 && !window._aiStopAll) {
+    // Step 4: Auto-run D8 (demand validation) — keywords guaranteed at this point
+    var _kwR2 = S.kwResearch || {};
+    if (_kwR2.keywords && _kwR2.keywords.length >= 10 && !window._aiStopAll) {
       aiBarStart('Running D8 Demand Validation with keyword data');
       try { await runDiagnostic(8); } catch (e8) { console.warn('D8 auto-run skipped:', e8.message); }
       await saveProject();
@@ -3747,6 +3777,19 @@ async function _resumeDiagnosticsWithD0(startFrom) {
 async function _resumeDiagnostics(startFrom) {
   window._aiStopAll = false;
   try {
+    // If resuming at D4 and no keywords, run keyword pipeline first
+    if (startFrom === 4) {
+      var _kwCheck = S.kwResearch || {};
+      if (!_kwCheck.keywords || _kwCheck.keywords.length < 10) {
+        if (typeof runFullKeywordPipeline === 'function') {
+          aiBarStart('Running keyword research pipeline');
+          try { await runFullKeywordPipeline(); } catch(kwErr) {
+            console.warn('Keyword pipeline error:', kwErr.message);
+          }
+          await new Promise(function(res) { setTimeout(res, 2000); });
+        }
+      }
+    }
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
@@ -3765,6 +3808,27 @@ async function _resumeDiagnostics(startFrom) {
     renderStrategyScorecard();
     renderStrategyTabContent();
     aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    aiBarNotify('Error: ' + e.message, { duration: 5000 });
+  }
+}
+
+async function _resumeStrategyWithKeywords() {
+  window._aiStopAll = false;
+  try {
+    var _kwCheck = S.kwResearch || {};
+    if (!_kwCheck.keywords || _kwCheck.keywords.length < 10) {
+      if (typeof runFullKeywordPipeline === 'function') {
+        aiBarStart('Running keyword research pipeline');
+        try { await runFullKeywordPipeline(); } catch(kwErr) {
+          console.warn('Keyword pipeline error:', kwErr.message);
+        }
+        await new Promise(function(res) { setTimeout(res, 2000); });
+      }
+    }
+    // Continue with D4-D7
+    await _resumeDiagnostics(4);
   } catch (e) {
     if (e.name === 'AbortError') return;
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
