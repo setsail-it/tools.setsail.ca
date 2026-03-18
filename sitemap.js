@@ -669,6 +669,256 @@ function _renderStalenessWarning() {
     + '<i class="ti ti-refresh-dot"></i> Realign</button></div>';
 }
 
+// ── WORKFLOW STRIP: Health Check + Steps + Renderer ────────────────
+
+function _runSitemapHealthCheck() {
+  if (_sitemapWorkflowIssues) return _sitemapWorkflowIssues;
+  var pages = S.pages || [];
+  var errors = [], warnings = [], info = [];
+  var _hasStrategy = S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0;
+
+  if (!pages.length) { _sitemapWorkflowIssues = { errors: errors, warnings: warnings, info: info }; return _sitemapWorkflowIssues; }
+
+  // 1. Alignment: cut / review
+  if (_hasStrategy) {
+    pages.forEach(function(p) {
+      var align = _computeAlignment(p);
+      if (align === 'cut') {
+        errors.push({ id: 'cut-' + p.slug, category: 'alignment', severity: 'error', slug: p.slug, description: 'Not aligned with any strategy lever — recommended to cut', suggestion: 'Remove or repurpose this page', fixType: 'scroll' });
+      } else if (align === 'review' && !p.is_structural) {
+        warnings.push({ id: 'review-' + p.slug, category: 'alignment', severity: 'warning', slug: p.slug, description: 'Lever priority below 5 — review for relevance', suggestion: 'Verify this page supports the strategy', fixType: 'scroll' });
+      }
+    });
+  }
+
+  // 2. Keyword cannibalisation
+  var kwMap = {};
+  pages.forEach(function(p, i) {
+    var kw = (p.primary_keyword || '').toLowerCase().trim();
+    if (!kw) return;
+    if (!kwMap[kw]) kwMap[kw] = [];
+    kwMap[kw].push({ slug: p.slug, idx: i });
+  });
+  Object.keys(kwMap).forEach(function(kw) {
+    if (kwMap[kw].length > 1) {
+      var slugs = kwMap[kw].map(function(e) { return '/' + e.slug; }).join(', ');
+      errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: kwMap[kw][0].slug, description: '"' + kw + '" targets ' + kwMap[kw].length + ' pages: ' + slugs, suggestion: 'Assign unique primary keywords to each page', fixType: 'scroll' });
+    }
+  });
+
+  // 3. Zero-volume non-structural pages
+  var zeroVol = pages.filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; });
+  if (zeroVol.length > 0) {
+    warnings.push({ id: 'zero-vol', category: 'keywords', severity: 'warning', slug: zeroVol[0].slug, description: zeroVol.length + ' page' + (zeroVol.length !== 1 ? 's have' : ' has') + ' zero search volume', suggestion: 'Consider higher-volume keywords or remove low-value pages', fixType: 'scroll' });
+  }
+
+  // 4. Missing primary keyword
+  var noKw = pages.filter(function(p) {
+    if (p.is_structural) return false;
+    var t = (p.page_type || '').toLowerCase();
+    if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+    return !p.primary_keyword;
+  });
+  if (noKw.length > 0) {
+    warnings.push({ id: 'no-kw', category: 'keywords', severity: 'warning', slug: noKw[0].slug, description: noKw.length + ' page' + (noKw.length !== 1 ? 's' : '') + ' missing a primary keyword', suggestion: 'Use Edit mode or Find Keywords to assign cluster anchors', fixType: 'scroll' });
+  }
+
+  // 5. Positioning direction gaps
+  if (_hasStrategy) {
+    var dirGaps = _checkDirectionPageGaps(pages);
+    dirGaps.forEach(function(g) {
+      warnings.push({ id: 'dir-gap-' + (g.type || 'pos'), category: 'gaps', severity: 'warning', slug: '', description: g.description, suggestion: g.suggestion, fixType: 'none' });
+    });
+  }
+
+  // 6. CTA gaps
+  if (_hasStrategy) {
+    var ctaGaps = _checkCTAPageGaps(pages);
+    ctaGaps.forEach(function(g) {
+      warnings.push({ id: 'cta-gap-' + (g.cta || '').slice(0, 20), category: 'gaps', severity: 'warning', slug: '', description: 'No landing page for ' + g.type + ' CTA: "' + g.cta + '"', suggestion: g.suggestion, fixType: 'none' });
+    });
+  }
+
+  // 7. Persona coverage gaps
+  if (_hasStrategy && typeof _runPersonaCoverageCheck === 'function') {
+    var covResults = _runPersonaCoverageCheck(pages);
+    covResults.forEach(function(r) {
+      if (r.coverage !== null && r.coverage < 50) {
+        info.push({ id: 'persona-' + (r.segment || ''), category: 'gaps', severity: 'info', slug: '', description: 'Persona "' + (r.persona || r.segment) + '" has ' + r.coverage + '% page coverage', suggestion: 'Add pages addressing this audience segment', fixType: 'none' });
+      }
+    });
+  }
+
+  // 8. Redundant/similar slugs (skip if >100 pages)
+  if (pages.length <= 100) {
+    var nonStructural = pages.filter(function(p) { return !p.is_structural; });
+    for (var i = 0; i < nonStructural.length; i++) {
+      var tokA = new Set(nonStructural[i].slug.split(/[-/]/).filter(Boolean));
+      if (tokA.size < 2) continue;
+      for (var j = i + 1; j < nonStructural.length; j++) {
+        var tokB = new Set(nonStructural[j].slug.split(/[-/]/).filter(Boolean));
+        if (tokB.size < 2) continue;
+        // Check if one is parent of the other
+        if (nonStructural[i].slug.indexOf(nonStructural[j].slug) === 0 || nonStructural[j].slug.indexOf(nonStructural[i].slug) === 0) continue;
+        var intersection = 0;
+        tokA.forEach(function(t) { if (tokB.has(t)) intersection++; });
+        var overlap = intersection / Math.min(tokA.size, tokB.size);
+        if (overlap > 0.7) {
+          info.push({ id: 'similar-' + i + '-' + j, category: 'redundant', severity: 'info', slug: nonStructural[i].slug, description: '/' + nonStructural[i].slug + ' and /' + nonStructural[j].slug + ' look similar (' + Math.round(overlap * 100) + '% overlap)', suggestion: 'Consider merging these pages', fixType: 'scroll' });
+        }
+      }
+    }
+  }
+
+  _sitemapWorkflowIssues = { errors: errors, warnings: warnings, info: info };
+  return _sitemapWorkflowIssues;
+}
+
+function _computeEnrichmentPct() {
+  var pages = (S.pages || []).filter(function(p) { return !p.is_structural; });
+  if (!pages.length) return 0;
+  var enriched = 0;
+  pages.forEach(function(p) {
+    var has = 0; var need = 4;
+    if (p.target_persona) has++;
+    if (p.page_goal) has++;
+    if (p.awareness_stage) has++;
+    if (p.primary_keyword) has++;
+    if (['blog', 'article', 'recipe', 'event', 'portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0) {
+      need++;
+      if (p.content_pillar) has++;
+    }
+    if (has >= need) enriched++;
+  });
+  return Math.round(enriched / pages.length * 100);
+}
+
+function _computeWorkflowSteps() {
+  var pages = S.pages || [];
+  var hasSnapshot = S.snapshot && S.snapshot.topPages && S.snapshot.topPages.length > 0;
+  var hasImportUrls = !!(S.existingUrlsText || '').trim();
+  var issues = _runSitemapHealthCheck();
+  var enrichPct = _computeEnrichmentPct();
+
+  return [
+    { num: 1, label: 'Import', complete: hasSnapshot || hasImportUrls, subtitle: hasSnapshot ? (S.snapshot.topPages.length + ' pages') : (hasImportUrls ? 'URLs loaded' : ''), action: 'import' },
+    { num: 2, label: 'Generate', complete: pages.length > 0, subtitle: pages.length > 0 ? (pages.length + ' pages') : '', action: 'generate' },
+    { num: 3, label: 'Align', complete: pages.length > 0 && issues.errors.length === 0, subtitle: issues.errors.length > 0 ? (issues.errors.length + ' issue' + (issues.errors.length !== 1 ? 's' : '')) : (pages.length > 0 ? 'Aligned' : ''), action: 'align' },
+    { num: 4, label: 'Enrich', complete: enrichPct >= 80, subtitle: pages.length > 0 ? (enrichPct + '%') : '', action: 'enrich' },
+    { num: 5, label: 'Approve', complete: !!S.sitemapApproved, subtitle: S.sitemapApproved ? 'Gate 1 passed' : '', action: 'approve' }
+  ];
+}
+
+function _renderWorkflowStrip() {
+  var steps = _computeWorkflowSteps();
+  var html = '<div class="wf-strip" id="sitemap-wf-strip">';
+  var foundCurrent = false;
+  steps.forEach(function(s, i) {
+    if (i > 0) {
+      var lineDone = steps[i - 1].complete;
+      html += '<div class="wf-line' + (lineDone ? ' done' : '') + '"></div>';
+    }
+    var state = s.complete ? 'done' : (!foundCurrent ? 'current' : 'pending');
+    if (!s.complete && !foundCurrent) foundCurrent = true;
+    var icon = state === 'done' ? '<i class="ti ti-check" style="font-size:13px"></i>' : s.num;
+    var subClass = 'wf-sub' + (s.action === 'align' && s.subtitle.indexOf('issue') >= 0 ? ' err' : '');
+    html += '<div class="wf-step" id="wf-step-' + s.num + '">'
+      + '<div class="wf-circle ' + state + '">' + icon + '</div>'
+      + '<div class="wf-label">' + s.label + '</div>'
+      + '<div class="' + subClass + '">' + esc(s.subtitle) + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _mountWorkflowStrip() {
+  var actions = { 1: 'import', 2: 'generate', 3: 'align', 4: 'enrich', 5: 'approve' };
+  [1, 2, 3, 4, 5].forEach(function(num) {
+    var el = document.getElementById('wf-step-' + num);
+    if (!el) return;
+    el.onclick = function() {
+      if (num === 1) { toggleSitemapImport(); }
+      else if (num === 2) { confirmRunSitemap(); }
+      else if (num === 3) { toggleWorkflowIssues(); }
+      else if (num === 4) {
+        if (!sitemapEditMode) toggleSitemapEdit();
+        var table = document.querySelector('#sitemap-results .wf-strip');
+        if (table) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      else if (num === 5) {
+        var gate = document.getElementById('sitemap-gate1');
+        if (gate) gate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+  });
+}
+
+function _renderIssuesPanel() {
+  var issues = _runSitemapHealthCheck();
+  var all = issues.errors.concat(issues.warnings).concat(issues.info);
+  if (!all.length) return '<div class="wf-issues" style="padding:12px;text-align:center;font-size:11.5px;color:var(--green)"><i class="ti ti-check" style="margin-right:4px"></i>No issues found — sitemap is aligned with strategy</div>';
+
+  // Group by category
+  var groups = {};
+  var groupLabels = { alignment: 'Alignment Issues', keywords: 'Keyword Issues', gaps: 'Gaps', redundant: 'Potential Redundancies' };
+  var groupIcons = { alignment: 'ti-arrows-sort', keywords: 'ti-key', gaps: 'ti-alert-circle', redundant: 'ti-copy' };
+  var groupColours = { alignment: 'var(--error)', keywords: 'var(--warn)', gaps: '#3b82f6', redundant: 'var(--n2)' };
+  all.forEach(function(issue) {
+    var cat = issue.category || 'other';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(issue);
+  });
+
+  var html = '<div class="wf-issues" id="wf-issues-panel">';
+  ['alignment', 'keywords', 'gaps', 'redundant'].forEach(function(cat) {
+    var items = groups[cat];
+    if (!items || !items.length) return;
+    var sevIcon = items.some(function(i) { return i.severity === 'error'; }) ? 'ti-alert-triangle' : (items.some(function(i) { return i.severity === 'warning'; }) ? 'ti-alert-triangle' : 'ti-info-circle');
+    var sevCol = items.some(function(i) { return i.severity === 'error'; }) ? 'var(--error)' : (items.some(function(i) { return i.severity === 'warning'; }) ? 'var(--warn)' : '#3b82f6');
+    html += '<div><div class="wf-issues-hdr" style="color:' + sevCol + '">'
+      + '<i class="ti ' + (groupIcons[cat] || 'ti-info-circle') + '" style="font-size:13px"></i>'
+      + (groupLabels[cat] || cat) + ' <span style="font-weight:400;color:var(--n2)">(' + items.length + ')</span></div>';
+    items.forEach(function(issue, idx) {
+      var rowCol = issue.severity === 'error' ? 'rgba(220,50,47,0.03)' : (issue.severity === 'warning' ? 'rgba(245,166,35,0.02)' : 'transparent');
+      html += '<div class="wf-issue-row" style="background:' + rowCol + '">';
+      if (issue.slug) html += '<span style="font-family:monospace;color:var(--n2);font-size:10px;min-width:100px;flex-shrink:0">/' + esc(issue.slug) + '</span>';
+      html += '<span style="flex:1;color:var(--dark)">' + esc(issue.description) + '</span>';
+      if (issue.fixType === 'scroll' && issue.slug) {
+        html += '<button class="btn btn-ghost sm wf-issue-fix" data-fix-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px">Fix</button>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _mountIssuesPanel() {
+  var panel = document.getElementById('wf-issues-panel');
+  if (!panel) return;
+  var fixBtns = panel.querySelectorAll('.wf-issue-fix');
+  fixBtns.forEach(function(btn) {
+    btn.onclick = function() {
+      var slug = btn.getAttribute('data-fix-slug');
+      if (!slug) return;
+      if (!sitemapEditMode) toggleSitemapEdit();
+      // Find page index
+      var idx = (S.pages || []).findIndex(function(p) { return p.slug === slug; });
+      if (idx >= 0) {
+        var row = document.getElementById('sm-row-' + idx);
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+  });
+}
+
+function toggleWorkflowIssues() {
+  _sitemapIssuesExpanded = !_sitemapIssuesExpanded;
+  renderSitemapResults(S.sitemapApproved);
+}
+
 // Realign: light pass that updates strategy-derived metadata without rebuilding
 function realignSitemap() {
   if (!S.pages || !S.pages.length) {
@@ -1020,8 +1270,11 @@ function buildSitemapFromClusters() {
   enrichSitemapWithKwData();
   document.getElementById('sitemap-stream-wrap').style.display = 'none';
   document.getElementById('sitemap-results').style.display = '';
-  renderSitemapResults(false);
-  scheduleSave();
+
+  // Auto-chain: apply strategy priorities + assign personas in one shot
+  acceptAllPrioritySuggestions();
+  assignAllPersonas();
+  // Both call renderSitemapResults + scheduleSave internally
   enrichSitemapWithLiveData();
 
 }
@@ -1827,6 +2080,7 @@ function renderSitemapResults(approved) {
   if (_realignBtn) _realignBtn.style.display = (_isSitemapStale() && S.pages && S.pages.length) ? '' : 'none';
 }
 function _renderSitemapResultsInner(approved) {
+  _sitemapWorkflowIssues = null; // invalidate health check cache
   const allPages = S.pages;
 
   // Derive existing slugs from import textarea
@@ -1882,6 +2136,10 @@ function _renderSitemapResultsInner(approved) {
   html += '</div>';
   html += _renderScopeWarning();
   html += _renderStalenessWarning();
+
+  // Workflow strip
+  html += _renderWorkflowStrip();
+  if (_sitemapIssuesExpanded) html += _renderIssuesPanel();
 
   // Category tabs
   const _tabCounts = {
@@ -1983,7 +2241,7 @@ function _renderSitemapResultsInner(approved) {
       volHtml = '<span style="color:var(--dark);font-size:12px;font-weight:500">'+vol.toLocaleString()+'</span>';
     }
 
-    html += '<div data-sai-explain="page:' + esc(p.slug || '') + '">'; // page block
+    html += '<div id="sm-row-' + i + '" data-sai-explain="page:' + esc(p.slug || '') + '">'; // page block
 
     // ── MAIN ROW ──
     html += '<div style="display:grid;grid-template-columns:'+gcols+';padding:8px 14px;align-items:start;background:'+rowBg+'">';
@@ -2425,7 +2683,7 @@ function _renderSitemapResultsInner(approved) {
 
 
   if (!approved) {
-    html += '<div class="card dg" style="margin-bottom:8px">';
+    html += '<div class="card dg" id="sitemap-gate1" style="margin-bottom:8px">';
     html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px"><span style="color:var(--lime);font-size:14px">⛳</span><span style="color:var(--lime);font-weight:500;font-size:13px">Gate 1 — PM Sitemap Approval</span></div>';
     html += '<div style="margin-bottom:12px"><label style="font-size:12px;color:rgba(255,255,255,0.45);display:block;margin-bottom:5px">Revision notes — leave blank to approve as-is</label>';
     html += '<textarea id="sitemap-revisions" rows="3" placeholder="e.g. Add /emergency-services. Remove /about-team." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:8px 12px;color:rgba(255,255,255,0.8);font-size:13px;font-family:var(--font);resize:vertical;outline:none"></textarea></div>';
@@ -2452,6 +2710,10 @@ function _renderSitemapResultsInner(approved) {
   const el = document.getElementById('sitemap-results');
   el.innerHTML = html;
   el.style.display = 'block';
+
+  // Wire workflow strip + issues panel click handlers
+  _mountWorkflowStrip();
+  if (_sitemapIssuesExpanded) _mountIssuesPanel();
 
   // Restore cached Content Intelligence panels if data exists
   if (S.contentIntel?.paa?.questions?.length) renderPAAPanel();

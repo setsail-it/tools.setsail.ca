@@ -295,6 +295,22 @@ textarea.inp{resize:vertical}
 .img-copy-body{padding:8px 12px;display:none}
 .img-reinit-btn{font-size:11px;padding:3px 10px;border:1px dashed var(--n2);border-radius:4px;background:none;cursor:pointer;color:var(--n2);font-family:var(--font)}
 .img-reinit-btn:hover{border-color:var(--green);color:var(--green)}
+.wf-strip{display:flex;align-items:flex-start;justify-content:center;gap:0;padding:12px 8px 8px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.wf-step{display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;z-index:1;min-width:64px}
+.wf-step:hover .wf-circle{transform:scale(1.12)}
+.wf-circle{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;transition:transform .15s}
+.wf-circle.done{background:var(--green);color:#fff}
+.wf-circle.current{background:#fff;border:2px solid #F5A623;color:#F5A623}
+.wf-circle.pending{background:#fff;border:2px solid var(--border);color:var(--n2)}
+.wf-label{font-size:10px;color:var(--dark);margin-top:4px;font-weight:500}
+.wf-sub{font-size:9px;color:var(--n2);margin-top:1px;min-height:12px}
+.wf-sub.err{color:var(--error);font-weight:500}
+.wf-line{flex:1;height:2px;background:var(--border);margin-top:13px;min-width:24px}
+.wf-line.done{background:var(--green)}
+.wf-issues{border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden}
+.wf-issues-hdr{padding:7px 14px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:6px;background:var(--bg);border-bottom:1px solid var(--border)}
+.wf-issue-row{display:flex;align-items:center;gap:8px;padding:5px 14px 5px 24px;font-size:11px;border-bottom:1px solid rgba(0,0,0,0.04)}
+.wf-issue-row:last-child{border-bottom:none}
 </style>
 </head>
 <body>
@@ -997,6 +1013,8 @@ const S = {
 };
 let sitemapEditMode = false;
 let _sitemapCatTab = 'all'; // 'all' | 'service' | 'location' | 'blog' | 'core'
+let _sitemapIssuesExpanded = false;
+let _sitemapWorkflowIssues = null;
 
 function scheduleSave() {
   if (!S.projectId) return;
