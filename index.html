@@ -1027,8 +1027,17 @@ function scheduleSave() {
   showSaveIndicator('saving');
 }
 
+var _saveInFlight = false;
+var _saveQueuedWhileInFlight = false;
 async function saveProject() {
   if (!S.projectId || !S.setup) return;
+  // Prevent concurrent saves — queue a retry if one is already in-flight
+  if (_saveInFlight) {
+    _saveQueuedWhileInFlight = true;
+    return;
+  }
+  _saveInFlight = true;
+  _saveQueuedWhileInFlight = false;
   try {
     showSaveIndicator('saving');
     const payload = {
@@ -1123,6 +1132,13 @@ async function saveProject() {
     console.error('[save] failed:', e.message);
     showSaveIndicator('error');
     aiBarNotify('Save failed: ' + (e.message || 'network error'), { duration: 5000 });
+  } finally {
+    _saveInFlight = false;
+    // If another save was requested while we were saving, run it now
+    if (_saveQueuedWhileInFlight) {
+      _saveQueuedWhileInFlight = false;
+      scheduleSave();
+    }
   }
 }
 
