@@ -4909,7 +4909,7 @@ function renderStrategyTabContent() {
 
   // Audit panel (show quality checks for the relevant diagnostic)
   if (diagNum !== undefined && diagNum !== null) {
-    html += _renderAuditPanel(diagNum);
+    html += _renderStrategyAuditPanel(diagNum);
   }
 
   // Section content
@@ -7639,7 +7639,7 @@ function _renderRisks(st) {
 
 // ── Audit Panel (shown per tab) ────────────────────────────────────────
 
-function _renderAuditPanel(diagNum) {
+function _renderStrategyAuditPanel(diagNum) {
   var audit = (S.strategy && S.strategy._audit) ? S.strategy._audit[diagNum] : null;
   if (!audit || !audit.items) return '';
 
