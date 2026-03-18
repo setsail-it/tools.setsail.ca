@@ -300,10 +300,13 @@ textarea.inp{resize:vertical}
 .wf-step:hover .wf-circle{transform:scale(1.12)}
 .wf-circle{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;transition:transform .15s}
 .wf-circle.done{background:var(--green);color:#fff}
+.wf-circle.ok{background:#e8ffe8;border:2px solid var(--green);color:var(--green)}
+.wf-circle.warn{background:#fef3c7;border:2px solid #F5A623;color:#F5A623}
 .wf-circle.current{background:#fff;border:2px solid #F5A623;color:#F5A623}
 .wf-circle.pending{background:#fff;border:2px solid var(--border);color:var(--n2)}
 .wf-label{font-size:10px;color:var(--dark);margin-top:4px;font-weight:500}
 .wf-sub{font-size:9px;color:var(--n2);margin-top:1px;min-height:12px}
+.wf-sub.ok{color:var(--green)}
 .wf-sub.err{color:var(--error);font-weight:500}
 .wf-line{flex:1;height:2px;background:var(--border);margin-top:13px;min-width:24px}
 .wf-line.done{background:var(--green)}

@@ -959,33 +959,51 @@ function _computeWorkflowSteps() {
   var hasImportUrls = !!(S.existingUrlsText || '').trim();
   var issues = _runSitemapHealthCheck();
   var enrichPct = _computeEnrichmentPct();
+  var zeroVol = pages.filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; }).length;
+  var noKw = pages.filter(function(p) {
+    if (p.is_structural) return false;
+    var t = (p.page_type || '').toLowerCase();
+    if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+    return !p.primary_keyword;
+  }).length;
+  var removedCount = (S.sitemapRemoved || []).length;
+  var totalIssues = issues.errors.length + issues.warnings.length;
 
   return [
-    { num: 1, label: 'Import', complete: hasSnapshot || hasImportUrls, subtitle: hasSnapshot ? (S.snapshot.topPages.length + ' pages') : (hasImportUrls ? 'URLs loaded' : ''), action: 'import' },
-    { num: 2, label: 'Generate', complete: pages.length > 0, subtitle: pages.length > 0 ? (pages.length + ' pages') : '', action: 'generate' },
-    { num: 3, label: 'Align', complete: pages.length > 0 && issues.errors.length === 0, subtitle: issues.errors.length > 0 ? (issues.errors.length + ' issue' + (issues.errors.length !== 1 ? 's' : '')) : (pages.length > 0 ? 'Aligned' : ''), action: 'align' },
-    { num: 4, label: 'Enrich', complete: enrichPct >= 80, subtitle: pages.length > 0 ? (enrichPct + '%') : '', action: 'enrich' },
-    { num: 5, label: 'Approve', complete: !!S.sitemapApproved, subtitle: S.sitemapApproved ? 'Gate 1 passed' : '', action: 'approve' }
+    { num: 1, label: 'Import', done: hasSnapshot || hasImportUrls, status: hasSnapshot ? (S.snapshot.topPages.length + ' pages') : (hasImportUrls ? 'URLs loaded' : 'Not loaded'), warn: false, action: 'import' },
+    { num: 2, label: 'Generate', done: pages.length > 0, status: pages.length > 0 ? (pages.length + ' pages' + (removedCount > 0 ? ' · ' + removedCount + ' removed' : '')) : 'Not built', warn: pages.length > 0 && (zeroVol > 10 || noKw > 10), action: 'generate' },
+    { num: 3, label: 'Align', done: pages.length > 0 && issues.errors.length === 0, status: pages.length === 0 ? '\u2014' : (totalIssues > 0 ? totalIssues + ' issue' + (totalIssues !== 1 ? 's' : '') : 'Clean'), warn: issues.errors.length > 0, action: 'align' },
+    { num: 4, label: 'Enrich', done: enrichPct >= 80, status: pages.length > 0 ? (enrichPct + '% complete') : '\u2014', warn: pages.length > 0 && enrichPct < 30, action: 'enrich' },
+    { num: 5, label: 'Approve', done: !!S.sitemapApproved, status: S.sitemapApproved ? 'Gate 1 passed' : (pages.length > 0 ? 'Pending' : '\u2014'), warn: false, action: 'approve' }
   ];
 }
 
 function _renderWorkflowStrip() {
   var steps = _computeWorkflowSteps();
+  // Horizontal status bar — each cell shows icon, label, status
   var html = '<div class="wf-strip" id="sitemap-wf-strip">';
-  var foundCurrent = false;
   steps.forEach(function(s, i) {
-    if (i > 0) {
-      var lineDone = steps[i - 1].complete;
-      html += '<div class="wf-line' + (lineDone ? ' done' : '') + '"></div>';
+    if (i > 0) html += '<div class="wf-line' + (s.done && steps[i - 1].done ? ' done' : '') + '"></div>';
+
+    // Icon: checkmark only for Approve when done. Otherwise: status-coloured number
+    var circleClass, icon;
+    if (s.num === 5 && s.done) {
+      circleClass = 'wf-circle done'; icon = '<i class="ti ti-check" style="font-size:13px"></i>';
+    } else if (s.done && !s.warn) {
+      circleClass = 'wf-circle ok'; icon = s.num;
+    } else if (s.warn) {
+      circleClass = 'wf-circle warn'; icon = s.num;
+    } else if (s.status === '\u2014' || s.status === 'Not loaded' || s.status === 'Not built') {
+      circleClass = 'wf-circle pending'; icon = s.num;
+    } else {
+      circleClass = 'wf-circle pending'; icon = s.num;
     }
-    var state = s.complete ? 'done' : (!foundCurrent ? 'current' : 'pending');
-    if (!s.complete && !foundCurrent) foundCurrent = true;
-    var icon = state === 'done' ? '<i class="ti ti-check" style="font-size:13px"></i>' : s.num;
-    var subClass = 'wf-sub' + (s.action === 'align' && s.subtitle.indexOf('issue') >= 0 ? ' err' : '');
+
+    var subClass = 'wf-sub' + (s.warn ? ' err' : (s.done && !s.warn ? ' ok' : ''));
     html += '<div class="wf-step" id="wf-step-' + s.num + '">'
-      + '<div class="wf-circle ' + state + '">' + icon + '</div>'
+      + '<div class="' + circleClass + '">' + icon + '</div>'
       + '<div class="wf-label">' + s.label + '</div>'
-      + '<div class="' + subClass + '">' + esc(s.subtitle) + '</div>'
+      + '<div class="' + subClass + '">' + esc(s.status) + '</div>'
       + '</div>';
   });
   html += '</div>';
@@ -3470,23 +3488,24 @@ function renderExistingSitePanel() {
   // Mapping stream/status
   html += '<div id="kw-map-stream-wrap" style="display:none;margin-bottom:10px"><div class="stream-box" id="kw-map-stream"></div></div>';
 
-  // Gap summary
+  // Gap summary — collapsible
   if (hasMapping) {
     const gaps = Object.values(mapping).filter(m => m.isNew);
     if (gaps.length) {
-      html += '<div style="border:1px solid rgba(214,158,46,0.3);border-radius:6px;padding:10px 12px;background:rgba(214,158,46,0.05)">';
-      html += '<div style="font-size:11px;font-weight:500;color:var(--warn);margin-bottom:6px">';
-      html += '<i class="ti ti-plus" style="font-size:11px"></i> '+gaps.length+' New Page Opportunities Identified</div>';
+      html += '<details style="border:1px solid rgba(214,158,46,0.3);border-radius:6px;background:rgba(214,158,46,0.03);margin-top:4px">';
+      html += '<summary style="padding:8px 12px;font-size:11px;font-weight:500;color:var(--warn);cursor:pointer;list-style:none;display:flex;align-items:center;gap:5px">';
+      html += '<i class="ti ti-plus" style="font-size:10px"></i> ' + gaps.length + ' new page opportunities found <span style="font-weight:400;color:var(--n2);margin-left:auto;font-size:10px">These are auto-included when you Generate</span></summary>';
+      html += '<div style="padding:4px 12px 10px">';
       gaps.forEach(g => {
         html += '<div style="font-size:11px;color:var(--n3);padding:2px 0">';
-        html += '<span style="font-family:monospace;color:var(--n2)">/'+esc(g.suggestedSlug||'')+'</span>';
-        html += ' <span style="color:var(--warn)">'+esc(g.keyword)+'</span>';
-        if (g.vol) html += ' <span style="color:var(--n2);font-size:10px">'+g.vol.toLocaleString()+'/mo</span>';
+        html += '<span style="font-family:monospace;color:var(--n2)">/' + esc(g.suggestedSlug || '') + '</span>';
+        html += ' <span style="color:var(--warn)">' + esc(g.keyword) + '</span>';
+        if (g.vol) html += ' <span style="color:var(--n2);font-size:10px">' + g.vol.toLocaleString() + '/mo</span>';
         html += '</div>';
       });
-      html += '</div>';
+      html += '</div></details>';
     } else {
-      html += '<div style="font-size:11px;color:var(--green)"><i class="ti ti-check"></i> All keywords mapped to existing pages.</div>';
+      html += '<div style="font-size:11px;color:var(--green);padding:4px 0"><i class="ti ti-check"></i> All keywords mapped to existing pages.</div>';
     }
   }
 
