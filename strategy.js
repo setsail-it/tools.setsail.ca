@@ -7452,6 +7452,137 @@ function _renderAuditPanel(diagNum) {
   return html;
 }
 
+// ── Revenue Projection & Data Tables ─────────────────────────────────
+
+function _buildRevenueProjection() {
+  var st = S.strategy || {};
+  var ue = st.unit_economics || {};
+  if (!ue.max_allowable_cpl && !ue.estimated_market_cpl) return '';
+
+  var cpl = parseFloat(ue.estimated_market_cpl) || parseFloat(ue.max_allowable_cpl) || 0;
+  var cac = parseFloat(ue.estimated_cac) || cpl * 3;
+  var ltv = parseFloat(ue.ltv) || 0;
+  var closeRate = parseFloat(ue.close_rate) || 0.25;
+  var dealSize = parseFloat(ue.avg_deal_size) || ltv * 0.3 || 0;
+  var s = S.setup || {};
+  var monthlyBudget = 0;
+  var ba = (st.channel_strategy && st.channel_strategy.budget_allocation) || {};
+  if (ba.total_monthly) monthlyBudget = parseFloat(ba.total_monthly);
+  if (!monthlyBudget && s.estimated_engagement_size) monthlyBudget = parseFloat(s.estimated_engagement_size) || 0;
+
+  if (!cpl || !monthlyBudget) return '';
+
+  var leadsPerMonth = Math.round(monthlyBudget / cpl);
+  var dealsPerMonth = Math.round(leadsPerMonth * closeRate * 10) / 10;
+  var monthlyRevenue = Math.round(dealsPerMonth * dealSize);
+  var roi = monthlyBudget > 0 ? Math.round((monthlyRevenue / monthlyBudget) * 100) / 100 : 0;
+
+  var proj = '- Monthly marketing budget: $' + monthlyBudget.toLocaleString() + '\n';
+  proj += '- Estimated CPL: $' + cpl + '\n';
+  proj += '- Leads per month: ~' + leadsPerMonth + '\n';
+  proj += '- Close rate: ' + Math.round(closeRate * 100) + '%\n';
+  proj += '- Deals per month: ~' + dealsPerMonth + '\n';
+  proj += '- Average deal size: $' + dealSize.toLocaleString() + '\n';
+  proj += '- Projected monthly revenue: $' + monthlyRevenue.toLocaleString() + '\n';
+  proj += '- ROI: ' + roi + 'x ($' + monthlyRevenue.toLocaleString() + ' revenue on $' + monthlyBudget.toLocaleString() + ' spend)\n';
+  if (ltv) proj += '- Customer LTV: $' + ltv.toLocaleString() + '\n';
+  if (ue.ltv_cac_ratio) proj += '- LTV:CAC ratio: ' + ue.ltv_cac_ratio + ' (' + (ue.ltv_cac_health || '') + ')\n';
+
+  // Sensitivity
+  if (ue.sensitivity_analysis) {
+    var sa = ue.sensitivity_analysis;
+    proj += '- Sensitivity (conservative): CPL $' + (sa.conservative_cpl || '?') + ', LTV:CAC ' + (sa.conservative_ltv_cac || '?') + '\n';
+    proj += '- Sensitivity (optimistic): CPL $' + (sa.optimistic_cpl || '?') + ', LTV:CAC ' + (sa.optimistic_ltv_cac || '?') + '\n';
+  }
+
+  return proj;
+}
+
+function _buildStrategyDataTables() {
+  var md = '';
+  var st = S.strategy || {};
+  var kwR = S.kwResearch || {};
+
+  // ── Appendix A: Top Selected Keywords ──
+  var selected = kwR.selected || [];
+  var allKws = kwR.keywords || [];
+  if (selected.length && allKws.length) {
+    var selSet = new Set(selected);
+    var selKws = allKws.filter(function(k) { return selSet.has(k.kw); })
+      .sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    if (selKws.length) {
+      md += '\n\n---\n\n## Appendix A: Selected Keyword Opportunities (' + selKws.length + ')\n\n';
+      md += '| Keyword | Vol/mo | KD | CPC | Score |\n';
+      md += '|---------|-------:|---:|----:|------:|\n';
+      selKws.forEach(function(k) {
+        var kd = k.kd > 0 ? k.kd : 30;
+        var score = k.vol >= 10 ? Math.round((Math.log(k.vol + 1) * 100) / Math.max(kd, 5) * 10) / 10 : 0;
+        md += '| ' + k.kw + ' | ' + (k.vol || 0).toLocaleString() + ' | ' + (k.kd || '-') + ' | $' + (k.cpc || 0).toFixed(2) + ' | ' + score + ' |\n';
+      });
+      var totalVol = selKws.reduce(function(s, k) { return s + (k.vol || 0); }, 0);
+      md += '\n**Total selected volume:** ' + totalVol.toLocaleString() + '/month\n';
+    }
+  }
+
+  // ── Appendix B: Keyword Clusters → Page Map ──
+  var clusters = kwR.clusters || [];
+  var qualClusters = clusters.filter(function(c) { return c.qualifies !== false; });
+  if (qualClusters.length) {
+    md += '\n\n## Appendix B: Cluster → Page Map (' + qualClusters.length + ' pages)\n\n';
+    md += '| Cluster | Primary Keyword | Vol/mo | KD | Page Type | Action | Slug |\n';
+    md += '|---------|----------------|-------:|---:|-----------|--------|------|\n';
+    qualClusters.forEach(function(c) {
+      var action = c.recommendation === 'improve_existing' ? 'Improve' : 'Build';
+      var slug = c.recommendation === 'improve_existing' ? '/' + (c.existingSlug || '') : '/' + (c.suggestedSlug || '');
+      md += '| ' + (c.name || c.primaryKw) + ' | ' + (c.primaryKw || '') + ' | ' + (c.primaryVol || 0).toLocaleString() + ' | ' + (c.primaryKd || '-') + ' | ' + (c.pageType || '-') + ' | ' + action + ' | ' + slug + ' |\n';
+    });
+  }
+
+  // ── Appendix C: Audience Segments ──
+  if (st.audience && st.audience.segments && st.audience.segments.length) {
+    md += '\n\n## Appendix C: Audience Segments\n\n';
+    md += '| Segment | Revenue Potential | Acquisition Difficulty | Priority |\n';
+    md += '|---------|:-----------------:|:---------------------:|:--------:|\n';
+    st.audience.segments.forEach(function(seg) {
+      md += '| ' + seg.name + ' | ' + (seg.revenue_potential || '-') + ' | ' + (seg.acquisition_difficulty || '-') + ' | ' + (seg.priority || '-') + ' |\n';
+    });
+  }
+
+  // ── Appendix D: Channel Scoring ──
+  if (st.channel_strategy && st.channel_strategy.levers && st.channel_strategy.levers.length) {
+    md += '\n\n## Appendix D: Channel Scoring Matrix\n\n';
+    md += '| Channel | Priority | Budget % | Timeline | Rationale |\n';
+    md += '|---------|:--------:|:--------:|----------|----------|\n';
+    st.channel_strategy.levers.forEach(function(lev) {
+      md += '| ' + (lev.lever || lev.name || '') + ' | ' + (lev.priority_score || '-') + '/10 | ' + (lev.budget_allocation_pct || 0) + '% | ' + (lev.timeline_to_results || '-') + ' | ' + (lev.rationale || '-').substring(0, 80) + ' |\n';
+    });
+  }
+
+  // ── Appendix E: Risk Register ──
+  if (st.risks && st.risks.risks && st.risks.risks.length) {
+    md += '\n\n## Appendix E: Risk Register\n\n';
+    md += '| Risk | Severity | Mitigation |\n';
+    md += '|------|:--------:|-----------|\n';
+    st.risks.risks.forEach(function(rk) {
+      md += '| ' + (rk.risk || '').replace(/_/g, ' ') + ' | ' + (rk.severity || '-') + '/10 | ' + (rk.mitigation || '-').substring(0, 100) + ' |\n';
+    });
+  }
+
+  // ── Appendix F: Competitor Comparison ──
+  var comps = (S.research || {}).competitors || [];
+  var bs = st.brand_strategy || {};
+  if (comps.length) {
+    md += '\n\n## Appendix F: Competitive Landscape\n\n';
+    md += '| Competitor | Strength | Weakness | Our Edge |\n';
+    md += '|-----------|----------|----------|----------|\n';
+    comps.slice(0, 8).forEach(function(c) {
+      md += '| ' + (c.name || c) + ' | ' + (c.why_they_win || '-').substring(0, 60) + ' | ' + (c.weaknesses || '-').substring(0, 60) + ' | ' + (c.what_we_do_better || '-').substring(0, 60) + ' |\n';
+    });
+  }
+
+  return md;
+}
+
 // ── Output Tab — Compiled Strategy Document ────────────────────────────
 
 async function compileStrategyOutput() {
@@ -7890,45 +8021,65 @@ async function compileStrategyOutput() {
     if (st.pricing_snapshot.gap > 0) ctx += '- Budget gap: $' + st.pricing_snapshot.gap.toLocaleString() + '/mo over budget\n';
   }
 
-  var sys = 'You are a senior digital strategist at a marketing agency. Using the completed strategy analysis below, write a comprehensive strategy document that will serve as the single source of truth for all downstream work (sitemap, briefs, copy, design).\n\n'
-    + 'Write in these 15 sections. Use the client name. Be specific and actionable — every sentence must be usable by the team.\n\n'
-    + 'CRITICAL: Use the ACTUAL data provided — real competitor names, real keyword clusters with their exact volumes and KD scores, real budget dollar amounts and percentage splits, real page slugs, real CPC figures, real DR scores, real case study results, real proof points. Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers. If strategist notes were provided, incorporate their direction.\n\n'
+  // Build revenue projection for the prompt
+  var revProj = _buildRevenueProjection();
+  if (revProj) ctx += '\nREVENUE PROJECTION:\n' + revProj + '\n';
+
+  // Add client goals alignment context
+  if (s.goalStatement || s.goalTarget) {
+    ctx += '\nCLIENT GOALS (from intake):\n';
+    if (s.goalStatement) ctx += '- Goal statement: "' + s.goalStatement + '"\n';
+    if (s.goalTarget) ctx += '- Target: ' + s.goalTarget + '\n';
+    if (s.goalBaseline) ctx += '- Baseline: ' + s.goalBaseline + '\n';
+    if (s.goalTimeline) ctx += '- Timeline: ' + s.goalTimeline + '\n';
+    if (s.goalKpi) ctx += '- Primary KPI: ' + s.goalKpi.replace(/_/g, ' ') + '\n';
+  }
+
+  var sys = 'You are a senior digital strategist writing a strategy document that is ALSO a sales document. This document must clearly communicate: (1) the market opportunity exists, (2) the client\'s goals are achievable, (3) there is a validated path from investment to revenue, and (4) every recommendation is backed by data.\n\n'
+    + 'Use Canadian spelling. Use the client name throughout. This is a premium deliverable — write with authority and precision.\n\n'
+    + 'CRITICAL RULES:\n'
+    + '- Use ACTUAL data: real competitor names, real keyword volumes, real dollar amounts, real DR scores, real case study results\n'
+    + '- Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers\n'
+    + '- Include markdown tables where data is tabular (competitor comparison, channel allocation, risk register)\n'
+    + '- Every claim must reference the data that supports it\n'
+    + '- If strategist notes were provided, incorporate their direction\n\n'
+    + 'Write in these 13 sections:\n\n'
     + '## 1. EXECUTIVE SUMMARY\n'
-    + '3-4 paragraphs. Who is the client, what do they need, what is our strategic recommendation, and what outcome we expect. Include the core positioning statement and value proposition. Reference the strategy score and any active scoring caps that represent known limitations.\n\n'
-    + '## 2. AUDIENCE INTELLIGENCE\n'
-    + 'Who the client serves and how they buy. Summarise the primary and secondary audience segments with their revenue potential and acquisition difficulty. Profile the key personas — name, role, goals, frustrations, and the language they use. Explain the buying motions: how each segment researches, decides, and purchases. List the top purchase triggers and how to leverage them. Map the key objections to segments with counter-messaging.\n\n'
-    + '## 3. MARKET ECONOMICS\n'
-    + 'Unit economics grounded in real data: max allowable CPL, estimated market CPL (citing actual CPC data and the multiplier used), LTV:CAC ratio and health assessment, paid media viability, pricing model. State which inputs were client-provided vs estimated. If CPC data came from keyword research, reference the average and high-intent CPC figures.\n\n'
-    + '## 4. SUBTRACTION ANALYSIS\n'
-    + 'What the client should STOP doing before we build anything new. List each current activity with its verdict (cut/keep/restructure), monthly cost, and reason. State total recoverable budget and where those funds should be redirected. Include any redirect recommendations.\n\n'
-    + '## 5. POSITIONING DIRECTION\n'
-    + 'If founder hypotheses were evaluated, briefly summarise each hypothesis and its verdict (viable/partially viable/contested). State which direction was selected and why — include the headline and rationale. Acknowledge the trade-offs. List the proof that needs to be built to fully own this positioning. If no direction was evaluated, note that positioning was system-generated without founder alignment.\n\n'
-    + '## 6. COMPETITIVE LANDSCAPE\n'
-    + 'Name the actual competitors from the data. For each major competitor, state their specific strength, their weakness, and what we do better. Identify the unoccupied territory we are claiming. If DR data is available, reference the authority gap and each competitor DR.\n\n'
-    + '## 7. POSITIONING & MESSAGING\n'
-    + 'The value proposition, positioning angle, validated differentiators, and messaging hierarchy (primary message + supporting messages). Include the brand voice direction (style, tone, words to use, words to avoid). Reference specific proof points that support each differentiator. This section must align with the selected positioning direction.\n\n'
-    + '## 8. KEYWORD & DEMAND STRATEGY\n'
-    + 'Reference specific keyword clusters by name with their exact monthly volumes and KD scores. State total addressable search volume. Map clusters to intent tiers (transactional, informational, navigational). Include the demand validation verdict, SEO viability score, and realistic organic timeline. If strategic revisions were flagged, state them.\n\n'
-    + '## 9. CONTENT & AUTHORITY STRATEGY\n'
-    + 'Content pillars, formats, velocity, and authority-building plan. Tie each pillar to specific keyword clusters and business revenue. If domain authority gap data exists, include the DR gap analysis, 12-month DR target, and the phased authority timeline. Reference quick wins and content mix.\n\n'
-    + '## 10. WEBSITE & CONVERSION\n'
-    + 'Build type, page architecture referencing specific cluster slugs (e.g. /service-name, /location-name). List the actual pages to build vs improve. Full CTA architecture (primary, secondary, low-commitment), conversion pathway, funnel architecture, form strategy, and tracking requirements. Reference the KPIs that will measure website success.\n\n'
-    + '## 11. CHANNEL ALLOCATION\n'
-    + 'Which levers to activate (in priority order). Include exact budget dollar amounts and percentage splits per channel. State the expected timeline to results for each lever and its rationale. Explain the website role in the overall channel mix.\n\n'
-    + '## 12. GROWTH PLAN & EXECUTION TIMELINE\n'
-    + 'Phased execution timeline showing what gets built when. Reference the growth plan timeline items with their phases and durations. Include funnel architecture and how the execution phases build on each other.\n\n'
-    + '## 13. GEO & LOCAL STRATEGY\n'
-    + 'Geographic targeting approach, primary and secondary markets, local SEO priority, location page strategy. Reference any location-type keyword clusters.\n\n'
-    + '## 14. RISKS, PROOF & CONSTRAINTS\n'
-    + 'Top risks with severity scores and specific mitigations. E-E-A-T proof inventory: list actual case studies (client, result, timeframe), notable clients, awards/certifications, team credentials, and founder bio. Hard rules and constraints the team must follow — including words to avoid and tone boundaries.\n\n'
-    + '## 15. INVESTMENT SUMMARY\n'
-    + 'If real service pricing data is available, present a complete investment breakdown: monthly recurring services with cost ranges, one-time costs (strategy diagnostic, analytics setup, any project-based services), estimated year-one total, and the recommended package tier fit. Compare the total against the client stated budget and note any gap. If pricing data is not available, state that costs are estimates pending pricing confirmation.\n\n'
-    + 'Write in clear, professional prose. No bullet-point dumping — use paragraphs with occasional bullets for lists. Approx 2600-3400 words total.';
+    + '3-4 paragraphs. Open with the market opportunity (total search volume, demand validation). State the client goal and how the strategy achieves it. Summarise the positioning direction and the revenue projection. End with the recommended investment and expected ROI timeline. This section must make the reader think: "this is clearly worth doing."\n\n'
+    + '## 2. GOAL ALIGNMENT\n'
+    + 'Start with the client\'s stated goal (quote it if available). Map each goal component to specific strategy recommendations. Show the projected timeline to hit the target. Include the revenue projection model: leads/month × close rate × deal size = monthly revenue. Compare investment vs projected return. Close with the KPIs that will measure progress.\n\n'
+    + '## 3. MARKET OPPORTUNITY & DEMAND VALIDATION\n'
+    + 'Total addressable search volume across all keyword clusters. Break down by service line (sum cluster volumes by page type). Include the demand validation verdict and SEO viability score. Reference seasonal trends if available. State the competitive density (how many competitors, their DR range). This section proves the market exists and is winnable.\n\n'
+    + '## 4. AUDIENCE & BUYING BEHAVIOUR\n'
+    + 'Audience segments table: name, revenue potential, acquisition difficulty, priority. Key personas with their goals, frustrations, and decision criteria. Buying motions: how each segment researches, evaluates, and purchases. Purchase triggers and objection counter-messaging. Perceived alternatives and how to position against them.\n\n'
+    + '## 5. COMPETITIVE POSITIONING\n'
+    + 'Open with the selected positioning direction, headline, and rationale. Include a markdown table comparing our client vs top competitors on key dimensions (DR, traffic, positioning, strengths, weaknesses). State the unoccupied territory being claimed. If hypotheses were evaluated, summarise each with its verdict. Include the messaging hierarchy: primary message, supporting messages, proof points. Brand voice direction with words to use/avoid.\n\n'
+    + '## 6. UNIT ECONOMICS & REVENUE MODEL\n'
+    + 'Present the full financial model in a clear markdown table: CPL, CAC, LTV, LTV:CAC ratio, close rate, deal size, monthly lead target, projected monthly revenue. Include the sensitivity analysis (conservative/base/optimistic). State paid media viability. Reference actual CPC data from keyword research. Show break-even timeline. This is the most important section for client buy-in.\n\n'
+    + '## 7. KEYWORD & CONTENT STRATEGY\n'
+    + 'Reference the top keyword clusters by name with volumes and KD. Map clusters to page types (service, location, blog). State content pillars tied to keyword clusters and revenue. Include content velocity, mix, and the authority-building plan. DR gap analysis with 12-month target. Quick wins for early traction.\n\n'
+    + '## 8. SITE ARCHITECTURE & CONVERSION\n'
+    + 'Pages to build vs improve (reference actual cluster slugs). CTA architecture (primary, secondary, low-commitment). Conversion pathway from landing to lead. Form strategy. Tracking requirements and KPIs.\n\n'
+    + '## 9. CHANNEL STRATEGY & BUDGET ALLOCATION\n'
+    + 'Markdown table: channel, priority score, monthly budget $, % of total, timeline to results, rationale. Website role in the channel mix. Funnel coverage analysis. Subtraction analysis: what to stop, monthly savings, redirect recommendations.\n\n'
+    + '## 10. EXECUTION ROADMAP\n'
+    + 'Phased timeline: what launches when, dependencies, and expected milestones. Reference the growth plan phases and durations. Geographic strategy: primary and secondary markets, location page approach.\n\n'
+    + '## 11. RISK REGISTER & MITIGATIONS\n'
+    + 'Markdown table: risk, severity (1-10), impact, mitigation. Include proof inventory: case studies, notable clients, awards, team credentials, founder bio — these counter credibility risks.\n\n'
+    + '## 12. INVESTMENT SUMMARY\n'
+    + 'If pricing data is available: markdown table of services with monthly cost ranges, one-time costs, year-one total, package tier fit. Compare against client budget. If engagement scope exists, show suggested vs realistic columns with per-service ROI. If no pricing data, state costs are pending.\n\n'
+    + '## 13. SUCCESS METRICS & MEASUREMENT PLAN\n'
+    + 'Define what "working" looks like at 3, 6, and 12 months. Tie each KPI to the client\'s stated goal. Include organic traffic targets, keyword ranking targets, lead volume targets, and revenue targets. State what tools/platforms will be used for measurement.\n\n'
+    + 'Write in clear, professional prose. Use markdown tables for tabular data. Approx 3000-4000 words total. This document must make the case that the investment will generate a measurable return.';
+
+  // Build data appendices (deterministic — no AI needed)
+  var appendices = _buildStrategyDataTables();
 
   aiBarStart('Compiling strategy document...');
   try {
-    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 24000), null, 8000, 'Strategy output');
-    S.strategy.compiled_output = result;
+    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 28000), null, 8192, 'Strategy output');
+    // Append data tables after the AI prose
+    S.strategy.compiled_output = result + appendices;
     // Also update the webStrategy brief (shorter version for downstream)
     if (!S.strategy.webStrategy || S.strategy.webStrategy.length < 100) {
       await synthesiseWebStrategy();
