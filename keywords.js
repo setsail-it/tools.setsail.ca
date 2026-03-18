@@ -1191,7 +1191,7 @@ function _renderKwOppsTab() {
     // GKP columns (bid range + ad competition)
     var gkpCells = '';
     if (hasGkp) {
-      var bidStr = k.low_bid ? '$' + k.low_bid.toFixed(2) + '–' + (k.high_bid || 0).toFixed(2) : '<span style="color:var(--n1)">-</span>';
+      var bidStr = (k.low_bid && k.high_bid) ? '$' + k.low_bid.toFixed(2) + '–$' + k.high_bid.toFixed(2) : (k.low_bid ? '$' + k.low_bid.toFixed(2) : '<span style="color:var(--n1)">-</span>');
       var adLetter = '', adClr = 'var(--n1)';
       if (k.ad_competition === 'LOW') { adLetter = 'L'; adClr = 'var(--green)'; }
       else if (k.ad_competition === 'MEDIUM') { adLetter = 'M'; adClr = 'var(--warn)'; }
@@ -3345,7 +3345,7 @@ async function _pipelineAISelect() {
   kwBlock += '\n';
   candidates.forEach(function(k) {
     kwBlock += k.kw + ' | ' + k.vol + ' | ' + (k.kd || 0) + ' | ' + (k.cpc || 0).toFixed(2) + ' | ' + k.score;
-    if (hasGkp) kwBlock += ' | ' + (k.high_bid || 0).toFixed(2) + ' | ' + (k.ad_competition || 'N/A');
+    if (hasGkp) kwBlock += ' | ' + (k.high_bid ? k.high_bid.toFixed(2) : '-') + ' | ' + (k.ad_competition || '-');
     kwBlock += '\n';
   });
 
