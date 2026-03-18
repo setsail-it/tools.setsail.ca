@@ -880,12 +880,6 @@ function buildSitemapFromClusters() {
   scheduleSave();
   enrichSitemapWithLiveData();
 
-  // 5. Auto-assign content pillars if D6 data exists and blog pages are present
-  var _hasPillars = S.strategy && S.strategy.brand_strategy && S.strategy.brand_strategy.content_pillars && S.strategy.brand_strategy.content_pillars.length;
-  var _hasBlogPages = S.pages.some(function(p) { return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0; });
-  if (_hasPillars && _hasBlogPages) {
-    setTimeout(function() { assignContentPillars(); }, 100);
-  }
 }
 
 function attemptSitemapParseFromText(text) {
