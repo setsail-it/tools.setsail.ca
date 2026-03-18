@@ -2092,6 +2092,8 @@ async function _processDocExtractQueue() {
       if (result) {
         d.extract = result;
         d.extractStatus = 'done';
+        // Auto-fill client goals from extracted data if fields are empty
+        _tryAutoFillGoals(result);
       } else {
         d.extractStatus = 'error';
       }
@@ -2104,6 +2106,55 @@ async function _processDocExtractQueue() {
     if (_docExtractQueue.length) await new Promise(function(r) { setTimeout(r, 3000); });
   }
   _docExtracting = false;
+}
+
+async function _tryAutoFillGoals(extract) {
+  // Only fill if goal statement is empty
+  var gs = document.getElementById('f-goal-statement');
+  if (!gs || gs.value.trim()) return;
+  var goals = extract.goals || [];
+  if (!goals.length) return;
+
+  // Also gather facts + requirements for richer context
+  var facts = (extract.facts || []).slice(0, 10);
+  var reqs = (extract.requirements || []).slice(0, 5);
+
+  var ctx = 'EXTRACTED GOALS:\n' + goals.map(function(g) { return '- ' + g; }).join('\n');
+  if (facts.length) ctx += '\n\nBUSINESS FACTS:\n' + facts.map(function(f) { return '- ' + f; }).join('\n');
+  if (reqs.length) ctx += '\n\nREQUIREMENTS:\n' + reqs.map(function(r) { return '- ' + r; }).join('\n');
+
+  try {
+    var result = await fetch('/api/claude-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        system: 'You synthesise extracted document data into structured client goals. Use Canadian spelling. Output ONLY valid JSON with these keys:\n- goalStatement: 1-2 sentence summary of what the client wants to achieve, written in their voice (use first person if quotes available)\n- goalTarget: the specific measurable target (e.g. "40 qualified leads/month")\n- goalBaseline: where they are now (e.g. "15 leads/month, mostly referrals")\n- goalTimeline: one of: "3 months", "6 months", "12 months", "18 months", "ongoing"\n- goalKpi: one of: "qualified_leads", "revenue", "cpl", "organic_traffic", "rankings", "bookings", "calls", "brand_awareness"\n\nIf a field cannot be determined from the data, use empty string "".',
+        messages: [{ role: 'user', content: ctx }]
+      })
+    });
+    if (!result.ok) return;
+    var data = await result.json();
+    var text = '';
+    if (data.content) data.content.forEach(function(b) { if (b.text) text += b.text; });
+    var parsed = JSON.parse(text);
+
+    // Fill only empty fields
+    if (parsed.goalStatement && gs && !gs.value.trim()) gs.value = parsed.goalStatement;
+    var gt = document.getElementById('f-goal-target');
+    if (parsed.goalTarget && gt && !gt.value.trim()) gt.value = parsed.goalTarget;
+    var gb = document.getElementById('f-goal-baseline');
+    if (parsed.goalBaseline && gb && !gb.value.trim()) gb.value = parsed.goalBaseline;
+    var gtl = document.getElementById('f-goal-timeline');
+    if (parsed.goalTimeline && gtl && !gtl.value) gtl.value = parsed.goalTimeline;
+    var gk = document.getElementById('f-goal-kpi');
+    if (parsed.goalKpi && gk && !gk.value) gk.value = parsed.goalKpi;
+
+    aiBarNotify('Client goals auto-filled from discovery document', { duration: 3000 });
+  } catch(e) {
+    // Silent fail — user can still fill manually
+  }
 }
 
 async function _extractDocSync(content, docName) {
@@ -2446,6 +2497,11 @@ function renderSnapshot() {
   const snap = S.snapshot;
   if (!snap) return;
   const m = snap.domainMetrics || {};
+
+  // Show which domain this snapshot is for
+  var snapDomain = snap.domain || (S.setup && S.setup.url ? S.setup.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : '');
+  var statusEl = document.getElementById('snapshot-status');
+  if (statusEl && snapDomain) statusEl.textContent = 'Data for ' + snapDomain;
 
   // Metrics bar — fully JS rendered so HTML cache never matters
   const bar = document.getElementById('snapshot-metrics-bar');
