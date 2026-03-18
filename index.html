@@ -576,6 +576,7 @@ textarea.inp{resize:vertical}
       <div id="snapshot-run-area" style="margin-bottom:20px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button class="btn btn-primary" id="snapshot-run-btn" onclick="runSnapshot()"><i class="ti ti-radar"></i> Run Site Snapshot</button>
+          <button class="btn btn-ghost sm" id="snapshot-clear-btn" style="display:none;color:var(--error)" onclick="clearSnapshot()"><i class="ti ti-trash"></i> Clear All</button>
           <div id="snapshot-status" style="font-size:12px;color:var(--n2)"></div>
         </div>
         <div id="snapshot-error" class="error-banner" style="display:none;margin-top:10px"><i class="ti ti-alert-circle"></i><span id="snapshot-error-msg"></span></div>
@@ -1366,7 +1367,11 @@ function goTo(stage) {
   startStageTips(stage);
   window.scrollTo(0,0);
   if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); }
-  if (stage === 'snapshot') { if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
+  if (stage === 'snapshot') {
+    var _snapClearBtn = document.getElementById('snapshot-clear-btn');
+    if (S.snapshot) { renderSnapshot(); if (_snapClearBtn) _snapClearBtn.style.display = ''; }
+    else { _clearSnapshotUI(); if (_snapClearBtn) _snapClearBtn.style.display = 'none'; }
+  }
   if (stage === 'briefs') initBriefs();
   if (stage === 'sitemap') {
     var _clearBtn = document.getElementById('sitemap-clear-btn');
@@ -2488,6 +2493,19 @@ function addSnapshotPage(slug) {
   var input = document.getElementById('snap-add-page-input');
   if (input) input.value = '';
   renderSnapshot();
+}
+
+function clearSnapshot() {
+  if (!confirm('Clear all snapshot data? You can re-run the snapshot afterwards.')) return;
+  S.snapshot = null;
+  S.existingUrlsText = '';
+  scheduleSave();
+  _clearSnapshotUI();
+  var btn = document.getElementById('snapshot-run-btn');
+  if (btn) btn.innerHTML = '<i class="ti ti-radar"></i> Run Site Snapshot';
+  var clearBtn = document.getElementById('snapshot-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+  aiBarNotify('Snapshot cleared', { duration: 2000 });
 }
 
 function _clearSnapshotUI() {
