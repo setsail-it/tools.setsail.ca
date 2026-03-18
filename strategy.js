@@ -30,10 +30,12 @@ async function fetchPricingCatalog() {
     var res = await fetch('/api/pricing-catalog');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var data = await res.json();
-    if (data.ok && data.catalog) {
-      _pricingCatalog = data.catalog;
+    // Worker wraps as { ok, catalog } — catalog may also be direct if structure changes
+    var cat = data.catalog || (data.services ? data : null);
+    if (cat && cat.services && cat.services.length) {
+      _pricingCatalog = cat;
       _pricingStatus = 'live';
-      console.log('[pricing] Catalog loaded: ' + (_pricingCatalog.services || []).length + ' services');
+      console.log('[pricing] Catalog loaded: ' + cat.services.length + ' services');
       return _pricingCatalog;
     }
     _pricingStatus = 'estimated';
@@ -6226,22 +6228,79 @@ function _buildGanttItems(st) {
     }
 
     items = [
-      { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' },
-      { id: '_website',  phase: 1, label: 'Website Build', depends: [], duration: '4-8 weeks', startWeek: 0, notes: 'Can start in parallel with tracking.' }
+      { id: '_tracking', phase: 0, label: 'Tracking & Measurement', depends: [], duration: '2 weeks', startWeek: 0, notes: 'Setsail measurement product. Must complete before paid levers.' }
     ];
 
+    // Build from pricing catalog when available, otherwise fall back to AI levers
+    var _catServices = (_pricingCatalog && _pricingCatalog.services) || [];
+    var _catById = {};
+    _catServices.forEach(function(cs) { _catById[cs.id] = cs; });
+
+    // Track which catalog services are already added (avoid duplicates from multi-lever collapse)
+    var _addedCatSlugs = {};
+
     levers.forEach(function(lev) {
-      var id = (lev.lever || '').replace(/\s+/g, '_').toLowerCase();
-      items.push({
-        id: id,
-        phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
-        label: (lev.lever || '').replace(/_/g, ' '),
-        depends: lev.dependencies || [],
-        duration: lev.timeline_to_results || 'ongoing',
-        startWeek: 0,
-        notes: lev.recommendation ? lev.recommendation.slice(0, 100) : '',
-        budgetPct: lev.budget_allocation_pct || 0
-      });
+      var levId = (lev.lever || '').replace(/\s+/g, '_').toLowerCase();
+      var slug = LEVER_SERVICE_MAP[lev.lever];
+      var catSvc = slug ? _catById[slug] : null;
+
+      // Skip if this catalog service was already added by another lever
+      if (slug && _addedCatSlugs[slug]) return;
+      if (slug) _addedCatSlugs[slug] = true;
+
+      // Check if disabled in engagement scope
+      if (st.engagement_scope && st.engagement_scope.services && slug) {
+        var scopeSvc = st.engagement_scope.services[slug];
+        if (scopeSvc && !scopeSvc.enabled) return;
+      }
+
+      // Project-type services with phases → expand into sub-items
+      if (catSvc && catSvc.type === 'project' && catSvc.phases && catSvc.phases.length) {
+        catSvc.phases.forEach(function(ph, idx) {
+          var phWeeks = String(ph.weeks || '1');
+          var startW = 0;
+          var durW = 2;
+          var wMatch = phWeeks.match(/(\d+)\s*[-–]\s*(\d+)/);
+          if (wMatch) {
+            startW = parseInt(wMatch[1], 10) - 1;
+            durW = parseInt(wMatch[2], 10) - startW;
+          } else {
+            var single = parseInt(phWeeks, 10);
+            if (single) { startW = single - 1; durW = 1; }
+          }
+          items.push({
+            id: levId + '_ph' + idx,
+            _serviceSlug: slug,
+            phase: 1,
+            label: (catSvc.name || lev.lever) + ': ' + ph.name,
+            depends: idx === 0 ? [] : [levId + '_ph' + (idx - 1)],
+            duration: durW + ' weeks',
+            startWeek: startW,
+            notes: (ph.modules || []).join(', '),
+            budgetPct: idx === 0 ? (lev.budget_allocation_pct || 0) : 0,
+            _isProjectPhase: true
+          });
+        });
+      } else {
+        // Monthly/recurring services or no catalog data → single bar
+        var duration = 'ongoing';
+        if (catSvc && catSvc.type === 'project') {
+          duration = '4-8 weeks'; // project without phases
+        } else if (lev.timeline_to_results) {
+          duration = lev.timeline_to_results;
+        }
+        items.push({
+          id: levId,
+          _serviceSlug: slug,
+          phase: lev.dependencies && lev.dependencies.length ? 2 : 1,
+          label: catSvc ? catSvc.name : (lev.lever || '').replace(/_/g, ' '),
+          depends: lev.dependencies || [],
+          duration: duration,
+          startWeek: 0,
+          notes: lev.recommendation ? lev.recommendation.slice(0, 100) : '',
+          budgetPct: lev.budget_allocation_pct || 0
+        });
+      }
     });
   }
 
@@ -6751,11 +6810,13 @@ function _mountGantt(st) {
     }
 
     // Cost badge from engagement_scope
-    var _ganttSlug = LEVER_SERVICE_MAP[item.id];
+    var _ganttSlug = item._serviceSlug || LEVER_SERVICE_MAP[item.id];
     var _ganttScope = st.engagement_scope;
     if (_ganttSlug && _ganttScope && _ganttScope.services && _ganttScope.services[_ganttSlug]) {
       var _ganttSvc = _ganttScope.services[_ganttSlug];
-      if (_ganttSvc.cost) {
+      // Only show cost on first phase of project services (budgetPct > 0 marks the first)
+      var _showCost = item._isProjectPhase ? item.budgetPct > 0 : true;
+      if (_ganttSvc.cost && _showCost) {
         var _ganttCostVal = _scopeCostForTier(_ganttSvc.cost, _ganttSvc.scope);
         if (_ganttCostVal > 0) {
           var costTag = document.createElement('span');
