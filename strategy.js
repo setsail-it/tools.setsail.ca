@@ -2714,6 +2714,23 @@ function _snapshotCtxBlock() {
     var v = snap.vitals;
     lines.push('- Core Web Vitals: LCP ' + (v.lcp || '?') + 's, CLS ' + (v.cls || '?') + ', FID ' + (v.fid || '?') + 'ms, Performance ' + (v.performance || '?') + '/100');
   }
+  // Brand SERP / Knowledge Panel
+  if (snap.brandSerp) {
+    var bs = snap.brandSerp;
+    lines.push('BRAND SERP ("' + (bs.keyword || '') + '"):');
+    lines.push('- Knowledge Panel: ' + (bs.hasKnowledgePanel ? 'YES' : 'NO'));
+    lines.push('- Owns #1 result: ' + (bs.ownsPosition1 ? 'YES (' + (bs.position1Domain || '') + ')' : 'NO'));
+    if (bs.serpFeatures && bs.serpFeatures.length) lines.push('- SERP features present: ' + bs.serpFeatures.join(', '));
+    if (bs.knowledgePanel) {
+      var kp = bs.knowledgePanel;
+      if (kp.category) lines.push('- Google entity category: ' + kp.category);
+      if (kp.description) lines.push('- Google description: ' + kp.description.slice(0, 150));
+      if (kp.rating && kp.rating.value) lines.push('- Rating: ' + kp.rating.value + ' (' + (kp.rating.count || 0) + ' reviews)');
+      if (kp.socialProfiles && kp.socialProfiles.length) lines.push('- Social profiles: ' + kp.socialProfiles.map(function(p) { return p.platform; }).join(', '));
+    }
+    if (bs.alsoSearchFor && bs.alsoSearchFor.length) lines.push('- People also search for: ' + bs.alsoSearchFor.slice(0, 8).join(', '));
+    if (bs.alsoAsk && bs.alsoAsk.length) lines.push('- People also ask: ' + bs.alsoAsk.slice(0, 4).join(' | '));
+  }
   return '\n' + lines.join('\n') + '\n';
 }
 

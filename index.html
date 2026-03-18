@@ -2357,6 +2357,19 @@ function buildEnrichCtx() {
   if (s.discoveryNotes && s.discoveryNotes.trim()) {
     ctx += '\n\nDISCOVERY NOTES:\n'+s.discoveryNotes.trim();
   }
+  // Brand SERP / Knowledge Panel data from snapshot
+  var _bs = S.snapshot && S.snapshot.brandSerp;
+  if (_bs) {
+    ctx += '\n\nBRAND SERP ("' + (_bs.keyword || '') + '"):';
+    ctx += '\nKnowledge Panel: ' + (_bs.hasKnowledgePanel ? 'YES' : 'NO');
+    ctx += '\nOwns #1 result: ' + (_bs.ownsPosition1 ? 'YES' : 'NO');
+    if (_bs.knowledgePanel) {
+      if (_bs.knowledgePanel.category) ctx += '\nGoogle entity category: ' + _bs.knowledgePanel.category;
+      if (_bs.knowledgePanel.description) ctx += '\nGoogle description: ' + _bs.knowledgePanel.description.slice(0, 200);
+      if (_bs.knowledgePanel.rating && _bs.knowledgePanel.rating.value) ctx += '\nRating: ' + _bs.knowledgePanel.rating.value + ' (' + (_bs.knowledgePanel.rating.count || 0) + ' reviews)';
+    }
+    if (_bs.alsoSearchFor && _bs.alsoSearchFor.length) ctx += '\nPeople also search for: ' + _bs.alsoSearchFor.slice(0, 8).join(', ');
+  }
   var docs = s.docs || [];
   if (docs.length) {
     ctx += '\n\nREFERENCE DOCUMENTS:';
