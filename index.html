@@ -2773,34 +2773,15 @@ async function _generateSnapInsights(container, snap) {
     if (items.length > 8) siteCtx += '  ... and ' + (items.length - 8) + ' more\n';
   });
 
-  var system = 'You are a senior SEO strategist and web analyst analysing an existing website for a client audit. Write a clear, conversational summary of the site architecture. Use Canadian spelling. Format with HTML using these exact styles — do not invent new ones:\n'
-    + '- Section headings: <div style="font-size:13px;font-weight:600;color:var(--dark);margin:16px 0 6px 0">heading</div>\n'
-    + '- Paragraphs: <p style="font-size:12px;color:var(--n3);line-height:1.7;margin:0 0 10px 0">text</p>\n'
-    + '- Key stats inline: <strong style="color:var(--dark)">value</strong>\n'
-    + '- Good signals: <span style="color:var(--green)">text</span>\n'
-    + '- Problems: <span style="color:var(--error)">text</span>\n'
-    + '- Bullet lists: <ul style="margin:4px 0 10px 16px;padding:0;list-style:disc"><li style="font-size:12px;color:var(--n3);line-height:1.7;margin-bottom:2px">item</li></ul>\n\n'
-    + 'Cover these sections:\n'
-    + '1. WHAT THIS SITE IS — one paragraph explaining the business and what this website does, written like you are explaining it to a salesperson who has never seen the site\n'
-    + '2. HOW IT IS STRUCTURED — describe the main sections, what content lives where, the URL hierarchy pattern, how deep it goes\n'
-    + '3. WHAT IS WORKING — pages/sections driving real traffic, keywords ranking well, any strong signals\n'
-    + '4. WHAT IS WEAK — thin sections, missing page types, structural issues, orphaned content, poor performance\n'
-    + '5. OPPORTUNITIES — specific actionable things that would improve this site (new sections, consolidation, content gaps, technical fixes)\n\n'
-    + 'Keep it under 400 words total. Be specific — reference actual slugs and numbers from the data. Do not be generic.';
+  var system = 'You are a web analyst describing a website\'s information architecture. Use Canadian spelling. Output 2-3 paragraphs of plain HTML.\n\n'
+    + 'Format: <p style="font-size:12.5px;color:var(--n3);line-height:1.7;margin:0 0 12px 0">text</p> with <strong style="color:var(--dark)">bold</strong> for key facts.\n\n'
+    + 'Describe the site\'s logical structure — what kind of site it is, what the primary content axes are (e.g. filtering by category/location/product), how the URL hierarchy is organised (levels, depth pattern, naming conventions), what generates the bulk of pages (dynamic listings, blog posts, service pages, etc.), and where the URL patterns suggest programmatic or template-driven pages.\n\n'
+    + 'Be extremely specific — reference actual URL path segments, section counts, and hierarchy depths from the data. Write like you are explaining the architecture to a developer or strategist who needs to understand the site\'s structure in 30 seconds. No recommendations, no SEO advice — just describe what exists.\n\n'
+    + 'Keep it under 150 words.';
 
   try {
-    var result = '';
-    var _lastRender = 0;
-    await callClaude(system, siteCtx, function(chunk) {
-      result += chunk;
-      // Throttle DOM updates to every 300ms to avoid render thrashing
-      var now = Date.now();
-      if (now - _lastRender > 300) {
-        _lastRender = now;
-        container.innerHTML = sanitiseHTML(result);
-      }
-    }, 2048, 'Site insights');
-    // Final render with complete content
+    var result = await callClaude(system, siteCtx, null, 512, 'Site insights');
+    // Render the complete result
     container.innerHTML = sanitiseHTML(result);
     // Cache the result
     if (S.snapshot) { S.snapshot._insights = result; scheduleSave(); }
