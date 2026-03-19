@@ -1426,8 +1426,29 @@ function goTo(stage) {
       if (_clearBtn) _clearBtn.style.display = 'none';
     }
   }
+  // Role enforcement: viewers get read-only mode
+  if (typeof _applyRoleRestrictions === 'function') _applyRoleRestrictions(stage);
   scheduleSave();
   if (typeof runSaiAudit === 'function') runSaiAudit();
+}
+
+function _applyRoleRestrictions(stage) {
+  if (!S.currentRole || S.currentRole === 'viewer') {
+    // Hide generate/AI action buttons for viewers
+    var screen = document.getElementById('screen-' + stage);
+    if (!screen) return;
+    var btns = screen.querySelectorAll('.btn-primary, [id$="-run-btn"], [id$="-queue-btn"]');
+    btns.forEach(function(b) { b.style.display = 'none'; });
+    // Show read-only banner
+    var existing = screen.querySelector('.viewer-banner');
+    if (!existing) {
+      var banner = document.createElement('div');
+      banner.className = 'viewer-banner';
+      banner.style.cssText = 'background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:11.5px;color:#3b82f6;display:flex;align-items:center;gap:8px';
+      banner.innerHTML = '<i class="ti ti-eye" style="font-size:14px;flex-shrink:0"></i><span>Read-only access \u2014 contact an admin for editing permissions</span>';
+      screen.querySelector('div')?.prepend(banner);
+    }
+  }
 }
 
 function renderStageBar(current) {
@@ -3546,27 +3567,70 @@ async function initAuth() {
   try {
     const r = await fetch('/api/whoami');
     if (r.status === 401) {
-      // Cloudflare Access will redirect to login automatically
-      // This only fires if somehow the page loads without auth
-      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Geist,sans-serif"><div style="text-align:center"><p style="color:var(--mid);font-size:14px">Authenticating…</p></div></div>';
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Geist,sans-serif"><div style="text-align:center"><p style="color:var(--mid);font-size:14px">Authenticating\u2026</p></div></div>';
       return;
     }
     const data = await r.json();
     if (data.email) {
       S.currentUser = data.email;
       const el = document.getElementById('user-email-nav');
-      if (el) el.textContent = data.email.split('@')[0]; // show name part only
+      if (el) el.textContent = data.name || data.email.split('@')[0];
       var udName = document.getElementById('ud-name');
       var udEmail = document.getElementById('ud-email');
       var displayName = data.name || data.email.split('@')[0];
       if (udName) udName.textContent = displayName;
       if (udEmail) udEmail.textContent = data.email;
-      S.currentRole = data.role || 'strategist';
+      S.currentRole = data.role || 'viewer';
+      S.currentStatus = data.status || 'active';
       S.currentUserName = displayName;
+
+      // Show admin button for admin/super_admin
+      var adminBtn = document.getElementById('admin-btn');
+      if (adminBtn) adminBtn.style.display = canAdmin() ? '' : 'none';
+
+      // Gate pending/suspended users
+      if (S.currentStatus === 'pending') { _showPendingScreen(); return; }
+      if (S.currentStatus === 'suspended') { _showSuspendedScreen(); return; }
     }
   } catch(e) {
     console.warn('Auth check failed:', e);
   }
+}
+
+// Permission helpers
+function canEdit() { return ['strategist','admin','super_admin'].indexOf(S.currentRole) >= 0 && S.currentStatus === 'active'; }
+function canAdmin() { return ['admin','super_admin'].indexOf(S.currentRole) >= 0 && S.currentStatus === 'active'; }
+function isMeSuperAdmin() { return S.currentRole === 'super_admin'; }
+
+function _showPendingScreen() {
+  var screens = document.querySelectorAll('.screen');
+  screens.forEach(function(s) { s.style.display = 'none'; });
+  var sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.style.display = 'none';
+  var nav = document.getElementById('nav');
+  var content = document.getElementById('content');
+  if (content) content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:80vh">'
+    + '<div style="text-align:centre;max-width:400px;padding:40px">'
+    + '<div style="font-size:40px;margin-bottom:16px">\u23F3</div>'
+    + '<h2 style="font-size:20px;font-weight:600;color:var(--dark);margin-bottom:8px">Account Pending Approval</h2>'
+    + '<p style="font-size:13px;color:var(--n2);line-height:1.6;margin-bottom:20px">Your account has been registered. An admin will review and approve your access shortly.</p>'
+    + '<p style="font-size:12px;color:var(--n2)">Signed in as <strong>' + esc(S.currentUser) + '</strong></p>'
+    + '</div></div>';
+}
+
+function _showSuspendedScreen() {
+  var screens = document.querySelectorAll('.screen');
+  screens.forEach(function(s) { s.style.display = 'none'; });
+  var sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.style.display = 'none';
+  var content = document.getElementById('content');
+  if (content) content.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:80vh">'
+    + '<div style="text-align:centre;max-width:400px;padding:40px">'
+    + '<div style="font-size:40px;margin-bottom:16px">\u26D4</div>'
+    + '<h2 style="font-size:20px;font-weight:600;color:var(--error);margin-bottom:8px">Account Suspended</h2>'
+    + '<p style="font-size:13px;color:var(--n2);line-height:1.6;margin-bottom:20px">Your account has been suspended. Please contact an admin for assistance.</p>'
+    + '<p style="font-size:12px;color:var(--n2)">Signed in as <strong>' + esc(S.currentUser) + '</strong></p>'
+    + '</div></div>';
 }
 
 // ── HELP PANEL ───────────────────────────────────────────────────────────────
@@ -3587,34 +3651,36 @@ function toggleHelpPanel() {
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 var _adminAllProjects = [];
 
+var _ROLE_LABELS = { super_admin:'Super Admin', admin:'Admin', strategist:'Strategist', viewer:'Viewer' };
+var _ROLE_STYLES = {
+  super_admin: 'background:linear-gradient(135deg,#D8FF29,#158E1D);color:#111;font-weight:600',
+  admin: 'background:var(--dg);color:white',
+  strategist: 'background:rgba(21,142,29,.12);color:var(--green)',
+  viewer: 'background:var(--n1);color:var(--n3)'
+};
+
 async function loadAdminPage() {
-  // Always fetch fresh from whoami — no reliance on S timing
   try {
     var r = await fetch('/api/whoami');
     var data = r.ok ? await r.json() : {};
-    var email = data.email || S.currentUser || '—';
+    var email = data.email || S.currentUser || '';
     var name = data.name || S.currentUserName || email.split('@')[0];
-    var role = data.role || S.currentRole || 'strategist';
+    var role = data.role || S.currentRole || 'viewer';
 
-    var ROLE_LABELS = { admin:'Super Admin', strategist:'Strategist', viewer:'Viewer' };
-    var ROLE_STYLES = {
-      admin: 'background:var(--dg);color:white',
-      strategist: 'background:rgba(21,142,29,.12);color:var(--green)',
-      viewer: 'background:var(--n1);color:var(--n3)'
-    };
     var nameEl = document.getElementById('admin-my-name');
     var emailEl = document.getElementById('admin-my-email');
-    var roleLabel = document.getElementById('admin-my-role-label');
     var roleBadge = document.getElementById('admin-my-role-badge');
     if (nameEl) nameEl.textContent = name;
     if (emailEl) emailEl.textContent = email;
-    if (roleLabel) roleLabel.textContent = ROLE_LABELS[role] || 'Strategist';
-    if (roleBadge) roleBadge.style.cssText += ';' + (ROLE_STYLES[role] || ROLE_STYLES.strategist);
+    if (roleBadge) {
+      roleBadge.textContent = (role === 'super_admin' ? '\uD83D\uDEE1\uFE0F ' : '') + (_ROLE_LABELS[role] || 'Viewer');
+      roleBadge.style.cssText = 'display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;' + (_ROLE_STYLES[role] || _ROLE_STYLES.viewer);
+    }
 
-    // Store on S for name modal
     S.currentUserName = name;
     S.currentUser = email;
     S.currentRole = role;
+    S.currentStatus = data.status || 'active';
   } catch(e) { console.warn('whoami failed', e); }
 
   // Load assigned projects
@@ -3624,64 +3690,135 @@ async function loadAdminPage() {
     _adminAllProjects = Array.isArray(raw) ? raw : [];
     if (!_adminAllProjects.length) {
       if (projEl) projEl.textContent = 'No projects yet.';
-    } else {
-      if (projEl) {
-        projEl.innerHTML = '';
-        _adminAllProjects.forEach(function(p) {
-          var tag = document.createElement('span');
-          tag.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer;transition:background .1s';
-          tag.innerHTML = '<i class="ti ti-folder" style="font-size:11px;color:var(--green)"></i>' + esc(p.name || p.id);
-          tag.onmouseover = function(){ tag.style.background='var(--n1)'; };
-          tag.onmouseout = function(){ tag.style.background=''; };
-          tag.onclick = function() { showProjects(); setTimeout(function(){ resumeProject(p.id); }, 50); };
-          projEl.appendChild(tag);
-        });
-      }
+    } else if (projEl) {
+      projEl.innerHTML = '';
+      _adminAllProjects.forEach(function(p) {
+        var tag = document.createElement('span');
+        tag.style.cssText = 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;margin:2px;cursor:pointer;transition:background .1s';
+        tag.innerHTML = '<i class="ti ti-folder" style="font-size:11px;color:var(--green)"></i>' + esc(p.name || p.id);
+        tag.onmouseover = function(){ tag.style.background='var(--n1)'; };
+        tag.onmouseout = function(){ tag.style.background=''; };
+        tag.onclick = function() { showProjects(); setTimeout(function(){ resumeProject(p.id); }, 50); };
+        projEl.appendChild(tag);
+      });
     }
   } catch(e) { if (projEl) projEl.textContent = 'Could not load projects.'; }
 
-  // Load users table (admins only)
   await loadAdminUsers();
 }
 
 async function loadAdminUsers() {
   var wrap = document.getElementById('admin-users-wrap');
   var el = document.getElementById('admin-users-list');
+  var pendingWrap = document.getElementById('admin-pending-wrap');
+  var pendingEl = document.getElementById('admin-pending-list');
   if (!wrap || !el) return;
   try {
     var res = await fetch('/api/admin/users');
-    if (res.status === 403) { wrap.style.display = 'none'; return; }
+    if (res.status === 403) { wrap.style.display = 'none'; if (pendingWrap) pendingWrap.style.display = 'none'; return; }
     wrap.style.display = '';
     var data = await res.json();
-    var users = data.users || [];
-    if (!users.length) {
-      el.innerHTML = '<div style="padding:20px;color:var(--n2);font-size:13px">No team members yet — add the first one.</div>';
+    var allUsers = data.users || [];
+
+    // Split into pending vs active
+    var pending = allUsers.filter(function(u) { return u.status === 'pending'; });
+    var active = allUsers.filter(function(u) { return u.status !== 'pending'; });
+
+    // Sort active: super_admin first, then admin, then alphabetical
+    var _roleOrd = { super_admin: 0, admin: 1, strategist: 2, viewer: 3 };
+    active.sort(function(a, b) {
+      var ra = _roleOrd[a.role] !== undefined ? _roleOrd[a.role] : 4;
+      var rb = _roleOrd[b.role] !== undefined ? _roleOrd[b.role] : 4;
+      if (ra !== rb) return ra - rb;
+      return (a.name || a.email).localeCompare(b.name || b.email);
+    });
+
+    // ── Pending section ──
+    if (pendingWrap && pendingEl) {
+      if (pending.length) {
+        pendingWrap.style.display = '';
+        pendingEl.innerHTML = '';
+        pending.forEach(function(u) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)';
+          // Initials avatar
+          var initials = (u.name || u.email || '??').split(/[\s@]/).map(function(w) { return w.charAt(0).toUpperCase(); }).slice(0, 2).join('');
+          var infoDiv = document.createElement('div');
+          infoDiv.style.cssText = 'flex:1;min-width:0';
+          infoDiv.innerHTML = '<div style="width:32px;height:32px;border-radius:50%;background:rgba(245,166,35,0.15);color:#92400e;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;margin-right:10px;vertical-align:middle">' + esc(initials) + '</div>'
+            + '<span style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(u.name || u.email.split('@')[0]) + '</span>'
+            + '<div style="font-size:11px;color:var(--n2);margin-top:2px">' + esc(u.email) + '</div>';
+          row.appendChild(infoDiv);
+          var approveBtn = document.createElement('button');
+          approveBtn.className = 'btn btn-primary';
+          approveBtn.style.cssText = 'padding:5px 14px;font-size:11px;flex-shrink:0';
+          approveBtn.innerHTML = '<i class="ti ti-check"></i> Approve';
+          approveBtn.onclick = function() { _approveUser(u.email); };
+          row.appendChild(approveBtn);
+          var rejectBtn = document.createElement('button');
+          rejectBtn.className = 'btn btn-ghost';
+          rejectBtn.style.cssText = 'padding:5px 10px;font-size:11px;flex-shrink:0;color:var(--error);border-color:rgba(220,50,47,0.3)';
+          rejectBtn.innerHTML = '<i class="ti ti-x"></i>';
+          rejectBtn.onclick = function() { deleteAdminUser(u.email); };
+          row.appendChild(rejectBtn);
+          pendingEl.appendChild(row);
+        });
+      } else {
+        pendingWrap.style.display = 'none';
+      }
+    }
+
+    // ── Active team section ──
+    el.innerHTML = '';
+    if (!active.length) {
+      el.innerHTML = '<div style="padding:20px;color:var(--n2);font-size:13px">No team members yet.</div>';
       return;
     }
-    var ROLE_BADGE = { admin:'background:var(--dg);color:white', strategist:'background:rgba(21,142,29,.12);color:var(--green)', viewer:'background:var(--n1);color:var(--n3)' };
-    var ROLE_LABELS = { admin:'Super Admin', strategist:'Strategist', viewer:'Viewer' };
-    el.innerHTML = '';
-    users.forEach(function(u) {
+    active.forEach(function(u) {
+      var isSA = u.role === 'super_admin';
       var row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border)';
-      var projectCount = u.projects ? u.projects.split(',').filter(Boolean).length : 0;
-      var projectsLabel = u.projects ? (projectCount + ' project' + (projectCount!==1?'s':'')) : 'All projects';
+      var projectCount = Array.isArray(u.projects) ? u.projects.length : 0;
+      var projectsLabel = projectCount > 0 ? (projectCount + ' project' + (projectCount !== 1 ? 's' : '')) : 'All projects';
       row.innerHTML = '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(u.name || u.email.split('@')[0]) + '</div>'
+        + '<div style="font-size:13px;font-weight:500;color:var(--dark)">' + (isSA ? '<i class="ti ti-shield-check-filled" style="color:var(--green);font-size:14px;margin-right:4px;vertical-align:middle"></i>' : '') + esc(u.name || u.email.split('@')[0]) + '</div>'
         + '<div style="font-size:11px;color:var(--n2)">' + esc(u.email) + '</div>'
         + '</div>'
-        + '<span style="font-size:10px;padding:3px 8px;border-radius:20px;flex-shrink:0;' + (ROLE_BADGE[u.role]||ROLE_BADGE.viewer) + '">' + (ROLE_LABELS[u.role]||'Viewer') + '</span>'
+        + '<span style="font-size:10px;padding:3px 8px;border-radius:20px;flex-shrink:0;' + (_ROLE_STYLES[u.role] || _ROLE_STYLES.viewer) + '">' + (_ROLE_LABELS[u.role] || 'Viewer') + '</span>'
         + '<span style="font-size:11px;color:var(--n2);flex-shrink:0;min-width:70px;text-align:right">' + esc(projectsLabel) + '</span>';
-      var editBtn = document.createElement('button');
-      editBtn.className = 'btn btn-ghost';
-      editBtn.style.cssText = 'padding:4px 10px;font-size:11px;flex-shrink:0';
-      editBtn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
-      editBtn.onclick = function() { openUserModal(u); };
-      row.appendChild(editBtn);
+      if (!isSA) {
+        var editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-ghost';
+        editBtn.style.cssText = 'padding:4px 10px;font-size:11px;flex-shrink:0';
+        editBtn.innerHTML = '<i class="ti ti-pencil" style="font-size:11px"></i> Edit';
+        editBtn.onclick = function() { openUserModal(u); };
+        row.appendChild(editBtn);
+      } else {
+        var lockEl = document.createElement('span');
+        lockEl.style.cssText = 'font-size:10px;color:var(--n2);flex-shrink:0;width:50px';
+        lockEl.innerHTML = '<i class="ti ti-lock" style="font-size:11px"></i>';
+        row.appendChild(lockEl);
+      }
       el.appendChild(row);
     });
   } catch(e) {
     if (el) el.innerHTML = '<div style="padding:20px;color:var(--error);font-size:13px">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function _approveUser(email) {
+  try {
+    var res = await fetch('/api/admin/users/' + encodeURIComponent(email) + '/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'strategist' })
+    });
+    var d = await res.json();
+    if (!d.ok) throw new Error(d.error || 'Approval failed');
+    aiBarNotify('Approved ' + email + ' as Strategist', { duration: 3000 });
+    loadAdminUsers();
+  } catch(e) {
+    aiBarNotify('Approval failed: ' + e.message, { isError: true, duration: 4000 });
   }
 }
 
@@ -3704,10 +3841,13 @@ async function saveMyName() {
   if (!newName) { errEl.textContent = 'Name cannot be empty.'; errEl.style.display=''; return; }
   errEl.style.display = 'none';
   try {
+    // Use whoami user's own email — super_admin can update own name via direct KV write
+    var _namePayload = { email: S.currentUser, name: newName };
+    // If super_admin, route cannot update via /admin/users (self-protection), so use a direct name-only approach
     var res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email: S.currentUser, name: newName, role: S.currentRole, projects: '' })
+      body: JSON.stringify(_namePayload)
     });
     var d = await res.json();
     if (!d.ok) throw new Error(d.error || 'Save failed');
@@ -3729,16 +3869,36 @@ function openUserModal(u) {
   document.getElementById('um-id').value = u ? (u.id || u.email) : '';
   document.getElementById('um-name').value = u ? (u.name || '') : '';
   document.getElementById('um-email').value = u ? (u.email || '') : '';
-  document.getElementById('um-role').value = u ? (u.role || 'viewer') : 'strategist';
+  var roleSelect = document.getElementById('um-role');
+  // Build role options — never show super_admin
+  roleSelect.innerHTML = '';
+  ['viewer', 'strategist', 'admin'].forEach(function(r) {
+    var opt = document.createElement('option');
+    opt.value = r; opt.textContent = _ROLE_LABELS[r] || r;
+    roleSelect.appendChild(opt);
+  });
+  roleSelect.value = u ? (u.role || 'viewer') : 'strategist';
   document.getElementById('um-delete-btn').style.display = u ? '' : 'none';
   document.getElementById('um-error').style.display = 'none';
   var emailInput = document.getElementById('um-email');
   if (u) emailInput.setAttribute('readonly','readonly');
   else emailInput.removeAttribute('readonly');
 
+  // Status selector for existing users
+  var statusWrap = document.getElementById('um-status-wrap');
+  var statusSelect = document.getElementById('um-status');
+  if (statusWrap && statusSelect) {
+    if (u) {
+      statusWrap.style.display = '';
+      statusSelect.value = u.status || 'active';
+    } else {
+      statusWrap.style.display = 'none';
+    }
+  }
+
   // Build project checkboxes
   var listEl = document.getElementById('um-projects-list');
-  var assignedIds = u && u.projects ? u.projects.split(',').filter(Boolean) : [];
+  var assignedIds = u && u.projects ? (Array.isArray(u.projects) ? u.projects : u.projects.split(',').filter(Boolean)) : [];
   listEl.innerHTML = '';
   if (!_adminAllProjects.length) {
     listEl.innerHTML = '<div style="font-size:12px;color:var(--n2)">No projects loaded</div>';
@@ -3768,12 +3928,13 @@ async function saveAdminUser() {
   var errEl = document.getElementById('um-error');
   errEl.style.display = 'none';
   var checkboxes = document.querySelectorAll('#um-projects-list input[type=checkbox]:checked');
-  var projects = Array.from(checkboxes).map(function(cb){ return cb.value; }).join(',');
+  var projects = Array.from(checkboxes).map(function(cb){ return cb.value; });
+  var statusSelect = document.getElementById('um-status');
   var payload = {
-    id: document.getElementById('um-id').value || document.getElementById('um-email').value,
     name: document.getElementById('um-name').value.trim(),
     email: document.getElementById('um-email').value.trim().toLowerCase(),
     role: document.getElementById('um-role').value,
+    status: statusSelect ? statusSelect.value : 'active',
     projects: projects,
   };
   if (!payload.email) { errEl.textContent='Email is required.'; errEl.style.display=''; return; }
@@ -3784,20 +3945,22 @@ async function saveAdminUser() {
     if (!d.ok) throw new Error(d.error||'Save failed');
     closeUserModal();
     loadAdminUsers();
+    aiBarNotify('User saved', { duration: 2000 });
   } catch(e) { errEl.textContent=e.message; errEl.style.display=''; }
 }
-async function deleteAdminUser() {
-  var email = document.getElementById('um-email').value;
-  if (!confirm('Delete user ' + email + '?')) return;
+async function deleteAdminUser(emailArg) {
+  var email = emailArg || document.getElementById('um-email').value;
+  if (!email) return;
+  if (!confirm('Remove user ' + email + '? They will need to be re-approved if they sign in again.')) return;
   try {
     var res = await fetch('/api/admin/users/'+encodeURIComponent(email), { method:'DELETE' });
     var d = await res.json();
     if (!d.ok) throw new Error(d.error||'Delete failed');
     closeUserModal();
     loadAdminUsers();
+    aiBarNotify('User removed', { duration: 2000 });
   } catch(e) {
-    var errEl = document.getElementById('um-error');
-    errEl.textContent=e.message; errEl.style.display='';
+    aiBarNotify('Delete failed: ' + e.message, { isError: true, duration: 4000 });
   }
 }
 
@@ -4253,15 +4416,20 @@ async function deleteAdminUser() {
         </div>
         <div style="font-size:12px;color:var(--n2)" id="admin-my-email">—</div>
       </div>
-      <div id="admin-my-role-badge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500">
-        <i class="ti ti-shield-check" style="font-size:12px"></i>
-        <span id="admin-my-role-label">—</span>
-      </div>
+      <span id="admin-my-role-badge" style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500">\u2014</span>
     </div>
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--n2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Assigned projects</div>
       <div id="admin-my-projects" style="font-size:13px;color:var(--n3)">Loading…</div>
     </div>
+  </div>
+
+  <!-- Pending approval (admin only) -->
+  <div id="admin-pending-wrap" style="display:none;background:white;border:1px solid rgba(245,166,35,0.3);border-radius:12px;overflow:hidden;margin-bottom:20px">
+    <div style="padding:14px 20px;border-bottom:1px solid rgba(245,166,35,0.2);background:rgba(245,166,35,0.04)">
+      <span style="font-size:13px;font-weight:500;color:#92400e"><i class="ti ti-clock" style="font-size:13px;margin-right:4px"></i> Pending Approval</span>
+    </div>
+    <div id="admin-pending-list"></div>
   </div>
 
   <!-- Users table (admin only) -->
@@ -4303,11 +4471,19 @@ async function deleteAdminUser() {
       <div>
         <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Role</label>
         <select id="um-role" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:white">
-          <option value="admin">Admin</option>
-          <option value="strategist">Strategist</option>
           <option value="viewer">Viewer</option>
+          <option value="strategist">Strategist</option>
+          <option value="admin">Admin</option>
         </select>
       </div>
+    </div>
+    <div id="um-status-wrap" style="display:none">
+      <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Status</label>
+      <select id="um-status" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--font);background:white">
+        <option value="active">Active</option>
+        <option value="suspended">Suspended</option>
+        <option value="pending">Pending</option>
+      </select>
     </div>
     <div>
       <label style="font-size:11px;color:var(--n2);display:block;margin-bottom:5px">Email</label>

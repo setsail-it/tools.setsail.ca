@@ -423,15 +423,31 @@ export default {
       }
     }
 
-        // ── WHOAMI — returns current user identity ──────────────────
+        // ── WHOAMI — returns current user identity + auto-registers new users ──
     if (url.pathname === '/api/whoami' && request.method === 'GET') {
-      let profile = { email: userId, name: null, role: 'strategist' };
-      if (userId) {
-        const pRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
-        if (pRaw) { const p = JSON.parse(pRaw); profile.name = p.name || null; profile.role = p.role || 'strategist'; }
-        else if (userId === (env.ADMIN_EMAIL || '').toLowerCase()) profile.role = 'admin';
+      if (!userId) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401, headers: { 'Content-Type': 'application/json', ...cors } });
+      const _isSuperAdmin = userId === (env.ADMIN_EMAIL || '').toLowerCase();
+      const pRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+      let profile;
+      if (pRaw) {
+        profile = JSON.parse(pRaw);
+        // Ensure super_admin role for ADMIN_EMAIL even if KV has stale role
+        if (_isSuperAdmin && profile.role !== 'super_admin') { profile.role = 'super_admin'; profile.status = 'active'; await env.SETSAIL_OS.put('admin:user:' + userId, JSON.stringify(profile)); }
+        // Backfill missing status for old records
+        if (!profile.status) { profile.status = 'active'; await env.SETSAIL_OS.put('admin:user:' + userId, JSON.stringify(profile)); }
+      } else {
+        // Auto-register new user
+        profile = {
+          email: userId,
+          name: userId.split('@')[0],
+          role: _isSuperAdmin ? 'super_admin' : 'viewer',
+          status: _isSuperAdmin ? 'active' : 'pending',
+          projects: [],
+          createdAt: new Date().toISOString()
+        };
+        await env.SETSAIL_OS.put('admin:user:' + userId, JSON.stringify(profile));
       }
-      return new Response(JSON.stringify({ ...profile, ok: true }), {
+      return new Response(JSON.stringify({ email: profile.email || userId, name: profile.name || userId.split('@')[0], role: profile.role, status: profile.status || 'active', ok: true }), {
         headers: { 'Content-Type': 'application/json', ...cors }
       });
     }
@@ -444,49 +460,92 @@ export default {
       });
     }
 
-        // ── ANTHROPIC PROXY ──────────────────────────────────────────
     // ── ADMIN — user management ──────────────────────────────────────────────────
-    // Only admins (role=admin) or the seeded owner email can access these
-    async function isAdmin() {
+    function _isSuperAdminEmail(email) { return email === (env.ADMIN_EMAIL || '').toLowerCase(); }
+    async function _isAdminOrAbove() {
       if (!userId) return false;
-      // Owner email always has admin access
-      if (userId === (env.ADMIN_EMAIL || '').toLowerCase()) return true;
-      const userRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
-      if (!userRaw) return false;
-      const u = JSON.parse(userRaw);
-      return u.role === 'admin';
+      if (_isSuperAdminEmail(userId)) return true;
+      const raw = await env.SETSAIL_OS.get('admin:user:' + userId);
+      if (!raw) return false;
+      const u = JSON.parse(raw);
+      return u.role === 'admin' || u.role === 'super_admin';
     }
 
     // GET /api/admin/users
     if (url.pathname === '/api/admin/users' && request.method === 'GET') {
-      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      if (!(await _isAdminOrAbove())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       const list = await env.SETSAIL_OS.list({ prefix: 'admin:user:' });
       const users = [];
       for (const key of list.keys) {
         const raw = await env.SETSAIL_OS.get(key.name);
-        if (raw) users.push(JSON.parse(raw));
+        if (raw) {
+          const u = JSON.parse(raw);
+          // Normalise projects field
+          if (typeof u.projects === 'string') u.projects = u.projects ? u.projects.split(',').map(s => s.trim()).filter(Boolean) : [];
+          if (!u.status) u.status = 'active';
+          users.push(u);
+        }
       }
       return new Response(JSON.stringify({ users }), { headers: { 'Content-Type': 'application/json', ...cors } });
     }
 
     // POST /api/admin/users — create or update
     if (url.pathname === '/api/admin/users' && request.method === 'POST') {
-      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
-      const { email, name, role, projects } = await request.json();
+      if (!(await _isAdminOrAbove())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const body = await request.json();
+      const email = (body.email || '').toLowerCase().trim();
       if (!email) return new Response(JSON.stringify({ error: 'email required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-      const key = 'admin:user:' + email.toLowerCase().trim();
+      // Super admin protection — only allow name updates from the super admin themselves
+      if (_isSuperAdminEmail(email)) {
+        if (!_isSuperAdminEmail(userId)) return new Response(JSON.stringify({ error: 'Cannot modify super admin' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+        // Super admin updating their own profile — only allow name change
+        const saKey = 'admin:user:' + email;
+        const saRaw = await env.SETSAIL_OS.get(saKey);
+        const saData = saRaw ? JSON.parse(saRaw) : {};
+        if (body.name) saData.name = body.name;
+        saData.updatedAt = new Date().toISOString();
+        await env.SETSAIL_OS.put(saKey, JSON.stringify(saData));
+        return new Response(JSON.stringify({ ok: true, user: saData }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+      // Prevent non-super-admins from setting super_admin role
+      if (body.role === 'super_admin' && !_isSuperAdminEmail(userId)) return new Response(JSON.stringify({ error: 'Only super admin can assign super_admin role' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const key = 'admin:user:' + email;
       const existing = await env.SETSAIL_OS.get(key);
       const data = existing ? JSON.parse(existing) : {};
-      const updated = { ...data, email: email.toLowerCase().trim(), name: name || data.name || '', role: role || 'viewer', projects: projects || '', updatedAt: new Date().toISOString() };
+      // Normalise projects: accept array or comma string
+      let projects = body.projects;
+      if (typeof projects === 'string') projects = projects ? projects.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (!Array.isArray(projects)) projects = data.projects || [];
+      const updated = { ...data, email, name: body.name || data.name || '', role: body.role || data.role || 'viewer', status: body.status || data.status || 'active', projects, updatedAt: new Date().toISOString() };
+      if (!updated.createdAt) updated.createdAt = new Date().toISOString();
       await env.SETSAIL_OS.put(key, JSON.stringify(updated));
-      return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      return new Response(JSON.stringify({ ok: true, user: updated }), { headers: { 'Content-Type': 'application/json', ...cors } });
+    }
+
+    // POST /api/admin/users/:email/approve
+    if (/^\/api\/admin\/users\/[^/]+\/approve$/.test(url.pathname) && request.method === 'POST') {
+      if (!(await _isAdminOrAbove())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const email = decodeURIComponent(url.pathname.split('/')[4]).toLowerCase().trim();
+      const body = await request.json().catch(() => ({}));
+      const key = 'admin:user:' + email;
+      const raw = await env.SETSAIL_OS.get(key);
+      if (!raw) return new Response(JSON.stringify({ error: 'User not found' }), { status: 404, headers: { 'Content-Type': 'application/json', ...cors } });
+      const user = JSON.parse(raw);
+      user.status = 'active';
+      if (body.role && body.role !== 'super_admin') user.role = body.role;
+      user.approvedAt = new Date().toISOString();
+      user.approvedBy = userId;
+      await env.SETSAIL_OS.put(key, JSON.stringify(user));
+      return new Response(JSON.stringify({ ok: true, user }), { headers: { 'Content-Type': 'application/json', ...cors } });
     }
 
     // DELETE /api/admin/users/:email
     if (url.pathname.startsWith('/api/admin/users/') && request.method === 'DELETE') {
-      if (!(await isAdmin())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
-      const email = decodeURIComponent(url.pathname.replace('/api/admin/users/', ''));
-      await env.SETSAIL_OS.delete('admin:user:' + email.toLowerCase().trim());
+      if (!(await _isAdminOrAbove())) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      const email = decodeURIComponent(url.pathname.replace('/api/admin/users/', '')).toLowerCase().trim();
+      // Super admin protection
+      if (_isSuperAdminEmail(email)) return new Response(JSON.stringify({ error: 'Cannot delete super admin' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
+      await env.SETSAIL_OS.delete('admin:user:' + email);
       return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
     }
 
