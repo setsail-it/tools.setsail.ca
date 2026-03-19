@@ -1469,11 +1469,26 @@ function _updateContextBar() {
           return !p.primary_keyword;
         }).length;
         var _noAwareness = _nonStruct.filter(function(p) { return !p.awareness_stage; }).length;
-        if (_noKw > _noGoal && _noKw > _noPersona) { next = _noKw + ' pages missing keywords \u2014 expand keyword research or use AI Fix'; }
-        else if (_noGoal > 0) { next = _noGoal + ' pages need goals \u2014 click Goals \u2192 Auto-Complete'; }
-        else if (_noPersona > 0) { next = _noPersona + ' pages need personas \u2014 click Personas'; }
-        else if (_noAwareness > 0) { next = _noAwareness + ' pages need awareness stage'; }
-        else { next = 'Review enrichment \u2014 some blog pages may need content pillars'; }
+        if (_noKw > _noGoal && _noKw > _noPersona) {
+          next = _noKw + ' pages missing keywords \u2014 click to AI Fix';
+          _ctxAction = function() { _ctxScrollAndHighlight('align', 'wf-step-3'); };
+        }
+        else if (_noGoal > 0) {
+          next = _noGoal + ' pages need goals \u2014 click to generate';
+          _ctxAction = function() { _ctxScrollAndHighlight('goals', 'goals-dropdown-wrap'); };
+        }
+        else if (_noPersona > 0) {
+          next = _noPersona + ' pages need personas \u2014 click to assign';
+          _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
+        }
+        else if (_noAwareness > 0) {
+          next = _noAwareness + ' pages need awareness stage';
+          _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
+        }
+        else {
+          next = 'Blog pages may need content pillars \u2014 click to assign';
+          _ctxAction = function() { _ctxScrollAndHighlight('pillars', null); if (typeof assignContentPillars === 'function') assignContentPillars(); };
+        }
       }
       else if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
       else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
@@ -1512,6 +1527,42 @@ function _updateContextBar() {
 
 function _doContextAction() {
   if (_ctxAction) _ctxAction();
+}
+
+function _ctxScrollAndHighlight(action, elementId) {
+  if (action === 'align') {
+    // Open the issues panel and scroll to it
+    if (typeof toggleWorkflowIssues === 'function') {
+      if (!_sitemapIssuesExpanded) toggleWorkflowIssues();
+      setTimeout(function() {
+        var panel = document.getElementById('wf-issues-panel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Pulse the AI Fix buttons
+        var aiBtns = document.querySelectorAll('.wf-issue-aifix');
+        aiBtns.forEach(function(b) {
+          b.style.transition = 'box-shadow 0.3s';
+          b.style.boxShadow = '0 0 0 3px rgba(21,142,29,0.4)';
+          setTimeout(function() { b.style.boxShadow = ''; }, 2500);
+        });
+      }, 300);
+    }
+  } else if (action === 'goals') {
+    // Scroll to Goals dropdown and open it
+    var el = document.getElementById(elementId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function() {
+        el.style.transition = 'box-shadow 0.3s';
+        el.style.boxShadow = '0 0 0 3px rgba(21,142,29,0.4)';
+        setTimeout(function() { el.style.boxShadow = ''; }, 2500);
+        if (typeof toggleGoalsDropdown === 'function') toggleGoalsDropdown();
+      }, 400);
+    }
+  } else if (action === 'pillars') {
+    // Just scroll to the toolbar area
+    var toolbar = document.querySelector('#sitemap-results');
+    if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
 
 function goTo(stage) {
