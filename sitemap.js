@@ -1192,6 +1192,15 @@ function _mountIssuesPanel() {
   });
 }
 
+// Clean AI JSON responses — strip markdown fences, control chars, trailing commas
+function _cleanAiJson(raw) {
+  return raw
+    .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+    .replace(/[\x00-\x1F\x7F]/g, ' ')  // strip control characters
+    .replace(/,\s*([\]}])/g, '$1')       // trailing commas
+    .trim();
+}
+
 // AI-powered issue fixing
 async function _aiFixIssue(fixId) {
   var pages = S.pages || [];
@@ -1220,7 +1229,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result = '';
       await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result += chunk; }, 4096, 'kw-fix');
-      var parsed = JSON.parse(result.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var parsed = JSON.parse(_cleanAiJson(result));
       var assigned = 0;
       if (Array.isArray(parsed)) {
         parsed.forEach(function(item) {
@@ -1262,7 +1271,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result2 = '';
       await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 += chunk; }, 4096, 'vol-fix');
-      var parsed2 = JSON.parse(result2.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var parsed2 = JSON.parse(_cleanAiJson(result2));
       var fixed = 0;
       if (Array.isArray(parsed2)) {
         parsed2.forEach(function(item) {
@@ -1305,7 +1314,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result3 = '';
       await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 += chunk; }, 2048, 'cannibal-fix');
-      var parsed3 = JSON.parse(result3.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim());
+      var parsed3 = JSON.parse(_cleanAiJson(result3));
       var resolved = 0;
       if (Array.isArray(parsed3)) {
         parsed3.forEach(function(item) {
@@ -2222,8 +2231,7 @@ async function _generateGoalBatch(indices) {
     + '\n\nReturn ONLY a JSON array [{"slug":"...","goal":"..."}]. No markdown, no explanation.';
 
   var result = await callClaude(sys, user, null, 4096, 'goals-batch');
-  var clean = result.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-  var parsed = JSON.parse(clean);
+  var parsed = JSON.parse(_cleanAiJson(result));
   var count = 0;
   if (Array.isArray(parsed)) {
     parsed.forEach(function(item) {
