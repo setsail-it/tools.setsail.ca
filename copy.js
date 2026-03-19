@@ -359,6 +359,27 @@ function buildCopyPrompt(page) {
         + '5. Show STAKES if they do not act: ' + (_narC.storybrand.failure_stakes || '') + '\n'
         + '6. Paint SUCCESS: ' + (_narC.storybrand.success_transformation || '') + '\n';
     }
+    // Tonality guidance from D8
+    if (_narC.call_shape) {
+      _narrativeCopyCtx += '\nCOPY APPROACH: ' + _narC.call_shape + (_narC.call_shape === 'proof-led'
+        ? ' — lead with case studies, numbers, results. This buyer is sophisticated and skeptical of claims without evidence.'
+        : ' — lead with education, frameworks, and insights. This buyer needs to understand the problem before evaluating solutions.') + '\n';
+    }
+    // Dominant emotional register from VoC
+    if (_narC.voc_swipe_file && _narC.voc_swipe_file.length >= 3) {
+      var _regCounts = {};
+      _narC.voc_swipe_file.forEach(function(v) { var r = v.emotional_register || ''; if (r) _regCounts[r] = (_regCounts[r] || 0) + 1; });
+      var _topReg = Object.keys(_regCounts).sort(function(a, b) { return _regCounts[b] - _regCounts[a]; })[0];
+      if (_topReg) {
+        var _regGuidance = { frustration: 'Mirror their frustration, then pivot to relief. Validate the pain before presenting the solution.',
+          aspiration: 'Paint the transformation. Lead with possibility and future-state outcomes.',
+          urgency: 'Emphasise time pressure and cost of waiting. Use numbers and deadlines.',
+          trust: 'Build credibility early. Lead with proof, process transparency, and guarantees.',
+          skepticism: 'Anticipate objections. Address them directly. Show evidence for every claim.',
+          relief: 'Acknowledge the weight they carry, then show how it lifts. Emotional, then practical.' };
+        _narrativeCopyCtx += 'DOMINANT EMOTIONAL REGISTER: ' + _topReg + ' — ' + (_regGuidance[_topReg] || '') + '\n';
+      }
+    }
     // VoC swipe seeds for headlines/CTAs
     if (_narC.voc_swipe_file && _narC.voc_swipe_file.length) {
       var _vocSeeds = _narC.voc_swipe_file.filter(function(v) {
