@@ -323,6 +323,16 @@ textarea.inp{resize:vertical}
 <!-- USER DROPDOWN BACKDROP -->
 <div id="user-backdrop" onclick="closeUserDropdown()" style="display:none;position:fixed;inset:0;z-index:499"></div>
 
+<!-- CONTEXT BAR -->
+<div id="context-bar" style="display:none;background:var(--dg);padding:5px 20px;font-size:11px;color:rgba(255,255,255,0.7);display:none;align-items:center;gap:8px;z-index:601;position:relative">
+  <span id="ctx-project" style="font-weight:600;color:rgba(255,255,255,0.9)"></span>
+  <span style="opacity:0.4">\u2192</span>
+  <span id="ctx-stage" style="color:var(--lime)"></span>
+  <span style="opacity:0.3">\u00B7</span>
+  <span id="ctx-status" style="opacity:0.8"></span>
+  <span style="flex:1"></span>
+  <span id="ctx-next" style="cursor:pointer;color:var(--lime);font-weight:500" onclick="_doContextAction()"></span>
+</div>
 <!-- TOPBAR -->
 <div id="nav">
   <!-- Left: logo + client -->
@@ -1208,6 +1218,8 @@ async function loadProject(id) {
 async function showProjects() {
   document.getElementById('projects-screen').style.display = 'block';
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  var _ctxBar = document.getElementById('context-bar');
+  if (_ctxBar) _ctxBar.style.display = 'none';
   document.getElementById('stage-bar').innerHTML = '';
   document.getElementById('sidebar-stages').innerHTML = '';
   var _sb = document.getElementById('sidebar');
@@ -1394,6 +1406,90 @@ function _updateStageEyebrows() {
   });
 }
 
+// ── CONTEXT BAR — shows where you are + next action ──────────────────
+var _ctxAction = null;
+
+function _updateContextBar() {
+  var bar = document.getElementById('context-bar');
+  if (!bar || !S.projectId) { if (bar) bar.style.display = 'none'; return; }
+
+  var client = (S.setup && S.setup.client) || 'Untitled';
+  var stage = S.stage || 'setup';
+  var stageLabels = { setup:'Setup', snapshot:'Snapshot', research:'Research', strategy:'Strategy', sitemap:'Sitemap', briefs:'Briefs', copy:'Copy', images:'Images', layout:'Layout', schema:'Schema', export:'Export' };
+
+  // Determine status + next action based on current stage
+  var status = ''; var next = ''; _ctxAction = null;
+
+  if (stage === 'setup') {
+    var hasUrl = S.setup && S.setup.url;
+    var hasClient = S.setup && S.setup.client;
+    status = hasUrl ? 'URL set' : 'needs client URL';
+    if (!hasClient) { next = 'Enter client name'; }
+    else if (!hasUrl) { next = 'Add website URL'; }
+    else { next = 'Next \u2192 Run Snapshot'; _ctxAction = function() { navToStage('snapshot'); }; }
+  }
+  else if (stage === 'snapshot') {
+    if (!S.snapshot) { next = 'Run Site Snapshot'; status = 'not run yet'; }
+    else { status = (S.snapshot.topPages || []).length + ' pages captured'; next = 'Next \u2192 Research'; _ctxAction = function() { navToStage('research'); }; }
+  }
+  else if (stage === 'research') {
+    var _rScore = 0; try { _rScore = typeof getResearchCompleteness === 'function' ? getResearchCompleteness() : 0; } catch(e) {}
+    status = _rScore + '% complete';
+    if (_rScore < 60) { next = 'Click Enrich All to fill gaps'; }
+    else { next = 'Next \u2192 Strategy'; _ctxAction = function() { navToStage('strategy'); }; }
+  }
+  else if (stage === 'strategy') {
+    var meta = S.strategy && S.strategy._meta;
+    if (!meta || meta.current_version === 0) { next = 'Run All Diagnostics'; status = 'not started'; }
+    else {
+      status = 'v' + meta.current_version + ' \u00B7 score ' + (meta.overall_score || 0).toFixed(1);
+      var kwStale = S.strategy && S.strategy._kwDataStale;
+      if (kwStale) { next = 'Re-run with keywords'; }
+      else { next = 'Next \u2192 Sitemap'; _ctxAction = function() { navToStage('sitemap'); }; }
+    }
+  }
+  else if (stage === 'sitemap') {
+    var pages = S.pages || [];
+    if (!pages.length) { next = 'Generate Sitemap'; status = 'no pages'; }
+    else {
+      var enrichPct = typeof _computeEnrichmentPct === 'function' ? _computeEnrichmentPct() : 0;
+      status = pages.length + ' pages \u00B7 ' + enrichPct + '% enriched';
+      if (enrichPct < 80) { next = 'Enrich: click Goals dropdown \u2192 Auto-Complete'; }
+      else if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
+      else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
+    }
+  }
+  else if (stage === 'briefs') {
+    var briefed = (S.pages || []).filter(function(p) { return p.brief; }).length;
+    var total = (S.pages || []).length;
+    status = briefed + '/' + total + ' briefed';
+    if (briefed < total) { next = 'Generate remaining briefs'; }
+    else { next = 'Next \u2192 Copy'; _ctxAction = function() { navToStage('copy'); }; }
+  }
+  else if (stage === 'copy') {
+    var written = Object.keys(S.copy || {}).filter(function(k) { return (S.copy[k] || {}).copy; }).length;
+    var totalC = (S.pages || []).length;
+    status = written + '/' + totalC + ' written';
+    if (written < totalC) { next = 'Write remaining copy'; }
+    else { next = 'Next \u2192 Images'; _ctxAction = function() { navToStage('images'); }; }
+  }
+  else {
+    status = 'in progress';
+    next = '';
+  }
+
+  document.getElementById('ctx-project').textContent = client;
+  document.getElementById('ctx-stage').textContent = stageLabels[stage] || stage;
+  document.getElementById('ctx-status').textContent = status;
+  var nextEl = document.getElementById('ctx-next');
+  if (nextEl) nextEl.textContent = next;
+  bar.style.display = 'flex';
+}
+
+function _doContextAction() {
+  if (_ctxAction) _ctxAction();
+}
+
 function goTo(stage) {
   S.stage = stage;
   document.getElementById('projects-screen').style.display = 'none';
@@ -1428,6 +1524,7 @@ function goTo(stage) {
   }
   // Role enforcement: viewers get read-only mode
   if (typeof _applyRoleRestrictions === 'function') _applyRoleRestrictions(stage);
+  _updateContextBar();
   scheduleSave();
   if (typeof runSaiAudit === 'function') runSaiAudit();
 }
