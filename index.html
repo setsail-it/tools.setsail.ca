@@ -1458,7 +1458,23 @@ function _updateContextBar() {
     else {
       var enrichPct = typeof _computeEnrichmentPct === 'function' ? _computeEnrichmentPct() : 0;
       status = pages.length + ' pages \u00B7 ' + enrichPct + '% enriched';
-      if (enrichPct < 80) { next = 'Enrich: click Goals dropdown \u2192 Auto-Complete'; }
+      if (enrichPct < 80) {
+        // Detect which enrichment component is the bottleneck
+        var _nonStruct = pages.filter(function(p) { return !p.is_structural; });
+        var _noGoal = _nonStruct.filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
+        var _noPersona = _nonStruct.filter(function(p) { return !p.target_persona; }).length;
+        var _noKw = _nonStruct.filter(function(p) {
+          var t = (p.page_type || '').toLowerCase();
+          if (['home','about','contact','utility','faq','team'].indexOf(t) >= 0) return false;
+          return !p.primary_keyword;
+        }).length;
+        var _noAwareness = _nonStruct.filter(function(p) { return !p.awareness_stage; }).length;
+        if (_noKw > _noGoal && _noKw > _noPersona) { next = _noKw + ' pages missing keywords \u2014 expand keyword research or use AI Fix'; }
+        else if (_noGoal > 0) { next = _noGoal + ' pages need goals \u2014 click Goals \u2192 Auto-Complete'; }
+        else if (_noPersona > 0) { next = _noPersona + ' pages need personas \u2014 click Personas'; }
+        else if (_noAwareness > 0) { next = _noAwareness + ' pages need awareness stage'; }
+        else { next = 'Review enrichment \u2014 some blog pages may need content pillars'; }
+      }
       else if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
       else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
     }
