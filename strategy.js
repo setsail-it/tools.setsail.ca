@@ -4393,7 +4393,7 @@ async function improveStrategy() {
     var r = S.research || {};
     var geo = r.geography && r.geography.primary ? r.geography.primary : (S.setup || {}).geo || '';
     if (r.industry && (r.primary_services || []).length) {
-      aiBarStart('D8: Keyword Demand Validation');
+      aiBarStart('Keyword Demand Validation');
       var demandResult = await strategyEnrich.keywordDemandCheck(r.industry, geo, r.primary_services);
       if (demandResult) {
         S.strategy.demand_validation = demandResult;
