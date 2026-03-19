@@ -602,7 +602,7 @@ async function fullBuildSitemap() {
     if (!window._aiStopAll) {
       var goalsNeeded = (S.pages || []).filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
       if (goalsNeeded > 0) {
-        await generateAllPageGoals();
+        await generateAllPageGoals('auto');
       }
     }
 
@@ -2106,42 +2106,137 @@ async function generatePageGoal(idx) {
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:9px"></i>'; }
 }
 
-async function generateAllPageGoals(startFrom) {
+function toggleGoalsDropdown() {
+  var dd = document.getElementById('goals-dropdown');
+  if (!dd) return;
+  dd.style.display = dd.style.display === 'none' ? '' : 'none';
+  // Close on outside click
+  if (dd.style.display !== 'none') {
+    setTimeout(function() {
+      document.addEventListener('click', function _closeDD(e) {
+        var wrap = document.getElementById('goals-dropdown-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+          dd.style.display = 'none';
+          document.removeEventListener('click', _closeDD);
+        }
+      });
+    }, 10);
+  }
+}
+
+// Batch page goal generation — sends 12 pages per Claude call
+var _GOAL_BATCH_SIZE = 12;
+
+async function generateAllPageGoals(mode, startBatch) {
+  // mode: 'batch' = one batch then stop, 'auto' = all batches until done
+  if (!mode) mode = 'auto';
   var pages = S.pages || [];
-  var empty = pages.filter(function(p){ return !p.page_goal || !p.page_goal.trim(); });
-  if (!empty.length && !startFrom) { if(typeof aiBarNotify==='function') aiBarNotify('All pages already have goals', {duration:3000}); return; }
+  var needGoals = [];
+  pages.forEach(function(p, i) { if (!p.page_goal || !p.page_goal.trim()) needGoals.push(i); });
+  if (!needGoals.length) { aiBarNotify('All pages already have goals', { duration: 3000 }); return; }
+
   window._aiStopAll = false;
-  if(typeof aiBarStart==='function') aiBarStart('Generating page goals');
-  var start = startFrom || 0;
+  var totalBatches = Math.ceil(needGoals.length / _GOAL_BATCH_SIZE);
+  var startIdx = startBatch || 0;
   var generated = 0;
-  var total = pages.length;
-  for (var i = start; i < total; i++) {
+
+  aiBarStart('Generating page goals (batched)');
+
+  for (var b = startIdx; b < totalBatches; b++) {
     if (window._aiStopAll) {
       window._aiStopResumeCtx = {
-        label: 'Goals paused (' + i + '/' + total + ')',
-        fn: function(args) { generateAllPageGoals(args.startFrom); },
-        args: { startFrom: i }
+        label: 'Goals paused (batch ' + (b + 1) + '/' + totalBatches + ')',
+        fn: function(args) { generateAllPageGoals('auto', args.startBatch); },
+        args: { startBatch: b }
       };
       return;
     }
-    if (pages[i].page_goal && pages[i].page_goal.trim()) continue;
-    // Update progress bar directly (do not use aiBarNotify — it hides the track)
-    var _pct = Math.round(((i + 1) / total) * 100);
+
+    var batchIndices = needGoals.slice(b * _GOAL_BATCH_SIZE, (b + 1) * _GOAL_BATCH_SIZE);
     var _lbl = document.getElementById('ai-bar-label');
     var _fill = document.getElementById('ai-bar-fill');
     var _meta = document.getElementById('ai-bar-meta');
-    if (_lbl) _lbl.textContent = 'Goal ' + (i + 1) + '/' + total + ': ' + pages[i].page_name;
+    var _pct = Math.round(((b + 1) / totalBatches) * 100);
+    if (_lbl) _lbl.textContent = 'Goals batch ' + (b + 1) + '/' + totalBatches + ' (' + batchIndices.length + ' pages)';
     if (_fill) { _fill.classList.remove('indeterminate'); _fill.style.width = _pct + '%'; }
     if (_meta) _meta.textContent = generated + ' done';
+
     try {
-      await generatePageGoal(i);
-      generated++;
-    } catch(e) { if (e.name === 'AbortError') return; }
+      var count = await _generateGoalBatch(batchIndices);
+      generated += count;
+      scheduleSave();
+    } catch(e) {
+      console.warn('[goals batch] failed:', e.message);
+      // Retry once after 2s delay
+      await new Promise(function(r) { setTimeout(r, 2000); });
+      try {
+        var count2 = await _generateGoalBatch(batchIndices);
+        generated += count2;
+        scheduleSave();
+      } catch(e2) { console.warn('[goals batch retry] failed:', e2.message); }
+    }
+
+    // In 'batch' mode, stop after one batch
+    if (mode === 'batch') {
+      var remaining = needGoals.length - (b + 1) * _GOAL_BATCH_SIZE;
+      if (remaining > 0) {
+        window._aiStopResumeCtx = {
+          label: generated + ' goals done \u2014 ' + Math.max(0, remaining) + ' remaining',
+          fn: function(args) { generateAllPageGoals('batch', args.startBatch); },
+          args: { startBatch: b + 1 }
+        };
+      }
+      aiBarEnd();
+      renderSitemapResults(S.sitemapApproved);
+      aiBarNotify('Batch ' + (b + 1) + '/' + totalBatches + ' complete \u2014 ' + generated + ' goals generated', { duration: 4000 });
+      return;
+    }
+
+    // Small delay between batches to avoid rate limits
+    if (b < totalBatches - 1) await new Promise(function(r) { setTimeout(r, 500); });
   }
+
   window._aiStopResumeCtx = null;
+  aiBarEnd();
   renderSitemapResults(S.sitemapApproved);
-  if(typeof aiBarEnd==='function') aiBarEnd();
-  if(typeof aiBarNotify==='function') aiBarNotify('Page goals generated for '+generated+' pages', {duration:4000});
+  aiBarNotify('All page goals generated \u2014 ' + generated + ' pages', { duration: 4000 });
+}
+
+async function _generateGoalBatch(indices) {
+  var pages = S.pages || [];
+  var R = S.research || {};
+  var ws = ((S.strategy && S.strategy.webStrategy) || '').trim();
+  var posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+
+  var pageList = indices.map(function(idx) {
+    var p = pages[idx];
+    return '- slug:/' + (p.slug || '') + ' | name:' + (p.page_name || '') + ' | type:' + (p.page_type || '') + ' | kw:' + (p.primary_keyword || 'none') + ' (' + (p.primary_vol || 0) + '/mo) | intent:' + (p.search_intent || '') + ' | persona:' + (p.target_persona || 'general') + ' | awareness:' + (p.awareness_stage || '');
+  }).join('\n');
+
+  var sys = 'You are a senior CRO + SEO strategist. Write a 1-2 sentence page goal for each page \u2014 the strategic purpose it must achieve. Be specific: name the audience segment, desired action, and proof required. No generic goals. Canadian spelling. Return a JSON array: [{"slug":"...","goal":"..."}]';
+
+  var user = 'Client: ' + (R.client_name || (S.setup && S.setup.client) || '') + '\n'
+    + (posDir && posDir.direction ? 'Positioning: "' + posDir.direction + '"' + (posDir.headline ? ' \u2014 ' + posDir.headline : '') + '\n' : '')
+    + (ws ? 'Web strategy (summary): ' + ws.slice(0, 800) + '\n' : '')
+    + '\nGenerate goals for these ' + indices.length + ' pages:\n' + pageList
+    + '\n\nReturn ONLY a JSON array [{"slug":"...","goal":"..."}]. No markdown, no explanation.';
+
+  var result = await callClaude(sys, user, null, 4096, 'goals-batch');
+  var clean = result.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  var parsed = JSON.parse(clean);
+  var count = 0;
+  if (Array.isArray(parsed)) {
+    parsed.forEach(function(item) {
+      if (!item.slug || !item.goal) return;
+      var slug = item.slug.replace(/^\//, '');
+      var page = pages.find(function(p) { return p.slug === slug; });
+      if (page) {
+        page.page_goal = item.goal.replace(/^["'\s]+|["'\s]+$/g, '').trim();
+        count++;
+      }
+    });
+  }
+  return count;
 }
 
 function updatePageField(idx, field, val) {
@@ -2603,7 +2698,12 @@ function _renderSitemapResultsInner(approved) {
     html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
     html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market. Use after making keyword or market edits." style="font-size:11px;padding:2px 8px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
   }
-  html += '<button class="btn btn-ghost sm" data-tip="AI-generates a strategic page goal for every page that does not have one yet. Uses the website strategy, page type, keyword intent, and CRO context." style="font-size:11px;padding:2px 8px" onclick="generateAllPageGoals()"><i class="ti ti-sparkles"></i> Goals</button>';
+  html += '<div style="position:relative;display:inline-block" id="goals-dropdown-wrap">';
+  html += '<button class="btn btn-ghost sm" data-tip="AI-generates strategic page goals. Batch mode sends 12 pages per Claude call." style="font-size:11px;padding:2px 8px" onclick="toggleGoalsDropdown()"><i class="ti ti-sparkles"></i> Goals <i class="ti ti-chevron-down" style="font-size:9px;margin-left:1px"></i></button>';
+  html += '<div id="goals-dropdown" style="display:none;position:absolute;top:100%;left:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100;min-width:180px;padding:4px;margin-top:4px">';
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" onclick="generateAllPageGoals(\'batch\');toggleGoalsDropdown()"><i class="ti ti-stack-2" style="font-size:11px;margin-right:4px"></i> Next Batch (12 pages)</button>';
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" onclick="generateAllPageGoals(\'auto\');toggleGoalsDropdown()"><i class="ti ti-player-play" style="font-size:11px;margin-right:4px"></i> Auto-Complete All</button>';
+  html += '</div></div>';
   if (_hasStrategy) {
     var _blogCount = allPages.filter(function(p) { return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0; }).length;
     if (_blogCount > 0) {
