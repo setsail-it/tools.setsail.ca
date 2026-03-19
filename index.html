@@ -323,16 +323,6 @@ textarea.inp{resize:vertical}
 <!-- USER DROPDOWN BACKDROP -->
 <div id="user-backdrop" onclick="closeUserDropdown()" style="display:none;position:fixed;inset:0;z-index:499"></div>
 
-<!-- CONTEXT BAR -->
-<div id="context-bar" style="display:none;background:var(--dg);padding:5px 20px;font-size:11px;color:rgba(255,255,255,0.7);align-items:center;gap:8px;z-index:602">
-  <span id="ctx-project" style="font-weight:600;color:rgba(255,255,255,0.9)"></span>
-  <span style="opacity:0.4">&#8594;</span>
-  <span id="ctx-stage" style="color:var(--lime)"></span>
-  <span style="opacity:0.3">&#183;</span>
-  <span id="ctx-status" style="opacity:0.8"></span>
-  <span style="flex:1"></span>
-  <span id="ctx-next" style="cursor:pointer;color:var(--lime);font-weight:500" onclick="_doContextAction()"></span>
-</div>
 <!-- TOPBAR -->
 <div id="nav">
   <!-- Left: logo + client -->
@@ -398,6 +388,16 @@ textarea.inp{resize:vertical}
   </div>
   <!-- Hidden stage-bar kept for JS compat -->
   <div id="stage-bar" style="display:none"></div>
+</div>
+<!-- CONTEXT BAR (below nav) -->
+<div id="context-bar" style="display:none;background:var(--dg);padding:4px 20px;font-size:11px;color:rgba(255,255,255,0.7);align-items:center;gap:8px;position:fixed;top:56px;left:0;right:0;z-index:599">
+  <span id="ctx-project" style="font-weight:600;color:rgba(255,255,255,0.9)"></span>
+  <span style="opacity:0.4">&#8594;</span>
+  <span id="ctx-stage" style="color:var(--lime)"></span>
+  <span style="opacity:0.3">&#183;</span>
+  <span id="ctx-status" style="opacity:0.8"></span>
+  <span style="flex:1"></span>
+  <span id="ctx-next" style="cursor:pointer;color:var(--lime);font-weight:500" onclick="_doContextAction()"></span>
 </div>
 
 <!-- LEFT SIDEBAR -->
@@ -1483,7 +1483,11 @@ function _updateContextBar() {
   document.getElementById('ctx-status').textContent = status;
   var nextEl = document.getElementById('ctx-next');
   if (nextEl) nextEl.textContent = next ? '\u25B6 ' + next : '';
-  bar.style.display = next || status ? 'flex' : 'none';
+  var showBar = !!(next || status);
+  bar.style.display = showBar ? 'flex' : 'none';
+  // Shift sidebar down to make room for context bar
+  var sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.style.top = showBar ? '82px' : '56px';
 }
 
 function _doContextAction() {
