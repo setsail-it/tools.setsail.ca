@@ -4068,7 +4068,7 @@ async function generateStrategy() {
     // Step 4: Auto-run D8 Narrative & Messaging — requires D0-D7 complete
     if (!window._aiStopAll) {
       aiBarStart('Running D8 Narrative & Messaging');
-      try { await runDiagnostic(8); } catch (e8) { console.warn('D8 auto-run skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch (e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
       await saveProject();
     }
 
@@ -4120,7 +4120,7 @@ async function _resumeDiagnosticsWithD0(startFrom) {
     }
     // Run D8 Narrative after D1-D7 complete
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4164,7 +4164,7 @@ async function _resumeDiagnostics(startFrom) {
     }
     // Run D8 Narrative after D1-D7 complete
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4204,7 +4204,7 @@ async function runAllDiagnostics() {
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
-  aiBarStart('Running all diagnostics (D0-D7)');
+  aiBarStart('Running all diagnostics (D0-D8)');
   try {
     // D0 first
     await runDiagnostic(0);
@@ -4231,7 +4231,8 @@ async function runAllDiagnostics() {
     }
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      aiBarStart('Running D8 Narrative & Messaging');
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative skipped: ' + e8.message, { duration: 4000 }); }
     }
     S.strategy._kwDataStale = false; // D4-D6 now have latest keyword data
     capturePricingSnapshot();
@@ -4275,7 +4276,7 @@ async function _resumeAllDiagnostics(startFrom) {
     }
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
     createStrategyVersion('rerun_all');
     await saveProject();
@@ -4760,7 +4761,7 @@ function renderStrategyScorecard() {
   } else {
     html += '<button class="btn btn-ghost" data-tip="Re-runs all enrichment and all diagnostics (D0-D7) from scratch" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate All</button>';
     html += '<button class="btn btn-primary" data-tip="Re-runs the 3 weakest sections plus keyword demand validation" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Improve Weakest</button>';
-    html += '<button class="btn btn-ghost" data-tip="Re-runs all diagnostics (D0-D7) without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs all diagnostics (D0-D8) including Narrative without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
   }
   if (meta.current_version > 0 && !meta.approved) {
     html += '<button class="btn btn-dark" onclick="approveStrategy()"><i class="ti ti-check"></i> Approve</button>';
@@ -4985,7 +4986,7 @@ async function runDiagnosticsFrom(startDiag) {
     }
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
@@ -5018,7 +5019,7 @@ async function _resumeDiagnosticsFrom(startFrom) {
     }
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
