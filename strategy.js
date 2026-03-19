@@ -1496,7 +1496,7 @@ var STRATEGY_SECTION_WEIGHTS = {
   execution:    0.10,
   brand:        0.10,
   risks:        0.10,
-  narrative:    0.00
+  narrative:    0.08
 };
 
 var STRATEGY_SECTION_LABELS = {
@@ -1631,6 +1631,11 @@ var ANTI_INFLATION_CAPS = [
       if (!S.strategy || !S.strategy.demand_validation || !S.strategy.demand_validation.strategic_revisions_needed) return false;
       return S.strategy.demand_validation.strategic_revisions_needed.some(function(r) { return r.impact_severity === 'high'; });
     } },
+  // Narrative: no StoryBrand means messaging is unstructured
+  { condition:'no_narrative', section:'narrative', dimension:'confidence', cap:0,
+    test: function() { return !S.strategy || !S.strategy.narrative || !S.strategy.narrative.storybrand; } },
+  { condition:'weak_narrative', section:'narrative', dimension:'confidence', cap:5,
+    test: function() { return S.strategy && S.strategy.narrative && S.strategy.narrative.storybrand && (!S.strategy.narrative.messaging_pillars || S.strategy.narrative.messaging_pillars.length < 2); } },
   // Channels: no channel strategy means growth plan is baseless
   { condition:'no_channel_strategy_growth', section:'channels', dimension:'confidence', cap:3,
     test: function() { return !S.strategy || !S.strategy.channel_strategy || !S.strategy.channel_strategy.levers || !S.strategy.channel_strategy.levers.length; } },
@@ -2045,7 +2050,8 @@ function scoreSection(section) {
   // Confidence: based on AI self-assessment + content depth
   var confidenceScore = 0;
   if (hasContent) {
-    if (sectionData.confidence === 'high') confidenceScore = 9;
+    if (typeof sectionData.confidence === 'number') confidenceScore = Math.min(sectionData.confidence, 10);
+    else if (sectionData.confidence === 'high') confidenceScore = 9;
     else if (sectionData.confidence === 'medium') confidenceScore = 7;
     else if (sectionData.confidence === 'low') confidenceScore = 4;
     else {
