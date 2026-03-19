@@ -426,7 +426,7 @@ export default {
         // ── WHOAMI — returns current user identity + auto-registers new users ──
     if (url.pathname === '/api/whoami' && request.method === 'GET') {
       if (!userId) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401, headers: { 'Content-Type': 'application/json', ...cors } });
-      const _isSuperAdmin = userId === (env.ADMIN_EMAIL || '').toLowerCase();
+      const _isSuperAdmin = userId === (env.ADMIN_EMAIL || 'jason@setsail.ca').toLowerCase();
       const pRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
       let profile;
       if (pRaw) {
@@ -461,7 +461,7 @@ export default {
     }
 
     // ── ADMIN — user management ──────────────────────────────────────────────────
-    function _isSuperAdminEmail(email) { return email === (env.ADMIN_EMAIL || '').toLowerCase(); }
+    function _isSuperAdminEmail(email) { return email === (env.ADMIN_EMAIL || 'jason@setsail.ca').toLowerCase(); }
     async function _isAdminOrAbove() {
       if (!userId) return false;
       if (_isSuperAdminEmail(userId)) return true;
