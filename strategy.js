@@ -3468,8 +3468,8 @@ function buildDiagnosticPrompt(num) {
     var hasJTBD = !!(r.jtbd_forces && (r.jtbd_forces.push_forces || []).length > 0);
     var dataTier = hasTranscripts ? 'transcript' : (hasPainPoints || hasJTBD) ? 'research' : 'web-only';
 
-    return _stratCtx(r, setup0)
-      + '\n' + _snapCtx()
+    return _stratCtx()
+      + '\n' + _snapshotCtxBlock()
       + '\nDATA TIER: ' + dataTier + (dataTier === 'web-only' ? ' — infer buyer psychology from competitive positioning and industry patterns. Flag all inferred claims with [inferred]. Set confidence to 1-3.' : '')
       + '\n\n--- D0 AUDIENCE CONTEXT ---\n'
       + (st.audience ? 'SEGMENTS: ' + JSON.stringify((st.audience.segments || []).map(function(s) { return { segment: s.segment_name, pain: s.pain_driver, motion: s.buying_motion }; })) : 'Not yet run')
