@@ -2122,7 +2122,7 @@ function scoreStrategy() {
   var overall = totalWeight > 0 ? weightedSum / totalWeight : 0;
   overall = Math.round(overall * 10) / 10;
 
-  // D8 overall cap
+  // Demand validation overall cap (caps score if keyword demand check hasn't run)
   if (!S.strategy || !S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) {
     if (overall > 6.5) overall = 6.5;
   }
@@ -2181,7 +2181,7 @@ function createStrategyVersion(trigger, overrides) {
 
   // Add known limitations
   if (!S.strategy.demand_validation || !S.strategy.demand_validation.overall_verdict) {
-    version.known_limitations.push('Keyword demand validation (D8) has not run yet');
+    version.known_limitations.push('Keyword demand validation has not run yet');
   }
   if ((!(S.setup || {}).docs || !S.setup.docs.length) && !(S.setup || {}).discoveryNotes) {
     version.known_limitations.push('No reference documents or discovery notes — specificity may be limited');
@@ -2371,7 +2371,7 @@ var strategyEnrich = {
     }
   },
 
-  // Keyword demand validation (D8 data source)
+  // Keyword demand validation (programmatic — feeds S.strategy.demand_validation)
   // If full keyword research exists (S.kwResearch), derives validation from real data.
   // Falls back to quick API check only if no keyword research has been done.
   keywordDemandCheck: async function(vertical, geography, services) {
