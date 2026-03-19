@@ -656,15 +656,27 @@ export default {
     // GET /api/projects — list all projects
     if (url.pathname === '/api/projects' && request.method === 'GET') {
       try {
-        const list = await env.SETSAIL_OS.list({ prefix: userPrefix + 'project:' });
+        // For strategist+ roles, show all projects across all users (internal team tool)
+        const userRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+        const userRole = userRaw ? JSON.parse(userRaw).role : 'viewer';
+        const canSeeAll = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(userRole);
+        const prefix = canSeeAll ? 'u:' : userPrefix + 'project:';
+        const list = await env.SETSAIL_OS.list({ prefix });
         const projects = [];
+        const seen = new Set();
         for (const key of list.keys) {
+          // Only match project keys
+          if (!key.name.includes(':project:')) continue;
           const meta = key.metadata || {};
+          const projId = key.name.split(':project:')[1];
+          if (!projId || seen.has(projId)) continue;
+          seen.add(projId);
           projects.push({
-            id: key.name.replace(userPrefix + 'project:', ''),
-            name: meta.name || key.name,
+            id: projId,
+            name: meta.name || projId,
             stage: meta.stage || 'setup',
             updatedAt: meta.updatedAt || null,
+            owner: key.name.split(':project:')[0].replace('u:', ''),
           });
         }
         projects.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -684,7 +696,20 @@ export default {
       const id = saveMatch[1];
       try {
         const data = await request.json();
-        const kvKey = userPrefix + 'project:' + id;
+        // Try own prefix first, then cross-user lookup for strategist+
+        let kvKey = userPrefix + 'project:' + id;
+        const ownExists = await env.SETSAIL_OS.get(kvKey, { type: 'json' });
+        if (!ownExists) {
+          const uRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+          const uRole = uRaw ? JSON.parse(uRaw).role : 'viewer';
+          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(uRole);
+          if (canCross) {
+            const list = await env.SETSAIL_OS.list({ prefix: 'u:' });
+            for (const k of list.keys) {
+              if (k.name.endsWith(':project:' + id)) { kvKey = k.name; break; }
+            }
+          }
+        }
 
         // ── Optimistic locking: reject stale writes ──
         const clientVersion = data._version || 0;
@@ -730,12 +755,28 @@ export default {
       }
     }
 
-    // GET /api/projects/:id — load a project
+    // GET /api/projects/:id — load a project (cross-user for strategist+)
     const loadMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
     if (loadMatch && request.method === 'GET') {
       const id = loadMatch[1];
       try {
-        const raw = await env.SETSAIL_OS.get(userPrefix + 'project:' + id);
+        // Try own prefix first
+        let raw = await env.SETSAIL_OS.get(userPrefix + 'project:' + id);
+        // If not found, search across all users (for strategist+ roles)
+        if (!raw) {
+          const uRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
+          const uRole = uRaw ? JSON.parse(uRaw).role : 'viewer';
+          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(uRole);
+          if (canCross) {
+            const list = await env.SETSAIL_OS.list({ prefix: 'u:' });
+            for (const key of list.keys) {
+              if (key.name.endsWith(':project:' + id)) {
+                raw = await env.SETSAIL_OS.get(key.name);
+                if (raw) break;
+              }
+            }
+          }
+        }
         if (!raw) return new Response(JSON.stringify({ error: 'Not found' }), {
           status: 404, headers: { 'Content-Type': 'application/json', ...cors }
         });
