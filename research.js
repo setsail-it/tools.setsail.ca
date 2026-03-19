@@ -923,17 +923,38 @@ async function generateMissingBuyerPsych() {
   try {
     var resp = '';
     await callClaude('You are a buyer psychology analyst. Return only valid JSON.', prompt, function(chunk) { resp += chunk; }, 4000, 'Buyer Psychology');
-    var clean = resp.replace(/```json\s*/gi, '').replace(/```\s*/g, '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/,\s*([\]}])/g, '$1').trim();
+    var clean = resp.replace(/```json\s*/gi, '').replace(/```\s*/g, '').replace(/[\x00-\x1F\x7F]/g, ' ').trim();
     // Extract JSON object boundaries if Claude added prose around it
     var jsonStart = clean.indexOf('{'), jsonEnd = clean.lastIndexOf('}');
     if (jsonStart >= 0 && jsonEnd > jsonStart) clean = clean.slice(jsonStart, jsonEnd + 1);
-    // Fix unquoted property names (common Claude JSON error)
-    clean = clean.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-    // Fix single-quoted strings
-    clean = clean.replace(/:\s*'([^']*)'/g, ': "$1"');
-    // Fix Python-style booleans/None
-    clean = clean.replace(/:\s*True\b/g, ': true').replace(/:\s*False\b/g, ': false').replace(/:\s*None\b/g, ': null');
-    var parsed = JSON.parse(clean);
+    // Robust JSON repair: fix newlines + unescaped quotes inside strings
+    var inStr = false, escaped = false, repaired = '';
+    for (var ci = 0; ci < clean.length; ci++) {
+      var ch = clean[ci];
+      if (escaped) { repaired += ch; escaped = false; continue; }
+      if (ch === '\\') { repaired += ch; escaped = true; continue; }
+      if (ch === '"') {
+        if (!inStr) { inStr = true; repaired += ch; continue; }
+        var la = '';
+        for (var lk = ci + 1; lk < clean.length && lk < ci + 20; lk++) {
+          var lc = clean[lk];
+          if (lc !== ' ' && lc !== '\t' && lc !== '\n' && lc !== '\r') { la = lc; break; }
+        }
+        if (la === ',' || la === ']' || la === '}' || la === ':') {
+          inStr = false; repaired += ch; continue;
+        }
+        repaired += '\\"'; continue;
+      }
+      if (inStr && (ch === '\n' || ch === '\r')) { repaired += ' '; continue; }
+      repaired += ch;
+    }
+    // Fix unquoted keys, single quotes, trailing commas, Python booleans
+    repaired = repaired
+      .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+      .replace(/:\s*'([^']*)'/g, ': "$1"')
+      .replace(/,\s*([}\]])/g, '$1')
+      .replace(/:\s*True\b/g, ': true').replace(/:\s*False\b/g, ': false').replace(/:\s*None\b/g, ': null');
+    var parsed = JSON.parse(repaired);
 
     if (!S.research.jtbd_forces) S.research.jtbd_forces = { push_forces:[], pull_forces:[], anxieties:[], habits:[] };
     if (parsed.push_forces && !(jf.push_forces || []).length) S.research.jtbd_forces.push_forces = parsed.push_forces;
