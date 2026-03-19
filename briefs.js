@@ -93,7 +93,13 @@ function _pageStepDots(p, pidx) {
   var state = _pageStepState(p);
   var dotSize = '6px';
   var labels = ['Inherit', 'Enrich', 'Generate', 'Score', 'Approve'];
-  var html = '<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">';
+  var tipLines = [];
+  for (var t = 0; t < 5; t++) {
+    var mark = state.steps[t] ? '\u2713' : (t === state.current - 1 ? '\u25CB current' : '\u2014');
+    tipLines.push((t + 1) + '. ' + labels[t] + ' ' + mark);
+  }
+  var containerTip = tipLines.join('\n');
+  var html = '<div title="' + containerTip.replace(/"/g, '&quot;') + '" style="display:flex;align-items:center;gap:2px;flex-shrink:0">';
   for (var i = 0; i < 5; i++) {
     var clr;
     if (state.steps[i]) {
@@ -103,8 +109,7 @@ function _pageStepDots(p, pidx) {
     } else {
       clr = 'var(--border)';
     }
-    var tip = labels[i] + (state.steps[i] ? ' \u2713' : '');
-    html += '<div title="' + tip + '" style="width:' + dotSize + ';height:' + dotSize + ';border-radius:50%;background:' + clr + '"></div>';
+    html += '<div style="width:' + dotSize + ';height:' + dotSize + ';border-radius:50%;background:' + clr + '"></div>';
   }
   // Clickable next-step button
   if (state.label !== 'Done') {

@@ -142,10 +142,17 @@ function _copyPageStepState(slug) {
 
 function _copyPageStepDots(slug) {
   var ps = _copyPageStepState(slug);
-  var html = '<div style="display:flex;align-items:center;gap:3px;margin-left:auto;margin-right:8px">';
+  var stepNames = ['Write','Audit','Fix','Polish','Approve'];
+  var tipLines = [];
+  for (var t = 0; t < 5; t++) {
+    var mark = ps.steps[t] ? '\u2713' : (t === ps.current - 1 ? '\u25CB current' : '\u2014');
+    tipLines.push((t + 1) + '. ' + stepNames[t] + ' ' + mark);
+  }
+  var containerTip = tipLines.join('\n');
+  var html = '<div title="' + containerTip.replace(/"/g, '&quot;') + '" style="display:flex;align-items:center;gap:3px;margin-left:auto;margin-right:8px">';
   for (var i = 0; i < 5; i++) {
     var clr = ps.steps[i] ? 'var(--green)' : (i === ps.current - 1 ? 'var(--warn)' : 'var(--n1)');
-    html += '<div style="width:6px;height:6px;border-radius:50%;background:' + clr + '" title="' + ['Write','Audit','Fix','Polish','Approve'][i] + '"></div>';
+    html += '<div style="width:6px;height:6px;border-radius:50%;background:' + clr + '"></div>';
   }
   if (!ps.steps[4]) {
     html += ' <button class="copy-step-action" data-slug="' + slug + '" data-step="' + ps.current + '" style="font-size:9px;padding:1px 7px;border-radius:3px;border:1px solid var(--border);background:rgba(0,0,0,0.03);cursor:pointer;font-family:var(--font);color:var(--n3);margin-left:3px;white-space:nowrap">'

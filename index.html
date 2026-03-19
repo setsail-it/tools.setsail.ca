@@ -2416,7 +2416,17 @@ async function _tryAutoFillGoals(extract) {
 
 async function _extractDocSync(content, docName) {
   var systemPrompt = 'You are a document analyst for a marketing agency. Extract ALL factual information from the provided document into these categories. Each category is an array of concise strings. Preserve every fact, number, name, quote, and detail — compress format, not content. If a category has no relevant content, return an empty array.\n\nOutput ONLY valid JSON with these keys:\n- facts: business facts, history, metrics, pricing, team size, years in operation\n- decisions: decisions made, agreements, approvals, rejections\n- requirements: stated requirements, must-haves, constraints, dealbreakers\n- quotes: notable direct quotes preserving exact client language (attribute speaker if known)\n- objections: concerns, hesitations, pushback, red flags raised\n- competitors: competitor names, comparisons, market positioning\n- audience: target audience, demographics, customer types, pain points, personas\n- services: services, products, offerings, pricing, differentiators\n- goals: goals, objectives, desired outcomes, KPIs, timelines, success metrics';
-  var userPrompt = 'Document: "' + docName + '"\n\n' + content;
+  // Sanitise content: strip null bytes, excessive whitespace, and cap at 150k chars
+  var clean = content.replace(/\0/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // Strip non-printable control characters (keep newlines and tabs)
+  clean = clean.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  // Collapse runs of 3+ blank lines to 2
+  clean = clean.replace(/\n{4,}/g, '\n\n\n');
+  if (clean.length > 150000) {
+    console.warn('[doc-extract] Truncating "' + docName + '" from ' + clean.length + ' to 150k chars');
+    clean = clean.slice(0, 150000) + '\n\n[Document truncated at 150,000 characters]';
+  }
+  var userPrompt = 'Document: "' + docName + '"\n\n' + clean;
   var maxRetries = 3;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -2431,27 +2441,57 @@ async function _extractDocSync(content, docName) {
         })
       });
       if (resp.status === 429) {
-        // Rate limited — wait with exponential backoff then retry
         var backoff = Math.min(15000 * Math.pow(2, attempt), 60000);
         console.warn('[doc-extract] 429 rate limited, retrying in ' + (backoff / 1000) + 's (attempt ' + (attempt + 1) + '/' + maxRetries + ')');
         await new Promise(function(r) { setTimeout(r, backoff); });
         continue;
       }
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        var errBody = '';
+        try { errBody = await resp.text(); } catch(_) {}
+        console.error('[doc-extract] HTTP ' + resp.status + ' for "' + docName + '":', errBody.slice(0, 500));
+        if (attempt < maxRetries - 1) { await new Promise(function(r) { setTimeout(r, 5000); }); continue; }
+        return null;
+      }
       var data = await resp.json();
+      // Check for API-level errors (overloaded, context too long, etc.)
+      if (data.error) {
+        console.error('[doc-extract] API error for "' + docName + '":', data.error.message || JSON.stringify(data.error));
+        if (data.error.type === 'overloaded_error' && attempt < maxRetries - 1) {
+          await new Promise(function(r) { setTimeout(r, 10000 * (attempt + 1)); });
+          continue;
+        }
+        return null;
+      }
       var text = '';
       if (data.content && data.content[0]) text = data.content[0].text || '';
-      // Parse JSON from response
-      var jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
-      var parsed = JSON.parse(jsonMatch[0]);
-      // Validate structure
+      if (!text) { console.error('[doc-extract] Empty response for "' + docName + '"'); return null; }
+      // Robust JSON extraction
+      var jsonStart = text.indexOf('{');
+      var jsonEnd = text.lastIndexOf('}');
+      if (jsonStart < 0 || jsonEnd <= jsonStart) { console.error('[doc-extract] No JSON found for "' + docName + '":', text.slice(0, 200)); return null; }
+      var jsonStr = text.slice(jsonStart, jsonEnd + 1);
+      var parsed;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch(pe) {
+        // Try fixing common issues: unquoted keys, single quotes, trailing commas
+        var fixed = jsonStr
+          .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+          .replace(/:\s*'([^']*)'/g, ': "$1"')
+          .replace(/,\s*([}\]])/g, '$1');
+        try { parsed = JSON.parse(fixed); } catch(pe2) {
+          console.error('[doc-extract] JSON parse failed for "' + docName + '":', pe2.message, jsonStr.slice(0, 300));
+          return null;
+        }
+      }
       var cats = ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals'];
       var valid = {};
       cats.forEach(function(c) { valid[c] = Array.isArray(parsed[c]) ? parsed[c] : []; });
       return valid;
     } catch(e) {
-      if (attempt < maxRetries - 1) continue;
+      console.error('[doc-extract] Exception for "' + docName + '" (attempt ' + (attempt + 1) + '):', e.message);
+      if (attempt < maxRetries - 1) { await new Promise(function(r) { setTimeout(r, 5000); }); continue; }
       return null;
     }
   }
