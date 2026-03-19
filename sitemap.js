@@ -233,15 +233,32 @@ function _checkDirectionPageGaps(pages) {
 // Check CTA landing page gaps
 function _checkCTAPageGaps(pages) {
   var ep = S.strategy && S.strategy.execution_plan;
-  if (!ep) return [];
+  var nar = S.strategy && S.strategy.narrative;
+  if (!ep && !nar) return [];
   var gaps = [];
   var ctas = [];
+  var _seenCtas = {};
 
-  if (ep.primary_cta) ctas.push({ label: ep.primary_cta, type: 'primary' });
-  if (ep.secondary_ctas && ep.secondary_ctas.length) {
-    ep.secondary_ctas.forEach(function(c) { ctas.push({ label: c, type: 'secondary' }); });
+  // D5 execution plan CTAs
+  if (ep) {
+    if (ep.primary_cta) { ctas.push({ label: ep.primary_cta, type: 'primary' }); _seenCtas[ep.primary_cta.toLowerCase()] = true; }
+    if (ep.secondary_ctas && ep.secondary_ctas.length) {
+      ep.secondary_ctas.forEach(function(c) { if (!_seenCtas[c.toLowerCase()]) { ctas.push({ label: c, type: 'secondary' }); _seenCtas[c.toLowerCase()] = true; } });
+    }
+    if (ep.low_commitment_cta && !_seenCtas[ep.low_commitment_cta.toLowerCase()]) { ctas.push({ label: ep.low_commitment_cta, type: 'low_commitment' }); _seenCtas[ep.low_commitment_cta.toLowerCase()] = true; }
   }
-  if (ep.low_commitment_cta) ctas.push({ label: ep.low_commitment_cta, type: 'low_commitment' });
+
+  // D8 narrative StoryBrand CTAs
+  if (nar && nar.storybrand) {
+    if (nar.storybrand.direct_cta && !_seenCtas[(nar.storybrand.direct_cta || '').toLowerCase()]) {
+      ctas.push({ label: nar.storybrand.direct_cta, type: 'D8 direct' });
+      _seenCtas[nar.storybrand.direct_cta.toLowerCase()] = true;
+    }
+    if (nar.storybrand.transitional_cta && !_seenCtas[(nar.storybrand.transitional_cta || '').toLowerCase()]) {
+      ctas.push({ label: nar.storybrand.transitional_cta, type: 'D8 transitional' });
+      _seenCtas[nar.storybrand.transitional_cta.toLowerCase()] = true;
+    }
+  }
 
   ctas.forEach(function(cta) {
     // Check if any page goal or page name references this CTA
@@ -306,6 +323,45 @@ function _runPersonaCoverageCheck(pages) {
         passed: hasObjectionContent,
         suggestion: hasObjectionContent ? null : 'Create blog post addressing this objection for ' + (persona.name || seg)
       });
+    }
+
+    // 4. D8 high-priority objections addressed in content?
+    var _narObj = S.strategy && S.strategy.narrative && S.strategy.narrative.objection_map;
+    if (_narObj && _narObj.length) {
+      var _highObj = _narObj.filter(function(o) { return o.priority === 'high'; });
+      _highObj.slice(0, 2).forEach(function(o) {
+        var objLower = (o.objection || '').toLowerCase().slice(0, 40);
+        var hasContent = pages.some(function(p) {
+          return (p.page_goal || '').toLowerCase().indexOf(objLower) >= 0
+            || (p.page_name || '').toLowerCase().indexOf(objLower.slice(0, 20)) >= 0;
+        });
+        checks.push({
+          type: 'narrative_objection',
+          label: 'D8 objection: "' + (o.objection || '').slice(0, 55) + '"',
+          passed: hasContent,
+          suggestion: hasContent ? null : 'Create content rebutting: ' + (o.objection || '').slice(0, 60)
+        });
+      });
+    }
+
+    // 5. D0 perceived alternatives — content countering top alternative?
+    var _alts = S.strategy && S.strategy.audience && S.strategy.audience.perceived_alternatives;
+    if (_alts && _alts.length) {
+      var _topAlt = _alts.filter(function(a) { return a.threat_level === 'high'; })[0] || _alts[0];
+      if (_topAlt && _topAlt.alternative) {
+        var altLower = (_topAlt.alternative || '').toLowerCase();
+        var hasAltContent = pages.some(function(p) {
+          return (p.page_goal || '').toLowerCase().indexOf(altLower) >= 0
+            || (p.page_name || '').toLowerCase().indexOf(altLower.slice(0, 15)) >= 0
+            || (p.primary_keyword || '').toLowerCase().indexOf(altLower.slice(0, 15)) >= 0;
+        });
+        checks.push({
+          type: 'alternative_counter',
+          label: 'Content vs alternative: "' + (_topAlt.alternative || '').slice(0, 50) + '"',
+          passed: hasAltContent,
+          suggestion: hasAltContent ? null : 'Create content countering: ' + (_topAlt.alternative || '').slice(0, 60)
+        });
+      }
     }
 
     results.push({
@@ -3164,7 +3220,19 @@ function _renderSitemapResultsInner(approved) {
     const _kwEntries = _allKwPages.reduce((acc,p) => { if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority||'' }); } return acc; }, []);
     const _existingSeedEl = document.getElementById('ci-paa-seeds');
     const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_kwEntries[0]?.kw || '');
-    const _kwOptions = _kwEntries.map(e => '<option value="'+esc(e.kw)+'"'+(e.kw===paaSeeds?' selected':'')+'>'+esc(e.kw)+(e.pri?' ('+e.pri+')':'')+'</option>').join('');
+    // Add D0 pain drivers as PAA seed options
+    var _d0PainSeeds = [];
+    var _d0Aud = S.strategy && S.strategy.audience;
+    if (_d0Aud && _d0Aud.segments) {
+      _d0Aud.segments.forEach(function(seg) {
+        if (seg.pain_driver && !_seenKws.has(seg.pain_driver)) {
+          _seenKws.add(seg.pain_driver);
+          _d0PainSeeds.push({ kw: seg.pain_driver, pri: 'D0' });
+        }
+      });
+    }
+    var _allKwEntries = _kwEntries.concat(_d0PainSeeds);
+    const _kwOptions = _allKwEntries.map(e => '<option value="'+esc(e.kw)+'"'+(e.kw===paaSeeds?' selected':'')+'>'+esc(e.kw)+(e.pri?' ('+e.pri+')':'')+'</option>').join('');
     html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
     html += '<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer">'+_kwOptions+'</select>';
     html += '</div>';
@@ -3252,11 +3320,50 @@ function _renderSitemapResultsInner(approved) {
       html += '</div></div>';
     }
 
-    // Unified topic pool
+    // Unified topic pool — PAA + competitor gaps + D8 content hooks + D0 purchase triggers
     const _allSources = [
       ...paaQuestions.map(q => ({ text: q.question, source: 'paa', meta: q.seed || '' })),
       ...gapKeywords.map(k => ({ text: (k.keyword||k.kw||String(k)), source: 'gap', meta: 'vol: '+(k.volume||k.vol||'?') }))
     ];
+    // Inject D8 content hooks as blog opportunities
+    var _nar = S.strategy && S.strategy.narrative;
+    if (_nar && _nar.content_hooks) {
+      var _hookStages = ['unaware','problem_aware','solution_aware','product_aware','most_aware'];
+      var _hookLabels = { unaware:'Unaware', problem_aware:'Problem Aware', solution_aware:'Solution Aware', product_aware:'Product Aware', most_aware:'Most Aware' };
+      _hookStages.forEach(function(stage) {
+        var hooks = _nar.content_hooks[stage];
+        if (hooks && hooks.length) {
+          hooks.forEach(function(h) {
+            if (h && !_allSources.some(function(s) { return s.text === h; })) {
+              _allSources.push({ text: h, source: 'D8', meta: _hookLabels[stage] || stage });
+            }
+          });
+        }
+      });
+    }
+    // Inject D0 purchase triggers as blog opportunities
+    var _aud = S.strategy && S.strategy.audience;
+    if (_aud && _aud.purchase_triggers && _aud.purchase_triggers.length) {
+      _aud.purchase_triggers.forEach(function(t) {
+        if (t.trigger && t.messaging_angle) {
+          var _trigText = t.messaging_angle;
+          if (!_allSources.some(function(s) { return s.text === _trigText; })) {
+            _allSources.push({ text: _trigText, source: 'D0', meta: t.urgency_level || '' });
+          }
+        }
+      });
+    }
+    // Inject D0 perceived alternatives as blog opportunities
+    if (_aud && _aud.perceived_alternatives && _aud.perceived_alternatives.length) {
+      _aud.perceived_alternatives.forEach(function(alt) {
+        if (alt.alternative && alt.counter_positioning) {
+          var _altText = 'Why ' + alt.alternative + ' falls short: ' + alt.counter_positioning.slice(0, 80);
+          if (!_allSources.some(function(s) { return s.text === _altText; })) {
+            _allSources.push({ text: _altText, source: 'D0', meta: 'vs ' + alt.alternative });
+          }
+        }
+      });
+    }
     const _selectedTexts = new Set(blogTopics.map(t => t.text));
     if (_allSources.length > 0) {
       html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">';
@@ -3267,7 +3374,7 @@ function _renderSitemapResultsInner(approved) {
       html += '<div style="max-height:260px;overflow-y:auto">';
       _allSources.forEach(item => {
         const isAdded = _selectedTexts.has(item.text);
-        const srcColor = item.source === 'paa' ? 'var(--green)' : 'var(--n2)';
+        const srcColor = item.source === 'paa' ? 'var(--green)' : item.source === 'D8' ? '#7c3aed' : item.source === 'D0' ? '#3b82f6' : 'var(--n2)';
         const safeText = item.text.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
         html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04)">';
         html += '<span style="font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:'+srcColor+';min-width:28px">'+item.source.toUpperCase()+'</span>';
