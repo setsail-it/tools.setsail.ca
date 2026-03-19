@@ -48,6 +48,15 @@ var RESEARCH_FIELD_META = {
   current_lead_volume:       { tab:'audience',    label:'Current Monthly Leads',    importance:'normal',   source:'manual' },
   current_marketing_activities:{ tab:'audience',  label:'Current Marketing Activities', importance:'normal', source:'manual' },
   previous_agency_experience:{ tab:'audience',    label:'Previous Agency Experience', importance:'optional', source:'manual' },
+  // Buyer Psychology — JTBD Force Map + Buyer Context
+  'jtbd_forces.push_forces':  { tab:'audience', label:'JTBD Push Forces',         importance:'normal',  source:'ai' },
+  'jtbd_forces.pull_forces':  { tab:'audience', label:'JTBD Pull Forces',         importance:'normal',  source:'ai' },
+  'jtbd_forces.anxieties':    { tab:'audience', label:'JTBD Anxieties',           importance:'normal',  source:'ai' },
+  'jtbd_forces.habits':       { tab:'audience', label:'JTBD Habits',              importance:'normal',  source:'ai' },
+  buyer_sophistication:       { tab:'audience', label:'Buyer Sophistication',     importance:'normal',  source:'ai' },
+  perceived_categories:       { tab:'audience', label:'Perceived Categories',     importance:'normal',  source:'ai' },
+  switching_triggers:         { tab:'audience', label:'Switching Triggers',       importance:'normal',  source:'ai' },
+  decision_criteria:          { tab:'audience', label:'Decision Criteria',        importance:'normal',  source:'ai' },
   // Brand — identity and proof (strategic brand fields moved to Strategy)
   brand_name:                { tab:'brand',       label:'Brand Name',               importance:'critical', source:'ai' },
   current_slogan:            { tab:'brand',       label:'Current Slogan / Tagline', importance:'normal',   source:'ai' },
@@ -397,6 +406,17 @@ function researchDefaults() {
     current_faqs:[], reviews:[],
     // Competitors
     competitors:[],
+    // Buyer Psychology — JTBD Force Map
+    jtbd_forces: {
+      push_forces: [],   // [{force, quote, intensity}]
+      pull_forces: [],
+      anxieties: [],
+      habits: []
+    },
+    buyer_sophistication: '',   // 1-5 score
+    perceived_categories: [],   // array of strings
+    switching_triggers: [],     // array of strings
+    decision_criteria: [],      // [{criterion, priority}]
     // Client Pain (Layer 1 — why the client hired Setsail)
     clientPain: {
       primary: '',
@@ -693,6 +713,239 @@ function removeRFRep(key, idx) {
   scheduleScorecard();
 }
 
+// ── JTBD Force Map Accessors ──────────────────────────────────────
+function _getJTBDForces(forceType) {
+  if (!S.research || !S.research.jtbd_forces) return [];
+  return S.research.jtbd_forces[forceType] || [];
+}
+function setRFJTBD(forceType, idx, field, value) {
+  if (!S.research) S.research = researchDefaults();
+  if (!S.research.jtbd_forces) S.research.jtbd_forces = { push_forces:[], pull_forces:[], anxieties:[], habits:[] };
+  if (!S.research.jtbd_forces[forceType]) S.research.jtbd_forces[forceType] = [];
+  if (!S.research.jtbd_forces[forceType][idx]) S.research.jtbd_forces[forceType][idx] = { force:'', quote:'', intensity:3 };
+  S.research.jtbd_forces[forceType][idx][field] = value;
+  scheduleSave();
+  scheduleScorecard();
+}
+function addRFJTBD(forceType) {
+  if (!S.research) S.research = researchDefaults();
+  if (!S.research.jtbd_forces) S.research.jtbd_forces = { push_forces:[], pull_forces:[], anxieties:[], habits:[] };
+  if (!S.research.jtbd_forces[forceType]) S.research.jtbd_forces[forceType] = [];
+  S.research.jtbd_forces[forceType].push({ force:'', quote:'', intensity:3 });
+  scheduleSave();
+  renderResearchTabContent();
+  scheduleScorecard();
+}
+function removeRFJTBD(forceType, idx) {
+  if (!S.research || !S.research.jtbd_forces || !S.research.jtbd_forces[forceType]) return;
+  S.research.jtbd_forces[forceType].splice(idx, 1);
+  scheduleSave();
+  renderResearchTabContent();
+  scheduleScorecard();
+}
+
+// Decision criteria accessors
+function setRFCriterion(idx, field, value) {
+  if (!S.research) S.research = researchDefaults();
+  if (!S.research.decision_criteria) S.research.decision_criteria = [];
+  if (!S.research.decision_criteria[idx]) S.research.decision_criteria[idx] = { criterion:'', priority:'must-have' };
+  S.research.decision_criteria[idx][field] = value;
+  scheduleSave();
+  scheduleScorecard();
+}
+function addRFCriterion() {
+  if (!S.research) S.research = researchDefaults();
+  if (!S.research.decision_criteria) S.research.decision_criteria = [];
+  S.research.decision_criteria.push({ criterion:'', priority:'must-have' });
+  scheduleSave();
+  renderResearchTabContent();
+  scheduleScorecard();
+}
+function removeRFCriterion(idx) {
+  if (!S.research || !S.research.decision_criteria) return;
+  S.research.decision_criteria.splice(idx, 1);
+  scheduleSave();
+  renderResearchTabContent();
+  scheduleScorecard();
+}
+
+// ── JTBD Force Group Renderer ─────────────────────────────────────
+function rJTBDForceGroup(forceType, label, icon, colour) {
+  var items = _getJTBDForces(forceType);
+  var html = '<div style="margin-bottom:12px">';
+  html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:' + colour + ';margin-bottom:6px;display:flex;align-items:center;gap:5px"><i class="ti ti-' + icon + '" style="font-size:13px"></i>' + esc(label);
+  if (items.length) html += ' <span style="font-size:10px;opacity:0.6">(' + items.length + ')</span>';
+  html += '</div>';
+  if (items.length) {
+    html += '<div style="display:flex;gap:6px;margin-bottom:4px">';
+    html += '<div style="flex:1;min-width:0;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Force / Behaviour</div>';
+    html += '<div style="flex:1;min-width:0;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Supporting Quote</div>';
+    html += '<div style="width:60px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);text-align:center">Intensity</div>';
+    html += '<div style="width:26px"></div></div>';
+  }
+  items.forEach(function(item, i) {
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">';
+    html += '<input type="text" value="' + esc(item.force || '') + '" placeholder="e.g. Manual data entry across 6 systems" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'force\',this.value)">';
+    html += '<input type="text" value="' + esc(item.quote || '') + '" placeholder="Verbatim quote..." style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark);font-style:italic" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'quote\',this.value)">';
+    html += '<select style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 4px;font-size:12px;font-family:var(--font);color:var(--dark);text-align:center" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'intensity\',parseInt(this.value))">';
+    for (var s = 1; s <= 5; s++) html += '<option value="' + s + '"' + ((item.intensity || 3) === s ? ' selected' : '') + '>' + s + '</option>';
+    html += '</select>';
+    html += '<button onclick="removeRFJTBD(\'' + forceType + '\',' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;flex-shrink:0" title="Remove">\u00d7</button>';
+    html += '</div>';
+  });
+  html += '<button class="btn btn-ghost" onclick="addRFJTBD(\'' + forceType + '\')" style="font-size:11px;padding:3px 8px;color:' + colour + ';border-color:' + colour + '30"><i class="ti ti-plus" style="font-size:10px"></i> Add ' + label.replace(/^JTBD /, '') + '</button>';
+  html += '</div>';
+  return html;
+}
+
+// ── Decision Criteria Renderer ────────────────────────────────────
+function rDecisionCriteria() {
+  var items = (S.research && S.research.decision_criteria) || [];
+  var html = '<div style="margin-bottom:12px">';
+  html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:6px">Decision Criteria';
+  if (items.length) html += ' <span style="font-size:10px;opacity:0.6">(' + items.length + ')</span>';
+  html += '</div>';
+  if (items.length) {
+    html += '<div style="display:flex;gap:6px;margin-bottom:4px">';
+    html += '<div style="flex:1;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Criterion</div>';
+    html += '<div style="width:110px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Priority</div>';
+    html += '<div style="width:26px"></div></div>';
+  }
+  items.forEach(function(item, i) {
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">';
+    html += '<input type="text" value="' + esc(item.criterion || '') + '" placeholder="e.g. Must integrate with PropertyWare" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFCriterion(' + i + ',\'criterion\',this.value)">';
+    html += '<select style="width:110px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 4px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFCriterion(' + i + ',\'priority\',this.value)">';
+    html += '<option value="must-have"' + ((item.priority || 'must-have') === 'must-have' ? ' selected' : '') + '>Must-have</option>';
+    html += '<option value="nice-to-have"' + (item.priority === 'nice-to-have' ? ' selected' : '') + '>Nice-to-have</option>';
+    html += '</select>';
+    html += '<button onclick="removeRFCriterion(' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;flex-shrink:0" title="Remove">\u00d7</button>';
+    html += '</div>';
+  });
+  html += '<button class="btn btn-ghost" onclick="addRFCriterion()" style="font-size:11px;padding:3px 8px"><i class="ti ti-plus" style="font-size:10px"></i> Add Criterion</button>';
+  html += '</div>';
+  return html;
+}
+
+// ── Buyer Psychology Coverage Map ─────────────────────────────────
+function renderBuyerPsychCoverage(r) {
+  var jf = (r && r.jtbd_forces) || {};
+  var checks = [
+    { label: 'Push Forces', filled: (jf.push_forces || []).length > 0 },
+    { label: 'Pull Forces', filled: (jf.pull_forces || []).length > 0 },
+    { label: 'Anxieties', filled: (jf.anxieties || []).length > 0 },
+    { label: 'Habits', filled: (jf.habits || []).length > 0 },
+    { label: 'Sophistication', filled: !!(r && r.buyer_sophistication) },
+    { label: 'Perceived Categories', filled: (r && r.perceived_categories || []).length > 0 },
+    { label: 'Switching Triggers', filled: (r && r.switching_triggers || []).length > 0 },
+    { label: 'Decision Criteria', filled: (r && r.decision_criteria || []).length > 0 }
+  ];
+  var filled = checks.filter(function(c) { return c.filled; }).length;
+  var pct = Math.round((filled / checks.length) * 100);
+  var colour = pct >= 75 ? '#10b981' : pct >= 40 ? '#e6a23c' : '#999';
+
+  var html = '<div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  html += '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Buyer Psychology Coverage</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px">';
+  html += '<span style="font-size:12px;font-weight:500;color:' + colour + '">' + pct + '%</span>';
+  html += '<button id="btn-gen-buyer-psych" class="btn btn-ghost" style="font-size:11px;padding:3px 10px;color:#3b82f6;border-color:rgba(59,130,246,0.3)" onclick="generateMissingBuyerPsych()"><i class="ti ti-sparkles" style="font-size:10px"></i> AI Generate Missing</button>';
+  html += '</div></div>';
+  // Progress bar
+  html += '<div style="background:var(--border);border-radius:4px;height:4px;margin-bottom:8px"><div style="background:' + colour + ';border-radius:4px;height:4px;width:' + pct + '%;transition:width .3s"></div></div>';
+  // Checklist
+  html += '<div style="display:flex;flex-wrap:wrap;gap:4px 12px">';
+  checks.forEach(function(c) {
+    var icon = c.filled ? '<i class="ti ti-check" style="color:#10b981;font-size:11px"></i>' : '<i class="ti ti-x" style="color:#999;font-size:11px"></i>';
+    html += '<span style="font-size:11px;color:' + (c.filled ? 'var(--dark)' : 'var(--n2)') + ';display:flex;align-items:center;gap:3px">' + icon + c.label + '</span>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+// ── AI Generate Missing Buyer Psychology ───────────────────────────
+async function generateMissingBuyerPsych() {
+  var btn = document.getElementById('btn-gen-buyer-psych');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Generating...'; }
+
+  var r = S.research || {};
+  var ctx = 'CLIENT: ' + (r.client_name || S.setup.clientName || '') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  ctx += 'PAIN POINTS: ' + (r.pain_points_top5 || []).join('; ') + '\n';
+  ctx += 'OBJECTIONS: ' + (r.objections_top5 || []).join('; ') + '\n';
+  if (r.clientPain && r.clientPain.primary) ctx += 'CLIENT PAIN: ' + r.clientPain.primary + '\n';
+  if (r.clientPain && r.clientPain.consequence) ctx += 'CONSEQUENCE: ' + r.clientPain.consequence + '\n';
+  if (r.voc_swipe_raw) ctx += 'VOC QUOTES:\n' + r.voc_swipe_raw.slice(0, 2000) + '\n';
+  // D0 audience data
+  if (S.strategy && S.strategy.audience) {
+    var aud = S.strategy.audience;
+    if (aud.personas && aud.personas.length) ctx += 'PERSONAS: ' + aud.personas.map(function(p) { return p.archetype || p.name || ''; }).join(', ') + '\n';
+    if (aud.purchase_triggers && aud.purchase_triggers.length) ctx += 'PURCHASE TRIGGERS: ' + aud.purchase_triggers.slice(0, 5).join('; ') + '\n';
+    if (aud.perceived_alternatives && aud.perceived_alternatives.length) ctx += 'PERCEIVED ALTERNATIVES: ' + aud.perceived_alternatives.map(function(a) { return a.alternative || ''; }).join(', ') + '\n';
+  }
+  // D2 positioning data
+  if (S.strategy && S.strategy.positioning) {
+    var pos = S.strategy.positioning;
+    if (pos.selected_direction) ctx += 'POSITIONING: ' + (typeof pos.selected_direction === 'string' ? pos.selected_direction : JSON.stringify(pos.selected_direction)) + '\n';
+  }
+
+  // Determine which fields are missing
+  var jf = r.jtbd_forces || {};
+  var missing = [];
+  if (!(jf.push_forces || []).length) missing.push('push_forces');
+  if (!(jf.pull_forces || []).length) missing.push('pull_forces');
+  if (!(jf.anxieties || []).length) missing.push('anxieties');
+  if (!(jf.habits || []).length) missing.push('habits');
+  if (!r.buyer_sophistication) missing.push('buyer_sophistication');
+  if (!(r.perceived_categories || []).length) missing.push('perceived_categories');
+  if (!(r.switching_triggers || []).length) missing.push('switching_triggers');
+  if (!(r.decision_criteria || []).length) missing.push('decision_criteria');
+
+  if (!missing.length) {
+    aiBarNotify('All buyer psychology fields already populated', { duration: 3000 });
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:10px"></i> AI Generate Missing'; }
+    return;
+  }
+
+  var prompt = ctx + '\nGENERATE the following missing buyer psychology fields based on the context above. Only generate fields listed below. Return valid JSON.\n\n'
+    + 'MISSING FIELDS: ' + missing.join(', ') + '\n\n'
+    + 'JSON SCHEMA:\n{\n'
+    + (missing.includes('push_forces') ? '  "push_forces": [{"force":"what frustrates them","quote":"their words if available","intensity":1-5}],\n' : '')
+    + (missing.includes('pull_forces') ? '  "pull_forces": [{"force":"what attracts them forward","quote":"their words if available","intensity":1-5}],\n' : '')
+    + (missing.includes('anxieties') ? '  "anxieties": [{"force":"what they fear about switching","quote":"their words if available","intensity":1-5}],\n' : '')
+    + (missing.includes('habits') ? '  "habits": [{"force":"status quo behaviour keeping them stuck","quote":"their words if available","intensity":1-5}],\n' : '')
+    + (missing.includes('buyer_sophistication') ? '  "buyer_sophistication": "1-5 (1=naive, 5=highly sophisticated)",\n' : '')
+    + (missing.includes('perceived_categories') ? '  "perceived_categories": ["how buyer frames what they are shopping for"],\n' : '')
+    + (missing.includes('switching_triggers') ? '  "switching_triggers": ["what made them act now"],\n' : '')
+    + (missing.includes('decision_criteria') ? '  "decision_criteria": [{"criterion":"what they evaluate","priority":"must-have|nice-to-have"}],\n' : '')
+    + '}\n\nGenerate 3-5 items per array. Use evidence from the context. If no direct quotes available, leave quote empty. Be specific to this client, not generic.';
+
+  try {
+    var resp = '';
+    await callClaude('You are a buyer psychology analyst. Return only valid JSON.', prompt, function(chunk) { resp += chunk; }, 4000, 'Buyer Psychology');
+    var clean = resp.replace(/```json\s*/gi, '').replace(/```\s*/g, '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/,\s*([\]}])/g, '$1').trim();
+    var parsed = JSON.parse(clean);
+
+    if (!S.research.jtbd_forces) S.research.jtbd_forces = { push_forces:[], pull_forces:[], anxieties:[], habits:[] };
+    if (parsed.push_forces && !(jf.push_forces || []).length) S.research.jtbd_forces.push_forces = parsed.push_forces;
+    if (parsed.pull_forces && !(jf.pull_forces || []).length) S.research.jtbd_forces.pull_forces = parsed.pull_forces;
+    if (parsed.anxieties && !(jf.anxieties || []).length) S.research.jtbd_forces.anxieties = parsed.anxieties;
+    if (parsed.habits && !(jf.habits || []).length) S.research.jtbd_forces.habits = parsed.habits;
+    if (parsed.buyer_sophistication && !r.buyer_sophistication) S.research.buyer_sophistication = String(parsed.buyer_sophistication);
+    if (parsed.perceived_categories && !(r.perceived_categories || []).length) S.research.perceived_categories = parsed.perceived_categories;
+    if (parsed.switching_triggers && !(r.switching_triggers || []).length) S.research.switching_triggers = parsed.switching_triggers;
+    if (parsed.decision_criteria && !(r.decision_criteria || []).length) S.research.decision_criteria = parsed.decision_criteria;
+
+    scheduleSave();
+    renderResearchTabContent();
+    aiBarNotify('Buyer psychology fields generated (' + missing.length + ' fields)', { duration: 3000 });
+  } catch (e) {
+    console.error('Buyer psych generation failed:', e);
+    aiBarNotify('Buyer psychology generation failed: ' + e.message, { isError: true, duration: 5000 });
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:10px"></i> AI Generate Missing'; }
+}
+
 // ── Tab renderers ─────────────────────────────────────────────────
 
 function rTabActions(tab) {
@@ -968,6 +1221,20 @@ function renderRAudience(r) {
   html += rSec('Marketing History',
     rField('current_marketing_activities','Current Marketing Activities (one per line)', r.current_marketing_activities, 'textarea-array', {rows:4}) +
     rField('previous_agency_experience','Previous Agency Experience', r.previous_agency_experience, 'select', {options:['','Good experience','Bad experience','No agency','Multiple agencies']})
+  );
+  // Buyer Psychology — JTBD Force Map
+  html += renderBuyerPsychCoverage(r);
+  html += rSec('Buyer Psychology \u2014 JTBD Force Map',
+    rJTBDForceGroup('push_forces', 'Push Forces', 'arrow-right', '#dc2626') +
+    rJTBDForceGroup('pull_forces', 'Pull Forces', 'arrow-up-right', '#10b981') +
+    rJTBDForceGroup('anxieties', 'Anxieties', 'alert-triangle', '#f59e0b') +
+    rJTBDForceGroup('habits', 'Habits', 'refresh', '#6b7280')
+  );
+  html += rSec('Buyer Context',
+    rField('buyer_sophistication', 'Buyer Sophistication (1=naive, 5=highly sophisticated)', r.buyer_sophistication, 'select', {options:['','1','2','3','4','5']}) +
+    rField('perceived_categories', 'Perceived Categories \u2014 how the buyer frames what they are shopping for (one per line)', r.perceived_categories, 'textarea-array', {rows:3}) +
+    rField('switching_triggers', 'Switching Triggers \u2014 what made them act now (one per line)', r.switching_triggers, 'textarea-array', {rows:3}) +
+    rDecisionCriteria()
   );
   return html;
 }

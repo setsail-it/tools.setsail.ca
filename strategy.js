@@ -1483,6 +1483,7 @@ var STRATEGY_TABS = [
   { id:'execution',    label:'Website',            icon:'ti-checklist' },
   { id:'brand',        label:'Content & Authority', icon:'ti-palette' },
   { id:'risks',        label:'Risks',              icon:'ti-alert-triangle' },
+  { id:'narrative',    label:'Narrative',          icon:'ti-message-2' },
   { id:'output',       label:'Output',             icon:'ti-file-text' }
 ];
 
@@ -1494,7 +1495,8 @@ var STRATEGY_SECTION_WEIGHTS = {
   channels:     0.22,
   execution:    0.10,
   brand:        0.10,
-  risks:        0.10
+  risks:        0.10,
+  narrative:    0.00
 };
 
 var STRATEGY_SECTION_LABELS = {
@@ -1506,7 +1508,8 @@ var STRATEGY_SECTION_LABELS = {
   growth:       'Growth Plan',           // kept for backwards-compat (merged into channels tab)
   execution:    'Website & CRO',
   brand:        'Content & Authority',
-  risks:        'Risk Assessment'
+  risks:        'Risk Assessment',
+  narrative:    'Narrative & Messaging'
 };
 
 // Required inputs per section — for data completeness scoring
@@ -1587,6 +1590,11 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'sales_cycle',          path:'S.research.sales_cycle_length',       check:'string' },
     { key:'team_size',            path:'S.research.team_size',                check:'string' },
     { key:'competitors',          path:'S.research.competitors',              check:'array' }
+  ],
+  narrative: [
+    { key:'audience',             path:'S.strategy.audience',                 check:'truthy' },
+    { key:'positioning',          path:'S.strategy.positioning',              check:'truthy' },
+    { key:'pain_points',          path:'S.research.pain_points_top5',         check:'array' }
   ]
 };
 
@@ -1798,6 +1806,16 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'owners_assigned',   label:'Risk owners assigned',                  check: function(d) { if (!d.risks) return false; return d.risks.every(function(r) { return !!r.owner; }); } },
     { id:'confidence_set',    label:'Overall confidence assessed',           check: function(d) { return !!d.overall_confidence; } },
     { id:'reasoning',         label:'Confidence reasoning provided',         check: function(d) { return d.confidence_reasoning && d.confidence_reasoning.length > 20; } }
+  ],
+  8: [ // D8: Narrative & Messaging
+    { id:'has_storybrand', label:'StoryBrand arc complete', check: function(d) { return d.storybrand && d.storybrand.hero && d.storybrand.external_problem && d.storybrand.plan && d.storybrand.plan.length >= 3; } },
+    { id:'has_pillars', label:'At least 2 messaging pillars', check: function(d) { return d.messaging_pillars && d.messaging_pillars.length >= 2; } },
+    { id:'pillar_evidence', label:'Pillars have evidence', check: function(d) { return d.messaging_pillars && d.messaging_pillars.every(function(p) { return p.evidence && p.evidence.length >= 1; }); } },
+    { id:'has_objection_map', label:'Objection map populated', check: function(d) { return d.objection_map && d.objection_map.length >= 3; } },
+    { id:'has_content_hooks', label:'Content hooks for 3+ stages', check: function(d) { if (!d.content_hooks) return false; var stages = ['unaware','problem_aware','solution_aware','product_aware','most_aware']; var filled = stages.filter(function(s) { return d.content_hooks[s] && d.content_hooks[s].length >= 1; }); return filled.length >= 3; } },
+    { id:'has_voc_swipe', label:'VoC swipe file has entries', check: function(d) { return d.voc_swipe_file && d.voc_swipe_file.length >= 3; } },
+    { id:'has_entry_point', label:'Recommended entry point set', check: function(d) { return d.recommended_entry_point && d.recommended_entry_point.length > 5; } },
+    { id:'has_confidence', label:'Confidence score provided', check: function(d) { return d.confidence !== undefined && d.confidence !== null; } }
   ]
 };
 
@@ -1818,6 +1836,7 @@ function auditDiagnostic(num) {
   else if (num === 5) data = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.website : null;
   else if (num === 6) data = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
   else if (num === 7) data = st.risks;
+  else if (num === 8) data = st.narrative;
 
   if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
     return { diagnostic: num, pass: 0, fail: checks.length, total: checks.length, items: checks.map(function(c) { return { id: c.id, label: c.label, passed: false }; }) };
@@ -1841,7 +1860,7 @@ function auditAllDiagnostics() {
   // D0 (Audience) + D1-D7
   var d0 = auditDiagnostic(0);
   if (d0) S.strategy._audit[0] = d0;
-  for (var d = 1; d <= 7; d++) {
+  for (var d = 1; d <= 8; d++) {
     var result = auditDiagnostic(d);
     if (result) S.strategy._audit[d] = result;
   }
@@ -1924,6 +1943,7 @@ function strategyDefaults() {
     subtraction: {},
     targets: {},
     demand_validation: {},
+    narrative: {},
     compiled_output: ''
   };
 }
@@ -2017,6 +2037,7 @@ function scoreSection(section) {
   else if (section === 'execution') sectionData = st.execution_plan;
   else if (section === 'brand') sectionData = st.brand_strategy;
   else if (section === 'risks') sectionData = st.risks;
+  else if (section === 'narrative') sectionData = st.narrative;
 
   var hasContent = sectionData && Object.keys(sectionData).length > 0;
   var keyCount = hasContent ? Object.keys(sectionData).filter(function(k) { return k !== 'confidence' && k !== '_order'; }).length : 0;
@@ -2034,7 +2055,7 @@ function scoreSection(section) {
   }
 
   // Audit pass rate boosts or penalises confidence
-  var diagMap2 = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap2 = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
   var diagNum2 = diagMap2[section];
   if (diagNum2 !== undefined && diagNum2 !== null && st._audit && st._audit[diagNum2]) {
     var auResult = st._audit[diagNum2];
@@ -2574,6 +2595,7 @@ function _versionLearningCtx(num) {
   else if (num === 5) prevOutput = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.website : null;
   else if (num === 6) prevOutput = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
   else if (num === 7) prevOutput = st.risks;
+  else if (num === 8) prevOutput = st.narrative;
 
   if (!prevOutput || (typeof prevOutput === 'object' && Object.keys(prevOutput).length === 0)) return '';
 
@@ -3395,13 +3417,124 @@ function buildDiagnosticPrompt(num) {
       + '  "confidence_reasoning": "string"\n}';
   }
 
+  if (num === 8) {
+    var r = S.research || {};
+    var setup0 = S.setup || {};
+    var st = S.strategy || {};
+
+    // Determine data tier
+    var hasTranscripts = !!(r.voc_swipe_raw && r.voc_swipe_raw.length > 50);
+    var hasPainPoints = !!(r.pain_points_top5 && r.pain_points_top5.length >= 2);
+    var hasJTBD = !!(r.jtbd_forces && (r.jtbd_forces.push_forces || []).length > 0);
+    var dataTier = hasTranscripts ? 'transcript' : (hasPainPoints || hasJTBD) ? 'research' : 'web-only';
+
+    return _stratCtx(r, setup0)
+      + '\n' + _snapCtx()
+      + '\nDATA TIER: ' + dataTier + (dataTier === 'web-only' ? ' — infer buyer psychology from competitive positioning and industry patterns. Flag all inferred claims with [inferred]. Set confidence to 1-3.' : '')
+      + '\n\n--- D0 AUDIENCE CONTEXT ---\n'
+      + (st.audience ? 'SEGMENTS: ' + JSON.stringify((st.audience.segments || []).map(function(s) { return { segment: s.segment_name, pain: s.pain_driver, motion: s.buying_motion }; })) : 'Not yet run')
+      + (st.audience && st.audience.personas ? '\nPERSONAS: ' + JSON.stringify(st.audience.personas.map(function(p) { return { archetype: p.archetype || p.name, pain_points: p.pain_points }; })) : '')
+      + (st.audience && st.audience.purchase_triggers ? '\nPURCHASE TRIGGERS: ' + JSON.stringify(st.audience.purchase_triggers) : '')
+      + (st.audience && st.audience.perceived_alternatives ? '\nPERCEIVED ALTERNATIVES: ' + JSON.stringify(st.audience.perceived_alternatives.map(function(a) { return { alternative: a.alternative, threat: a.threat_level }; })) : '')
+      + (st.audience && st.audience.objection_map ? '\nEXISTING OBJECTION MAP: ' + JSON.stringify(st.audience.objection_map) : '')
+      + '\n\n--- D2 POSITIONING CONTEXT ---\n'
+      + (st.positioning ? 'SELECTED DIRECTION: ' + (typeof st.positioning.selected_direction === 'string' ? st.positioning.selected_direction : JSON.stringify(st.positioning.selected_direction || '')) : 'Not yet run')
+      + (st.positioning && st.positioning.messaging_hierarchy ? '\nMESSAGING HIERARCHY: ' + JSON.stringify(st.positioning.messaging_hierarchy) : '')
+      + (st.positioning && st.positioning.brand_voice_direction ? '\nBRAND VOICE: ' + JSON.stringify(st.positioning.brand_voice_direction) : '')
+      + (st.positioning && st.positioning.validated_differentiators ? '\nDIFFERENTIATORS: ' + JSON.stringify(st.positioning.validated_differentiators) : '')
+      + (st.positioning && st.positioning.category_perception ? '\nCATEGORY PERCEPTION: ' + JSON.stringify(st.positioning.category_perception) : '')
+      + '\n\n--- D3 SUBTRACTION CONTEXT ---\n'
+      + (st.subtraction && st.subtraction.current_activities_audit ? 'ACTIVITY VERDICTS: ' + JSON.stringify(st.subtraction.current_activities_audit.map(function(a) { return { activity: a.activity, verdict: a.verdict }; })) : 'Not yet run')
+      + '\n\n--- D5 CTA CONTEXT ---\n'
+      + (st.execution_plan && st.execution_plan.lever_details && st.execution_plan.lever_details.website
+          ? 'PRIMARY CTA: ' + (st.execution_plan.lever_details.website.primary_cta || st.execution_plan.primary_cta || '')
+          + '\nSECONDARY CTAs: ' + JSON.stringify(st.execution_plan.lever_details.website.secondary_ctas || st.execution_plan.secondary_ctas || [])
+          + '\nLOW COMMITMENT CTA: ' + (st.execution_plan.lever_details.website.low_commitment_cta || st.execution_plan.low_commitment_cta || '')
+          : 'Not yet run')
+      + '\n\n--- RESEARCH: PAIN & BUYER DATA ---\n'
+      + 'PAIN POINTS: ' + (r.pain_points_top5 || []).join('; ')
+      + '\nOBJECTIONS: ' + (r.objections_top5 || []).join('; ')
+      + (r.clientPain && r.clientPain.primary ? '\nCLIENT PAIN PRIMARY: ' + r.clientPain.primary : '')
+      + (r.clientPain && r.clientPain.consequence ? '\nCONSEQUENCE: ' + r.clientPain.consequence : '')
+      + (r.clientPain && r.clientPain.urgencyTrigger ? '\nURGENCY TRIGGER: ' + r.clientPain.urgencyTrigger : '')
+      + (r.clientPain && r.clientPain.successDefinition ? '\nSUCCESS DEFINITION: ' + r.clientPain.successDefinition : '')
+      + (r.clientPain && r.clientPain.clientQuotes && r.clientPain.clientQuotes.length ? '\nCLIENT QUOTES: ' + r.clientPain.clientQuotes.join(' | ') : '')
+      + '\n\n--- JTBD FORCE MAP ---\n'
+      + (hasJTBD ? 'PUSH FORCES: ' + JSON.stringify(r.jtbd_forces.push_forces || [])
+          + '\nPULL FORCES: ' + JSON.stringify(r.jtbd_forces.pull_forces || [])
+          + '\nANXIETIES: ' + JSON.stringify(r.jtbd_forces.anxieties || [])
+          + '\nHABITS: ' + JSON.stringify(r.jtbd_forces.habits || [])
+          : 'Not yet captured')
+      + (r.buyer_sophistication ? '\nBUYER SOPHISTICATION: ' + r.buyer_sophistication + '/5' : '')
+      + (r.perceived_categories && r.perceived_categories.length ? '\nPERCEIVED CATEGORIES: ' + r.perceived_categories.join(', ') : '')
+      + (r.switching_triggers && r.switching_triggers.length ? '\nSWITCHING TRIGGERS: ' + r.switching_triggers.join('; ') : '')
+      + (r.decision_criteria && r.decision_criteria.length ? '\nDECISION CRITERIA: ' + JSON.stringify(r.decision_criteria) : '')
+      + '\n\n--- VOC / TRANSCRIPT DATA ---\n'
+      + (r.voc_swipe_raw ? r.voc_swipe_raw.slice(0, 3000) : 'No VoC data available')
+      + '\n\nTASK: Synthesise all diagnostic outputs and research into a comprehensive Narrative & Messaging framework. Build the StoryBrand arc from buyer data. Rank messaging pillars by buyer importance. Map objections with proof availability. Generate content hooks per awareness stage. Extract or infer VoC quotes organised by emotional register.\n\n'
+      + 'RULES:\n'
+      + '- StoryBrand plan MUST have exactly 3-4 steps (the customer journey, not internal process)\n'
+      + '- Messaging pillars ranked by buyer importance, NOT by what the brand wants to say\n'
+      + '- Objection proof_available is true ONLY if evidence exists in research/proof data\n'
+      + '- Content hooks must be specific to this client, not generic marketing advice\n'
+      + '- VoC quotes: use real quotes from transcript/VoC data when available. If data tier is web-only, generate plausible buyer language and mark with [inferred]\n'
+      + '- emotional_register options: frustration, aspiration, urgency, trust, skepticism, relief\n'
+      + '- usage options: headline, subhead, cta, testimonial_seed, email_subject, ad_copy, landing_page\n'
+      + '- recommended_entry_point: which awareness stage to target first\n'
+      + '- call_shape: "education-led" or "proof-led" based on sophistication\n\n'
+      + 'JSON SCHEMA:\n{\n'
+      + '  "storybrand": {\n'
+      + '    "hero": "who the buyer is — role + context",\n'
+      + '    "external_problem": "tangible problem they face",\n'
+      + '    "internal_problem": "emotional layer — how the problem makes them feel",\n'
+      + '    "philosophical_problem": "values/beliefs — why this should not be this way",\n'
+      + '    "guide_empathy": "how the brand shows understanding",\n'
+      + '    "guide_authority": "credentials and proof the brand can help",\n'
+      + '    "plan": ["step 1", "step 2", "step 3"],\n'
+      + '    "direct_cta": "primary call to action",\n'
+      + '    "transitional_cta": "low-commitment entry point",\n'
+      + '    "failure_stakes": "what happens if they do not act",\n'
+      + '    "success_transformation": "desired end state"\n'
+      + '  },\n'
+      + '  "messaging_pillars": [{\n'
+      + '    "rank": 1,\n'
+      + '    "pillar": "the claim",\n'
+      + '    "evidence": ["data point supporting the claim"],\n'
+      + '    "resonance_quotes": ["buyer language that validates this pillar"],\n'
+      + '    "page_types": ["homepage","service","landing","blog"]\n'
+      + '  }],\n'
+      + '  "objection_map": [{\n'
+      + '    "objection": "what the buyer fears or resists",\n'
+      + '    "rebuttal": "how to address it",\n'
+      + '    "proof_available": true,\n'
+      + '    "proof_type": "case_study|data|testimonial|demo",\n'
+      + '    "priority": "high|medium|low"\n'
+      + '  }],\n'
+      + '  "content_hooks": {\n'
+      + '    "unaware": ["hook for unaware audience"],\n'
+      + '    "problem_aware": ["hook"],\n'
+      + '    "solution_aware": ["hook"],\n'
+      + '    "product_aware": ["hook"],\n'
+      + '    "most_aware": ["hook"]\n'
+      + '  },\n'
+      + '  "voc_swipe_file": [{\n'
+      + '    "quote": "buyer words",\n'
+      + '    "emotional_register": "frustration|aspiration|urgency|trust|skepticism|relief",\n'
+      + '    "usage": "headline|subhead|cta|testimonial_seed|email_subject|ad_copy|landing_page"\n'
+      + '  }],\n'
+      + '  "recommended_entry_point": "which awareness stage to enter at",\n'
+      + '  "call_shape": "education-led or proof-led",\n'
+      + '  "confidence": 7\n'
+      + '}';
+  }
+
   return '';
 }
 
 // Append strategist notes to any diagnostic prompt
 function _appendStrategistNotes(prompt, diagNum) {
   // D4 feeds channels tab (growth merged into channels)
-  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels'], 5: ['execution'], 6: ['brand'], 7: ['risks'] };
+  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels'], 5: ['execution'], 6: ['brand'], 7: ['risks'], 8: ['narrative'] };
   var tabs = diagToTabs[diagNum];
   if (!tabs) return prompt;
   var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
@@ -3435,6 +3568,7 @@ async function runDiagnostic(num) {
   else if (num === 5) label += 'Website & CRO';
   else if (num === 6) label += 'Content & Authority';
   else if (num === 7) label += 'Risk Assessment';
+  else if (num === 8) label += 'Narrative & Messaging';
 
   aiBarStart(label);
   try {
@@ -3522,6 +3656,8 @@ async function runDiagnostic(num) {
       if (parsed.content_priority) S.strategy.brand_strategy.content_priority = parsed.content_priority;
     } else if (num === 7) {
       S.strategy.risks = parsed;
+    } else if (num === 8) {
+      S.strategy.narrative = parsed;
     }
 
     // Run audit checks on the diagnostic output
@@ -4179,7 +4315,7 @@ async function improveStrategy() {
 
   // Re-run diagnostics for weakest 3 sections
   var weakest = sorted.slice(0, 3);
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
 
   var diagsToRun = [];
   weakest.forEach(function(w) {
@@ -4777,7 +4913,7 @@ async function runDiagnosticsFrom(startDiag) {
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
-  var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks' };
+  var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks', 8:'D8 Narrative' };
   aiBarStart('Running diagnostics from ' + (diagLabel[startDiag] || 'D' + startDiag) + ' forward');
   try {
     for (var d = startDiag; d <= 7; d++) {
@@ -4857,7 +4993,7 @@ function renderStrategyTabContent() {
   var html = '';
 
   // Re-run diagnostic button
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
   var diagLabels = {
     0: 'Audience Intelligence',
     1: 'Unit Economics',
@@ -4866,7 +5002,8 @@ function renderStrategyTabContent() {
     4: 'Channel Viability',
     5: 'Website & CRO',
     6: 'Content & Authority',
-    7: 'Risk Assessment'
+    7: 'Risk Assessment',
+    8: 'Narrative & Messaging'
   };
   var diagTips = {
     0: 'Re-analyse audience segments, personas and buying motions',
@@ -4876,7 +5013,8 @@ function renderStrategyTabContent() {
     4: 'Re-score all 13 marketing levers and budget allocation',
     5: 'Re-assess website build type, forms and conversion strategy',
     6: 'Re-analyse content gaps, pillars and authority plan',
-    7: 'Re-score risk categories and update mitigations'
+    7: 'Re-score risk categories and update mitigations',
+    8: 'StoryBrand arc, messaging pillars, objection map, content hooks, VoC swipe file'
   };
   var diagNum = diagMap[_sTab];
   if (diagNum !== undefined && diagNum !== null) {
@@ -4938,6 +5076,7 @@ function renderStrategyTabContent() {
   else if (_sTab === 'execution') html += '<div data-sai-explain="diagnostic:D5">' + _renderExecution(st) + '</div>';
   else if (_sTab === 'brand') html += '<div data-sai-explain="diagnostic:D6">' + _renderBrand(st) + '</div>';
   else if (_sTab === 'risks') html += '<div data-sai-explain="diagnostic:D7">' + _renderRisks(st) + '</div>';
+  else if (_sTab === 'narrative') html += '<div data-sai-explain="diagnostic:D8">' + _renderNarrative(st) + '</div>';
 
   // Strategist override panel (all scored tabs)
   if (diagNum !== undefined && diagNum !== null) {
@@ -7654,6 +7793,129 @@ function _renderRisks(st) {
   return html;
 }
 
+// ── Narrative & Messaging Renderer ─────────────────────────────────────
+
+function _renderNarrative(st) {
+  var n = st.narrative || {};
+  if (!n.storybrand && !n.messaging_pillars) {
+    return '<div style="padding:40px;text-align:center;color:var(--n2)"><i class="ti ti-message-2" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.3"></i><div style="font-size:13px">Run D8 Narrative & Messaging diagnostic to generate StoryBrand arc, messaging pillars, objection map, content hooks, and VoC swipe file.</div></div>';
+  }
+  var html = '';
+  // StoryBrand Arc
+  if (n.storybrand) {
+    var sb = n.storybrand;
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">StoryBrand Arc</div>';
+    var steps = [
+      { label: 'Hero', value: sb.hero, colour: '#3b82f6' },
+      { label: 'External Problem', value: sb.external_problem, colour: '#dc2626' },
+      { label: 'Internal Problem', value: sb.internal_problem, colour: '#f59e0b' },
+      { label: 'Philosophical Problem', value: sb.philosophical_problem, colour: '#8b5cf6' },
+      { label: 'Guide \u2014 Empathy', value: sb.guide_empathy, colour: '#10b981' },
+      { label: 'Guide \u2014 Authority', value: sb.guide_authority, colour: '#10b981' },
+      { label: 'Plan', value: (sb.plan || []).join(' \u2192 '), colour: '#0d9488' },
+      { label: 'Direct CTA', value: sb.direct_cta, colour: '#dc2626' },
+      { label: 'Transitional CTA', value: sb.transitional_cta, colour: '#f59e0b' },
+      { label: 'Failure (Stakes)', value: sb.failure_stakes, colour: '#dc2626' },
+      { label: 'Success (Transformation)', value: sb.success_transformation, colour: '#10b981' }
+    ];
+    steps.forEach(function(s) {
+      if (!s.value) return;
+      html += '<div style="display:flex;gap:10px;margin-bottom:8px;align-items:start">';
+      html += '<div style="min-width:140px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + s.colour + ';padding-top:2px;font-weight:500">' + s.label + '</div>';
+      html += '<div style="font-size:12.5px;color:var(--dark);line-height:1.5">' + esc(s.value) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  // Messaging Pillars
+  if (n.messaging_pillars && n.messaging_pillars.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Messaging Pillars (ranked)</div>';
+    n.messaging_pillars.forEach(function(p, i) {
+      html += '<div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+      html += '<span style="background:var(--green);color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600">#' + (p.rank || i + 1) + '</span>';
+      html += '<span style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(p.pillar || '') + '</span>';
+      html += '</div>';
+      if (p.evidence && p.evidence.length) {
+        html += '<div style="margin-bottom:4px">';
+        p.evidence.forEach(function(e) { html += '<div style="font-size:11.5px;color:var(--n3);padding-left:12px">\u2022 ' + esc(e) + '</div>'; });
+        html += '</div>';
+      }
+      if (p.resonance_quotes && p.resonance_quotes.length) {
+        p.resonance_quotes.forEach(function(q) { html += '<div style="font-size:11px;color:#7c3aed;font-style:italic;padding-left:12px;margin-top:2px">\u201c' + esc(q) + '\u201d</div>'; });
+      }
+      if (p.page_types && p.page_types.length) {
+        html += '<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">';
+        p.page_types.forEach(function(pt) { html += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6">' + esc(pt) + '</span>'; });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  // Objection Map
+  if (n.objection_map && n.objection_map.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Objection Map</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 70px 80px 60px;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="display:contents;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);background:var(--bg)">';
+    ['Objection','Rebuttal','Proof','Type','Priority'].forEach(function(h) { html += '<div style="padding:6px 10px;background:var(--bg);border-bottom:1px solid var(--border)">' + h + '</div>'; });
+    html += '</div>';
+    n.objection_map.forEach(function(o) {
+      html += '<div style="padding:7px 10px;font-size:12px;color:var(--dark);border-bottom:1px solid var(--border)">' + esc(o.objection || '') + '</div>';
+      html += '<div style="padding:7px 10px;font-size:12px;color:var(--n3);border-bottom:1px solid var(--border)">' + esc(o.rebuttal || '') + '</div>';
+      html += '<div style="padding:7px 10px;font-size:11px;border-bottom:1px solid var(--border);text-align:center">' + (o.proof_available ? '<span style="color:var(--green)">\u2713</span>' : '<span style="color:var(--n2)">\u2717</span>') + '</div>';
+      html += '<div style="padding:7px 10px;font-size:10px;color:var(--n2);border-bottom:1px solid var(--border)">' + esc(o.proof_type || '') + '</div>';
+      var priCol = o.priority === 'high' ? 'var(--error)' : o.priority === 'medium' ? 'var(--warn)' : 'var(--n2)';
+      html += '<div style="padding:7px 10px;font-size:10px;color:' + priCol + ';font-weight:500;border-bottom:1px solid var(--border)">' + esc(o.priority || '') + '</div>';
+    });
+    html += '</div></div>';
+  }
+  // Content Hooks by Awareness Stage
+  if (n.content_hooks) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Content Hooks by Awareness Stage</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">';
+    var stages = [
+      { key:'unaware', label:'Unaware', colour:'#6b7280' },
+      { key:'problem_aware', label:'Problem Aware', colour:'#dc2626' },
+      { key:'solution_aware', label:'Solution Aware', colour:'#f59e0b' },
+      { key:'product_aware', label:'Product Aware', colour:'#3b82f6' },
+      { key:'most_aware', label:'Most Aware', colour:'#10b981' }
+    ];
+    stages.forEach(function(stg) {
+      html += '<div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:6px;padding:8px 10px">';
+      html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + stg.colour + ';margin-bottom:6px;font-weight:500">' + stg.label + '</div>';
+      var hooks = (n.content_hooks[stg.key] || []);
+      if (hooks.length) {
+        hooks.forEach(function(h) { html += '<div style="font-size:11px;color:var(--dark);margin-bottom:4px;line-height:1.4">\u2022 ' + esc(h) + '</div>'; });
+      } else {
+        html += '<div style="font-size:11px;color:var(--n2);font-style:italic">\u2014</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+  // VoC Swipe File
+  if (n.voc_swipe_file && n.voc_swipe_file.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Voice of Customer Swipe File</div>';
+    n.voc_swipe_file.forEach(function(v) {
+      var regCol = v.emotional_register === 'frustration' ? '#dc2626' : v.emotional_register === 'aspiration' ? '#10b981' : v.emotional_register === 'urgency' ? '#f59e0b' : v.emotional_register === 'trust' ? '#3b82f6' : v.emotional_register === 'skepticism' ? '#8b5cf6' : v.emotional_register === 'relief' ? '#0d9488' : 'var(--n2)';
+      html += '<div style="display:flex;gap:8px;align-items:start;margin-bottom:6px;padding:6px 10px;background:rgba(0,0,0,0.015);border-radius:4px">';
+      html += '<div style="flex:1;font-size:12px;color:var(--dark);font-style:italic;line-height:1.5">\u201c' + esc(v.quote || '') + '\u201d</div>';
+      html += '<span style="background:' + regCol + '15;border:1px solid ' + regCol + '30;border-radius:3px;font-size:9px;padding:1px 5px;color:' + regCol + ';white-space:nowrap">' + esc(v.emotional_register || '') + '</span>';
+      html += '<span style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2);white-space:nowrap">' + esc(v.usage || '') + '</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  // Strategic Recommendations
+  html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Strategic Recommendations</div>';
+  if (n.recommended_entry_point) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Entry Point</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.recommended_entry_point) + '</span></div>';
+  if (n.call_shape) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Call Shape</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.call_shape) + '</span></div>';
+  if (n.confidence !== undefined) html += '<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Confidence</span><span style="font-size:12.5px;font-weight:500;color:' + (n.confidence >= 7 ? 'var(--green)' : n.confidence >= 4 ? 'var(--warn)' : 'var(--error)') + '">' + n.confidence + '/10</span></div>';
+  html += '</div>';
+  return html;
+}
+
 // ── Audit Panel (shown per tab) ────────────────────────────────────────
 
 function _renderStrategyAuditPanel(diagNum) {
@@ -8351,11 +8613,11 @@ function _renderOutput(st) {
   var audit = st._audit || {};
   var hasAudit = Object.keys(audit).length > 0;
   if (hasAudit) {
-    var diagLabelsShort = { 0:'Audience', 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks' };
+    var diagLabelsShort = { 0:'Audience', 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks', 8:'Narrative' };
     html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
     html += '<div style="font-size:12px;font-weight:500;margin-bottom:8px">Diagnostic Audit Summary</div>';
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-    var diagNums = [0,1,2,3,4,5,6,7];
+    var diagNums = [0,1,2,3,4,5,6,7,8];
     for (var di = 0; di < diagNums.length; di++) {
       var d = diagNums[di];
       var au = audit[d];
