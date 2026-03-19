@@ -1259,11 +1259,29 @@ async function generatePageBrief(pageIdx) {
     _directionCtx = '\n' + _dirParts.join('\n');
   }
 
+  // D8 Narrative context — messaging pillars + objection handling
+  var _narrativeCtx = '';
+  if (S.strategy && S.strategy.narrative) {
+    var _nar = S.strategy.narrative;
+    var _narParts = [];
+    if (_nar.storybrand && _nar.storybrand.hero) {
+      _narParts.push('STORYBRAND: Hero=' + _nar.storybrand.hero + ' | Problem=' + (_nar.storybrand.external_problem || '') + ' | Guide empathy=' + (_nar.storybrand.guide_empathy || ''));
+    }
+    if (_nar.messaging_pillars && _nar.messaging_pillars.length) {
+      _narParts.push('TOP MESSAGING PILLAR: ' + _nar.messaging_pillars[0].pillar);
+    }
+    if (_nar.recommended_entry_point) {
+      _narParts.push('Entry point: ' + _nar.recommended_entry_point);
+    }
+    if (_narParts.length) _narrativeCtx = '\n' + _narParts.join('\n');
+  }
+
   var ctxBusiness = [
     'Client: '+(R.client_name||S.setup&&S.setup.client_name||'Unknown'),
     'Industry: '+(R.industry||''),
     'Value proposition: '+_vp,
     _directionCtx,
+    _narrativeCtx,
     'Key differentiators: '+(_kd.length ? _kd.join('; ') : 'none provided'),
     'Proof points: '+(_ep.length ? _ep.join('; ') : 'none provided'),
     'Brand voice: '+(_bv||_tv||'professional') + _voiceRules,

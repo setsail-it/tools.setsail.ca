@@ -345,6 +345,32 @@ function buildCopyPrompt(page) {
   // Fix 2: Positioning direction
   var _posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
 
+  // D8 Narrative — StoryBrand flow for service/landing pages + VoC swipe seeds
+  var _narrativeCopyCtx = '';
+  if (S.strategy && S.strategy.narrative) {
+    var _narC = S.strategy.narrative;
+    var _isLandingOrService = ['landing', 'service', 'industry', 'home'].indexOf((page.page_type || '').toLowerCase()) >= 0;
+    if (_isLandingOrService && _narC.storybrand) {
+      _narrativeCopyCtx += '\nSTORYBRAND PAGE FLOW (structure this page around this arc):\n'
+        + '1. Open with the PROBLEM: ' + (_narC.storybrand.external_problem || '') + '\n'
+        + '2. Show EMPATHY (guide understands): ' + (_narC.storybrand.guide_empathy || '') + '\n'
+        + '3. Present the PLAN: ' + (_narC.storybrand.plan || []).join(' \u2192 ') + '\n'
+        + '4. CTA: ' + (_narC.storybrand.direct_cta || '') + '\n'
+        + '5. Show STAKES if they do not act: ' + (_narC.storybrand.failure_stakes || '') + '\n'
+        + '6. Paint SUCCESS: ' + (_narC.storybrand.success_transformation || '') + '\n';
+    }
+    // VoC swipe seeds for headlines/CTAs
+    if (_narC.voc_swipe_file && _narC.voc_swipe_file.length) {
+      var _vocSeeds = _narC.voc_swipe_file.filter(function(v) {
+        return v.usage && ['headline', 'subhead', 'cta', 'landing_page'].indexOf(v.usage) >= 0;
+      }).slice(0, 4);
+      if (_vocSeeds.length) {
+        _narrativeCopyCtx += '\nVOC SWIPE SEEDS (use as headline/CTA inspiration, adapt — do not copy verbatim):\n'
+          + _vocSeeds.map(function(v) { return '- "' + (v.quote || '') + '" [' + (v.usage || '') + ']'; }).join('\n') + '\n';
+      }
+    }
+  }
+
   // Fix 11/12: Content pillar guidance
   var _pillarGuidance = '';
   if (page.content_pillar) {
@@ -385,6 +411,7 @@ function buildCopyPrompt(page) {
       + _personaBlock
       + _awarenessBlock
       + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
+      + _narrativeCopyCtx
       + '\n\n' + blogBriefInstruction;
   }
 
@@ -419,6 +446,7 @@ function buildCopyPrompt(page) {
     + _personaBlock
     + _awarenessBlock
     + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
+    + _narrativeCopyCtx
     + '\n\n' + briefInstruction;
 }
 

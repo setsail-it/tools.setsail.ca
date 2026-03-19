@@ -2688,6 +2688,40 @@ function _buyerIntelBlock(page) {
       }).join('\n'));
   }
 
+  // 5. D8 Narrative — messaging pillars + content hooks + objection rebuttals
+  if (st.narrative) {
+    var _biNar = st.narrative;
+    var _biNarParts = [];
+    // Messaging pillars relevant to this page type
+    if (_biNar.messaging_pillars && _biNar.messaging_pillars.length) {
+      var _biPageType = (page.page_type || '').toLowerCase();
+      var _biRelevant = _biNar.messaging_pillars.filter(function(p) {
+        return !p.page_types || !p.page_types.length || p.page_types.some(function(pt) { return pt.toLowerCase() === _biPageType || pt === 'all'; });
+      });
+      if (!_biRelevant.length) _biRelevant = _biNar.messaging_pillars.slice(0, 2);
+      _biNarParts.push('MESSAGING PILLARS (weave into copy):\n' + _biRelevant.slice(0, 3).map(function(p) {
+        return '- ' + (p.pillar || '') + (p.evidence && p.evidence.length ? ' [evidence: ' + p.evidence[0] + ']' : '');
+      }).join('\n'));
+    }
+    // Awareness-stage-specific content hooks
+    if (_biNar.content_hooks && page.awareness_stage) {
+      var _biHooks = _biNar.content_hooks[page.awareness_stage];
+      if (_biHooks && _biHooks.length) {
+        _biNarParts.push('CONTENT HOOKS (' + page.awareness_stage.replace(/_/g, ' ') + '):\n' + _biHooks.slice(0, 3).map(function(h) { return '- ' + h; }).join('\n'));
+      }
+    }
+    // High-priority objection rebuttals
+    if (_biNar.objection_map && _biNar.objection_map.length) {
+      var _biHighObj = _biNar.objection_map.filter(function(o) { return o.priority === 'high'; });
+      if (_biHighObj.length) {
+        _biNarParts.push('KEY OBJECTION REBUTTALS:\n' + _biHighObj.slice(0, 3).map(function(o) {
+          return '- Objection: ' + (o.objection || '') + ' \u2192 Rebuttal: ' + (o.rebuttal || '');
+        }).join('\n'));
+      }
+    }
+    if (_biNarParts.length) parts.push(_biNarParts.join('\n'));
+  }
+
   if (!parts.length) return '';
   return '\n\nBUYER INTELLIGENCE\n' + parts.join('\n\n') + '\n';
 }
@@ -8380,6 +8414,26 @@ async function compileStrategyOutput() {
         ctx += '\n';
       });
     }
+  }
+
+  // D8 Narrative: Narrative & Messaging
+  if (st.narrative) {
+    var nar = st.narrative;
+    ctx += '\nNARRATIVE & MESSAGING:\n';
+    if (nar.storybrand) {
+      ctx += '- StoryBrand hero: ' + (nar.storybrand.hero || '') + '\n';
+      ctx += '- External problem: ' + (nar.storybrand.external_problem || '') + '\n';
+      ctx += '- Internal problem: ' + (nar.storybrand.internal_problem || '') + '\n';
+      ctx += '- Guide authority: ' + (nar.storybrand.guide_authority || '') + '\n';
+      ctx += '- Plan: ' + (nar.storybrand.plan || []).join(' \u2192 ') + '\n';
+      ctx += '- Direct CTA: ' + (nar.storybrand.direct_cta || '') + '\n';
+      ctx += '- Success: ' + (nar.storybrand.success_transformation || '') + '\n';
+    }
+    if (nar.messaging_pillars && nar.messaging_pillars.length) {
+      ctx += '- Messaging pillars: ' + nar.messaging_pillars.map(function(p) { return p.pillar || ''; }).join(', ') + '\n';
+    }
+    if (nar.recommended_entry_point) ctx += '- Recommended entry: ' + nar.recommended_entry_point + '\n';
+    if (nar.call_shape) ctx += '- Call shape: ' + nar.call_shape + '\n';
   }
 
   // Strategy scoring summary

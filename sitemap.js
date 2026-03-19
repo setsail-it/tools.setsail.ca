@@ -61,6 +61,22 @@ function _inferAwarenessStage(page) {
   return 'solution_aware';
 }
 
+// Infer StoryBrand role for a page based on page type
+function _inferStoryBrandRole(page) {
+  if (page.storybrand_role) return page.storybrand_role; // manual override
+  var pt = (page.page_type || '').toLowerCase();
+  if (pt === 'home' || pt === 'homepage') return 'Guide + Plan';
+  if (pt === 'service' || pt === 'industry') return 'Problem + Guide';
+  if (pt === 'landing') return 'CTA + Success';
+  if (pt === 'blog' || pt === 'article' || pt === 'resource') return 'Problem';
+  if (pt === 'about' || pt === 'team') return 'Guide';
+  if (pt === 'contact') return 'CTA';
+  if (pt === 'location') return 'Problem + CTA';
+  if (pt === 'faq') return 'Objection';
+  if (/case.stud|portfolio/.test(pt) || /case.stud/.test((page.slug || '').toLowerCase())) return 'Success';
+  return '';
+}
+
 // ── PERSONA, VOICE, POSITIONING HELPERS ───────────────────────────────
 
 // Slugify a string for voice overlay IDs
@@ -2927,6 +2943,11 @@ function _renderSitemapResultsInner(approved) {
       // Awareness stage badge
       if (p.awareness_stage) {
         _badges += '<span style="background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#0d9488;font-weight:500"><i class="ti ti-eye" style="font-size:8px;margin-right:2px"></i>'+esc(p.awareness_stage.replace(/_/g,' '))+'</span>';
+      }
+      // StoryBrand role badge
+      var _sbRole = _inferStoryBrandRole(p);
+      if (_sbRole) {
+        _badges += '<span style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#7c3aed;font-weight:500"><i class="ti ti-book" style="font-size:8px;margin-right:2px"></i>'+esc(_sbRole)+'</span>';
       }
       if (_badges) html += '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'+_badges+'</div>';
       html += '</div>';
