@@ -101,12 +101,14 @@ function _computeCopyWorkflowSteps() {
   var written = 0, audited = 0, fixed = 0, polished = 0, approved = 0;
   pages.forEach(function(p) {
     var c = S.copy[p.slug] || {};
-    if (c.copy) written++;
-    if (c.audit) audited++;
-    if (c.audit && c.audit.passed === c.audit.total) fixed++;
-    else if (c.drafts && c.drafts.some(function(d) { return d.pass === 2; })) fixed++;
-    if (c.drafts && c.drafts.some(function(d) { return d.pass === 3; })) polished++;
-    if (c.approved) approved++;
+    if (c.copy) {
+      written++;
+      if (c.audit) audited++;
+      if (c.audit && c.audit.passed === c.audit.total) fixed++;
+      else if (c.drafts && c.drafts.some(function(d) { return d.pass === 2; })) fixed++;
+      if (c.drafts && c.drafts.some(function(d) { return d.pass === 3; })) polished++;
+      if (c.approved) approved++;
+    }
   });
   return [
     { num: 1, label: 'Write',   done: written >= total,   status: written + '/' + total + ' written',   warn: false },
@@ -126,10 +128,10 @@ function _defaultCopySteps() {
 function _copyPageStepState(slug) {
   var c = S.copy[slug] || {};
   var s1 = !!c.copy;
-  var s2 = !!c.audit;
-  var s3 = !!(c.audit && c.audit.passed === c.audit.total) || !!(c.drafts && c.drafts.some(function(d) { return d.pass === 2; }));
-  var s4 = !!(c.drafts && c.drafts.some(function(d) { return d.pass === 3; }));
-  var s5 = !!c.approved;
+  var s2 = s1 && !!c.audit;
+  var s3 = s2 && (!!(c.audit && c.audit.passed === c.audit.total) || !!(c.drafts && c.drafts.some(function(d) { return d.pass === 2; })));
+  var s4 = s1 && !!(c.drafts && c.drafts.some(function(d) { return d.pass === 3; }));
+  var s5 = s1 && !!c.approved;
   var steps = [s1, s2, s3, s4, s5];
   var labels = ['Write', 'Audit', 'Fix', 'Polish', 'Approve'];
   var current = 1;
@@ -817,11 +819,8 @@ async function runCopyPage(slug) {
       scheduleSave();
       // Auto-generate meta tags in background
       generateMetaTags(slug, page, copy);
-      // Auto-advance expanded to next incomplete
-      const pages = orderedPages();
-      const curIdx = pages.findIndex(p => p.slug === slug);
-      const next = pages.find((p,i) => i > curIdx && !(S.copy[p.slug]||{}).copy);
-      S.copyExpandedSlug = next ? next.slug : slug; // stay on done page if all done
+      // Stay on the page just written so user can review
+      S.copyExpandedSlug = slug;
     }
   } catch(e) {
     S.copy[slug] = {error: e.message, page};
@@ -1678,8 +1677,9 @@ function renderCopyQueue() {
 
       html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:5px;${rowBorder}${rowBg}">`;
 
-      // Row header
-      html += `<div onclick="toggleCopyExpand('${p.slug}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none">`;
+      // Row header — step dots are outside onclick zone to prevent toggle on step click
+      html += `<div style="display:flex;align-items:center;gap:0;padding:0">`;
+      html += `<div onclick="toggleCopyExpand('${p.slug}')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;user-select:none;flex:1;min-width:0">`;
       html += `<div class="status-circle" style="${cirStyle};font-size:9px;font-weight:500;flex-shrink:0">${cirContent}</div>`;
       html += `<i class="ti ${typeIcon(p.page_type)}" style="font-size:12px;color:${isDone?'var(--green)':'var(--n2)'};flex-shrink:0"></i>`;
       html += `<div style="flex:1;min-width:0">`;
@@ -1690,8 +1690,9 @@ function renderCopyQueue() {
       html += `</div>`;
       html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
       html += `</div>`;
-      html += _copyPageStepDots(p.slug);
       html += `<i class="ti ${isExpanded?'ti-chevron-up':'ti-chevron-down'}" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
+      html += `</div>`;
+      html += _copyPageStepDots(p.slug);
       html += `</div>`;
 
       // Expanded body
