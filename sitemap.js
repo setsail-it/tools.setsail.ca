@@ -98,7 +98,7 @@ function _isPersonaParked(persona) {
   }
   // Check segment status
   if (a.segments && a.segments.length) {
-    var matchedSeg = a.segments.find(function(s) { return (s.name || '').toLowerCase() === seg; });
+    var matchedSeg = a.segments.find(function(s) { return (s.segment_name || s.name || '').toLowerCase() === seg; });
     if (matchedSeg && (matchedSeg.status || '').toLowerCase() === 'deprioritised') return true;
   }
   return false;
@@ -529,21 +529,37 @@ async function assignContentPillars() {
 }
 
 // Assign personas + voice overlays to all pages that do not have one
-function assignAllPersonas() {
-  var count = 0;
+// force=true reassigns even pages that already have a persona
+function assignAllPersonas(force) {
+  var personas = _getActivePersonas();
+  if (!personas.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('No active personas found — run D0 Audience Intelligence first', { isError: true, duration: 4000 });
+    return;
+  }
+  var assigned = 0;
+  var total = 0;
   (S.pages || []).forEach(function(p) {
-    if (!p.target_persona) {
-      p.target_persona = _autoAssignPersona(p);
-      if (p.target_persona) count++;
+    if (force || !p.target_persona) {
+      var persona = _autoAssignPersona(p);
+      if (persona) {
+        p.target_persona = persona;
+        assigned++;
+      }
     }
-    if (!p.voice_overlay || p.voice_overlay === 'base') {
+    if (p.target_persona) total++;
+    if (force || !p.voice_overlay || p.voice_overlay === 'base') {
       p.voice_overlay = _autoAssignVoiceOverlay(p);
     }
-    if (!p.awareness_stage) p.awareness_stage = _inferAwarenessStage(p);
+    if (force || !p.awareness_stage) p.awareness_stage = _inferAwarenessStage(p);
   });
   scheduleSave();
   renderSitemapResults(S.sitemapApproved);
-  if (typeof aiBarNotify === 'function') aiBarNotify('Assigned personas to ' + count + ' pages', { duration: 3000 });
+  var msg = assigned > 0
+    ? 'Assigned personas to ' + assigned + ' pages (' + total + ' total with personas)'
+    : total > 0
+      ? total + ' pages already have personas — click again to reassign'
+      : 'No pages matched persona assignment rules (structural and blog pages are excluded)';
+  if (typeof aiBarNotify === 'function') aiBarNotify(msg, { duration: 4000 });
 }
 
 // Accept all priority suggestions
@@ -2763,7 +2779,7 @@ function _renderSitemapResultsInner(approved) {
       html += '<button class="btn btn-ghost sm" data-tip="AI assigns each blog page to a content pillar from your brand strategy. Requires D6 Brand diagnostic in Strategy." style="font-size:11px;padding:2px 8px" onclick="assignContentPillars()"><i class="ti ti-tags"></i> Pillars</button>';
     }
     if (_getActivePersonas().length > 0) {
-      html += '<button class="btn btn-ghost sm" data-tip="Auto-assigns a target persona and voice overlay to every page based on page type and audience segments. Does not overwrite pages that already have a persona assigned." style="font-size:11px;padding:2px 8px" onclick="assignAllPersonas()"><i class="ti ti-users"></i> Personas</button>';
+      html += '<button class="btn btn-ghost sm" data-tip="Auto-assigns a target persona and voice overlay to every page based on page type and audience segments. Click twice to force reassign all." style="font-size:11px;padding:2px 8px" onclick="assignAllPersonas()"><i class="ti ti-users"></i> Personas</button>';
     }
     var _suggestCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
     html += '<button class="btn btn-ghost sm" data-tip="Recalculates strategy-driven priority suggestions for all pages based on channel lever scores and growth plan phases." style="font-size:11px;padding:2px 8px" onclick="renderSitemapResults(S.sitemapApproved)"><i class="ti ti-arrows-sort"></i> Re-suggest</button>';
