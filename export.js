@@ -121,6 +121,15 @@ function downloadPackage() {
     }
   }
 
+  // Proposal
+  if (typeof buildProposalText === 'function') {
+    var proposalText = buildProposalText();
+    if (proposalText) {
+      out += '='.repeat(60)+'\nGROWTH PROPOSAL\n'+'-'.repeat(40)+'\n\n';
+      out += proposalText + '\n\n';
+    }
+  }
+
   out += '='.repeat(60)+'\nSITEMAP ('+pages.length+' pages)\n'+'-'.repeat(40)+'\n\n';
   pages.forEach((p,i) => { out += (i+1)+'. '+p.page_name+' (/'+p.slug+') ['+p.priority+']\n   Primary: '+p.primary_keyword+' | KD: '+(p.primary_kd||'?')+'\n\n'; });
   out += '\n'+'='.repeat(60)+'\nCOPY BY PAGE\n'+'-'.repeat(40)+'\n\n';

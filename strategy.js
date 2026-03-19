@@ -7,6 +7,7 @@
 
 var _pricingCatalog = null; // cached pricing catalog from Pricing Engine KV
 var _pricingStatus = 'unknown'; // 'live' | 'estimated' | 'error' | 'unknown'
+var _outputView = 'strategy'; // 'strategy' | 'sales' — toggles Output tab view
 
 // Maps strategy lever IDs → Pricing Engine service slugs
 // Maps AI diagnostic lever IDs → Pricing Engine service slugs.
@@ -298,6 +299,126 @@ function downloadStrategyDoc() {
   a.click();
   URL.revokeObjectURL(url);
   aiBarNotify('Strategy document downloaded', { duration: 2000 });
+}
+
+// ── Output View Toggle ──────────────────────────────────────────────
+
+function switchOutputView(view) {
+  _outputView = view;
+  renderStrategyTabContent();
+}
+
+// ── Proposal Builder ────────────────────────────────────────────────
+
+function buildProposalText() {
+  var r = S.research || {};
+  var st = S.strategy || {};
+  var si = st.sales_intel || {};
+  var setup = S.setup || {};
+  var clientName = r.client_name || setup.client || 'Client';
+  var date = new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' });
+
+  var md = '# ' + clientName + ' \u2014 Growth Proposal\n';
+  md += '*Prepared by Setsail Marketing | ' + date + '*\n\n';
+
+  // Executive Summary
+  md += '## Executive Summary\n\n';
+  if (si.pitch_angle) md += si.pitch_angle + '\n\n';
+  if (si.sales_storybrand && si.sales_storybrand.hero) {
+    md += si.sales_storybrand.hero + ' ';
+    if (si.sales_storybrand.external_problem) md += si.sales_storybrand.external_problem + ' ';
+    if (si.sales_storybrand.success_transformation) md += 'Our goal: ' + si.sales_storybrand.success_transformation;
+    md += '\n\n';
+  }
+
+  // Situation Analysis
+  md += '## Situation Analysis\n\n';
+  var snap = S.snapshot || {};
+  var dm = snap.domainMetrics || {};
+  if (dm.dr) md += '- **Domain Rating:** ' + dm.dr + '\n';
+  if (dm.orgTraffic) md += '- **Monthly Organic Traffic:** ' + Number(dm.orgTraffic).toLocaleString() + '\n';
+  if (dm.liveRefdomains) md += '- **Referring Domains:** ' + Number(dm.liveRefdomains).toLocaleString() + '\n';
+  if (r.monthly_marketing_budget) md += '- **Current Marketing Budget:** ' + r.monthly_marketing_budget + '\n';
+  if (st.unit_economics) {
+    if (st.unit_economics.cpl) md += '- **Current CPL:** $' + st.unit_economics.cpl + '\n';
+    if (st.unit_economics.cac) md += '- **Current CAC:** $' + st.unit_economics.cac + '\n';
+    if (st.unit_economics.ltv) md += '- **Customer LTV:** $' + st.unit_economics.ltv + '\n';
+  }
+  if (st.demand_validation && st.demand_validation.total_monthly_volume) {
+    md += '- **Total Addressable Search Volume:** ' + Number(st.demand_validation.total_monthly_volume).toLocaleString() + '/mo\n';
+  }
+  md += '\n';
+
+  // Recommended Approach
+  md += '## Recommended Approach\n\n';
+  var ganttItems = typeof _buildGanttItems === 'function' ? _buildGanttItems(st) : [];
+  if (ganttItems.length) {
+    var phases = {};
+    ganttItems.forEach(function(item) {
+      var p = item.phase || 0;
+      if (!phases[p]) phases[p] = [];
+      phases[p].push(item);
+    });
+    Object.keys(phases).sort().forEach(function(p) {
+      md += '**Phase ' + (parseInt(p) + 1) + ':**\n';
+      phases[p].forEach(function(item) {
+        md += '- ' + item.label + (item.duration ? ' (' + item.duration + ')' : '') + '\n';
+      });
+      md += '\n';
+    });
+  }
+
+  // Investment Summary
+  md += '## Investment Summary\n\n';
+  var investText = typeof buildInvestmentText === 'function' ? buildInvestmentText() : '';
+  if (investText) {
+    // Strip the header from investText since we have our own
+    md += investText.replace(/^#[^\n]*\n/, '').replace(/^\*[^\n]*\n/, '') + '\n';
+  }
+
+  // Why Setsail
+  md += '## Why Setsail\n\n';
+  if (si.why_setsail) md += si.why_setsail + '\n\n';
+  if (r.case_studies && r.case_studies.length) {
+    md += '**Relevant Results:**\n';
+    r.case_studies.slice(0, 5).forEach(function(cs) {
+      md += '- **' + (cs.client || '') + ':** ' + (cs.result || '') + (cs.timeframe ? ' (' + cs.timeframe + ')' : '') + '\n';
+    });
+    md += '\n';
+  }
+  if (r.awards_certifications && r.awards_certifications.length) {
+    md += '**Certifications:** ' + r.awards_certifications.join(', ') + '\n\n';
+  }
+
+  // Terms
+  md += '## Terms\n\n';
+  md += '- 50/50 payment structure (50% up front, 50% on completion) for project-based work\n';
+  md += '- Monthly services: month-to-month after initial 3-month commitment\n';
+  md += '- All support, hosting, and maintenance included in monthly subscription\n';
+  md += '- Fixed pricing \u2014 no scope creep, no surprise invoices\n';
+
+  return md;
+}
+
+function copyProposal() {
+  var text = buildProposalText();
+  if (!text) return;
+  copyToClip2(text);
+  aiBarNotify('Proposal copied to clipboard', { duration: 2000 });
+}
+
+function downloadProposal() {
+  var text = buildProposalText();
+  if (!text) return;
+  var client = (S.setup && S.setup.client) || 'Client';
+  var blob = new Blob([text], { type: 'text/markdown' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = client.toLowerCase().replace(/\s+/g, '-') + '-growth-proposal.md';
+  a.click();
+  URL.revokeObjectURL(url);
+  aiBarNotify('Proposal downloaded', { duration: 2000 });
 }
 
 // ── Investment Summary Export ────────────────────────────────────────
@@ -1496,7 +1617,8 @@ var STRATEGY_SECTION_WEIGHTS = {
   execution:    0.10,
   brand:        0.10,
   risks:        0.10,
-  narrative:    0.08
+  narrative:    0.08,
+  sales:        0.00
 };
 
 var STRATEGY_SECTION_LABELS = {
@@ -1509,7 +1631,8 @@ var STRATEGY_SECTION_LABELS = {
   execution:    'Website & CRO',
   brand:        'Content & Authority',
   risks:        'Risk Assessment',
-  narrative:    'Narrative & Messaging'
+  narrative:    'Narrative & Messaging',
+  sales:        'Sales Intelligence'
 };
 
 // Required inputs per section — for data completeness scoring
@@ -1595,6 +1718,12 @@ var STRATEGY_REQUIRED_INPUTS = {
     { key:'audience',             path:'S.strategy.audience',                 check:'truthy' },
     { key:'positioning',          path:'S.strategy.positioning',              check:'truthy' },
     { key:'pain_points',          path:'S.research.pain_points_top5',         check:'array' }
+  ],
+  sales: [
+    { key:'narrative',            path:'S.strategy.narrative',                check:'truthy' },
+    { key:'audience',             path:'S.strategy.audience',                 check:'truthy' },
+    { key:'positioning',          path:'S.strategy.positioning',              check:'truthy' },
+    { key:'unit_economics',       path:'S.strategy.unit_economics',           check:'truthy' }
   ]
 };
 
@@ -1664,7 +1793,7 @@ var ANTI_INFLATION_CAPS = [
       var au = S.strategy && S.strategy._audit || {};
       var totalPass = 0; var totalChecks = 0;
       if (au[0]) { totalPass += au[0].pass; totalChecks += au[0].total; }
-      for (var d = 1; d <= 8; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
+      for (var d = 1; d <= 9; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
       if (totalChecks < 10) return false; // not enough data
       return (totalPass / totalChecks) < 0.6;
     } },
@@ -1821,6 +1950,14 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'has_voc_swipe', label:'VoC swipe file has entries', check: function(d) { return d.voc_swipe_file && d.voc_swipe_file.length >= 3; } },
     { id:'has_entry_point', label:'Recommended entry point set', check: function(d) { return d.recommended_entry_point && d.recommended_entry_point.length > 5; } },
     { id:'has_confidence', label:'Confidence score provided', check: function(d) { return d.confidence !== undefined && d.confidence !== null; } }
+  ],
+  9: [ // D9: Sales Intelligence
+    { id:'has_sales_storybrand', label:'Sales StoryBrand complete', check: function(d) { return d.sales_storybrand && d.sales_storybrand.hero && d.sales_storybrand.external_problem && d.sales_storybrand.plan && d.sales_storybrand.plan.length >= 3; } },
+    { id:'has_sales_pillars', label:'At least 3 sales pillars', check: function(d) { return d.sales_pillars && d.sales_pillars.length >= 3; } },
+    { id:'has_pitch_angle', label:'Pitch angle defined', check: function(d) { return d.pitch_angle && d.pitch_angle.length > 10; } },
+    { id:'has_why_now', label:'Why now articulated', check: function(d) { return d.why_now && d.why_now.length > 10; } },
+    { id:'has_sales_objections', label:'Sales objections mapped', check: function(d) { return d.sales_objection_map && d.sales_objection_map.length >= 3; } },
+    { id:'has_deal_hooks', label:'Deal stage hooks for 3+ stages', check: function(d) { if (!d.deal_stage_hooks) return false; var stages = ['cold_outreach','discovery','proposal','follow_up','close']; var filled = stages.filter(function(s) { return d.deal_stage_hooks[s] && d.deal_stage_hooks[s].length >= 1; }); return filled.length >= 3; } }
   ]
 };
 
@@ -1842,6 +1979,7 @@ function auditDiagnostic(num) {
   else if (num === 6) data = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
   else if (num === 7) data = st.risks;
   else if (num === 8) data = st.narrative;
+  else if (num === 9) data = st.sales_intel;
 
   if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
     return { diagnostic: num, pass: 0, fail: checks.length, total: checks.length, items: checks.map(function(c) { return { id: c.id, label: c.label, passed: false }; }) };
@@ -1865,7 +2003,7 @@ function auditAllDiagnostics() {
   // D0 (Audience) + D1-D7
   var d0 = auditDiagnostic(0);
   if (d0) S.strategy._audit[0] = d0;
-  for (var d = 1; d <= 8; d++) {
+  for (var d = 1; d <= 9; d++) {
     var result = auditDiagnostic(d);
     if (result) S.strategy._audit[d] = result;
   }
@@ -1949,6 +2087,7 @@ function strategyDefaults() {
     targets: {},
     demand_validation: {},
     narrative: {},
+    sales_intel: {},
     compiled_output: ''
   };
 }
@@ -2061,7 +2200,7 @@ function scoreSection(section) {
   }
 
   // Audit pass rate boosts or penalises confidence
-  var diagMap2 = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
+  var diagMap2 = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8, sales: 9 };
   var diagNum2 = diagMap2[section];
   if (diagNum2 !== undefined && diagNum2 !== null && st._audit && st._audit[diagNum2]) {
     var auResult = st._audit[diagNum2];
@@ -2602,6 +2741,7 @@ function _versionLearningCtx(num) {
   else if (num === 6) prevOutput = st.execution_plan && st.execution_plan.lever_details ? st.execution_plan.lever_details.content_marketing : null;
   else if (num === 7) prevOutput = st.risks;
   else if (num === 8) prevOutput = st.narrative;
+  else if (num === 9) prevOutput = st.sales_intel;
 
   if (!prevOutput || (typeof prevOutput === 'object' && Object.keys(prevOutput).length === 0)) return '';
 
@@ -3577,13 +3717,127 @@ function buildDiagnosticPrompt(num) {
       + '}';
   }
 
+  if (num === 9) {
+    var r = S.research || {};
+    var st = S.strategy || {};
+
+    // Build engagement scope context
+    var scopeCtx = '';
+    if (st.engagement_scope && st.engagement_scope.services) {
+      var enabledSvcs = [];
+      Object.keys(st.engagement_scope.services).forEach(function(slug) {
+        var svc = st.engagement_scope.services[slug];
+        if (svc.enabled) enabledSvcs.push(slug + ' (' + (svc.scope || 'mid') + ')');
+      });
+      if (enabledSvcs.length) scopeCtx = '\nENGAGED SERVICES: ' + enabledSvcs.join(', ');
+    }
+
+    // Investment context
+    var investCtx = '';
+    if (st.pricing_snapshot) {
+      var ps = st.pricing_snapshot;
+      if (ps.suggested_monthly) investCtx += '\nSuggested monthly: $' + ps.suggested_monthly.toLocaleString();
+      if (ps.suggested_project) investCtx += ' | Project: $' + ps.suggested_project.toLocaleString();
+      if (ps.suggested_year1) investCtx += ' | Year 1 total: $' + ps.suggested_year1.toLocaleString();
+    }
+
+    return _stratCtx()
+      + '\n' + _snapshotCtxBlock()
+      + '\n\n--- SETSAIL PROOF POINTS ---\n'
+      + 'CASE STUDIES: ' + JSON.stringify((r.case_studies || []).map(function(cs) { return { client: cs.client, result: cs.result, timeframe: cs.timeframe }; }))
+      + '\nAWARDS: ' + (r.awards_certifications || []).join(', ')
+      + '\nTEAM: ' + (r.team_credentials || '')
+      + '\nNOTABLE CLIENTS: ' + (r.notable_clients || []).join(', ')
+      + '\n\n--- CLIENT PAIN (why they came to us) ---\n'
+      + (r.clientPain && r.clientPain.primary ? 'PRIMARY PAIN: ' + r.clientPain.primary : 'Not captured')
+      + (r.clientPain && r.clientPain.consequence ? '\nCONSEQUENCE: ' + r.clientPain.consequence : '')
+      + (r.clientPain && r.clientPain.urgencyTrigger ? '\nURGENCY: ' + r.clientPain.urgencyTrigger : '')
+      + (r.clientPain && r.clientPain.priorAttempts && r.clientPain.priorAttempts.length ? '\nPRIOR ATTEMPTS: ' + r.clientPain.priorAttempts.join('; ') : '')
+      + (r.clientPain && r.clientPain.successDefinition ? '\nSUCCESS DEFINITION: ' + r.clientPain.successDefinition : '')
+      + (r.clientPain && r.clientPain.clientQuotes && r.clientPain.clientQuotes.length ? '\nCLIENT QUOTES: ' + r.clientPain.clientQuotes.join(' | ') : '')
+      + '\nPREVIOUS AGENCY: ' + (r.previous_agency_experience || 'unknown')
+      + '\n\n--- STRATEGY FINDINGS (use these as evidence) ---\n'
+      + (st.audience && st.audience.segments ? 'SEGMENTS: ' + st.audience.segments.map(function(s) { return s.segment_name; }).join(', ') : '')
+      + (st.unit_economics ? '\nECONOMICS: CPL=$' + (st.unit_economics.cpl || '?') + ', CAC=$' + (st.unit_economics.cac || '?') + ', LTV=$' + (st.unit_economics.ltv || '?') + ', LTV:CAC=' + (st.unit_economics.ltv_cac_ratio || '?') : '')
+      + (st.subtraction && st.subtraction.current_activities_audit ? '\nSUBTRACTION: ' + st.subtraction.current_activities_audit.filter(function(a) { return a.verdict === 'stop' || a.verdict === 'reduce'; }).map(function(a) { return a.activity + ' (' + a.verdict + ')'; }).join(', ') : '')
+      + (st.channel_strategy && st.channel_strategy.levers ? '\nTOP CHANNELS: ' + st.channel_strategy.levers.filter(function(l) { return l.priority_score >= 7; }).map(function(l) { return l.lever + ' (score:' + l.priority_score + ')'; }).join(', ') : '')
+      + (st.demand_validation ? '\nDEMAND: ' + (st.demand_validation.overall_verdict || '') + ', volume: ' + (st.demand_validation.total_monthly_volume || '?') + '/mo' : '')
+      + (st.narrative && st.narrative.storybrand ? '\nCLIENT STORYBRAND HERO: ' + st.narrative.storybrand.hero : '')
+      + (st.narrative && st.narrative.messaging_pillars ? '\nCLIENT TOP PILLAR: ' + st.narrative.messaging_pillars[0].pillar : '')
+      + scopeCtx
+      + investCtx
+      + '\n\n--- JTBD FORCES (client switching psychology) ---\n'
+      + (r.jtbd_forces && r.jtbd_forces.push_forces && r.jtbd_forces.push_forces.length ? 'PUSH FORCES: ' + r.jtbd_forces.push_forces.map(function(f) { return f.force + (f.quote ? ' ("' + f.quote + '")' : ''); }).join('; ') : '')
+      + (r.jtbd_forces && r.jtbd_forces.anxieties && r.jtbd_forces.anxieties.length ? '\nANXIETIES: ' + r.jtbd_forces.anxieties.map(function(f) { return f.force; }).join('; ') : '')
+      + (r.buyer_sophistication ? '\nBUYER SOPHISTICATION: ' + r.buyer_sophistication + '/5' : '')
+      + '\n\nTASK: Build a Sales Intelligence package for Setsail Marketing\'s sales team to use when pitching THIS specific client.\n\n'
+      + 'CRITICAL FRAMING:\n'
+      + '- The HERO is the CLIENT (the business owner/decision-maker WE are selling to)\n'
+      + '- The GUIDE is SETSAIL MARKETING (us \u2014 the agency)\n'
+      + '- The PLAN is our proposed engagement (services, timeline, investment)\n'
+      + '- Sales pillars are what OUR SALES TEAM should say to THIS CLIENT\n'
+      + '- Objections are what THIS CLIENT might resist about hiring us\n'
+      + '- Use actual data from the strategy findings as evidence\n'
+      + '- Reference real numbers: their CPL, CAC, LTV, organic traffic, DR, search volume\n'
+      + '- Match our proof points (case studies, certs) to their industry/needs\n\n'
+      + 'RULES:\n'
+      + '- pitch_angle must be ONE sentence that frames why they need Setsail specifically\n'
+      + '- why_now must reference their specific urgency triggers, not generic reasons\n'
+      + '- why_setsail must match our case studies/certs to their vertical\n'
+      + '- discovery_gaps: what critical info we still lack that could change the strategy\n'
+      + '- sales_pillars.when_to_use: when in the deal cycle this pillar is most effective\n'
+      + '- sales_objection_map.data_point: a specific number from the strategy that supports the rebuttal\n'
+      + '- deal_stage_hooks: specific talk tracks for each stage of the sales process\n\n'
+      + 'JSON SCHEMA:\n{\n'
+      + '  "sales_storybrand": {\n'
+      + '    "hero": "the CLIENT \u2014 who they are, their role, their current situation",\n'
+      + '    "external_problem": "tangible business problem Setsail solves for them",\n'
+      + '    "internal_problem": "how the problem makes THEM feel (frustrated, anxious, embarrassed)",\n'
+      + '    "philosophical_problem": "why this should not be this way for business owners like them",\n'
+      + '    "guide_empathy": "how SETSAIL shows we understand their specific pain",\n'
+      + '    "guide_authority": "SETSAIL credentials relevant to THIS client (matched case studies, certs, results)",\n'
+      + '    "plan": ["step 1 of working with Setsail", "step 2", "step 3"],\n'
+      + '    "direct_cta": "primary action \u2014 e.g. Sign the proposal, Start the engagement",\n'
+      + '    "transitional_cta": "low-commitment \u2014 e.g. See the strategy preview, Book a walkthrough",\n'
+      + '    "failure_stakes": "what happens to THEIR BUSINESS if they do not invest in marketing now",\n'
+      + '    "success_transformation": "where they will be 12 months after engaging Setsail"\n'
+      + '  },\n'
+      + '  "sales_pillars": [{\n'
+      + '    "rank": 1,\n'
+      + '    "pillar": "the claim Setsail makes to this client",\n'
+      + '    "evidence": ["specific data point from strategy that backs this claim"],\n'
+      + '    "resonance_quotes": ["client\'s own language about this pain from discovery/transcripts"],\n'
+      + '    "when_to_use": "discovery | proposal | follow_up | close"\n'
+      + '  }],\n'
+      + '  "sales_objection_map": [{\n'
+      + '    "objection": "what the client might resist about hiring Setsail",\n'
+      + '    "rebuttal": "how the sales team should handle it",\n'
+      + '    "data_point": "specific number from strategy \u2014 e.g. your CPL is $45, we can cut it to $22",\n'
+      + '    "proof_available": true,\n'
+      + '    "when_likely": "discovery | proposal | negotiation"\n'
+      + '  }],\n'
+      + '  "pitch_angle": "ONE sentence that frames the entire engagement",\n'
+      + '  "why_now": "urgency triggers specific to this client \u2014 why they cannot wait",\n'
+      + '  "why_setsail": "matched proof points \u2014 case studies, certs, results relevant to their industry",\n'
+      + '  "discovery_gaps": ["critical info we still lack"],\n'
+      + '  "deal_stage_hooks": {\n'
+      + '    "cold_outreach": ["hook for initial contact email/call"],\n'
+      + '    "discovery": ["hook for discovery call conversation"],\n'
+      + '    "proposal": ["hook for proposal presentation"],\n'
+      + '    "follow_up": ["hook for follow-up after proposal sent"],\n'
+      + '    "close": ["hook for closing the deal"]\n'
+      + '  },\n'
+      + '  "confidence": 7\n'
+      + '}';
+  }
+
   return '';
 }
 
 // Append strategist notes to any diagnostic prompt
 function _appendStrategistNotes(prompt, diagNum) {
   // D4 feeds channels tab (growth merged into channels)
-  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels'], 5: ['execution'], 6: ['brand'], 7: ['risks'], 8: ['narrative'] };
+  var diagToTabs = { 0: ['audience'], 1: ['economics'], 2: ['positioning'], 3: ['subtraction'], 4: ['channels'], 5: ['execution'], 6: ['brand'], 7: ['risks'], 8: ['narrative'], 9: ['sales'] };
   var tabs = diagToTabs[diagNum];
   if (!tabs) return prompt;
   var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
@@ -3618,6 +3872,7 @@ async function runDiagnostic(num) {
   else if (num === 6) label += 'Content & Authority';
   else if (num === 7) label += 'Risk Assessment';
   else if (num === 8) label += 'Narrative & Messaging';
+  else if (num === 9) label += 'Sales Intelligence';
 
   aiBarStart(label);
   try {
@@ -3707,6 +3962,8 @@ async function runDiagnostic(num) {
       S.strategy.risks = parsed;
     } else if (num === 8) {
       S.strategy.narrative = parsed;
+    } else if (num === 9) {
+      S.strategy.sales_intel = parsed;
     }
 
     // Run audit checks on the diagnostic output
@@ -4018,7 +4275,7 @@ async function generateStrategy() {
     for (var d = 1; d <= 3; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/8)',
+          label: 'Strategy paused (D' + d + '/9)',
           fn: function(args) { _resumeDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4080,6 +4337,11 @@ async function generateStrategy() {
       try { await runDiagnostic(8); } catch (e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
       await saveProject();
     }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
+      await saveProject();
+    }
 
     // Step 5: Auto-compile strategy document + web strategy brief
     if (!window._aiStopAll) {
@@ -4118,7 +4380,7 @@ async function _resumeDiagnosticsWithD0(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/8)',
+          label: 'Strategy paused (D' + d + '/9)',
           fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4130,6 +4392,10 @@ async function _resumeDiagnosticsWithD0(startFrom) {
     // Run D8 Narrative after D1-D7 complete
     if (!window._aiStopAll) {
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
+    }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4162,7 +4428,7 @@ async function _resumeDiagnostics(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/8)',
+          label: 'Strategy paused (D' + d + '/9)',
           fn: function(args) { _resumeDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4174,6 +4440,10 @@ async function _resumeDiagnostics(startFrom) {
     // Run D8 Narrative after D1-D7 complete
     if (!window._aiStopAll) {
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
+    }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4229,7 +4499,7 @@ async function runAllDiagnostics() {
     for (var d = 1; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/8)',
+          label: 'Diagnostics paused (' + d + '/9)',
           fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4242,6 +4512,10 @@ async function runAllDiagnostics() {
     if (!window._aiStopAll) {
       aiBarStart('Running D8 Narrative & Messaging');
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative skipped: ' + e8.message, { duration: 4000 }); }
+    }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
     }
     S.strategy._kwDataStale = false; // D4-D6 now have latest keyword data
     capturePricingSnapshot();
@@ -4274,7 +4548,7 @@ async function _resumeAllDiagnostics(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/8)',
+          label: 'Diagnostics paused (' + d + '/9)',
           fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4286,6 +4560,10 @@ async function _resumeAllDiagnostics(startFrom) {
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
+    }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
     }
     createStrategyVersion('rerun_all');
     await saveProject();
@@ -4380,7 +4658,7 @@ async function improveStrategy() {
 
   // Re-run diagnostics for weakest 3 sections
   var weakest = sorted.slice(0, 3);
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8, sales: 9 };
 
   var diagsToRun = [];
   weakest.forEach(function(w) {
@@ -4978,13 +5256,13 @@ async function runDiagnosticsFrom(startDiag) {
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
-  var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks', 8:'D8 Narrative' };
+  var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks', 8:'D8 Narrative', 9:'D9 Sales' };
   aiBarStart('Running diagnostics from ' + (diagLabel[startDiag] || 'D' + startDiag) + ' forward');
   try {
     for (var d = startDiag; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/8)',
+          label: 'Diagnostics paused (D' + d + '/9)',
           fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4997,6 +5275,10 @@ async function runDiagnosticsFrom(startDiag) {
     if (!window._aiStopAll) {
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
     }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
+    }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
     createStrategyVersion('rerun_from_d' + startDiag);
@@ -5004,7 +5286,7 @@ async function runDiagnosticsFrom(startDiag) {
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Diagnostics D' + startDiag + '-D8 complete \u2014 v' + S.strategy._meta.current_version);
+    aiBarEnd('Diagnostics D' + startDiag + '-D9 complete \u2014 v' + S.strategy._meta.current_version);
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -5017,7 +5299,7 @@ async function _resumeDiagnosticsFrom(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/8)',
+          label: 'Diagnostics paused (D' + d + '/9)',
           fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
           args: { startFrom: d }
         };
@@ -5029,6 +5311,10 @@ async function _resumeDiagnosticsFrom(startFrom) {
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
       try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
+    }
+    if (!window._aiStopAll) {
+      aiBarStart('Running D9 Sales Intelligence');
+      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
     }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
@@ -5066,7 +5352,7 @@ function renderStrategyTabContent() {
   var html = '';
 
   // Re-run diagnostic button
-  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8 };
+  var diagMap = { audience: 0, positioning: 2, economics: 1, subtraction: 3, channels: 4, execution: 5, brand: 6, risks: 7, narrative: 8, sales: 9 };
   var diagLabels = {
     0: 'Audience Intelligence',
     1: 'Unit Economics',
@@ -5076,7 +5362,8 @@ function renderStrategyTabContent() {
     5: 'Website & CRO',
     6: 'Content & Authority',
     7: 'Risk Assessment',
-    8: 'Narrative & Messaging'
+    8: 'Narrative & Messaging',
+    9: 'Sales Intelligence'
   };
   var diagTips = {
     0: 'Re-analyse audience segments, personas and buying motions',
@@ -5087,7 +5374,8 @@ function renderStrategyTabContent() {
     5: 'Re-assess website build type, forms and conversion strategy',
     6: 'Re-analyse content gaps, pillars and authority plan',
     7: 'Re-score risk categories and update mitigations',
-    8: 'StoryBrand arc, messaging pillars, objection map, content hooks, VoC swipe file'
+    8: 'StoryBrand arc, messaging pillars, objection map, content hooks, VoC swipe file',
+    9: 'Sales narrative, proposal data, objection prep for Setsail pitch'
   };
   var diagNum = diagMap[_sTab];
   if (diagNum !== undefined && diagNum !== null) {
@@ -7989,6 +8277,144 @@ function _renderNarrative(st) {
   return html;
 }
 
+// ── Sales Intelligence Renderer ────────────────────────────────────────
+
+function _renderSalesIntel(st) {
+  var si = st.sales_intel || {};
+  if (!si.sales_storybrand && !si.sales_pillars) {
+    return '<div style="padding:40px;text-align:center;color:var(--n2)"><i class="ti ti-briefcase" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.3"></i><div style="font-size:13px">Run D9 Sales Intelligence to generate pitch framework, proposal data, and objection prep.</div></div>';
+  }
+  var html = '';
+
+  // Pitch Angle (hero banner)
+  if (si.pitch_angle) {
+    html += '<div style="background:linear-gradient(135deg,rgba(21,142,29,0.08),rgba(59,130,246,0.08));border:2px solid var(--green);border-radius:10px;padding:16px 20px;margin-bottom:16px">';
+    html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:6px;font-weight:600">Pitch Angle</div>';
+    html += '<div style="font-size:15px;color:var(--dark);font-weight:500;line-height:1.5">' + esc(si.pitch_angle) + '</div>';
+    html += '</div>';
+  }
+
+  // Why Now + Why Setsail side by side
+  if (si.why_now || si.why_setsail) {
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
+    if (si.why_now) {
+      html += '<div class="card"><div class="eyebrow" style="margin-bottom:8px;color:#dc2626">Why Now</div>';
+      html += '<div style="font-size:12.5px;color:var(--dark);line-height:1.5">' + esc(si.why_now) + '</div></div>';
+    }
+    if (si.why_setsail) {
+      html += '<div class="card"><div class="eyebrow" style="margin-bottom:8px;color:var(--green)">Why Setsail</div>';
+      html += '<div style="font-size:12.5px;color:var(--dark);line-height:1.5">' + esc(si.why_setsail) + '</div></div>';
+    }
+    html += '</div>';
+  }
+
+  // Sales StoryBrand Arc
+  if (si.sales_storybrand) {
+    var sb = si.sales_storybrand;
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Sales StoryBrand Arc <span style="font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0">(Hero = the client, Guide = Setsail)</span></div>';
+    var steps = [
+      { label: 'Hero (Client)', value: sb.hero, colour: '#3b82f6' },
+      { label: 'External Problem', value: sb.external_problem, colour: '#dc2626' },
+      { label: 'Internal Problem', value: sb.internal_problem, colour: '#f59e0b' },
+      { label: 'Philosophical Problem', value: sb.philosophical_problem, colour: '#8b5cf6' },
+      { label: 'Guide \u2014 Empathy', value: sb.guide_empathy, colour: '#10b981' },
+      { label: 'Guide \u2014 Authority', value: sb.guide_authority, colour: '#10b981' },
+      { label: 'Plan', value: (sb.plan || []).join(' \u2192 '), colour: '#0d9488' },
+      { label: 'Direct CTA', value: sb.direct_cta, colour: '#dc2626' },
+      { label: 'Transitional CTA', value: sb.transitional_cta, colour: '#f59e0b' },
+      { label: 'Failure (Stakes)', value: sb.failure_stakes, colour: '#dc2626' },
+      { label: 'Success', value: sb.success_transformation, colour: '#10b981' }
+    ];
+    steps.forEach(function(s) {
+      if (!s.value) return;
+      html += '<div style="display:flex;gap:10px;margin-bottom:8px;align-items:start">';
+      html += '<div style="min-width:150px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + s.colour + ';padding-top:2px;font-weight:500">' + s.label + '</div>';
+      html += '<div style="font-size:12.5px;color:var(--dark);line-height:1.5">' + esc(s.value) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Sales Pillars
+  if (si.sales_pillars && si.sales_pillars.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Sales Pillars (ranked)</div>';
+    si.sales_pillars.forEach(function(p, i) {
+      html += '<div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:8px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+      html += '<span style="background:var(--green);color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600">#' + (p.rank || i + 1) + '</span>';
+      html += '<span style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(p.pillar || '') + '</span>';
+      if (p.when_to_use) html += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;margin-left:auto">' + esc(p.when_to_use) + '</span>';
+      html += '</div>';
+      if (p.evidence && p.evidence.length) {
+        html += '<div style="margin-bottom:4px">';
+        p.evidence.forEach(function(e) { html += '<div style="font-size:11.5px;color:var(--n3);padding-left:12px">\u2022 ' + esc(e) + '</div>'; });
+        html += '</div>';
+      }
+      if (p.resonance_quotes && p.resonance_quotes.length) {
+        p.resonance_quotes.forEach(function(q) { html += '<div style="font-size:11px;color:#7c3aed;font-style:italic;padding-left:12px;margin-top:2px">\u201c' + esc(q) + '\u201d</div>'; });
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Sales Objection Map
+  if (si.sales_objection_map && si.sales_objection_map.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Objection Cheat Sheet</div>';
+    si.sales_objection_map.forEach(function(o) {
+      var priCol = o.when_likely === 'negotiation' ? 'var(--error)' : o.when_likely === 'proposal' ? 'var(--warn)' : 'var(--n2)';
+      html += '<div style="background:rgba(0,0,0,0.015);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:6px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:4px">';
+      html += '<div style="font-size:12.5px;color:var(--dark);font-weight:500">\u201c' + esc(o.objection || '') + '\u201d</div>';
+      html += '<span style="font-size:9px;padding:1px 6px;border-radius:3px;color:' + priCol + ';border:1px solid;white-space:nowrap">' + esc(o.when_likely || '') + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:12px;color:var(--n3);margin-bottom:4px">\u2192 ' + esc(o.rebuttal || '') + '</div>';
+      if (o.data_point) html += '<div style="font-size:11px;color:var(--green);font-weight:500">\ud83d\udcca ' + esc(o.data_point) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Deal Stage Hooks
+  if (si.deal_stage_hooks) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Deal Stage Talk Tracks</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">';
+    var dealStages = [
+      { key:'cold_outreach', label:'Cold Outreach', colour:'#6b7280', icon:'ti-mail' },
+      { key:'discovery', label:'Discovery', colour:'#3b82f6', icon:'ti-search' },
+      { key:'proposal', label:'Proposal', colour:'#f59e0b', icon:'ti-file-text' },
+      { key:'follow_up', label:'Follow-Up', colour:'#8b5cf6', icon:'ti-repeat' },
+      { key:'close', label:'Close', colour:'#10b981', icon:'ti-check' }
+    ];
+    dealStages.forEach(function(stg) {
+      html += '<div style="background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:6px;padding:8px 10px">';
+      html += '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + stg.colour + ';margin-bottom:6px;font-weight:500;display:flex;align-items:center;gap:4px"><i class="' + stg.icon + '" style="font-size:11px"></i>' + stg.label + '</div>';
+      var hooks = (si.deal_stage_hooks[stg.key] || []);
+      if (hooks.length) {
+        hooks.forEach(function(h) { html += '<div style="font-size:11px;color:var(--dark);margin-bottom:4px;line-height:1.4">\u2022 ' + esc(h) + '</div>'; });
+      } else {
+        html += '<div style="font-size:11px;color:var(--n2);font-style:italic">\u2014</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // Discovery Gaps
+  if (si.discovery_gaps && si.discovery_gaps.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:8px;color:#f59e0b">Discovery Gaps \u2014 What We Still Need to Learn</div>';
+    si.discovery_gaps.forEach(function(g) { html += '<div style="font-size:12px;color:var(--dark);margin-bottom:4px">\u26a0 ' + esc(g) + '</div>'; });
+    html += '</div>';
+  }
+
+  // Confidence
+  if (si.confidence !== undefined) {
+    html += '<div style="text-align:right;font-size:11px;color:var(--n2)">Confidence: <span style="font-weight:500;color:' + (si.confidence >= 7 ? 'var(--green)' : si.confidence >= 4 ? 'var(--warn)' : 'var(--error)') + '">' + si.confidence + '/10</span></div>';
+  }
+
+  return html;
+}
+
 // ── Audit Panel (shown per tab) ────────────────────────────────────────
 
 function _renderStrategyAuditPanel(diagNum) {
@@ -8581,7 +9007,7 @@ async function compileStrategyOutput() {
   var auditSummary = [];
   var au0 = (st._audit || {})[0];
   if (au0) auditSummary.push('D0: ' + au0.pass + '/' + au0.total);
-  for (var d = 1; d <= 8; d++) {
+  for (var d = 1; d <= 9; d++) {
     var au = (st._audit || {})[d];
     if (au) auditSummary.push('D' + d + ': ' + au.pass + '/' + au.total);
   }
@@ -8684,6 +9110,35 @@ function _renderOutput(st) {
   var output = st.compiled_output || '';
   var meta = st._meta || {};
 
+  // View toggle: Strategy Document vs Sales Intelligence
+  var stratActive = _outputView === 'strategy';
+  var salesActive = _outputView === 'sales';
+  html += '<div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content">';
+  html += '<button class="btn sm" style="border:none;border-radius:0;' + (stratActive ? 'background:var(--green);color:#fff' : 'background:var(--bg2);color:var(--n3)') + '" onclick="switchOutputView(\'strategy\')"><i class="ti ti-file-text" style="font-size:12px;margin-right:4px"></i>Strategy Document</button>';
+  html += '<button class="btn sm" style="border:none;border-radius:0;border-left:1px solid var(--border);' + (salesActive ? 'background:var(--green);color:#fff' : 'background:var(--bg2);color:var(--n3)') + '" onclick="switchOutputView(\'sales\')"><i class="ti ti-briefcase" style="font-size:12px;margin-right:4px"></i>Sales Intelligence</button>';
+  html += '</div>';
+
+  // Sales Intelligence view
+  if (_outputView === 'sales') {
+    html += _renderSalesIntel(st);
+
+    // Proposal preview
+    var proposalMd = buildProposalText();
+    if (proposalMd) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px">';
+      html += '<div style="font-size:12px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Proposal Preview</div>';
+      html += '<div style="display:flex;align-items:center;gap:6px">';
+      html += '<button class="btn btn-ghost sm" onclick="copyProposal()" style="font-size:10px;padding:2px 8px" data-tip="Copy proposal to clipboard"><i class="ti ti-copy" style="font-size:11px"></i> Copy</button>';
+      html += '<button class="btn btn-ghost sm" onclick="downloadProposal()" style="font-size:10px;padding:2px 8px" data-tip="Download proposal as markdown file"><i class="ti ti-download" style="font-size:11px"></i> Download .md</button>';
+      html += '</div></div>';
+      html += '<div class="card" style="padding:24px 28px;margin-bottom:14px">';
+      html += '<div style="font-size:13px;line-height:1.7;font-family:var(--font)">' + sanitiseHTML(_markdownToHtml(proposalMd)) + '</div>';
+      html += '</div>';
+    }
+
+    return html;
+  }
+
   // Action buttons
   html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
   if (meta.current_version > 0) {
@@ -8706,11 +9161,11 @@ function _renderOutput(st) {
   var audit = st._audit || {};
   var hasAudit = Object.keys(audit).length > 0;
   if (hasAudit) {
-    var diagLabelsShort = { 0:'Audience', 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks', 8:'Narrative' };
+    var diagLabelsShort = { 0:'Audience', 1:'Economics', 2:'Position', 3:'Subtraction', 4:'Channels', 5:'Website', 6:'Content', 7:'Risks', 8:'Narrative', 9:'Sales' };
     html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
     html += '<div style="font-size:12px;font-weight:500;margin-bottom:8px">Diagnostic Audit Summary</div>';
     html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
-    var diagNums = [0,1,2,3,4,5,6,7,8];
+    var diagNums = [0,1,2,3,4,5,6,7,8,9];
     for (var di = 0; di < diagNums.length; di++) {
       var d = diagNums[di];
       var au = audit[d];
