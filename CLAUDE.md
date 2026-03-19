@@ -7,10 +7,10 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 **The 11-stage pipeline:**
 
 1. **Setup** — Client name, URL, primary market, metro/city targeting (for GKP geo data), industry, uploaded strategy docs (auto-extract to client goals), discovery notes, client goals (goal statement, measurable target, baseline, timeline, primary KPI), sales qualification, competitor URLs
-2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Current Site Architecture (3 tabs: Insights — AI-generated plain-English description of information architecture/URL patterns/hierarchy depth, Tree — indented hierarchy with traffic badges, Diagram — Mermaid flowchart), Core Web Vitals, Tech Stack, Schema detection, redirect map. Clear All button to reset snapshot data.
+2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Brand SERP card (Knowledge Panel presence, owns #1 result, SERP features, People Also Search For, ratings — via `/api/snapshot-brand-serp`), Current Site Architecture (3 tabs: Insights — AI-generated plain-English description of information architecture/URL patterns/hierarchy depth, Tree — indented hierarchy with traffic badges, Diagram — Mermaid flowchart with grouped view for 60+ page sitemaps), Core Web Vitals, Tech Stack, Schema detection, redirect map. Clear All button to reset snapshot data.
 3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, and unit economics inputs
 4. **Strategy** — The strategy engine: 8 AI diagnostics (D0–D7) with keyword pipeline auto-inserted between D3 and D4, scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, interactive Gantt timeline with cost labels, compiled 13-section strategy document with 6 data appendices + revenue projection model, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes). 9 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D7. Auto-compiles strategy doc + web brief after full runs. Strategy document download includes website strategy brief.
-5. **Sitemap** — Page architecture with keyword-to-page mapping, strategy alignment columns, content pillar tags, persona assignment per page, voice overlay assignment, positioning direction gap detection, CTA landing page gap detection, persona coverage check panel, budget-tier-aware priority suggestions, market overrides, active page import from Snapshot, and Clear All button to reset sitemap
+5. **Sitemap** — Page architecture with keyword-to-page mapping. 5-step workflow strip (Import → Generate → Align → Enrich → Approve) with status dashboard. Strategy-aware build: D5 page injection (vertical/location/content pages), CTA landing page stubs, pages-to-cut annotation, tier page count enforcement, engagement scope awareness. Page triage system (Removed tab) flags parameter pages, utility bloat, team sub-pages, cannibalised keywords, off-strategy pages. Realign button for post-strategy updates without full rebuild. Issues panel with AI-powered Fix buttons (keyword assignment, zero-vol replacement, cannibalisation resolution). Full Build button chains all steps: build → priorities → personas → AI keyword fix → page goals (batched, 12/call) → content pillars → live volumes. Architecture diagram with grouped view for 60+ pages. Source badges (D5/CTA/CUT). Strategy alignment columns, content pillar tags, persona/voice/awareness assignment, positioning direction gap detection, CTA gap detection, persona coverage check, budget-tier priority suggestions, market overrides, active page import from Snapshot, Clear All button
 6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards, positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, and persona alignment scoring
 7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
 8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
@@ -83,12 +83,12 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 ### Backend (worker.js)
 
 Single Cloudflare Worker handling all API routes via sequential `if` statements. Routes are grouped:
-- **Auth routes:** `/api/whoami`, `/api/admin/users`
+- **Auth routes:** `/api/whoami` (auto-registers new users), `/api/admin/users` (GET/POST/DELETE), `/api/admin/users/:email/approve`
 - **Project CRUD:** `/api/projects[/:id]`
 - **AI proxy:** `/api/claude` (streaming), `/api/claude-sync` (non-streaming) — model-locked and token-capped
 - **DataForSEO:** `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
 - **Google Keyword Planner:** `/api/gkp-ideas` (keyword ideas + bid data from URL), `/api/gkp-forecast` (keyword enrichment: bid ranges, ad competition, monthly volumes), `/api/gkp-status` (credential check) — all gracefully hidden when Google Ads env vars not set. Both routes have 401 token-refresh retry logic.
-- **Ahrefs:** `/api/snapshot`, `/api/ahrefs`
+- **Ahrefs:** `/api/snapshot`, `/api/snapshot-brand-serp` (Knowledge Panel + SERP features), `/api/ahrefs`
 - **Queue:** `/api/queue-submit`, `/api/queue-status`
 - **Image gen:** `/api/generate-image`
 - **Per-slug storage:** `/api/copy/:projectId/:slug`, `/api/images/:projectId/:slug`
@@ -113,7 +113,11 @@ The strategy engine is the most complex subsystem. It runs 8 AI diagnostics sequ
 **D0 runs first** (separate call before the D1–D7 loop). This is because D0=0 is falsy in JavaScript — all `if (diagNum)` checks must use `diagNum !== undefined && diagNum !== null` instead.
 
 **Keyword pipeline within strategy (keywords.js):**
-The keyword pipeline has 9 steps: Generate Questions → AI Generate Seeds → Build Mechanical Seeds → Pull Competitor Keywords → Merge All Sources → Fetch Volumes → GKP Enrich (optional, if configured) → AI-Select Top Keywords → Cluster into Pages. When triggered from `generateStrategy()`, it runs automatically between D3 and D4. GKP enrichment adds `low_bid`, `high_bid`, `ad_competition`, `ad_competition_idx` to each keyword. AI-Select uses GKP bid data as a commercial intent signal when available. Keyword table header is clickable to filter showing only selected keywords.
+The keyword pipeline has 10 steps: Generate Questions → AI Generate Seeds → Build Mechanical Seeds → Pull Competitor Keywords → Merge All Sources → Fetch Volumes → GKP Enrich (optional, if configured) → AI-Select Top Keywords → Cluster into Pages → Run Audit. When triggered from `generateStrategy()`, it runs automatically between D3 and D4. GKP enrichment adds `low_bid`, `high_bid`, `ad_competition`, `ad_competition_idx` to each keyword. AI-Select uses GKP bid data as a commercial intent signal when available. Keyword table header is clickable to filter showing only selected keywords.
+
+**5 keyword tabs:** Questions, Seeds, Opportunities, Clusters, Google Ads. The Google Ads tab shows credential status, enrichment summary (avg CPC, competition breakdown), and a sortable table of all keywords with bid ranges and ad competition data.
+
+**Mechanical seed generation** (`buildKwSeeds()`): Business-type-aware with 9 category templates (agency, ecommerce, saas, medical, trades, restaurant, legal, realestate, professional). Auto-detected via `_detectBusinessCategory()` from research fields. 10-layer seed generation: service × category modifiers, business type, universal questions, D0 audience segments, D0 perceived alternatives, D2 positioning keywords, snapshot slug mining, secondary geo expansion, research pain points, pinned seeds. Max 700 seeds.
 
 **Scoring engine:** Three dimensions per section:
 - Data Completeness (35%) — are all required inputs present?
@@ -265,10 +269,14 @@ These are defined once and used across all routes:
 ## Security Model
 
 - **Auth:** CF Access JWT validation (when `CF_ACCESS_TEAM_DOMAIN` env var is set) + email header fallback
+- **Roles:** 4-tier system: `super_admin` (ADMIN_EMAIL, untouchable), `admin` (user management), `strategist` (full pipeline), `viewer` (read-only). Auto-registration: new SSO users get `status: 'pending'`, `role: 'viewer'` until admin approves.
+- **User management:** `/api/admin/users` CRUD + `/api/admin/users/:email/approve`. Super admin cannot be demoted/deleted. Admin panel with Pending Approval section + Team section.
+- **Cross-user projects:** Strategist+ roles can list/load/save ALL projects across users. Viewers scoped to own prefix only.
+- **Save concurrency:** `_saveInFlight` lock prevents concurrent `saveProject()` calls causing 409 version conflicts. Queued saves fire after in-flight save completes.
 - **Claude proxy:** model whitelist (`claude-sonnet-4-20250514`, `claude-haiku-4-5-20251001`), max_tokens capped at 8192, payload sanitised
 - **Rate limiting:** per-user sliding window — ai (60/5min), data (40/5min), queue (5/1min), image (20/5min)
 - **XSS:** all AI-generated HTML sanitised via DOMPurify before innerHTML
-- **KV isolation:** all user data prefixed `u:{email}:` — users cannot access each other's data
+- **KV isolation:** all user data prefixed `u:{email}:` — strategist+ can cross-read via lookup
 - **Queue security:** job types whitelisted, pageIdx validated, userPrefix re-derived in consumer
 - **Optimistic locking:** `_version` counter prevents stale write clobbering between client and queue
 - **Size monitoring:** server rejects >24MB saves (413), warns at 15MB+
@@ -498,7 +506,7 @@ All user data prefixed `u:{email}:`.
 | `u:{email}:copy:{projectId}:{slug}` | Copy HTML per page |
 | `u:{email}:job:{projectId}:{jobId}` | Queue job status (24h TTL) |
 | `u:{email}:img:{projectId}:{slug}` | Image data per page |
-| `admin:user:{email}` | User profile: name, role, projects |
+| `admin:user:{email}` | User profile: `{ email, name, role, status, projects[], createdAt, updatedAt, approvedAt, approvedBy }`. Roles: `super_admin`, `admin`, `strategist`, `viewer`. Status: `pending`, `active`, `suspended`. Auto-created on first `/api/whoami` call. |
 | `rl:{email}:{group}` | Rate limit bucket (auto-expiring) |
 | `gads:access_token` | Google Ads OAuth access token (55 min TTL) |
 
