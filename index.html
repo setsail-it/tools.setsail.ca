@@ -1462,7 +1462,15 @@ function _updateContextBar() {
         // Detect which enrichment component is the bottleneck
         var _nonStruct = pages.filter(function(p) { return !p.is_structural; });
         var _noGoal = _nonStruct.filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
-        var _noPersona = _nonStruct.filter(function(p) { return !p.target_persona; }).length;
+        var _noPersona = _nonStruct.filter(function(p) {
+          if (!p.target_persona) {
+            var _pt = (p.page_type || '').toLowerCase();
+            // Skip types that _autoAssignPersona deliberately leaves empty
+            if (['home','about','contact','utility','faq','team','blog','article'].indexOf(_pt) >= 0) return false;
+            return true;
+          }
+          return false;
+        }).length;
         var _noKw = _nonStruct.filter(function(p) {
           var t = (p.page_type || '').toLowerCase();
           if (['home','about','contact','utility','faq','team'].indexOf(t) >= 0) return false;

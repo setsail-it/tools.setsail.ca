@@ -560,6 +560,7 @@ function assignAllPersonas(force) {
       ? total + ' pages already have personas — click again to reassign'
       : 'No pages matched persona assignment rules (structural and blog pages are excluded)';
   if (typeof aiBarNotify === 'function') aiBarNotify(msg, { duration: 4000 });
+  if (typeof _updateContextBar === 'function') _updateContextBar();
 }
 
 // Accept all priority suggestions
