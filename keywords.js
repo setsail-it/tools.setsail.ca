@@ -482,17 +482,19 @@ function goToSitemap() {
   }
 }
 
-function switchKwTab(i) { _kwTab = ['questions','seeds','opps','clusters'][i] || 'questions'; renderKwTabContent(); }
+function switchKwTab(i) { _kwTab = ['questions','seeds','opps','clusters','google'][i] || 'questions'; renderKwTabContent(); }
 
 function renderKwTabNav() {
   var el = document.getElementById('kw-tab-nav');
   if (!el) return;
   var kwr = S.kwResearch || {};
+  var _gkpCount = (kwr.keywords || []).filter(function(k) { return k.low_bid; }).length;
   var tabs = [
     { id: 'questions', label: 'Questions', count: (_getQuestionsArray ? _getQuestionsArray().length : 0), icon: 'ti-help-circle' },
     { id: 'seeds', label: 'Seeds', count: (kwr.seeds || []).length, icon: 'ti-plant' },
     { id: 'opps', label: 'Opportunities', count: (kwr.keywords || []).length, icon: 'ti-chart-bar' },
-    { id: 'clusters', label: 'Clusters', count: (kwr.clusters || []).length, icon: 'ti-stack-2' }
+    { id: 'clusters', label: 'Clusters', count: (kwr.clusters || []).length, icon: 'ti-stack-2' },
+    { id: 'google', label: 'Google Ads', count: _gkpCount, icon: 'ti-brand-google' }
   ];
   el.innerHTML = tabs.map(function(t, i) {
     var active = _kwTab === t.id;
@@ -514,6 +516,7 @@ function renderKwTabContent() {
   if (_kwTab === 'seeds') el.innerHTML = _renderKwSeedsTab();
   else if (_kwTab === 'opps') el.innerHTML = _renderKwOppsTab();
   else if (_kwTab === 'clusters') el.innerHTML = _renderKwClustersTab();
+  else if (_kwTab === 'google') el.innerHTML = _renderKwGoogleTab();
   else if (_kwTab === 'questions') el.innerHTML = _renderKwQuestionsTab();
 }
 
@@ -1223,6 +1226,112 @@ function _openGkpUrlInput() {
 function _showGkpButtons() {
   var el = document.getElementById('gkp-seed-btns');
   if (el) el.style.display = '';
+}
+
+// ── Google Ads Tab ────────────────────────────────────────────────
+function _renderKwGoogleTab() {
+  var kws = S.kwResearch && S.kwResearch.keywords ? S.kwResearch.keywords : [];
+  var enrichedKws = kws.filter(function(k) { return k.low_bid || k.gkp_volume; });
+  var html = '<div>';
+
+  // Status header
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
+  html += '<button class="btn btn-primary" onclick="enrichWithGKP()"><i class="ti ti-brand-google"></i> Enrich Keywords with Google Ads</button>';
+  html += '<button class="btn btn-ghost sm" onclick="fetchGKPFromURL((S.setup&&S.setup.url)||\'\')" data-tip="Pull keyword ideas directly from the client URL via Google Keyword Planner"><i class="ti ti-world"></i> Ideas from URL</button>';
+  html += '<span id="gkp-tab-status" style="font-size:11px;color:var(--n2)"></span>';
+  html += '</div>';
+
+  // Credential check
+  html += '<div id="gkp-cred-status" style="margin-bottom:14px">';
+  html += '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--n2)"><span class="spinner" style="width:10px;height:10px"></span> Checking Google Ads credentials\u2026</div>';
+  html += '</div>';
+
+  // Summary cards
+  if (enrichedKws.length) {
+    var avgBid = 0; var highBids = 0; var lowComp = 0; var medComp = 0; var highComp = 0;
+    enrichedKws.forEach(function(k) {
+      if (k.high_bid) { avgBid += k.high_bid; highBids++; }
+      if (k.ad_competition === 'LOW') lowComp++;
+      else if (k.ad_competition === 'MEDIUM') medComp++;
+      else if (k.ad_competition === 'HIGH') highComp++;
+    });
+    avgBid = highBids > 0 ? (avgBid / highBids) : 0;
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px">';
+    html += '<div class="card" style="padding:10px 14px;text-align:centre"><div style="font-size:18px;font-weight:600;color:var(--dark)">' + enrichedKws.length + '</div><div style="font-size:10px;color:var(--n2)">Keywords Enriched</div></div>';
+    html += '<div class="card" style="padding:10px 14px;text-align:centre"><div style="font-size:18px;font-weight:600;color:var(--dark)">$' + avgBid.toFixed(2) + '</div><div style="font-size:10px;color:var(--n2)">Avg CPC (High Bid)</div></div>';
+    html += '<div class="card" style="padding:10px 14px;text-align:centre"><div style="font-size:18px;font-weight:600;color:var(--green)">' + lowComp + '</div><div style="font-size:10px;color:var(--n2)">Low Competition</div></div>';
+    html += '<div class="card" style="padding:10px 14px;text-align:centre"><div style="font-size:18px;font-weight:600;color:var(--warn)">' + medComp + '</div><div style="font-size:10px;color:var(--n2)">Medium Competition</div></div>';
+    html += '<div class="card" style="padding:10px 14px;text-align:centre"><div style="font-size:18px;font-weight:600;color:var(--error)">' + highComp + '</div><div style="font-size:10px;color:var(--n2)">High Competition</div></div>';
+    html += '</div>';
+  }
+
+  if (!kws.length) {
+    html += '<div style="text-align:centre;padding:40px 20px;color:var(--n2)"><i class="ti ti-brand-google" style="font-size:32px;display:block;margin-bottom:8px;color:#4285F4"></i><div style="font-size:13px">No keywords yet \u2014 run the keyword pipeline first, then enrich with Google Ads.</div></div>';
+    html += '</div>';
+    // Check creds async
+    setTimeout(_checkAndRenderGkpCreds, 100);
+    return html;
+  }
+
+  if (!enrichedKws.length) {
+    html += '<div style="text-align:centre;padding:30px 20px;color:var(--n2);border:1px dashed var(--border);border-radius:8px">';
+    html += '<i class="ti ti-info-circle" style="font-size:20px;display:block;margin-bottom:6px"></i>';
+    html += '<div style="font-size:12px">You have ' + kws.length + ' keywords but none have Google Ads data yet.</div>';
+    html += '<div style="font-size:11px;margin-top:4px">Click <strong>Enrich Keywords with Google Ads</strong> above to pull bid ranges and competition data.</div>';
+    html += '</div>';
+    html += '</div>';
+    setTimeout(_checkAndRenderGkpCreds, 100);
+    return html;
+  }
+
+  // Keyword table — sorted by high_bid desc
+  var sorted = enrichedKws.slice().sort(function(a, b) { return (b.high_bid || 0) - (a.high_bid || 0); });
+
+  html += '<div style="font-size:11px;color:var(--n2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">' + enrichedKws.length + ' keywords with Google Ads data</div>';
+  html += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:500px;overflow-y:auto">';
+  html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 90px 60px 60px;padding:7px 14px;background:var(--bg);border-bottom:1px solid var(--border);font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;position:sticky;top:0">';
+  html += '<span>Keyword</span><span>Volume</span><span>KD</span><span>Bid Range</span><span>Ad Comp</span><span>CPC</span>';
+  html += '</div>';
+  sorted.forEach(function(k, i) {
+    var bg = i % 2 === 0 ? 'var(--white)' : 'rgba(0,0,0,0.012)';
+    var bidStr = (k.low_bid && k.high_bid) ? '$' + k.low_bid.toFixed(2) + '\u2013$' + k.high_bid.toFixed(2) : (k.low_bid ? '$' + k.low_bid.toFixed(2) : '\u2014');
+    var adLetter = '\u2014'; var adClr = 'var(--n2)';
+    if (k.ad_competition === 'LOW') { adLetter = 'Low'; adClr = 'var(--green)'; }
+    else if (k.ad_competition === 'MEDIUM') { adLetter = 'Med'; adClr = 'var(--warn)'; }
+    else if (k.ad_competition === 'HIGH') { adLetter = 'High'; adClr = 'var(--error)'; }
+    var cpcStr = k.cpc ? '$' + k.cpc.toFixed(2) : '\u2014';
+    html += '<div style="display:grid;grid-template-columns:1fr 70px 70px 90px 60px 60px;padding:6px 14px;align-items:centre;background:' + bg + ';border-bottom:1px solid rgba(0,0,0,0.04);font-size:12px">';
+    html += '<span style="color:var(--dark);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(k.kw) + '">' + esc(k.kw) + '</span>';
+    html += '<span style="color:var(--dark);font-weight:500">' + (k.vol || 0).toLocaleString() + '</span>';
+    html += '<span style="color:' + (k.kd <= 20 ? 'var(--green)' : k.kd <= 40 ? 'var(--warn)' : 'var(--error)') + '">' + (k.kd || 0) + '</span>';
+    html += '<span style="font-size:11px;color:var(--n3)">' + bidStr + '</span>';
+    html += '<span style="font-weight:600;color:' + adClr + '">' + adLetter + '</span>';
+    html += '<span style="color:var(--dark)">' + cpcStr + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Enrichment timestamp
+  if (S.kwResearch.gkpEnrichedAt) {
+    var d = new Date(S.kwResearch.gkpEnrichedAt);
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:8px">Last enriched: ' + d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</div>';
+  }
+
+  html += '</div>';
+  setTimeout(_checkAndRenderGkpCreds, 100);
+  return html;
+}
+
+function _checkAndRenderGkpCreds() {
+  var el = document.getElementById('gkp-cred-status');
+  if (!el) return;
+  _checkGkpStatus().then(function(ok) {
+    if (ok) {
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green)"><i class="ti ti-circle-check-filled" style="font-size:13px"></i> Google Ads API connected</div>';
+    } else {
+      el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--error)"><i class="ti ti-circle-x-filled" style="font-size:13px"></i> Google Ads API not configured <span style="color:var(--n2);font-weight:400">\u2014 set GOOGLE_ADS_* env vars in Cloudflare Worker secrets</span></div>';
+    }
+  });
 }
 
 var _kwSelectedFirst = false;
