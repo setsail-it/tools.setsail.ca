@@ -279,67 +279,190 @@ function initKeywords() {
   _checkGkpStatus().then(function(ok) { if (ok) _showGkpButtons(); });
 }
 
+// ── BUSINESS TYPE MODIFIER TEMPLATES ──────────────────────────────
+var _SEED_TEMPLATES = {
+  agency: {
+    geo: ['{s} {g}', '{s} agency {g}', '{s} company {g}', '{s} services {g}', '{s} consultant {g}', '{s} experts {g}', '{s} specialists {g}', 'best {s} {g}', 'top {s} {g}', 'leading {s} {g}', 'local {s} {g}', '{g} {s} agency'],
+    bare: ['{s} agency', '{s} services', '{s} company', '{s} experts', 'best {s} agency', 'top {s} agencies', '{s} agency near me', '{s} near me', 'hire {s} agency', 'outsource {s}', '{s} pricing', '{s} cost', '{s} rates', '{s} packages', '{s} plans', '{s} quote', 'affordable {s}', '{s} for small business', 'professional {s}']
+  },
+  ecommerce: {
+    geo: ['{s} {g}', 'buy {s} {g}', '{s} store {g}', '{s} shop {g}', 'best {s} {g}', 'cheap {s} {g}'],
+    bare: ['buy {s}', 'buy {s} online', '{s} online', '{s} store', '{s} shop', 'best {s}', 'top {s}', 'cheap {s}', 'cheapest {s}', '{s} reviews', '{s} deals', '{s} sale', '{s} price', '{s} vs', '{s} near me', '{s} free shipping', '{s} for sale', 'affordable {s}', '{s} comparison']
+  },
+  saas: {
+    geo: ['best {s} {g}'],
+    bare: ['{s} software', '{s} tool', '{s} platform', '{s} app', 'best {s}', 'top {s}', '{s} alternative', '{s} alternatives', '{s} vs', '{s} pricing', '{s} free trial', '{s} free', '{s} for small business', '{s} for enterprise', '{s} review', '{s} comparison', 'best {s} software', 'cheapest {s} software', '{s} solution']
+  },
+  medical: {
+    geo: ['{s} {g}', '{s} clinic {g}', '{s} doctor {g}', '{s} specialist {g}', 'best {s} {g}', 'top {s} {g}', '{g} {s} clinic'],
+    bare: ['{s} near me', '{s} clinic near me', '{s} cost', '{s} price', '{s} procedure', '{s} treatment', '{s} specialist', '{s} doctor', 'best {s}', 'top {s}', 'affordable {s}', '{s} reviews', '{s} before and after', 'is {s} worth it', 'how much does {s} cost']
+  },
+  trades: {
+    geo: ['{s} {g}', '{s} contractor {g}', '{s} company {g}', '{s} services {g}', 'best {s} {g}', 'top {s} {g}', 'licensed {s} {g}'],
+    bare: ['{s} contractor', '{s} company', '{s} services', '{s} near me', '{s} contractor near me', '{s} cost', '{s} quote', '{s} estimate', 'best {s}', 'top {s}', 'licensed {s}', '{s} residential', '{s} commercial', 'hire {s}', 'affordable {s}', '{s} pricing']
+  },
+  restaurant: {
+    geo: ['{s} {g}', 'best {s} {g}', 'top {s} {g}', '{s} restaurant {g}', '{g} {s}'],
+    bare: ['{s} near me', '{s} restaurant near me', 'best {s}', 'top {s}', '{s} menu', '{s} delivery', '{s} takeout', '{s} reservations', '{s} reviews', '{s} open now', 'cheap {s} near me']
+  },
+  legal: {
+    geo: ['{s} lawyer {g}', '{s} attorney {g}', '{s} firm {g}', 'best {s} lawyer {g}', 'top {s} {g}'],
+    bare: ['{s} lawyer', '{s} lawyer near me', '{s} attorney', '{s} firm', '{s} consultation', '{s} cost', 'best {s} lawyer', 'top {s} lawyers', 'affordable {s} lawyer', 'free {s} consultation', 'how much does {s} lawyer cost']
+  },
+  realestate: {
+    geo: ['{s} {g}', '{s} agent {g}', 'best {s} agent {g}', '{s} realtor {g}', '{g} {s}'],
+    bare: ['{s} agent', '{s} agent near me', '{s} realtor', 'best {s} agent', 'top {s} agents', '{s} listings', '{s} for sale', 'buy {s}', 'sell {s}', '{s} market', '{s} prices']
+  },
+  professional: {
+    geo: ['{s} {g}', '{s} firm {g}', '{s} services {g}', 'best {s} {g}', 'top {s} {g}'],
+    bare: ['{s} firm', '{s} services', '{s} consultant', '{s} near me', '{s} cost', '{s} pricing', '{s} rates', 'best {s}', 'top {s}', 'hire {s}', '{s} for small business', 'affordable {s}', 'professional {s}']
+  }
+};
+
+// Auto-detect business category from research + setup data
+function _detectBusinessCategory() {
+  var r = S.research || {};
+  var setup = S.setup || {};
+  var industry = (r.industry || setup.industry || '').toLowerCase();
+  var subIndustry = (r.sub_industry || '').toLowerCase();
+  var bizModel = (r.business_model || '').toLowerCase();
+  var schemaType = (r.schema_business_type || '').toLowerCase();
+  var category = (r.schema_primary_category || '').toLowerCase();
+  var all = industry + ' ' + subIndustry + ' ' + bizModel + ' ' + schemaType + ' ' + category;
+
+  if (/e-?commerce|retail|shop|store|product|merch/.test(all)) return 'ecommerce';
+  if (/saas|software|platform|app|tech(?:nology)?/.test(all) && !/agency/.test(all)) return 'saas';
+  if (/medical|dental|clinic|health|doctor|physician|optom|chiro|physio|derma|aestheti|plastic surg/.test(all)) return 'medical';
+  if (/construct|plumb|electric(?:al|ian)|hvac|roof|landscap|paving|concrete|renovation|remodel|contractor|trades/.test(all)) return 'trades';
+  if (/restaurant|food|caf[eé]|bar|dining|catering|bakery|pizza/.test(all)) return 'restaurant';
+  if (/law(?:yer)?|legal|attorney|litigation|family law|criminal|immigration/.test(all)) return 'legal';
+  if (/real\s*estate|realtor|property|mortgage|brokerage/.test(all)) return 'realestate';
+  if (/agency|marketing|advertising|digital|creative|design|branding|consult/.test(all)) return 'agency';
+  if (/account|financial|insurance|advisory|consult/.test(all)) return 'professional';
+  return 'agency'; // safe default
+}
+
 function buildKwSeeds() {
   var r = S.research || {};
   var setup = S.setup || {};
   var services = r.primary_services || [];
   var primaryGeo = r.geography && r.geography.primary ? r.geography.primary : (setup.geo || '');
   var _rawCity = (primaryGeo || '').replace(/,.*$/, '').trim().toLowerCase();
-  var geoL = _rawCity || (setup.geo || '').replace(/,.*$/, '').trim().toLowerCase() || 'vancouver';
+  var geoL = _rawCity || (setup.geo || '').replace(/,.*$/, '').trim().toLowerCase();
   var secondaryGeos = (r.geography && r.geography.secondary ? r.geography.secondary : []).slice(0, 3);
   var seeds = new Set();
+
+  // 1. Detect business category and get modifiers
+  var category = _detectBusinessCategory();
+  var templates = _SEED_TEMPLATES[category] || _SEED_TEMPLATES.agency;
+
+  // 2. Service-based seeds with category-appropriate modifiers
   services.slice(0, 14).forEach(function(svc) {
-    var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform)$/i, '').trim();
+    var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
     if (s.length < 3) return;
-    // Geo-qualified (high purchase intent for local search)
-    seeds.add(s + ' ' + geoL);
-    seeds.add(s + ' agency ' + geoL);
-    seeds.add(s + ' company ' + geoL);
-    seeds.add(s + ' services ' + geoL);
-    seeds.add('best ' + s + ' ' + geoL);
-    seeds.add(s + ' consultant ' + geoL);
-    // Non-geo bare service terms (national volume, DataForSEO expands these well)
-    seeds.add(s + ' agency');
-    seeds.add(s + ' services');
-    seeds.add(s + ' company');
-    seeds.add('best ' + s + ' agency');
-    seeds.add(s + ' agency near me');
-    seeds.add('hire ' + s + ' agency');
-    seeds.add(s + ' pricing');
-    seeds.add(s + ' cost');
+    // Geo-qualified seeds
+    if (geoL) {
+      templates.geo.forEach(function(t) { seeds.add(t.replace(/\{s\}/g, s).replace(/\{g\}/g, geoL)); });
+    }
+    // Non-geo bare seeds
+    templates.bare.forEach(function(t) { seeds.add(t.replace(/\{s\}/g, s)); });
   });
-  // Geo versions of core business type (derived from services, not hardcoded)
+
+  // 3. Business type seeds
   var businessType = setup.businessType || r.business_type || '';
   if (businessType) {
     var bt = businessType.toLowerCase().trim();
-    seeds.add(bt + ' ' + geoL);
-    seeds.add('best ' + bt + ' ' + geoL);
-    seeds.add(bt + ' near me');
-    seeds.add(geoL + ' ' + bt);
+    if (geoL) { seeds.add(bt + ' ' + geoL); seeds.add('best ' + bt + ' ' + geoL); seeds.add('top ' + bt + ' ' + geoL); seeds.add(geoL + ' ' + bt); }
+    seeds.add(bt + ' near me'); seeds.add('best ' + bt); seeds.add('top ' + bt);
   }
-  var skipSegs = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','resources','team']);
+
+  // 4. Universal question patterns (all business types)
+  services.slice(0, 6).forEach(function(svc) {
+    var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
+    if (s.length < 3) return;
+    seeds.add('how much does ' + s + ' cost');
+    seeds.add('what is ' + s);
+    seeds.add('is ' + s + ' worth it');
+    seeds.add(s + ' vs');
+  });
+
+  // 5. Audience-driven seeds (from strategy D0)
+  var audience = S.strategy && S.strategy.audience;
+  if (audience) {
+    // Segment-based: "{service} for {segment}"
+    var segments = audience.segments || [];
+    segments.slice(0, 5).forEach(function(seg) {
+      var segName = (seg.segment || seg.name || '').toLowerCase().trim();
+      if (!segName || segName.length < 3) return;
+      services.slice(0, 4).forEach(function(svc) {
+        var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
+        if (s.length < 3) return;
+        seeds.add(s + ' for ' + segName);
+        seeds.add('best ' + s + ' for ' + segName);
+      });
+    });
+    // Perceived alternatives: comparison seeds
+    var alts = audience.perceived_alternatives || [];
+    alts.slice(0, 4).forEach(function(alt) {
+      var altName = (typeof alt === 'string' ? alt : alt.alternative || '').toLowerCase().trim();
+      if (altName && altName.length > 3) {
+        seeds.add(altName + ' vs ' + (businessType || services[0] || '').toLowerCase().replace(/\s+(services?|management|agency)$/i, '').trim());
+      }
+    });
+  }
+
+  // 6. Positioning-driven seeds (from strategy D2)
+  var posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  if (posDir) {
+    var posKws = (posDir.keyword_themes || posDir.keywords || []);
+    posKws.slice(0, 5).forEach(function(kw) {
+      var k = (typeof kw === 'string' ? kw : kw.keyword || '').toLowerCase().trim();
+      if (k && k.length > 3) { seeds.add(k); if (geoL) seeds.add(k + ' ' + geoL); }
+    });
+  }
+
+  // 7. Snapshot slug mining (existing pages → terms)
+  var skipSegs = new Set(['services','service','cities','city','industry','post','blog','our-work','about','contact','pricing','resources','team','tag','category','author','page']);
   (S.snapshot && S.snapshot.topPages ? S.snapshot.topPages : []).slice(0, 40).forEach(function(p) {
     var parts = (p.slug || '').replace(/^\//, '').split('/');
     parts.forEach(function(seg) {
       if (!seg || skipSegs.has(seg) || seg.length < 4) return;
-      var term = seg.replace(/-/g, ' ').replace(/\bvancouver\b|\btoronto\b|\bcalgary\b|\bbc\b/gi, '').trim();
+      var term = seg.replace(/-/g, ' ').trim();
+      // Strip geo names from slug
+      if (geoL) term = term.replace(new RegExp('\\b' + geoL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi'), '').trim();
       if (term.length > 4 && !term.match(/^\d+$/) && !/^(proven|strategies|for|real|growth|what|is|how|guide)/.test(term)) {
-        seeds.add(term + ' ' + geoL);
-        seeds.add(term + ' agency ' + geoL);
+        seeds.add(term);
+        if (geoL) seeds.add(term + ' ' + geoL);
       }
     });
   });
+
+  // 8. Secondary geo expansion (top 4 services × secondary cities)
   secondaryGeos.forEach(function(geo) {
     var sg = geo.replace(/,.*$/, '').trim().toLowerCase();
+    if (!sg) return;
     services.slice(0, 4).forEach(function(svc) {
-      var s = svc.toLowerCase().replace(/\s+(services?|management|agency)$/i, '').trim();
-      if (s.length > 3) { seeds.add(s + ' ' + sg); seeds.add(s + ' agency ' + sg); }
+      var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
+      if (s.length < 3) return;
+      // Use first 3 geo templates for secondary cities
+      (templates.geo || []).slice(0, 3).forEach(function(t) {
+        seeds.add(t.replace(/\{s\}/g, s).replace(/\{g\}/g, sg));
+      });
     });
   });
-  // Always merge pinned seeds — they survive Refresh Seeds
+
+  // 9. Pain-point seeds from research
+  var painPoints = r.pain_points_top5 || [];
+  painPoints.slice(0, 3).forEach(function(pain) {
+    var p = pain.toLowerCase().trim();
+    if (p.length > 5 && p.length < 50) seeds.add(p);
+  });
+
+  // 10. Always merge pinned seeds — they survive Refresh Seeds
   var pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
   pinned.forEach(function(k) { seeds.add(k); });
-  return Array.from(seeds).filter(function(k) { return k.length > 1 && k.split(' ').length <= 7; }).slice(0, 500);
+
+  return Array.from(seeds).filter(function(k) { return k.length > 1 && k.split(' ').length <= 7; }).slice(0, 700);
 }
 
 function goToSitemap() {
