@@ -1659,7 +1659,7 @@ var ANTI_INFLATION_CAPS = [
       var au = S.strategy && S.strategy._audit || {};
       var totalPass = 0; var totalChecks = 0;
       if (au[0]) { totalPass += au[0].pass; totalChecks += au[0].total; }
-      for (var d = 1; d <= 7; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
+      for (var d = 1; d <= 8; d++) { if (au[d]) { totalPass += au[d].pass; totalChecks += au[d].total; } }
       if (totalChecks < 10) return false; // not enough data
       return (totalPass / totalChecks) < 0.6;
     } },
@@ -4003,7 +4003,7 @@ async function generateStrategy() {
     for (var d = 1; d <= 3; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/7)',
+          label: 'Strategy paused (D' + d + '/8)',
           fn: function(args) { _resumeDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4059,10 +4059,9 @@ async function generateStrategy() {
     renderStrategyNav();
     renderStrategyTabContent();
 
-    // Step 4: Auto-run D8 (demand validation) — keywords guaranteed at this point
-    var _kwR2 = S.kwResearch || {};
-    if (_kwR2.keywords && _kwR2.keywords.length >= 10 && !window._aiStopAll) {
-      aiBarStart('Running D8 Demand Validation with keyword data');
+    // Step 4: Auto-run D8 Narrative & Messaging — requires D0-D7 complete
+    if (!window._aiStopAll) {
+      aiBarStart('Running D8 Narrative & Messaging');
       try { await runDiagnostic(8); } catch (e8) { console.warn('D8 auto-run skipped:', e8.message); }
       await saveProject();
     }
@@ -4104,7 +4103,7 @@ async function _resumeDiagnosticsWithD0(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/7)',
+          label: 'Strategy paused (D' + d + '/8)',
           fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4112,6 +4111,10 @@ async function _resumeDiagnosticsWithD0(startFrom) {
       }
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Run D8 Narrative after D1-D7 complete
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4144,7 +4147,7 @@ async function _resumeDiagnostics(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/7)',
+          label: 'Strategy paused (D' + d + '/8)',
           fn: function(args) { _resumeDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4152,6 +4155,10 @@ async function _resumeDiagnostics(startFrom) {
       }
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Run D8 Narrative after D1-D7 complete
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
     }
     capturePricingSnapshot();
     createStrategyVersion('auto_draft');
@@ -4207,7 +4214,7 @@ async function runAllDiagnostics() {
     for (var d = 1; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/7)',
+          label: 'Diagnostics paused (' + d + '/8)',
           fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4215,6 +4222,10 @@ async function runAllDiagnostics() {
       }
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Run D8 Narrative after D1-D7
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
     }
     S.strategy._kwDataStale = false; // D4-D6 now have latest keyword data
     capturePricingSnapshot();
@@ -4247,7 +4258,7 @@ async function _resumeAllDiagnostics(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/7)',
+          label: 'Diagnostics paused (' + d + '/8)',
           fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4255,6 +4266,10 @@ async function _resumeAllDiagnostics(startFrom) {
       }
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Run D8 Narrative after D1-D7
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
     }
     createStrategyVersion('rerun_all');
     await saveProject();
@@ -4953,7 +4968,7 @@ async function runDiagnosticsFrom(startDiag) {
     for (var d = startDiag; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/7)',
+          label: 'Diagnostics paused (D' + d + '/8)',
           fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4962,6 +4977,10 @@ async function runDiagnosticsFrom(startDiag) {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    // Run D8 Narrative after D1-D7
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+    }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
     createStrategyVersion('rerun_from_d' + startDiag);
@@ -4969,7 +4988,7 @@ async function runDiagnosticsFrom(startDiag) {
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Diagnostics D' + startDiag + '-D7 complete — v' + S.strategy._meta.current_version);
+    aiBarEnd('Diagnostics D' + startDiag + '-D8 complete \u2014 v' + S.strategy._meta.current_version);
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -4982,7 +5001,7 @@ async function _resumeDiagnosticsFrom(startFrom) {
     for (var d = startFrom; d <= 7; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/7)',
+          label: 'Diagnostics paused (D' + d + '/8)',
           fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
           args: { startFrom: d }
         };
@@ -4991,6 +5010,10 @@ async function _resumeDiagnosticsFrom(startFrom) {
       await runDiagnostic(d);
       if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    // Run D8 Narrative after D1-D7
+    if (!window._aiStopAll) {
+      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 skipped:', e8.message); }
+    }
     S.strategy._kwDataStale = false;
     capturePricingSnapshot();
     createStrategyVersion('rerun_from_d' + startFrom);
@@ -4998,7 +5021,7 @@ async function _resumeDiagnosticsFrom(startFrom) {
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Diagnostics complete — v' + S.strategy._meta.current_version);
+    aiBarEnd('Diagnostics complete \u2014 v' + S.strategy._meta.current_version);
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
@@ -8542,7 +8565,7 @@ async function compileStrategyOutput() {
   var auditSummary = [];
   var au0 = (st._audit || {})[0];
   if (au0) auditSummary.push('D0: ' + au0.pass + '/' + au0.total);
-  for (var d = 1; d <= 7; d++) {
+  for (var d = 1; d <= 8; d++) {
     var au = (st._audit || {})[d];
     if (au) auditSummary.push('D' + d + ': ' + au.pass + '/' + au.total);
   }
