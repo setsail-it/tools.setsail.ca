@@ -766,9 +766,6 @@ textarea.inp{resize:vertical}
           <button class="btn btn-ghost" id="briefs-run-btn" onclick="generateAllBriefs()" data-tip="Generates briefs for all pages sequentially in the browser. Tab must stay open. For large sitemaps (30+ pages) use Queue All instead."><i class="ti ti-pencil"></i> Write All Briefs</button>
           <button class="btn btn-primary" id="briefs-queue-btn" onclick="queueAllBriefs()" data-tip="Submits all un-generated pages to the Cloudflare Queue for server-side generation. Tab-close safe — worker runs in background. Retries automatically on rate limits. Progress shown in AI bar with ETA."><i class="ti ti-stack-2"></i> Queue All</button>
           <span id="briefs-queue-status" style="font-size:11px;color:var(--n3);display:none"></span>
-          <button class="btn btn-ghost" id="niche-expand-btn" onclick="runNicheExpand()" data-tip="Runs Google Suggest on each pages primary keyword with 10 modifiers to pull niche variants. Gets DataForSEO volumes. Run before AI Assign so specific keyword variants are available per page."><i class="ti ti-antenna"></i> Expand Niche Keywords</button>
-          <button class="btn btn-ghost" id="page-questions-btn" onclick="runPageQuestions()" data-tip="Generates 8 per-page questions specific to each pages primary keyword and type. These become FAQ H3s in briefs and feed FAQ schema. Skips pages without a primary keyword."><i class="ti ti-message-question"></i> Generate Page Questions</button>
-          <button class="btn btn-primary" id="ai-assign-btn" onclick="aiAssignKeywordsAndQuestions()"><i class="ti ti-sparkles"></i> AI Assign Keywords + Questions</button>
         </div>
       </div>
       <div id="briefs-results"></div>
@@ -781,7 +778,7 @@ textarea.inp{resize:vertical}
       <div style="margin-bottom:16px">
         <div class="eyebrow stage-eyebrow" data-stage-num="7"></div>
         <h2 class="ph sm">Copy Generation</h2>
-        <p class="psub" style="margin-bottom:0">Click any page to write copy. Pages expand inline.</p>
+        <p class="psub" style="margin-bottom:0">5-step workflow: Write \u2192 Audit \u2192 Fix \u2192 Polish \u2192 Approve. Click steps for bulk actions.</p>
       </div>
       <div id="copy-progress" style="display:none" class="progress-wrap">
         <div class="progress-meta"><span id="copy-count-label" style="color:var(--n2)"></span><span id="copy-pct-label" style="color:var(--green);font-weight:500"></span></div>
@@ -1466,7 +1463,7 @@ function _updateContextBar() {
           if (!p.target_persona) {
             var _pt = (p.page_type || '').toLowerCase();
             // Skip types that _autoAssignPersona deliberately leaves empty
-            if (['home','about','contact','utility','faq','team','blog','article'].indexOf(_pt) >= 0) return false;
+            if (['home','about','contact','utility','faq','team','blog','article','portfolio','case-study','testimonials'].indexOf(_pt) >= 0) return false;
             return true;
           }
           return false;
@@ -1494,12 +1491,22 @@ function _updateContextBar() {
           _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
         }
         else {
-          next = 'Blog pages may need content pillars \u2014 click to assign';
-          _ctxAction = function() { _ctxScrollAndHighlight('pillars', null); if (typeof assignContentPillars === 'function') assignContentPillars(); };
+          // Check if blog pages actually need pillars
+          var _blogNoPillar = _nonStruct.filter(function(p) {
+            var _bpt = (p.page_type || '').toLowerCase();
+            return ['blog','article','recipe','event'].indexOf(_bpt) >= 0 && !p.content_pillar;
+          }).length;
+          if (_blogNoPillar > 0) {
+            next = _blogNoPillar + ' blog pages need content pillars \u2014 click to assign';
+            _ctxAction = function() { _ctxScrollAndHighlight('pillars', null); if (typeof assignContentPillars === 'function') assignContentPillars(); };
+          }
         }
       }
-      else if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
-      else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
+      // Always fall through to approval/briefs if no enrichment action needed
+      if (!next) {
+        if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
+        else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
+      }
     }
   }
   else if (stage === 'briefs') {
@@ -1513,7 +1520,7 @@ function _updateContextBar() {
     var written = Object.keys(S.copy || {}).filter(function(k) { return (S.copy[k] || {}).copy; }).length;
     var totalC = (S.pages || []).length;
     status = written + '/' + totalC + ' written';
-    if (written < totalC) { next = 'Write remaining copy'; }
+    if (written < totalC) { next = 'Write remaining copy'; _ctxAction = function() { if (typeof _copyBulkWriteAll === 'function') _copyBulkWriteAll(); }; }
     else { next = 'Next \u2192 Images'; _ctxAction = function() { navToStage('images'); }; }
   }
   else {
@@ -1748,15 +1755,15 @@ var STAGE_TIPS = {
     "Gate 1: approve the sitemap before generating briefs. Changes here affect all downstream work.",
   ],
   briefs: [
-    "Run Niche Expand first — pulls Google Suggest variants per page and gets DataForSEO volumes.",
-    "Generate Page Questions before AI Assign — they become FAQ H3s in the brief.",
-    "AI Assign Keywords + Questions maps the right keywords and FAQs to each page in one pass.",
+    "5-step workflow: Inherit (auto-pull KWs) \u2192 Enrich (niche + questions) \u2192 Generate (write briefs) \u2192 Score (auto-evaluate) \u2192 Approve (gate to Copy).",
+    "Click Inherit in the workflow strip to auto-pull keywords from clusters and questions from PAA data. Falls back to AI Assign if no data exists.",
+    "Click Enrich to open bulk actions: Niche Expand, Generate Questions, AI Assign. Per-page enrichment buttons also live on each card.",
     "SERP Intel is cached per keyword — re-generating a brief skips the API call if data already exists.",
     "Brief Evaluator scores 9-11 quality checks including page goal alignment and persona fit — fix reds before approving.",
     "Pre-generation warnings flag missing keywords, questions, research data, or CTAs before the AI call runs.",
     "Stop button in the AI bar pauses any generation mid-stream. Resume picks up exactly where it left off.",
     "Queue All generates all briefs server-side — safe to close the tab while it runs. Worker uses the same context blocks as the frontend.",
-    "Approve briefs before moving to Copy — Copy uses the approved brief as its source.",
+    "Score All evaluates every unscored brief. Approve All approves every brief scoring 80% or higher.",
     "Page Context field — paste case study stats, client data, or specific claims. Injected verbatim into brief + copy.",
     "Page Goal from the Sitemap stage is injected into the brief prompt — the AI writes every section to serve that strategic purpose.",
     "Positioning Direction shapes every brief — if the strategy direction is 'The Diagnostic Agency,' service briefs frame the service through that narrative lens automatically.",
@@ -1768,19 +1775,15 @@ var STAGE_TIPS = {
     "The code icon on each brief card shows the exact prompt sent to Claude — use it to diagnose unexpected outputs.",
   ],
   copy: [
-    "Pass 1 generates full HTML copy from the approved brief. Pass 2 fixes audit failures. Pass 3 injects E-E-A-T signals.",
-    "Positioning Direction shapes every page — if the strategy direction is 'The Diagnostic Agency,' the Hero, Problem/Agitation, and Solution Bridge all frame through that lens automatically.",
-    "Persona context is injected per page — the copy prompt includes the target persona frustrations, objection profile, decision criteria, and language patterns. Home/about pages get all active personas.",
-    "Voice overlay from Sitemap carries through — pages with vertical-specific voice rules get those rules in the copy prompt, Pass 2, and Pass 3.",
-    "Copy Audit now checks persona alignment and positioning direction consistency alongside word count, FAQ, Canadian spelling, and CTA presence.",
-    "Pass 3 (E-E-A-T) prioritises proof by persona segment — construction personas get construction case studies first. Missing proof is flagged with PROOF GAP comments for Human QC.",
-    "Subtraction insights inject what the client should stop doing — service page copy uses these as differentiated messaging angles in Problem/Agitation sections.",
-    "Economics context calibrates CTA aggressiveness — volume-constrained clients get low-friction CTAs, volume-sufficient clients get qualifying CTAs.",
-    "Blog content pillars shape writing style — Thought Leadership gets contrarian angles, Case Study gets narrative structure, Vertical Deep-dive gets industry-specific language.",
-    "Human QC now includes persona language verification and positioning consistency checks alongside the original brand voice, facts, and pricing items.",
-    "Meta tags are auto-generated with positioning angle, primary keyword placement, and search intent framing — editable inline with character counters.",
-    "Queue All generates copy server-side with full strategy context parity — same prompt as client-side. Safe to close the tab.",
-    "Pain sidebar — expanded copy panel shows a collapsible dual pain context panel with Layer 1 (client pain from Research) and Layer 2 (customer pain from persona executionProfile). Helps verify pain language is woven into the copy.",
+    "5-step workflow: Write \u2192 Audit \u2192 Fix \u2192 Polish \u2192 Approve. Click steps in the workflow strip for bulk actions, or use per-page step buttons.",
+    "Write All writes every unwritten page sequentially (stoppable/resumable). Auto-audit runs after each single-page write.",
+    "Audit checks 20+ items: strategy compliance (StoryBrand arc, CTA architecture, subtraction messaging, competitive differentiation, VoC language, page goal, key messages, urgency triggers), SERP comparison, keyword density, persona alignment, positioning direction.",
+    "Fix (Pass 2) surgically patches only failed audit checks — passing sections stay untouched. Fix All runs Pass 2 on every failing page.",
+    "Polish (Pass 3) injects E-E-A-T signals — persona-prioritised proof, case studies, credentials. Only available when audit passes 100%.",
+    "Strategy wired in: buying motions, purchase triggers, D0 objection map with proof_needed, segment key messages, StoryBrand arc, VoC swipe seeds, subtraction angles, economics-calibrated CTAs, competitive counter.",
+    "Per-page dots show Write/Audit/Fix/Polish/Approve progress. The next-step button triggers the right action for that page.",
+    "Human QC includes persona language verification and positioning consistency checks alongside brand voice, facts, and pricing items.",
+    "Meta tags auto-generated with positioning angle, primary keyword, and intent framing — editable inline with character counters.",
     "Approve copy before Schema — Schema uses the approved copy for FAQ JSON-LD.",
   ],
   images: [

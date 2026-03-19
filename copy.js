@@ -89,6 +89,259 @@ S.copyCurrentSlug = null;
 S.copyExpandedSlug = null; // which row is expanded
 
 function stopCopy() { copyStopFlag = true; }
+var _copyBulkExpanded = false;
+var _copyBulkRunning = false;
+
+// ── COPY WORKFLOW STRIP ──────────────────────────────────────────────────────
+
+function _computeCopyWorkflowSteps() {
+  var pages = orderedPages();
+  if (!pages.length) return _defaultCopySteps();
+  var total = pages.length;
+  var written = 0, audited = 0, fixed = 0, polished = 0, approved = 0;
+  pages.forEach(function(p) {
+    var c = S.copy[p.slug] || {};
+    if (c.copy) written++;
+    if (c.audit) audited++;
+    if (c.audit && c.audit.passed === c.audit.total) fixed++;
+    else if (c.drafts && c.drafts.some(function(d) { return d.pass === 2; })) fixed++;
+    if (c.drafts && c.drafts.some(function(d) { return d.pass === 3; })) polished++;
+    if (c.approved) approved++;
+  });
+  return [
+    { num: 1, label: 'Write',   done: written >= total,   status: written + '/' + total + ' written',   warn: false },
+    { num: 2, label: 'Audit',   done: audited >= written && written > 0, status: audited + '/' + written + ' audited', warn: written > 0 && audited < written },
+    { num: 3, label: 'Fix',     done: fixed >= written && written > 0,   status: fixed + '/' + written + ' passing',   warn: audited > 0 && fixed < audited },
+    { num: 4, label: 'Polish',  done: polished >= written && written > 0, status: polished + '/' + written + ' polished', warn: false },
+    { num: 5, label: 'Approve', done: approved >= total,   status: approved + '/' + total + ' approved', warn: false }
+  ];
+}
+
+function _defaultCopySteps() {
+  return [1,2,3,4,5].map(function(n) {
+    return { num: n, label: ['Write','Audit','Fix','Polish','Approve'][n-1], done: false, status: '\u2014', warn: false };
+  });
+}
+
+function _copyPageStepState(slug) {
+  var c = S.copy[slug] || {};
+  var s1 = !!c.copy;
+  var s2 = !!c.audit;
+  var s3 = !!(c.audit && c.audit.passed === c.audit.total) || !!(c.drafts && c.drafts.some(function(d) { return d.pass === 2; }));
+  var s4 = !!(c.drafts && c.drafts.some(function(d) { return d.pass === 3; }));
+  var s5 = !!c.approved;
+  var steps = [s1, s2, s3, s4, s5];
+  var labels = ['Write', 'Audit', 'Fix', 'Polish', 'Approve'];
+  var current = 1;
+  for (var i = 0; i < 5; i++) { if (steps[i]) current = i + 2; else break; }
+  if (current > 5) current = 5;
+  return { steps: steps, current: current, label: labels[current - 1] };
+}
+
+function _copyPageStepDots(slug) {
+  var ps = _copyPageStepState(slug);
+  var html = '<div style="display:flex;align-items:center;gap:3px;margin-left:auto;margin-right:8px">';
+  for (var i = 0; i < 5; i++) {
+    var clr = ps.steps[i] ? 'var(--green)' : (i === ps.current - 1 ? 'var(--warn)' : 'var(--n1)');
+    html += '<div style="width:6px;height:6px;border-radius:50%;background:' + clr + '" title="' + ['Write','Audit','Fix','Polish','Approve'][i] + '"></div>';
+  }
+  if (!ps.steps[4]) {
+    html += ' <button class="copy-step-action" data-slug="' + slug + '" data-step="' + ps.current + '" style="font-size:9px;padding:1px 7px;border-radius:3px;border:1px solid var(--border);background:rgba(0,0,0,0.03);cursor:pointer;font-family:var(--font);color:var(--n3);margin-left:3px;white-space:nowrap">'
+      + ps.label + ' \u25B6</button>';
+  } else {
+    html += ' <span style="font-size:9px;color:var(--green);font-weight:600;margin-left:3px">\u2713</span>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _copyPageStepAction(slug, step) {
+  switch (step) {
+    case 1: runCopyPage(slug); break;
+    case 2: runCopyAudit(slug); break;
+    case 3: runCopyPass2(slug); break;
+    case 4: runCopyPass3(slug); break;
+    case 5: copyApprove(slug); break;
+  }
+}
+
+function _renderCopyWorkflowStrip() {
+  var steps = _computeCopyWorkflowSteps();
+  var html = '<div class="wf-strip" style="margin-bottom:16px">';
+  steps.forEach(function(st, i) {
+    var isLast = i === steps.length - 1;
+    html += '<div class="wf-step" id="copy-wf-step-' + st.num + '" style="cursor:pointer">';
+    html += '<div class="wf-circle' + (st.done ? ' done' : '') + '">' + (st.done ? '\u2713' : st.num) + '</div>';
+    html += '<div class="wf-label">' + st.label + '</div>';
+    html += '<div class="wf-sub">' + st.status + '</div>';
+    html += '</div>';
+    if (!isLast) html += '<div class="wf-line' + (st.done ? ' done' : '') + '"></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _mountCopyWorkflowStrip() {
+  var actions = [
+    function() { _toggleCopyBulkPanel(); },
+    function() { _copyBulkAuditAll(); },
+    function() { _copyBulkFixAll(); },
+    function() { _copyBulkPolishAll(); },
+    null
+  ];
+  for (var i = 1; i <= 5; i++) {
+    (function(num, action) {
+      var el = document.getElementById('copy-wf-step-' + num);
+      if (el && action) el.onclick = action;
+    })(i, actions[i - 1]);
+  }
+}
+
+function _toggleCopyBulkPanel() {
+  _copyBulkExpanded = !_copyBulkExpanded;
+  var panel = document.getElementById('copy-bulk-panel');
+  if (panel) panel.style.display = _copyBulkExpanded ? 'flex' : 'none';
+}
+
+function _renderCopyBulkPanel() {
+  var steps = _computeCopyWorkflowSteps();
+  var pages = orderedPages();
+  var unwritten = pages.filter(function(p) { return !(S.copy[p.slug] || {}).copy; }).length;
+  var unaudited = pages.filter(function(p) { var c = S.copy[p.slug] || {}; return c.copy && !c.audit; }).length;
+  var failing = pages.filter(function(p) { var c = S.copy[p.slug] || {}; return c.audit && c.audit.passed < c.audit.total; }).length;
+  var unpolished = pages.filter(function(p) { var c = S.copy[p.slug] || {}; return c.audit && c.audit.passed === c.audit.total && !(c.drafts && c.drafts.some(function(d) { return d.pass === 3; })); }).length;
+
+  var html = '<div id="copy-bulk-panel" style="display:' + (_copyBulkExpanded ? 'flex' : 'none') + ';flex-wrap:wrap;gap:8px;padding:12px 16px;background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;align-items:center">';
+
+  // Write All
+  html += '<button id="copy-bulk-write" class="btn btn-primary sm"' + (unwritten === 0 ? ' disabled style="opacity:0.4"' : '') + '><i class="ti ti-player-play"></i> Write All (' + unwritten + ')</button>';
+  // Audit All
+  html += '<button id="copy-bulk-audit" class="btn btn-ghost sm"' + (unaudited === 0 ? ' disabled style="opacity:0.4"' : '') + '><i class="ti ti-robot"></i> Audit All (' + unaudited + ')</button>';
+  // Fix All
+  html += '<button id="copy-bulk-fix" class="btn btn-ghost sm"' + (failing === 0 ? ' disabled style="opacity:0.4"' : '') + '><i class="ti ti-tool"></i> Fix All (' + failing + ')</button>';
+  // Polish All
+  html += '<button id="copy-bulk-polish" class="btn btn-ghost sm"' + (unpolished === 0 ? ' disabled style="opacity:0.4"' : '') + '><i class="ti ti-sparkles"></i> Polish All (' + unpolished + ')</button>';
+
+  html += '<span style="font-size:9px;color:var(--n2);margin-left:auto">Click a step above or use these bulk actions</span>';
+  html += '</div>';
+  return html;
+}
+
+function _mountCopyBulkPanel() {
+  var btnW = document.getElementById('copy-bulk-write');
+  var btnA = document.getElementById('copy-bulk-audit');
+  var btnF = document.getElementById('copy-bulk-fix');
+  var btnP = document.getElementById('copy-bulk-polish');
+  if (btnW && !btnW.disabled) btnW.onclick = function() { _copyBulkWriteAll(); };
+  if (btnA && !btnA.disabled) btnA.onclick = function() { _copyBulkAuditAll(); };
+  if (btnF && !btnF.disabled) btnF.onclick = function() { _copyBulkFixAll(); };
+  if (btnP && !btnP.disabled) btnP.onclick = function() { _copyBulkPolishAll(); };
+}
+
+// ── BULK OPERATIONS (stop/resume) ────────────────────────────────────────────
+
+async function _copyBulkWriteAll(startFrom) {
+  var pages = orderedPages();
+  var targets = [];
+  pages.forEach(function(p) { if (!(S.copy[p.slug] || {}).copy) targets.push(p.slug); });
+  if (!targets.length) { if (typeof aiBarNotify === 'function') aiBarNotify('All pages already written.', { duration: 3000 }); return; }
+  window._aiStopAll = false;
+  _copyBulkRunning = true;
+  var start = startFrom || 0;
+  if (typeof aiBarStart === 'function') aiBarStart('Writing copy (' + start + '/' + targets.length + ')');
+  for (var i = start; i < targets.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Write paused (' + i + '/' + targets.length + ')', fn: function(args) { _copyBulkWriteAll(args.startFrom); }, args: { startFrom: i } };
+      if (typeof _aiShowResume === 'function') _aiShowResume();
+      _copyBulkRunning = false;
+      return;
+    }
+    S.copyExpandedSlug = targets[i];
+    if (typeof aiBarStart === 'function') aiBarStart('Writing ' + (i + 1) + '/' + targets.length);
+    await runCopyPage(targets[i]);
+  }
+  _copyBulkRunning = false;
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') aiBarNotify('\u2713 All ' + targets.length + ' pages written.', { duration: 5000 });
+  renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+}
+
+async function _copyBulkAuditAll(startFrom) {
+  var pages = orderedPages();
+  var targets = [];
+  pages.forEach(function(p) { var c = S.copy[p.slug] || {}; if (c.copy && !c.audit) targets.push(p.slug); });
+  if (!targets.length) { if (typeof aiBarNotify === 'function') aiBarNotify('All written pages already audited.', { duration: 3000 }); return; }
+  window._aiStopAll = false;
+  var start = startFrom || 0;
+  if (typeof aiBarStart === 'function') aiBarStart('Auditing (' + start + '/' + targets.length + ')');
+  for (var i = start; i < targets.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Audit paused (' + i + '/' + targets.length + ')', fn: function(args) { _copyBulkAuditAll(args.startFrom); }, args: { startFrom: i } };
+      if (typeof _aiShowResume === 'function') _aiShowResume();
+      return;
+    }
+    if (typeof aiBarStart === 'function') aiBarStart('Auditing ' + (i + 1) + '/' + targets.length);
+    await runCopyAudit(targets[i]);
+  }
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') aiBarNotify('\u2713 All ' + targets.length + ' pages audited.', { duration: 5000 });
+  renderCopyQueue();
+}
+
+async function _copyBulkFixAll(startFrom) {
+  var pages = orderedPages();
+  var targets = [];
+  pages.forEach(function(p) { var c = S.copy[p.slug] || {}; if (c.audit && c.audit.passed < c.audit.total) targets.push(p.slug); });
+  if (!targets.length) { if (typeof aiBarNotify === 'function') aiBarNotify('No pages need fixing.', { duration: 3000 }); return; }
+  window._aiStopAll = false;
+  _copyBulkRunning = true;
+  var start = startFrom || 0;
+  if (typeof aiBarStart === 'function') aiBarStart('Fixing (' + start + '/' + targets.length + ')');
+  for (var i = start; i < targets.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Fix paused (' + i + '/' + targets.length + ')', fn: function(args) { _copyBulkFixAll(args.startFrom); }, args: { startFrom: i } };
+      if (typeof _aiShowResume === 'function') _aiShowResume();
+      _copyBulkRunning = false;
+      return;
+    }
+    S.copyExpandedSlug = targets[i];
+    if (typeof aiBarStart === 'function') aiBarStart('Fixing ' + (i + 1) + '/' + targets.length);
+    await runCopyPass2(targets[i]);
+  }
+  _copyBulkRunning = false;
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') aiBarNotify('\u2713 All ' + targets.length + ' pages fixed. Re-run Audit All to verify.', { duration: 5000 });
+  renderCopyQueue();
+}
+
+async function _copyBulkPolishAll(startFrom) {
+  var pages = orderedPages();
+  var targets = [];
+  pages.forEach(function(p) {
+    var c = S.copy[p.slug] || {};
+    if (c.audit && c.audit.passed === c.audit.total && !(c.drafts && c.drafts.some(function(d) { return d.pass === 3; }))) targets.push(p.slug);
+  });
+  if (!targets.length) { if (typeof aiBarNotify === 'function') aiBarNotify('No pages ready for polish. Audit must pass 100% first.', { duration: 3000 }); return; }
+  window._aiStopAll = false;
+  _copyBulkRunning = true;
+  var start = startFrom || 0;
+  if (typeof aiBarStart === 'function') aiBarStart('Polishing (' + start + '/' + targets.length + ')');
+  for (var i = start; i < targets.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = { label: 'Polish paused (' + i + '/' + targets.length + ')', fn: function(args) { _copyBulkPolishAll(args.startFrom); }, args: { startFrom: i } };
+      if (typeof _aiShowResume === 'function') _aiShowResume();
+      _copyBulkRunning = false;
+      return;
+    }
+    S.copyExpandedSlug = targets[i];
+    if (typeof aiBarStart === 'function') aiBarStart('Polishing ' + (i + 1) + '/' + targets.length);
+    await runCopyPass3(targets[i]);
+  }
+  _copyBulkRunning = false;
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') aiBarNotify('\u2713 All ' + targets.length + ' pages polished with E-E-A-T signals.', { duration: 5000 });
+  renderCopyQueue();
+}
 
 function initCopy() {
   document.getElementById('copy-progress').style.display = 'block';
@@ -249,7 +502,7 @@ function buildCopyPrompt(page) {
   } else if ((page.page_type === 'home' || page.page_type === 'about') && _personas.length) {
     var _activePers = _personas.filter(function(per) {
       var parked = (S.strategy && S.strategy.audience && S.strategy.audience.parked_segments) || [];
-      return !parked.some(function(ps) { return per.segment && ps.toLowerCase() === per.segment.toLowerCase(); });
+      return !parked.some(function(ps) { var psName = typeof ps === 'object' ? (ps.name||'') : String(ps); return per.segment && psName.toLowerCase() === per.segment.toLowerCase(); });
     });
     if (_activePers.length) {
       var _mpp = ['TARGET AUDIENCES (this page serves multiple personas):'];
@@ -263,7 +516,7 @@ function buildCopyPrompt(page) {
     // Blog fallback: give context from active personas
     var _activePers2 = _personas.filter(function(per) {
       var parked = (S.strategy && S.strategy.audience && S.strategy.audience.parked_segments) || [];
-      return !parked.some(function(ps) { return per.segment && ps.toLowerCase() === per.segment.toLowerCase(); });
+      return !parked.some(function(ps) { var psName = typeof ps === 'object' ? (ps.name||'') : String(ps); return per.segment && psName.toLowerCase() === per.segment.toLowerCase(); });
     });
     if (_activePers2.length) {
       var _bpp = ['TARGET AUDIENCE (blog readers):'];
@@ -392,6 +645,60 @@ function buildCopyPrompt(page) {
     }
   }
 
+  // D0 Buying motion + purchase triggers (missing from generation)
+  var _buyingMotionBlock = '';
+  if (S.strategy && S.strategy.audience) {
+    var _bmAud = S.strategy.audience;
+    // Buying motion for this persona's segment
+    if (_targetPersona && _targetPersona.segment && _bmAud.buying_motions && _bmAud.buying_motions.length) {
+      var _bm = _bmAud.buying_motions.find(function(m) { return m.segment === _targetPersona.segment; });
+      if (_bm) {
+        var _bmLines = ['BUYING MOTION (' + _bm.segment + '):'];
+        if (_bm.research_behaviour) _bmLines.push('How they research: ' + _bm.research_behaviour);
+        if (_bm.decision_process) _bmLines.push('Decision process: ' + _bm.decision_process);
+        if (_bm.typical_timeline) _bmLines.push('Timeline: ' + _bm.typical_timeline);
+        if (_bm.content_needs && _bm.content_needs.length) _bmLines.push('Content they need: ' + _bm.content_needs.slice(0, 3).join(', '));
+        _bmLines.push('Match copy structure and depth to how this buyer actually evaluates.');
+        _buyingMotionBlock = '\n\n' + _bmLines.join('\n');
+      }
+    }
+    // Purchase triggers — urgency messaging
+    if (_bmAud.purchase_triggers && _bmAud.purchase_triggers.length) {
+      var _ptFiltered = _bmAud.purchase_triggers;
+      if (_targetPersona && _targetPersona.segment) {
+        var _ptSeg = _ptFiltered.filter(function(t) { return t.segments_affected && t.segments_affected.indexOf(_targetPersona.segment) >= 0; });
+        if (_ptSeg.length) _ptFiltered = _ptSeg;
+      }
+      var _highUrgency = _ptFiltered.filter(function(t) { return t.urgency_level === 'high'; });
+      var _useTriggers = _highUrgency.length ? _highUrgency : _ptFiltered;
+      if (_useTriggers.length) {
+        _buyingMotionBlock += '\n\nPURCHASE TRIGGERS (leverage in copy urgency/CTA):\n'
+          + _useTriggers.slice(0, 3).map(function(t) {
+            return '- ' + (t.trigger || '') + (t.messaging_angle ? ' → ' + t.messaging_angle : '') + (t.urgency_level === 'high' ? ' [HIGH URGENCY]' : '');
+          }).join('\n');
+      }
+    }
+    // D0 objection map with proof_needed (complements D8 objection rebuttals)
+    if (_bmAud.objection_map && _bmAud.objection_map.length) {
+      var _d0Objs = _bmAud.objection_map.filter(function(o) { return o.frequency === 'universal' || o.frequency === 'common'; });
+      if (_d0Objs.length) {
+        _buyingMotionBlock += '\n\nBUYER OBJECTIONS TO ADDRESS (with proof needed):\n'
+          + _d0Objs.slice(0, 4).map(function(o) {
+            return '- "' + (o.objection || '') + '" [' + (o.frequency || '') + '] → counter: ' + (o.counter_message || '') + (o.proof_needed ? ' | proof needed: ' + o.proof_needed : '');
+          }).join('\n');
+      }
+    }
+    // Segment key_messages
+    if (_targetPersona && _targetPersona.segment && _bmAud.segments && _bmAud.segments.length) {
+      var _segMatch = _bmAud.segments.find(function(seg) { return seg.name === _targetPersona.segment; });
+      if (_segMatch && _segMatch.key_messages && _segMatch.key_messages.length) {
+        _buyingMotionBlock += '\n\nKEY MESSAGES FOR ' + _segMatch.name.toUpperCase() + ':\n'
+          + _segMatch.key_messages.slice(0, 3).map(function(m) { return '- ' + m; }).join('\n')
+          + '\nWeave these messages into copy naturally — they tested well with this segment.';
+      }
+    }
+  }
+
   // Fix 11/12: Content pillar guidance
   var _pillarGuidance = '';
   if (page.content_pillar) {
@@ -432,6 +739,7 @@ function buildCopyPrompt(page) {
       + _personaBlock
       + _awarenessBlock
       + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
+      + _buyingMotionBlock
       + _narrativeCopyCtx
       + '\n\n' + blogBriefInstruction;
   }
@@ -467,6 +775,7 @@ function buildCopyPrompt(page) {
     + _personaBlock
     + _awarenessBlock
     + (typeof _buyerIntelBlock === 'function' ? _buyerIntelBlock(page) : '')
+    + _buyingMotionBlock
     + _narrativeCopyCtx
     + '\n\n' + briefInstruction;
 }
@@ -477,6 +786,8 @@ async function runCopyPage(slug) {
   S.copyRunning = true; copyStopFlag = false;
   S.copyCurrentSlug = slug;
   S.copyExpandedSlug = slug;
+  // Clear any previous error so UI does not show stale state
+  if (S.copy[slug] && S.copy[slug].error) delete S.copy[slug].error;
   renderCopyQueue();
   // Update the stream box inside this row
   const streamEl = document.getElementById('copy-stream-'+slug);
@@ -519,6 +830,10 @@ async function runCopyPage(slug) {
   S.copyCurrentSlug = null;
   S.copyRunning = false;
   renderCopyQueue(); updateCopyProgress(); checkCopyAllDone();
+  // Auto-run audit after successful write (skip in bulk mode)
+  if (!copyStopFlag && !_copyBulkRunning && S.copy[slug] && S.copy[slug].copy && !S.copy[slug].audit) {
+    setTimeout(function() { runCopyAudit(slug); }, 800);
+  }
 }
 
 function toggleCopyExpand(slug) {
@@ -859,6 +1174,112 @@ async function runCopyAudit(slug) {
       label: 'Copy reinforces "' + _auditPosDir.direction + '" positioning. Hero and Solution Bridge should frame the client as "' + (_auditPosDir.headline || _auditPosDir.direction) + '". If copy could belong to any agency regardless of positioning, FAIL.',
       display: 'Positioning — reinforces "' + _auditPosDir.direction + '"'
     });
+  }
+
+  // ── STRATEGY COMPLIANCE CHECKS ────────────
+  var _isServiceOrLanding = ['service', 'landing', 'industry', 'home'].indexOf((p.page_type||'').toLowerCase()) >= 0;
+
+  // StoryBrand arc check (service/landing pages only)
+  if (_isServiceOrLanding && S.strategy && S.strategy.narrative && S.strategy.narrative.storybrand) {
+    var _sbArc = S.strategy.narrative.storybrand;
+    checks.push({
+      id: 'storybrand_arc',
+      label: 'StoryBrand arc followed: Problem (' + (_sbArc.external_problem||'').slice(0,50) + ') → Guide empathy → Plan → CTA → Stakes → Success. Copy must follow this narrative flow. If the page jumps straight to features without establishing the problem, FAIL.',
+      display: 'StoryBrand arc — problem → guide → plan → CTA flow'
+    });
+  }
+
+  // CTA architecture check
+  var _auditPcta = getStrategyField('positioning.primary_cta', 'primary_cta') || '';
+  var _auditLcta = getStrategyField('positioning.low_commitment_cta', 'low_commitment_cta') || '';
+  if (_auditPcta) {
+    checks.push({
+      id: 'cta_architecture',
+      label: 'CTA architecture: Primary CTA "' + _auditPcta + '" is present and prominent.' + (_auditLcta ? ' Low-commitment option "' + _auditLcta + '" also present for uncertain visitors.' : '') + ' Both CTA types should appear if defined. FAIL if only generic "contact us" with no strategic CTA.',
+      display: 'CTA architecture — uses strategic CTAs'
+    });
+  }
+
+  // Words to avoid check
+  var _auditWordsAvoid = getStrategyField('brand_strategy.words_to_avoid', 'words_to_avoid') || [];
+  if (_auditWordsAvoid.length) {
+    checks.push({
+      id: 'words_to_avoid',
+      label: 'Words to avoid: Check if copy contains any of these banned words/phrases: ' + _auditWordsAvoid.slice(0, 8).join(', ') + '. If ANY appear, FAIL and note which word.',
+      display: 'Words to avoid — none of ' + _auditWordsAvoid.length + ' banned words used'
+    });
+  }
+
+  // Subtraction angle check (non-blog, if subtraction data exists)
+  if (_isServiceOrLanding && S.strategy && S.strategy.subtraction) {
+    var _subVerdicts = S.strategy.subtraction.current_activities_audit || S.strategy.subtraction.verdicts || [];
+    var _subCuts = _subVerdicts.filter(function(v) { return v.verdict === 'cut' || v.verdict === 'stop'; });
+    if (_subCuts.length) {
+      checks.push({
+        id: 'subtraction_messaging',
+        label: 'Subtraction messaging: Copy should reference waste-cutting or efficiency angle (e.g. "we found waste first", audit-before-spend approach). This differentiates from competitors who just add services. FAIL if copy only pitches additions without any subtraction framing.',
+        display: 'Subtraction — waste-cutting angle present'
+      });
+    }
+  }
+
+  // Competitive differentiation check
+  if (_isServiceOrLanding && S.strategy && S.strategy.positioning) {
+    var _auditDiffs = S.strategy.positioning.validated_differentiators || [];
+    if (_auditDiffs.length) {
+      checks.push({
+        id: 'competitive_diff',
+        label: 'Competitive differentiation: At least 1 validated differentiator appears: ' + _auditDiffs.slice(0, 3).join('; ') + '. These must be concrete claims, not generic statements. FAIL if differentiators are absent or replaced with generic alternatives.',
+        display: 'Competitive diff — validated differentiators used'
+      });
+    }
+  }
+
+  // VoC language check
+  var _auditVocSwipe = (S.strategy && S.strategy.narrative && S.strategy.narrative.voc_swipe_file) || [];
+  var _auditVocQuotes = _auditVocSwipe.filter(function(v) { return v.usage && ['headline', 'subhead', 'cta', 'landing_page'].indexOf(v.usage) >= 0; }).slice(0, 3);
+  if (_auditVocQuotes.length) {
+    checks.push({
+      id: 'voc_language',
+      label: 'Voice of Customer: Copy uses buyer language patterns, not marketer jargon. Look for natural echoes of: ' + _auditVocQuotes.map(function(v) { return '"' + (v.quote||'').slice(0,40) + '"'; }).join(', ') + '. FAIL if copy reads like a brochure rather than how the buyer speaks.',
+      display: 'VoC language — sounds like the buyer, not a brochure'
+    });
+  }
+
+  // Page goal alignment check
+  if (p.page_goal) {
+    checks.push({
+      id: 'page_goal',
+      label: 'Page goal alignment: Every section of copy must serve this strategic purpose: "' + p.page_goal.slice(0, 120) + '". FAIL if copy drifts into off-strategy tangents or serves a different conversion goal.',
+      display: 'Page goal — copy serves "' + p.page_goal.slice(0, 50) + '"'
+    });
+  }
+
+  // Key messages coverage (from segment)
+  if (p.target_persona && S.strategy && S.strategy.audience && S.strategy.audience.segments) {
+    var _auditPersonaSeg = _auditPersona && _auditPersona.segment;
+    if (_auditPersonaSeg) {
+      var _auditSeg = S.strategy.audience.segments.find(function(seg) { return seg.name === _auditPersonaSeg; });
+      if (_auditSeg && _auditSeg.key_messages && _auditSeg.key_messages.length) {
+        checks.push({
+          id: 'key_messages',
+          label: 'Key messages: Copy hits at least 1 of these tested messages for ' + _auditPersonaSeg + ': ' + _auditSeg.key_messages.slice(0, 3).join('; ') + '. These resonate with this segment. FAIL if none appear even indirectly.',
+          display: 'Key messages — segment-tested messaging present'
+        });
+      }
+    }
+  }
+
+  // Purchase trigger urgency (if triggers exist for this persona)
+  if (_isServiceOrLanding && S.strategy && S.strategy.audience && S.strategy.audience.purchase_triggers && S.strategy.audience.purchase_triggers.length) {
+    var _auditTriggers = S.strategy.audience.purchase_triggers.filter(function(t) { return t.urgency_level === 'high'; });
+    if (_auditTriggers.length) {
+      checks.push({
+        id: 'urgency_triggers',
+        label: 'Urgency triggers: Copy leverages at least one high-urgency purchase trigger: ' + _auditTriggers.slice(0, 2).map(function(t) { return '"' + t.trigger + '"'; }).join(', ') + '. Should appear in hero, stakes, or CTA context. FAIL if no urgency framing.',
+        display: 'Urgency — leverages purchase triggers'
+      });
+    }
   }
 
   var prompt = '## PAGE\n'
@@ -1225,6 +1646,8 @@ function renderCopyQueue() {
   }[t] || 'ti-file');
 
   let html = '';
+  html += _renderCopyWorkflowStrip();
+  html += _renderCopyBulkPanel();
   let globalIdx = 0;
   let firstGroup = true;
 
@@ -1267,6 +1690,7 @@ function renderCopyQueue() {
       html += `</div>`;
       html += `<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace;letter-spacing:-.01em">/${p.slug}</div>`;
       html += `</div>`;
+      html += _copyPageStepDots(p.slug);
       html += `<i class="ti ${isExpanded?'ti-chevron-up':'ti-chevron-down'}" style="font-size:12px;color:var(--n2);flex-shrink:0"></i>`;
       html += `</div>`;
 
@@ -1500,7 +1924,21 @@ function renderCopyQueue() {
     });
   });
 
-  document.getElementById('copy-queue').innerHTML = html;
+  var _cqEl = document.getElementById('copy-queue');
+  _cqEl.innerHTML = html;
+  _mountCopyWorkflowStrip();
+  _mountCopyBulkPanel();
+  // Wire per-page step action buttons (delegated — only once)
+  if (!_cqEl._stepWired) {
+    _cqEl._stepWired = true;
+    _cqEl.addEventListener('click', function(e) {
+      var stepBtn = e.target.closest('.copy-step-action');
+      if (stepBtn) {
+        e.stopPropagation();
+        _copyPageStepAction(stepBtn.dataset.slug, parseInt(stepBtn.dataset.step));
+      }
+    });
+  }
   setTimeout(populateCopyPreviews, 0);
 }
 

@@ -3122,9 +3122,10 @@ export default {
 
           // Persona context
           const _personas = (ST.audience && ST.audience.personas) || [];
+          const _targetPersona = p.target_persona ? (_personas.find(per => per.name === p.target_persona) || null) : null;
           let _personaBlock = '';
           if (p.target_persona && _personas.length) {
-            const _matchedPersona = _personas.find(per => per.name === p.target_persona);
+            const _matchedPersona = _targetPersona;
             if (_matchedPersona) {
               const _pp = ['TARGET PERSONA: ' + _matchedPersona.name];
               if (_matchedPersona.role) _pp.push('Role: ' + _matchedPersona.role);
@@ -3137,7 +3138,7 @@ export default {
             }
           } else if ((p.page_type === 'home' || p.page_type === 'about') && _personas.length) {
             const _parked = (ST.audience && ST.audience.parked_segments) || [];
-            const _activePers = _personas.filter(per => !_parked.some(ps => per.segment && ps.toLowerCase() === per.segment.toLowerCase()));
+            const _activePers = _personas.filter(per => !_parked.some(ps => { const psName = typeof ps === 'object' ? (ps.name||'') : String(ps); return per.segment && psName.toLowerCase() === per.segment.toLowerCase(); }));
             if (_activePers.length) {
               const _mpp = ['TARGET AUDIENCES (this page serves multiple personas):'];
               _activePers.slice(0, 3).forEach(per => {
@@ -3148,7 +3149,7 @@ export default {
             }
           } else if (p.page_type === 'blog' && _personas.length) {
             const _parked2 = (ST.audience && ST.audience.parked_segments) || [];
-            const _activePers2 = _personas.filter(per => !_parked2.some(ps => per.segment && ps.toLowerCase() === per.segment.toLowerCase()));
+            const _activePers2 = _personas.filter(per => !_parked2.some(ps => { const psName = typeof ps === 'object' ? (ps.name||'') : String(ps); return per.segment && psName.toLowerCase() === per.segment.toLowerCase(); }));
             if (_activePers2.length) {
               const _bpp = ['TARGET AUDIENCE (blog readers):'];
               _activePers2.slice(0, 2).forEach(per => {
@@ -3245,6 +3246,52 @@ export default {
             }
           }
 
+          // D0 Buying motion + purchase triggers + objection map
+          let _buyingMotionBlock = '';
+          if (ST.audience) {
+            const _bmAud = ST.audience;
+            if (_targetPersona && _targetPersona.segment && _bmAud.buying_motions && _bmAud.buying_motions.length) {
+              const _bm = _bmAud.buying_motions.find(m => m.segment === _targetPersona.segment);
+              if (_bm) {
+                const _bmLines = ['BUYING MOTION (' + _bm.segment + '):'];
+                if (_bm.research_behaviour) _bmLines.push('How they research: ' + _bm.research_behaviour);
+                if (_bm.decision_process) _bmLines.push('Decision process: ' + _bm.decision_process);
+                if (_bm.typical_timeline) _bmLines.push('Timeline: ' + _bm.typical_timeline);
+                if (_bm.content_needs && _bm.content_needs.length) _bmLines.push('Content they need: ' + _bm.content_needs.slice(0, 3).join(', '));
+                _bmLines.push('Match copy structure and depth to how this buyer actually evaluates.');
+                _buyingMotionBlock = '\n\n' + _bmLines.join('\n');
+              }
+            }
+            if (_bmAud.purchase_triggers && _bmAud.purchase_triggers.length) {
+              let _ptFiltered = _bmAud.purchase_triggers;
+              if (_targetPersona && _targetPersona.segment) {
+                const _ptSeg = _ptFiltered.filter(t => t.segments_affected && t.segments_affected.indexOf(_targetPersona.segment) >= 0);
+                if (_ptSeg.length) _ptFiltered = _ptSeg;
+              }
+              const _highUrgency = _ptFiltered.filter(t => t.urgency_level === 'high');
+              const _useTriggers = _highUrgency.length ? _highUrgency : _ptFiltered;
+              if (_useTriggers.length) {
+                _buyingMotionBlock += '\n\nPURCHASE TRIGGERS (leverage in copy urgency/CTA):\n'
+                  + _useTriggers.slice(0, 3).map(t => '- ' + (t.trigger || '') + (t.messaging_angle ? ' → ' + t.messaging_angle : '') + (t.urgency_level === 'high' ? ' [HIGH URGENCY]' : '')).join('\n');
+              }
+            }
+            if (_bmAud.objection_map && _bmAud.objection_map.length) {
+              const _d0Objs = _bmAud.objection_map.filter(o => o.frequency === 'universal' || o.frequency === 'common');
+              if (_d0Objs.length) {
+                _buyingMotionBlock += '\n\nBUYER OBJECTIONS TO ADDRESS (with proof needed):\n'
+                  + _d0Objs.slice(0, 4).map(o => '- "' + (o.objection || '') + '" [' + (o.frequency || '') + '] → counter: ' + (o.counter_message || '') + (o.proof_needed ? ' | proof needed: ' + o.proof_needed : '')).join('\n');
+              }
+            }
+            if (_targetPersona && _targetPersona.segment && _bmAud.segments && _bmAud.segments.length) {
+              const _segMatch = _bmAud.segments.find(seg => seg.name === _targetPersona.segment);
+              if (_segMatch && _segMatch.key_messages && _segMatch.key_messages.length) {
+                _buyingMotionBlock += '\n\nKEY MESSAGES FOR ' + _segMatch.name.toUpperCase() + ':\n'
+                  + _segMatch.key_messages.slice(0, 3).map(m => '- ' + m).join('\n')
+                  + '\nWeave these messages into copy naturally — they tested well with this segment.';
+              }
+            }
+          }
+
           // FAQ targets
           const questionsBlock = (p.assignedQuestions || []).length
             ? '\nFAQ TARGETS (must appear as H3 questions in FAQ section):\n- ' + (p.assignedQuestions || []).join('\n- ')
@@ -3304,6 +3351,7 @@ export default {
               + (_webStrat ? '\n\n## WEBSITE STRATEGY\n' + _webStrat : '')
               + (p.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n' + p.pageContext : '')
               + (p.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n' + p.page_goal : '')
+              + _buyingMotionBlock
               + '\n\n' + blogBriefInstruction;
           } else {
             copyPrompt = 'CLIENT: ' + clientName
@@ -3337,6 +3385,7 @@ export default {
               + (_webStrat ? '\n\n## WEBSITE STRATEGY\n' + _webStrat : '')
               + (p.pageContext ? '\n\n## PAGE-SPECIFIC CONTEXT\n' + p.pageContext : '')
               + (p.page_goal ? '\n\n## PAGE GOAL (every section of copy must serve this strategic purpose)\n' + p.page_goal : '')
+              + _buyingMotionBlock
               + '\n\n' + briefInstruction;
           }
 

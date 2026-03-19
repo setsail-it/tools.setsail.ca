@@ -1,3 +1,364 @@
+// ── BRIEFS WORKFLOW STRIP ────────────────────────────────────────────────────
+// 5-step workflow: Inherit → Enrich → Generate → Score → Approve
+// Reuses .wf-strip / .wf-circle / .wf-line CSS from sitemap stage.
+
+var _briefsBulkExpanded = false;
+
+function _computeBriefsWorkflowSteps() {
+  var pages = (S.pages || []).filter(function(p) { return p && p.page_type !== 'utility'; });
+  var total = pages.length;
+  if (!total) return _defaultBriefsSteps();
+
+  // Step 1: Inherit — pages with ≥1 keyword or structural type
+  var structural = ['home', 'about', 'contact', 'team', 'faq'];
+  var inherited = pages.filter(function(p) {
+    if (structural.indexOf((p.page_type || '').toLowerCase()) >= 0) return true;
+    return p.primary_keyword || (p.supporting_keywords && p.supporting_keywords.length > 0);
+  }).length;
+
+  // Step 2: Enrich — pages with ≥3 supporting KWs AND ≥2 questions
+  var enriched = pages.filter(function(p) {
+    var kwCount = (p.supporting_keywords || []).length;
+    var qCount = (p.assignedQuestions || []).length;
+    return kwCount >= 3 && qCount >= 2;
+  }).length;
+  var enrichPct = Math.round(enriched / total * 100);
+
+  // Step 3: Generate — pages with brief.generated
+  var briefed = pages.filter(function(p) { return p.brief && p.brief.generated; }).length;
+
+  // Step 4: Score — generated briefs that have a score
+  var scored = pages.filter(function(p) { return p.brief && p.brief.generated && p.brief.score; }).length;
+  var scoreable = briefed;
+
+  // Step 5: Approve — approved briefs
+  var approved = pages.filter(function(p) { return p.brief && p.brief.approved; }).length;
+
+  return [
+    { num: 1, label: 'Inherit', done: inherited >= total, status: inherited + '/' + total + ' pages', warn: false },
+    { num: 2, label: 'Enrich', done: enrichPct >= 80, status: enrichPct + '% complete', warn: total > 0 && enrichPct < 30 },
+    { num: 3, label: 'Generate', done: briefed >= total, status: briefed + '/' + total + ' briefed', warn: false },
+    { num: 4, label: 'Score', done: scoreable > 0 && scored >= scoreable, status: scored + '/' + (scoreable || total) + ' scored', warn: false },
+    { num: 5, label: 'Approve', done: approved > 0, status: approved + '/' + total + ' approved', warn: false }
+  ];
+}
+
+function _defaultBriefsSteps() {
+  return [
+    { num: 1, label: 'Inherit', done: false, status: '\u2014', warn: false },
+    { num: 2, label: 'Enrich', done: false, status: '\u2014', warn: false },
+    { num: 3, label: 'Generate', done: false, status: '\u2014', warn: false },
+    { num: 4, label: 'Score', done: false, status: '\u2014', warn: false },
+    { num: 5, label: 'Approve', done: false, status: '\u2014', warn: false }
+  ];
+}
+
+// Per-page step computation — returns { steps: [bool x5], current: 1-5, label: string }
+function _pageStepState(p) {
+  var structural = ['home', 'about', 'contact', 'team', 'faq'];
+  var isStructural = structural.indexOf((p.page_type || '').toLowerCase()) >= 0;
+
+  // Step 1: Inherit — has primary KW or supporting KWs, or is structural
+  var s1 = isStructural || !!(p.primary_keyword) || (p.supporting_keywords && p.supporting_keywords.length > 0);
+
+  // Step 2: Enrich — ≥3 supporting KWs AND ≥2 questions
+  var kwCount = (p.supporting_keywords || []).length;
+  var qCount = (p.assignedQuestions || []).length;
+  var s2 = kwCount >= 3 && qCount >= 2;
+
+  // Step 3: Generate — brief exists
+  var s3 = !!(p.brief && p.brief.generated);
+
+  // Step 4: Score — brief has been scored
+  var s4 = !!(p.brief && p.brief.generated && p.brief.score);
+
+  // Step 5: Approve — brief approved
+  var s5 = !!(p.brief && p.brief.approved);
+
+  var steps = [s1, s2, s3, s4, s5];
+  var labels = ['Inherit', 'Enrich', 'Generate', 'Score', 'Approve'];
+
+  // Current = first incomplete step (or 5 if all done)
+  var current = 5;
+  for (var i = 0; i < 5; i++) {
+    if (!steps[i]) { current = i + 1; break; }
+  }
+
+  return { steps: steps, current: current, label: s5 ? 'Done' : labels[current - 1] };
+}
+
+// Renders 5 mini dots for collapsed row — green=done, orange=current, grey=pending
+// Current step label is a clickable button that triggers that step for this page
+function _pageStepDots(p, pidx) {
+  var state = _pageStepState(p);
+  var dotSize = '6px';
+  var labels = ['Inherit', 'Enrich', 'Generate', 'Score', 'Approve'];
+  var html = '<div style="display:flex;align-items:center;gap:2px;flex-shrink:0">';
+  for (var i = 0; i < 5; i++) {
+    var clr;
+    if (state.steps[i]) {
+      clr = 'var(--green)';
+    } else if (i === state.current - 1) {
+      clr = '#F5A623';
+    } else {
+      clr = 'var(--border)';
+    }
+    var tip = labels[i] + (state.steps[i] ? ' \u2713' : '');
+    html += '<div title="' + tip + '" style="width:' + dotSize + ';height:' + dotSize + ';border-radius:50%;background:' + clr + '"></div>';
+  }
+  // Clickable next-step button
+  if (state.label !== 'Done') {
+    html += '<button class="brief-step-action" data-pidx="' + pidx + '" data-step="' + state.current + '" '
+      + 'style="font-size:8.5px;color:#F5A623;margin-left:4px;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.3);border-radius:3px;padding:1px 6px;cursor:pointer;font-family:var(--font);font-weight:600;white-space:nowrap"'
+      + ' title="Run ' + state.label + ' for this page">'
+      + state.label + ' \u25b6</button>';
+  } else {
+    html += '<span style="font-size:8.5px;color:var(--green);margin-left:4px;font-weight:600">\u2713 Done</span>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// Handler for per-page step action buttons
+function _briefPageStepAction(pidx, step) {
+  var p = S.pages[pidx];
+  if (!p) return;
+  switch (step) {
+    case 1: // Inherit — pull KWs for this page from clusters
+      _briefsInheritSingle(pidx);
+      break;
+    case 2: // Enrich — run AI Assign for this page
+      briefPageAssign(pidx);
+      break;
+    case 3: // Generate
+      generatePageBrief(pidx);
+      break;
+    case 4: // Score
+      scoreBrief(pidx);
+      break;
+    case 5: // Approve
+      briefToggleApprove(pidx);
+      break;
+  }
+}
+
+// Inherit for a single page — pulls from clusters + PAA
+function _briefsInheritSingle(pidx) {
+  var p = S.pages[pidx];
+  if (!p) return;
+  var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
+  var paaQuestions = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) || [];
+  var changed = false;
+
+  if ((!p.supporting_keywords || !p.supporting_keywords.length) && clusters.length) {
+    var match = clusters.find(function(c) { return c.pageSlug === p.slug || c.slug === p.slug; });
+    if (match && match.supportingKws && match.supportingKws.length) {
+      p.supporting_keywords = match.supportingKws.slice(0, 8).map(function(sk) {
+        return typeof sk === 'object' ? sk : { kw: String(sk), vol: 0, kd: 0 };
+      });
+      changed = true;
+    }
+  }
+
+  if ((!p.assignedQuestions || !p.assignedQuestions.length) && paaQuestions.length && p.primary_keyword) {
+    var pkLower = p.primary_keyword.toLowerCase();
+    var pkWords = pkLower.split(/\s+/);
+    var matched = paaQuestions.filter(function(qObj) {
+      var q = (typeof qObj === 'object' ? (qObj.question || '') : String(qObj)).toLowerCase();
+      var hits = pkWords.filter(function(w) { return w.length > 2 && q.indexOf(w) >= 0; }).length;
+      return hits >= 2 || q.indexOf(pkLower) >= 0;
+    }).slice(0, 6).map(function(qObj) {
+      return typeof qObj === 'object' ? (qObj.question || '') : String(qObj);
+    });
+    if (matched.length) {
+      p.assignedQuestions = matched;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    scheduleSave();
+    renderBriefs();
+    if (typeof aiBarNotify === 'function') aiBarNotify('Inherited keywords + questions for /' + p.slug, { duration: 3000 });
+  } else {
+    // No data to inherit — fall back to AI assign for this page
+    if (typeof aiBarNotify === 'function') aiBarNotify('No cluster/PAA data — running AI Assign for this page', { duration: 3000 });
+    briefPageAssign(pidx);
+  }
+}
+
+function _renderBriefsWorkflowStrip() {
+  var steps = _computeBriefsWorkflowSteps();
+  var html = '<div class="wf-strip" id="briefs-wf-strip">';
+  steps.forEach(function(s, i) {
+    if (i > 0) html += '<div class="wf-line' + (s.done && steps[i - 1].done ? ' done' : '') + '"></div>';
+    var circleClass, icon;
+    if (s.num === 5 && s.done) {
+      circleClass = 'wf-circle done'; icon = '<i class="ti ti-check" style="font-size:13px"></i>';
+    } else if (s.done && !s.warn) {
+      circleClass = 'wf-circle ok'; icon = s.num;
+    } else if (s.warn) {
+      circleClass = 'wf-circle warn'; icon = s.num;
+    } else {
+      circleClass = 'wf-circle pending'; icon = s.num;
+    }
+    var subClass = 'wf-sub' + (s.warn ? ' err' : (s.done && !s.warn ? ' ok' : ''));
+    html += '<div class="wf-step" id="briefs-wf-step-' + s.num + '">'
+      + '<div class="' + circleClass + '">' + icon + '</div>'
+      + '<div class="wf-label">' + s.label + '</div>'
+      + '<div class="' + subClass + '">' + esc(s.status) + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+function _mountBriefsWorkflowStrip() {
+  [1, 2, 3, 4, 5].forEach(function(num) {
+    var el = document.getElementById('briefs-wf-step-' + num);
+    if (!el) return;
+    el.onclick = function() {
+      if (num === 1) { _briefsInheritAll(); }
+      else if (num === 2) { _toggleBriefsBulkPanel(); }
+      else if (num === 3) { generateAllBriefs(); }
+      else if (num === 4) { _briefsScoreAll(); }
+      else if (num === 5) {
+        var chip = document.getElementById('briefs-approved-chip');
+        if (chip) chip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    };
+  });
+}
+
+// ── BULK ENRICH PANEL ──────────────────────────────────────────────────────
+
+function _toggleBriefsBulkPanel() {
+  _briefsBulkExpanded = !_briefsBulkExpanded;
+  var panel = document.getElementById('briefs-bulk-panel');
+  if (panel) panel.style.display = _briefsBulkExpanded ? 'flex' : 'none';
+}
+
+function _renderBriefsBulkPanel() {
+  var btnStyle = 'border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n3)';
+  var btnPrimary = 'border-radius:4px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:var(--font);white-space:nowrap;background:var(--lime);border:none;font-weight:600;color:var(--dark)';
+  return '<div id="briefs-bulk-panel" style="display:' + (_briefsBulkExpanded ? 'flex' : 'none') + ';gap:6px;padding:10px 12px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);flex-wrap:wrap;align-items:center">'
+    + '<span style="font-size:10px;font-weight:600;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Bulk Actions</span>'
+    + '<button id="niche-expand-btn" onclick="runNicheExpand()" style="' + btnStyle + '" data-tip="Runs Google Suggest on each page primary keyword with 10 modifiers to pull niche variants. Gets DataForSEO volumes."><i class="ti ti-antenna" style="font-size:12px;margin-right:3px"></i>Expand Niche KWs</button>'
+    + '<button id="page-questions-btn" onclick="runPageQuestions()" style="' + btnStyle + '" data-tip="Generates 8 per-page questions specific to each page primary keyword and type. These become FAQ H3s in briefs."><i class="ti ti-message-question" style="font-size:12px;margin-right:3px"></i>Generate Questions</button>'
+    + '<button id="ai-assign-btn" onclick="aiAssignKeywordsAndQuestions()" style="' + btnPrimary + '" data-tip="Claude distributes all remaining keywords and PAQs across your pages in one pass."><i class="ti ti-sparkles" style="font-size:12px;margin-right:3px"></i>AI Assign KWs + Qs</button>'
+    + '<span style="flex:1"></span>'
+    + '<button onclick="_briefsScoreAll()" style="' + btnStyle + '" data-tip="Evaluates all generated briefs that have not been scored yet."><i class="ti ti-chart-bar" style="font-size:12px;margin-right:3px"></i>Score All Unscored</button>'
+    + '<button onclick="_briefsBulkApprove()" style="' + btnStyle + '" data-tip="Approves all briefs scoring 80% or higher."><i class="ti ti-checks" style="font-size:12px;margin-right:3px"></i>Approve All \u226580%</button>'
+    + '</div>';
+}
+
+// ── INHERIT ALL ───────────────────────────────────────────────────────────────
+
+async function _briefsInheritAll() {
+  var pages = (S.pages || []).filter(function(p) { return p && p.page_type !== 'utility'; });
+  if (!pages.length) { if (typeof aiBarNotify === 'function') aiBarNotify('No pages to inherit into', { isError: true, duration: 3000 }); return; }
+
+  var kwInherited = 0;
+  var qInherited = 0;
+  var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
+  var paaQuestions = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions) || [];
+
+  pages.forEach(function(p) {
+    // Inherit keywords from cluster data
+    if ((!p.supporting_keywords || !p.supporting_keywords.length) && clusters.length) {
+      var match = clusters.find(function(c) { return c.pageSlug === p.slug || c.slug === p.slug; });
+      if (match && match.supportingKws && match.supportingKws.length) {
+        p.supporting_keywords = match.supportingKws.slice(0, 8).map(function(sk) {
+          return typeof sk === 'object' ? sk : { kw: String(sk), vol: 0, kd: 0 };
+        });
+        kwInherited++;
+      }
+    }
+
+    // Inherit questions from PAA data — match on primary keyword overlap
+    if ((!p.assignedQuestions || !p.assignedQuestions.length) && paaQuestions.length && p.primary_keyword) {
+      var pkLower = p.primary_keyword.toLowerCase();
+      var pkWords = pkLower.split(/\s+/);
+      var matched = paaQuestions.filter(function(qObj) {
+        var q = (typeof qObj === 'object' ? (qObj.question || '') : String(qObj)).toLowerCase();
+        // Fuzzy: question contains at least 2 words from primary keyword
+        var hits = pkWords.filter(function(w) { return w.length > 2 && q.indexOf(w) >= 0; }).length;
+        return hits >= 2 || q.indexOf(pkLower) >= 0;
+      }).slice(0, 6).map(function(qObj) {
+        return typeof qObj === 'object' ? (qObj.question || '') : String(qObj);
+      });
+      if (matched.length) {
+        p.assignedQuestions = matched;
+        qInherited++;
+      }
+    }
+  });
+
+  if (kwInherited > 0 || qInherited > 0) {
+    scheduleSave();
+    renderBriefs();
+    if (typeof aiBarNotify === 'function') aiBarNotify('Inherited: ' + kwInherited + ' pages got keywords, ' + qInherited + ' pages got questions', { duration: 4000 });
+  } else {
+    // No cluster/PAA data — fall back to AI Assign
+    if (typeof aiBarNotify === 'function') aiBarNotify('No cluster/PAA data to inherit — running AI Assign instead', { duration: 3000 });
+    if (typeof aiAssignKeywordsAndQuestions === 'function') aiAssignKeywordsAndQuestions();
+  }
+}
+
+// ── SCORE ALL ────────────────────────────────────────────────────────────────
+
+async function _briefsScoreAll(startFrom) {
+  var pages = (S.pages || []).filter(function(p) { return p && p.page_type !== 'utility' && p.brief && p.brief.generated && !p.brief.score; });
+  if (!pages.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('All generated briefs already scored', { duration: 3000 });
+    return;
+  }
+  window._aiStopAll = false;
+  var start = startFrom || 0;
+  if (typeof aiBarStart === 'function') aiBarStart('Scoring briefs...');
+  for (var i = start; i < pages.length; i++) {
+    if (window._aiStopAll) {
+      window._aiStopResumeCtx = {
+        label: 'Scoring paused (' + i + '/' + pages.length + ')',
+        fn: function(args) { _briefsScoreAll(args.startFrom); },
+        args: { startFrom: i }
+      };
+      if (typeof aiBarEnd === 'function') aiBarEnd();
+      return;
+    }
+    var idx = S.pages.indexOf(pages[i]);
+    if (idx >= 0) await scoreBrief(idx);
+    await new Promise(function(r) { setTimeout(r, 300); });
+  }
+  window._aiStopResumeCtx = null;
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+  if (typeof aiBarNotify === 'function') aiBarNotify('Scored ' + pages.length + ' briefs', { duration: 3000 });
+  renderBriefs();
+}
+
+// ── BULK APPROVE ─────────────────────────────────────────────────────────────
+
+function _briefsBulkApprove() {
+  var pages = (S.pages || []).filter(function(p) {
+    if (!p || !p.brief || !p.brief.generated || p.brief.approved) return false;
+    if (!p.brief.score) return false;
+    var pct = Math.round((p.brief.score.passed / p.brief.score.total) * 100);
+    return pct >= 80;
+  });
+  if (!pages.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('No unapproved briefs scoring 80% or higher', { duration: 3000 });
+    return;
+  }
+  pages.forEach(function(p) {
+    p.brief.approved = true;
+    p.brief.approvedAt = Date.now();
+    p.updatedAt = Date.now();
+  });
+  scheduleSave();
+  renderBriefs();
+  if (typeof aiBarNotify === 'function') aiBarNotify('Approved ' + pages.length + ' briefs scoring 80%+', { duration: 4000 });
+}
+
 
 function briefTogglePicker(pidx, type) {
   var pickerId = 'brief-'+type+'-picker-'+pidx;
@@ -411,25 +772,14 @@ async function scoreBrief(pageIdx) {
       if (p.brief.drafts[_ai]) p.brief.drafts[_ai].score = _scoreObj;
     }
     scheduleSave();
-    // Re-render just the score bar
-    var pct = Math.round((passed / finalChecks.length) * 100);
-    var barClr = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--warn)' : '#e5534b';
-    if (scoreEl) {
-      scoreEl.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex:none">'
-        + '<div style="width:80px;height:6px;background:rgba(0,0,0,0.08);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barClr+';border-radius:3px"></div></div>'
-        + '<span style="font-size:10px;font-weight:700;color:'+barClr+'">'+pct+'%</span>'
-        + '<span style="font-size:9.5px;color:var(--n2)">brief quality</span>'
-        + '</div>'
-        + finalChecks.map(function(c){
-            var icon = c.pass ? '✓' : '✗';
-            var clr = c.pass ? 'var(--green)' : '#e5534b';
-            return '<span title="'+esc(c.note)+'" style="display:inline-flex;align-items:center;gap:2px;font-size:9px;color:'+clr+';padding:1px 5px;border:1px solid '+clr+';border-radius:3px;opacity:0.85;cursor:default">'+icon+' '+esc(c.label)+'</span>';
-          }).join('')
-        + _briefVersionPills(p, pidx)
-        + '<button onclick="scoreBrief('+pageIdx+')" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:3px;padding:2px 7px;font-size:9px;color:var(--n2);cursor:pointer;font-family:var(--font)">Re-evaluate</button>';
-    }
+    // Full re-render — score bar + Improve button + version pills + workflow dots all update
+    if (!window._briefOpen) window._briefOpen = new Set();
+    window._briefOpen.add(p.slug);
+    renderBriefs();
   } catch(e) {
-    if (scoreEl) scoreEl.innerHTML = '<span style="font-size:9.5px;color:#e5534b">Evaluation failed — '+esc(e.message)+'</span>';
+    // Re-query scoreEl in case DOM was rebuilt
+    var scoreElErr = document.getElementById('brief-score-'+pageIdx);
+    if (scoreElErr) scoreElErr.innerHTML = '<span style="font-size:9.5px;color:#e5534b">Evaluation failed — '+esc(e.message)+'</span>';
   }
 }
 
@@ -508,11 +858,10 @@ async function improveBrief(pageIdx) {
     delete p.brief._requestNewVersion;
     scheduleSave();
     if (streamEl) streamEl.style.display='none';
-    var contentEl = document.getElementById('brief-content-'+pageIdx);
-    if (contentEl) {
-      contentEl.style.display='flex';
-      contentEl.innerHTML = '<textarea class="brief-ta" data-pidx="'+pageIdx+'" style="width:100%;min-height:200px;padding:14px;font-size:12px;font-family:var(--font);line-height:1.7;border:none;resize:vertical;background:transparent;color:var(--dark);outline:none">'+esc(improved)+'</textarea>';
-    }
+    // Full re-render so all audit tools appear
+    if (!window._briefOpen) window._briefOpen = new Set();
+    window._briefOpen.add(p.slug);
+    renderBriefs();
     setTimeout(function(){ scoreBrief(pageIdx); }, 300);
     if(typeof aiBarNotify==='function') aiBarNotify('✓ Brief improved — re-evaluating', {duration:3000});
   } catch(e) {
@@ -760,6 +1109,9 @@ function initBriefs() {
       }
     }, true);
     document.addEventListener('click', function(e) {
+      // Per-page step action buttons (must be before accordion header handler)
+      var stepBtn = e.target.closest('.brief-step-action');
+      if (stepBtn) { e.stopPropagation(); _briefPageStepAction(parseInt(stepBtn.dataset.pidx), parseInt(stepBtn.dataset.step)); return; }
       var hdr = e.target.closest('.brief-row-header');
       if (hdr && hdr.dataset.briefSlug !== undefined) { toggleBriefOpen(hdr.dataset.briefSlug); return; }
       var t = e.target.closest('.brief-add-selected-btn');
@@ -808,16 +1160,9 @@ function renderBriefs() {
 
   var html = '';
 
-  // Step banner
-  var _step = (!hasQs && !hasKws) ? 1 : !briefed ? 2 : 3;
-  var _bannerTxt = _step === 1
-    ? '<b>Step 1:</b> Click <b>AI Assign Keywords + Questions</b> — Claude distributes all remaining keywords and PAQs across your pages in one pass.'
-    : _step === 2
-    ? '<b>Step 2:</b> Assignments done. Click <b>Generate Brief</b> on each page to write the content brief.'
-    : '<b>Step 3:</b> Briefs written. Review them, then <b>Approve &amp; Go to Copy</b>.';
-  html += '<div style="background:rgba(21,142,29,0.06);border:1px solid rgba(21,142,29,0.2);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--n3);display:flex;align-items:center;gap:10px">'
-    + '<span style="background:var(--green);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap">Step '+_step+' of 3</span>'
-    + _bannerTxt + '</div>';
+  // Workflow strip
+  html += _renderBriefsWorkflowStrip();
+  html += _renderBriefsBulkPanel();
 
   var approved = seoPages.filter(function(p){ return p.brief && p.brief.approved; }).length;
   html += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
@@ -827,7 +1172,7 @@ function renderBriefs() {
   html += '<span class="chip '+(briefed===seoPages.length&&briefed>0?'green':'')+'">'+briefed+'/'+seoPages.length+' briefed</span>';
   html += '<span id="briefs-approved-chip" class="chip '+(approved>0?'green':'')+'">'+approved+'/'+seoPages.length+' approved</span>';
   var _canGo = approved > 0;
-  html += '<button onclick="if('+approved+'>0)goTo(\'copy\')" style="margin-left:auto;background:'+(_canGo?'var(--lime)':'var(--n1)')+';border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:'+(_canGo?'pointer':'not-allowed')+';font-family:var(--font);color:var(--dark);opacity:'+(_canGo?'1':'0.5')+'" title="'+(_canGo?'Go to Copy stage':'Approve at least one brief first')+'">Approve &amp; Go to Copy →</button>';
+  html += '<button onclick="if('+approved+'>0)goTo(\'copy\')" style="margin-left:auto;background:'+(_canGo?'var(--lime)':'var(--n1)')+';border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:600;cursor:'+(_canGo?'pointer':'not-allowed')+';font-family:var(--font);color:var(--dark);opacity:'+(_canGo?'1':'0.5')+'" title="'+(_canGo?'Go to Copy stage':'Approve at least one brief first')+'">Approve &amp; Go to Copy \u2192</button>';
   html += '</div>';
 
   function pageCard(p, pidx) {
@@ -908,35 +1253,44 @@ function renderBriefs() {
       }
     }
 
-    // ── ACTION BAR ───────────────────────────────────────────────────────────
+    // ── BUTTON STYLES ──────────────────────────────────────────────────────
     var _nextV = (p.brief && p.brief.drafts && p.brief.drafts.length > 0)
       ? p.brief.drafts[p.brief.drafts.length-1].v + 1 : 1;
     var _btnBase = 'border-radius:4px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n3)';
     var _btnSm   = 'border-radius:4px;padding:3px 8px;font-size:9.5px;cursor:pointer;font-family:var(--font);white-space:nowrap;border:1px solid var(--border);background:var(--white);color:var(--n2)';
+
+    // ── ENRICHMENT HEADER ─────────────────────────────────────────────────
+    var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')" id="brief-niche-btn-'+pidx+'" data-tip="Expands this page primary keyword via Google Suggest with 10 modifiers, gets DataForSEO volumes, and adds niche variants to this pages keyword pool. Run before AI Assign so there are specific variants to assign." style="'+_btnSm+'">⌖ Niche KW</button>';
+    var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" data-tip="Generates 8 bottom-of-funnel questions specific to this pages primary keyword and page type. These become FAQ H3s in the brief and feed FAQ schema. Run before Generate or Regen." style="'+_btnSm+'">? Questions</button>';
+    var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" data-tip="Runs a full curation pass for this page: reviews the global keyword pool and question list, assigns the best matches for this pages intent, removes irrelevant ones, and reports how many were removed. Run after Niche KW and Questions." style="'+_btnSm+'">✦ Assign</button>';
+
+    var enrichHeader = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--border);background:rgba(59,130,246,0.02)">'
+      + '<span style="font-size:9px;font-weight:700;color:#3b82f6;text-transform:uppercase;letter-spacing:.06em">Enrichment</span>'
+      + _nicheBtn + _questBtn + _assignBtn
+      + '</div>';
+
+    // ── BRIEF HEADER ──────────────────────────────────────────────────────
     var _approveBtn = isBriefed
       ? (isApproved
-          ? '<button onclick="briefToggleApprove('+pidx+')" data-tip="Brief is approved and locked for copy generation. Click to un-approve if you need to edit or regenerate." style="border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;background:rgba(21,142,29,0.08);border:1px solid var(--green);color:var(--green)">✓ Approved</button>'
+          ? '<button onclick="briefToggleApprove('+pidx+')" data-tip="Brief is approved and locked for copy generation. Click to un-approve if you need to edit or regenerate." style="border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;background:rgba(21,142,29,0.08);border:1px solid var(--green);color:var(--green)">\u2713 Approved</button>'
           : '<button onclick="briefToggleApprove('+pidx+')" data-tip="Approve the currently active draft. Copy generation is locked until a brief is approved. Make sure you are on the version you want before approving." style="'+_btnBase+';font-weight:500">Approve</button>'
         ) : '';
     var _regenTip = isBriefed
       ? 'Regen overwrites the currently active draft in place — same version number, fresh content. Switch to the version you want to replace first. Use when the active draft needs a full redo.'
       : 'Generate the brief for this page. Runs SERP Intel, then calls Claude with all assigned keywords and questions.';
     var _regenBtn = '<button onclick="generatePageBrief('+pidx+')" id="brief-btn-'+pidx+'" data-tip="'+_regenTip+'" style="background:var(--lime);border:none;border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap">'
-      + (isBriefed ? '↺ Regen' : '✦ Generate') + '</button>';
+      + (isBriefed ? '\u21ba Regen' : '\u2726 Generate') + '</button>';
     var _hasFailures = isBriefed && p.brief.score && p.brief.score.checks && p.brief.score.checks.some(function(c){ return !c.pass; });
     var _improveBtn = _hasFailures
-      ? '<button onclick="improveBrief('+pidx+')" id="brief-improve-btn-'+pidx+'" data-tip="Improve reads the failed checks and asks Claude to fix only those specific sections — leaving passing sections untouched. Pushes as a new version. Use instead of full Regen when the brief is mostly good but a few checks failed." style="background:rgba(21,142,29,0.1);border:1px solid rgba(21,142,29,0.3);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;color:var(--green)">↑ Improve</button>'
+      ? '<button onclick="improveBrief('+pidx+')" id="brief-improve-btn-'+pidx+'" data-tip="Improve reads the failed checks and asks Claude to fix only those specific sections — leaving passing sections untouched. Pushes as a new version. Use instead of full Regen when the brief is mostly good but a few checks failed." style="background:rgba(21,142,29,0.1);border:1px solid rgba(21,142,29,0.3);border-radius:4px;padding:4px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:var(--font);white-space:nowrap;color:var(--green)">\u2191 Improve</button>'
       : '';
     var _v2Tip = '+ V'+_nextV+' generates a new version alongside the current drafts. Only the last 2 drafts are kept — the oldest is dropped. Use when you want a fresh attempt without losing the current active draft. Warning: if V2=92% and V3=85% are both showing, clicking +V4 will drop V2.';
     var _runV2Btn = (isBriefed && (p.brief.drafts||[]).length > 0)
       ? '<button onclick="generateBriefV2('+pidx+')" data-tip="'+_v2Tip+'" style="'+_btnSm+'">+ V'+_nextV+'</button>' : '';
-    var _nicheBtn  = '<button onclick="briefPageNicheExpand('+pidx+')" id="brief-niche-btn-'+pidx+'" data-tip="Expands this page primary keyword via Google Suggest with 10 modifiers, gets DataForSEO volumes, and adds niche variants to this pages keyword pool. Run before AI Assign so there are specific variants to assign." style="'+_btnSm+'">⌖ Niche KW</button>';
-    var _questBtn  = '<button onclick="briefPageQuestions('+pidx+')"   id="brief-quest-btn-'+pidx+'" data-tip="Generates 8 bottom-of-funnel questions specific to this pages primary keyword and page type. These become FAQ H3s in the brief and feed FAQ schema. Run before Generate or Regen." style="'+_btnSm+'">? Questions</button>';
-    var _assignBtn = '<button onclick="briefPageAssign('+pidx+')"      id="brief-assign-btn-'+pidx+'" data-tip="Runs a full curation pass for this page: reviews the global keyword pool and question list, assigns the best matches for this pages intent, removes irrelevant ones, and reports how many were removed. Run after Niche KW and Questions." style="'+_btnSm+'">✦ Assign</button>';
-
     var _promptBtn = isBriefed ? '<button onclick="showPromptModal(\'brief-'+pidx+'\'" data-tip="View the exact prompt sent to Claude for this brief — system instructions, context, keywords, and task." style="'+_btnSm+'"><i class="ti ti-code" style="font-size:11px"></i></button>' : '';
-    var actionBar = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.015)">'
-      + _nicheBtn + _questBtn + _assignBtn
+
+    var briefHeader = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--border);background:rgba(21,142,29,0.02)">'
+      + '<span style="font-size:9px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.06em">Brief</span>'
       + '<span style="flex:1"></span>'
       + _promptBtn + _improveBtn + _runV2Btn + _regenBtn + _approveBtn
       + '</div>';
@@ -995,9 +1349,10 @@ function renderBriefs() {
       : '<div style="padding:20px 12px;color:var(--n1);font-size:11px;text-align:center">No brief yet — click <strong>✦ Generate</strong> to write it.</div>';
 
     return '<div style="display:flex;flex-direction:column">'
-      + actionBar
       + infoStrip
+      + enrichHeader
       + kwQRow
+      + briefHeader
       + '<div id="brief-stream-'+pidx+'" style="display:none;padding:12px;background:#0d1117;font-family:monospace;font-size:10px;color:#7ee787;white-space:pre-wrap;max-height:220px;overflow-y:auto"></div>'
       + '<div id="brief-content-'+pidx+'">' + briefContent + '</div>'
       + '<div style="padding:10px 12px;border-top:1px solid var(--border);background:rgba(0,0,0,0.01)">'
@@ -1086,14 +1441,13 @@ function renderBriefs() {
         var kwCount    = (p.supporting_keywords||[]).length;
         var qCount     = (p.assignedQuestions||[]).length;
 
-        // Status badge
-        var statusBadge = isApproved
-          ? '<span style="font-size:9px;font-weight:600;color:var(--green);background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;padding:1px 6px">✓ Approved</span>'
-          : isBriefed
-            ? (pct!==null
-                ? '<span style="font-size:9px;color:'+barClr+';background:rgba(0,0,0,0.04);border:1px solid '+barClr+';border-radius:3px;padding:1px 6px;font-weight:600">'+pct+'%</span>'
-                : '<span style="font-size:9px;color:var(--n2);background:rgba(0,0,0,0.04);border-radius:3px;padding:1px 6px">Briefed</span>')
-            : '<span style="font-size:9px;color:var(--n1);background:rgba(0,0,0,0.03);border-radius:3px;padding:1px 6px">No brief</span>';
+        // Per-page step dots (5 dots showing workflow progress)
+        var stepDots = _pageStepDots(p, pidx);
+
+        // Score badge (only shows if scored)
+        var scoreBadge = pct !== null
+          ? '<span style="font-size:9px;color:'+barClr+';background:rgba(0,0,0,0.04);border:1px solid '+barClr+';border-radius:3px;padding:1px 6px;font-weight:600">'+pct+'%</span>'
+          : '';
 
         var rowBg    = isApproved ? 'rgba(21,142,29,0.02)' : 'var(--white)';
         var rowBorder = isApproved ? '2px solid var(--green)' : isOpen ? '1px solid var(--dark)' : '1px solid var(--border)';
@@ -1107,12 +1461,13 @@ function renderBriefs() {
         html += '<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap">';
         html += '<span style="font-size:12.5px;font-weight:'+(isApproved?'600':'400')+';color:'+(isApproved||isOpen?'var(--dark)':'var(--n3)')+'">'+esc(p.page_name)+'</span>';
         html += '<span style="font-size:10px;color:'+pColor+';background:rgba(0,0,0,0.04);border-radius:3px;padding:0 5px;flex-shrink:0">'+esc(p.priority||'')+'</span>';
-        html += statusBadge;
+        html += scoreBadge;
         if (kwCount) html += '<span style="font-size:9.5px;color:var(--n2)">'+kwCount+' kw</span>';
         if (qCount)  html += '<span style="font-size:9.5px;color:var(--n2)">'+qCount+' q</span>';
         html += '</div>';
-        if (p.primary_keyword) html += '<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace">'+esc(p.primary_keyword)+' · /'+esc(p.slug||'')+'</div>';
+        if (p.primary_keyword) html += '<div style="font-size:10px;color:var(--n2);margin-top:1px;font-family:monospace">'+esc(p.primary_keyword)+' \u00b7 /'+esc(p.slug||'')+'</div>';
         html += '</div>';
+        html += stepDots;
         html += '<i class="ti ti-chevron-'+(isOpen?'up':'down')+'" style="font-size:11px;color:var(--n2);flex-shrink:0"></i>';
         html += '</div>';
 
@@ -1130,6 +1485,8 @@ function renderBriefs() {
     html += '<div style="padding:20px;color:#e5534b;font-size:12px;font-family:monospace">Render error: '+renderErr.message+'</div>';
   }
   el.innerHTML = html;
+  // Mount workflow strip click handlers
+  _mountBriefsWorkflowStrip();
   // Auto-size any existing brief textareas
   setTimeout(function(){
     el.querySelectorAll('textarea').forEach(function(ta){
@@ -1676,13 +2033,12 @@ async function generatePageBrief(pageIdx) {
     }
     p.brief.drafts = _bDrafts;
     scheduleSave();
-    // Update content div directly without full re-render (preserve scroll position)
+    // Full re-render so score bar, SERP intel, Improve, version pills all appear
     if (streamEl) streamEl.style.display = 'none';
-    if (contentEl) {
-      contentEl.style.display = 'flex';
-      contentEl.innerHTML = '<textarea class="brief-ta" data-pidx="'+pageIdx+'" style="width:100%;min-height:200px;padding:12px 14px;font-size:11.5px;color:var(--n3);line-height:1.6;border:none;outline:none;resize:vertical;font-family:var(--font);background:transparent;box-sizing:border-box;display:block">'+esc(briefText)+'</textarea>';
-    }
-    if (btn) { btn.disabled = false; btn.innerHTML = '↺ Regenerate'; }
+    // Ensure the card stays open after re-render
+    if (!window._briefOpen) window._briefOpen = new Set();
+    window._briefOpen.add(p.slug);
+    renderBriefs();
     // Auto-evaluate the brief
     setTimeout(function(){ scoreBrief(pageIdx); }, 300);
   } catch(e) {

@@ -137,7 +137,7 @@ function _autoAssignPersona(page) {
   var pt = (page.page_type || '').toLowerCase();
 
   // Structural pages serve all personas — leave empty
-  if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(pt) >= 0) return '';
+  if (['home', 'about', 'contact', 'utility', 'faq', 'team', 'portfolio', 'case-study', 'testimonials'].indexOf(pt) >= 0) return '';
 
   // Industry pages: match segment name to page name/slug
   if (pt === 'industry') {
@@ -395,7 +395,7 @@ function _leverForPageType(pageType) {
   var t = (pageType || '').toLowerCase();
   if (['home','about','contact','utility','faq','team'].indexOf(t) >= 0) return '_website';
   if (t === 'location') return 'local_seo';
-  if (['blog','article','recipe','event','portfolio'].indexOf(t) >= 0) return 'content_marketing';
+  if (['blog','article','recipe','event'].indexOf(t) >= 0) return 'content_marketing';
   // service/industry/product → SEO lever
   return 'seo';
 }
@@ -546,7 +546,7 @@ async function assignContentPillars() {
     return;
   }
   var blogPages = (S.pages || []).filter(function(p) {
-    return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0;
+    return ['blog','article','recipe','event'].indexOf((p.page_type || '').toLowerCase()) >= 0;
   });
   if (!blogPages.length) {
     aiBarNotify('No blog pages in sitemap to assign pillars to', { duration: 3000 });
@@ -556,7 +556,7 @@ async function assignContentPillars() {
   // Build pillar list (handle both string and object formats)
   var pillarNames = pillars.map(function(p) { return typeof p === 'string' ? p : (p.name || p.pillar || p.topic || String(p)); });
 
-  var sys = 'You are a content strategist. Given a list of blog pages and a list of content pillars, assign each blog page to the single best-fit pillar. If no pillar fits, assign "Unassigned". Output ONLY a JSON array of objects: [{"slug":"...","pillar":"..."}]. No explanation.';
+  var sys = 'You are a content strategist. Given a list of blog pages and a list of content pillars, assign each blog page to the single best-fit pillar. Every page MUST be assigned to a pillar — always pick the closest match, never leave any unassigned. Output ONLY a JSON array of objects: [{"slug":"...","pillar":"..."}]. No explanation.';
   var user = 'CONTENT PILLARS:\n' + pillarNames.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n')
     + '\n\nBLOG PAGES:\n' + blogPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | kw: ' + (p.primary_keyword || 'none'); }).join('\n');
 
@@ -570,7 +570,11 @@ async function assignContentPillars() {
     var assignments = JSON.parse(jsonMatch[0]);
     var count = 0;
     assignments.forEach(function(a) {
-      var page = S.pages.find(function(p) { return p.slug === a.slug; });
+      var rawSlug = (a.slug || '').replace(/^\//, '');
+      var page = S.pages.find(function(p) { return p.slug === rawSlug; });
+      // Fallback: try matching without blog/ prefix or with it added
+      if (!page) page = S.pages.find(function(p) { return p.slug === 'blog/' + rawSlug; });
+      if (!page) page = S.pages.find(function(p) { return p.slug === rawSlug.replace(/^blog\//, ''); });
       if (page && a.pillar) {
         page.content_pillar = a.pillar;
         count++;
@@ -578,6 +582,7 @@ async function assignContentPillars() {
     });
     scheduleSave();
     renderSitemapResults(S.sitemapApproved);
+    if (typeof _updateContextBar === 'function') _updateContextBar();
     aiBarNotify('Assigned pillars to ' + count + ' blog pages', { duration: 4000 });
   } catch (e) {
     aiBarNotify('Pillar assignment failed: ' + e.message, { isError: true, duration: 4000 });
@@ -2740,8 +2745,8 @@ function _renderSitemapResultsInner(approved) {
     const t = (p.page_type||'').toLowerCase();
     if (_sitemapCatTab === 'service') return ['service','industry','product','landing'].includes(t);
     if (_sitemapCatTab === 'location') return t === 'location';
-    if (_sitemapCatTab === 'blog') return ['blog','article','recipe','event','portfolio'].includes(t);
-    if (_sitemapCatTab === 'core') return ['home','about','contact','utility','faq','team'].includes(t) || !!p.is_structural;
+    if (_sitemapCatTab === 'blog') return ['blog','article','recipe','event'].includes(t);
+    if (_sitemapCatTab === 'core') return ['home','about','contact','utility','faq','team','portfolio','case-study','testimonials'].includes(t) || !!p.is_structural;
     return true;
   };
   const pages = allPages.filter(_catFilter);
@@ -2790,8 +2795,8 @@ function _renderSitemapResultsInner(approved) {
     all: allPages.length,
     service: allPages.filter(p => ['service','industry','product','landing'].includes((p.page_type||'').toLowerCase())).length,
     location: allPages.filter(p => (p.page_type||'') === 'location').length,
-    blog: allPages.filter(p => ['blog','article','recipe','event','portfolio'].includes((p.page_type||'').toLowerCase())).length,
-    core: allPages.filter(p => ['home','about','contact','utility','faq','team'].includes((p.page_type||'').toLowerCase()) || !!p.is_structural).length,
+    blog: allPages.filter(p => ['blog','article','recipe','event'].includes((p.page_type||'').toLowerCase())).length,
+    core: allPages.filter(p => ['home','about','contact','utility','faq','team','portfolio','case-study','testimonials'].includes((p.page_type||'').toLowerCase()) || !!p.is_structural).length,
     removed: _removedCount
   };
   const _tabs = [{id:'all',label:'All'},{id:'service',label:'Services'},{id:'location',label:'Locations'},{id:'blog',label:'Blog'},{id:'core',label:'Core'},{id:'removed',label:'Removed'}];
@@ -2831,7 +2836,7 @@ function _renderSitemapResultsInner(approved) {
   html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" onclick="generateAllPageGoals(\'auto\');toggleGoalsDropdown()"><i class="ti ti-player-play" style="font-size:11px;margin-right:4px"></i> Auto-Complete All</button>';
   html += '</div></div>';
   if (_hasStrategy) {
-    var _blogCount = allPages.filter(function(p) { return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0; }).length;
+    var _blogCount = allPages.filter(function(p) { return ['blog','article','recipe','event'].indexOf((p.page_type||'').toLowerCase()) >= 0; }).length;
     if (_blogCount > 0) {
       html += '<button class="btn btn-ghost sm" data-tip="AI assigns each blog page to a content pillar from your brand strategy. Requires D6 Brand diagnostic in Strategy." style="font-size:11px;padding:2px 8px" onclick="assignContentPillars()"><i class="ti ti-tags"></i> Pillars</button>';
     }
@@ -2919,7 +2924,7 @@ function _renderSitemapResultsInner(approved) {
       ['home','service','industry','location','landing','about','blog','utility'].forEach(function(t){ html += '<option value="'+t+'"'+(p.page_type===t?' selected':'')+'>'+t+'</option>'; });
       html += '</select>';
       // Content pillar dropdown (blog-type pages only, if pillars exist)
-      if (['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
+      if (['blog','article','recipe','event'].indexOf((p.page_type||'').toLowerCase()) >= 0 && _hasStrategy) {
         var _pillars = (S.strategy.brand_strategy && S.strategy.brand_strategy.content_pillars) || [];
         var _pillarNames = _pillars.map(function(pl) { return typeof pl === 'string' ? pl : (pl.name || pl.pillar || pl.topic || String(pl)); });
         if (_pillarNames.length) {
@@ -3000,9 +3005,9 @@ function _renderSitemapResultsInner(approved) {
         _badges += '<span style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:'+_ptColour+';font-weight:500">'+esc(_pt)+'</span>';
       }
       // Content pillar tag (blog pages only)
-      if (p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf(_pt) >= 0) {
+      if (p.content_pillar && ['blog','article','recipe','event'].indexOf(_pt) >= 0) {
         _badges += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:9px;padding:1px 5px;color:#3b82f6;font-weight:500"><i class="ti ti-tags" style="font-size:8px;margin-right:2px"></i>'+esc(p.content_pillar)+'</span>';
-      } else if (!p.content_pillar && ['blog','article','recipe','event','portfolio'].indexOf(_pt) >= 0 && _hasStrategy) {
+      } else if (!p.content_pillar && ['blog','article','recipe','event'].indexOf(_pt) >= 0 && _hasStrategy) {
         _badges += '<span style="background:rgba(0,0,0,0.03);border:1px solid var(--border);border-radius:3px;font-size:9px;padding:1px 5px;color:var(--n2)"><i class="ti ti-tags" style="font-size:8px;margin-right:2px"></i>No pillar</span>';
       }
       // Persona badge
@@ -3173,231 +3178,9 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
 
-  // ── Content Intelligence section ──
-  {
-    const ci = S.contentIntel || {};
-    const blogTopics = ci.blogTopics || [];
-    const paaDone   = (ci.paa?.questions?.length || 0);
-    const gapDone   = (ci.gap?.keywords?.length || 0);
-    const paaQuestions = ci.paa?.questions || [];
-    const gapKeywords  = ci.gap?.keywords  || [];
-
-    // Competitor domains source
-    const _researchComps = (S.research?.competitors || []).map(c => {
-      const u = (c.url||'').replace(/^https?:\/\/(www\.)?/,'').replace(/\/.*$/,'').trim();
-      return u || (c.name||'').toLowerCase().replace(/\s+/g,'')+'.com';
-    }).filter(Boolean).slice(0,5);
-    const _setupRaw = (S.setup?.competitors || '').replace(/\n/g,' ');
-    const _setupDomains = _setupRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
-    const _setupComps = _setupDomains.map(d=>d.replace(/^https?:\/\/(www\.)?/,'')).filter(Boolean).slice(0,4);
-    const _existingGapEl = document.getElementById('ci-gap-domains');
-    const _savedGapDomains = _existingGapEl?.value.trim() || '';
-    const competitorStr = _savedGapDomains || (_researchComps.length ? _researchComps.join(', ') : _setupComps.join(', '));
-
-    html += '<div class="card" style="margin-bottom:8px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
-    html += '<div>';
-    html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Blog Content Pipeline</div>';
-    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">PAA + competitor gaps → blog topic pool → copy queue</div>';
-    html += '</div>';
-    html += '<div id="ci-queue-actions"></div>';
-    html += '</div>';
-
-    // Two mini-panels: PAA + Competitor Gap
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
-
-    // PAA panel
-    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
-    html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-help-circle" style="font-size:11px;color:var(--n2)"></i> People Also Ask';
-    if (paaDone) html += '<span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">'+paaDone+'</span>'; else html += '<span id="ci-paa-count"></span>';
-    html += '</span>';
-    html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-paa-status"></span>';
-    html += '<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> '+(paaDone?'Refresh':'Run')+'</button></div>';
-    html += '</div>';
-    const _allKwPages = (S.pages || []).filter(p => p.primary_keyword).sort((a,b) => { const o={'P1':0,'P2':1,'P3':2}; return (o[a.priority]||3)-(o[b.priority]||3); });
-    const _seenKws = new Set();
-    const _kwEntries = _allKwPages.reduce((acc,p) => { if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority||'' }); } return acc; }, []);
-    const _existingSeedEl = document.getElementById('ci-paa-seeds');
-    const paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_kwEntries[0]?.kw || '');
-    // Add D0 pain drivers as PAA seed options
-    var _d0PainSeeds = [];
-    var _d0Aud = S.strategy && S.strategy.audience;
-    if (_d0Aud && _d0Aud.segments) {
-      _d0Aud.segments.forEach(function(seg) {
-        if (seg.pain_driver && !_seenKws.has(seg.pain_driver)) {
-          _seenKws.add(seg.pain_driver);
-          _d0PainSeeds.push({ kw: seg.pain_driver, pri: 'D0' });
-        }
-      });
-    }
-    var _allKwEntries = _kwEntries.concat(_d0PainSeeds);
-    const _kwOptions = _allKwEntries.map(e => '<option value="'+esc(e.kw)+'"'+(e.kw===paaSeeds?' selected':'')+'>'+esc(e.kw)+(e.pri?' ('+e.pri+')':'')+'</option>').join('');
-    html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    html += '<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer">'+_kwOptions+'</select>';
-    html += '</div>';
-    html += '<div id="ci-paa-panel" style="max-height:220px;overflow-y:auto">';
-    if (!paaDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Select a keyword above and click Run.</div>';
-    html += '</div></div>';
-
-    // Competitor Gap panel
-    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
-    html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-git-compare" style="font-size:11px;color:var(--n2)"></i> Competitor Gaps';
-    if (gapDone) html += '<span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">'+gapDone+'</span>'; else html += '<span id="ci-gap-count"></span>';
-    html += '</span>';
-    html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-gap-status"></span>';
-    html += '<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> '+(gapDone?'Refresh':'Run')+'</button></div>';
-    html += '</div>';
-    html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
-    html += '<input id="ci-gap-domains" value="'+esc(competitorStr)+'" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />';
-    html += '</div>';
-    html += '<div id="ci-gap-panel" style="max-height:220px;overflow-y:auto">';
-    if (!gapDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run.</div>';
-    html += '</div></div>';
-    html += '</div>'; // end two-col grid
-
-    // Persona Coverage Check panel (if personas exist)
-    var _pcPersonas = _getAllPersonas();
-    if (_pcPersonas.length) {
-      html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
-      html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-user-check" style="font-size:11px;color:#7c3aed"></i> Persona Coverage Check</span>';
-      html += '<button onclick="renderSitemapResults(S.sitemapApproved)" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> Refresh</button>';
-      html += '</div>';
-      html += '<div style="padding:10px 12px;max-height:320px;overflow-y:auto">';
-      var _pcResults = _runPersonaCoverageCheck(allPages);
-      _pcResults.forEach(function(r) {
-        if (r.priority === 'parked') {
-          html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;opacity:0.5">';
-          html += '<span style="font-size:11px;color:var(--n2)"><i class="ti ti-player-pause" style="font-size:10px"></i> ' + esc(r.persona) + ' — Parked</span>';
-          html += '</div>';
-          return;
-        }
-        var covPct = Math.round((r.coverage || 0) * 100);
-        var covColor = covPct >= 75 ? 'var(--green)' : covPct >= 50 ? 'var(--warn)' : 'var(--error)';
-        html += '<div style="margin-bottom:8px">';
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
-        html += '<span style="font-size:11.5px;font-weight:500;color:var(--dark)">' + esc(r.persona) + '</span>';
-        if (r.segment && r.segment !== r.persona) html += '<span style="font-size:10px;color:var(--n2)">(' + esc(r.segment) + ')</span>';
-        html += '<span style="font-size:10px;color:' + covColor + ';font-weight:500;margin-left:auto">' + covPct + '%</span>';
-        html += '</div>';
-        r.checks.forEach(function(c) {
-          html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0;padding-left:12px">';
-          if (c.passed) {
-            html += '<span style="font-size:10px;color:var(--green);flex-shrink:0">✓</span>';
-            html += '<span style="font-size:11px;color:var(--n3)">' + esc(c.label) + '</span>';
-          } else {
-            html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
-            html += '<span style="font-size:11px;color:var(--dark)">' + esc(c.label) + '</span>';
-            if (c.suggestion) {
-              var _sugSlug = c.suggestion.replace(/^Create:\s*\/?/, '').replace(/\s+/g, '-').toLowerCase();
-              var _sugName = c.suggestion.replace(/^Create:\s*\/?/, '');
-              var _safeSlug = _sugSlug.replace(/'/g, '');
-              var _safeName = _sugName.replace(/'/g, '');
-              html += '<button onclick="addPageFromGap(\'' + _safeSlug + '\',\'' + _safeName + '\',\'' + esc(r.persona).replace(/'/g, '') + '\')" style="background:transparent;border:1px solid rgba(168,85,247,0.3);border-radius:3px;padding:1px 6px;font-size:9px;color:#7c3aed;cursor:pointer;font-family:var(--font);white-space:nowrap;margin-left:4px;flex-shrink:0">+ Create</button>';
-            }
-          }
-          html += '</div>';
-        });
-        html += '</div>';
-      });
-
-      // CTA gap checks
-      var _ctaGapsInPanel = _checkCTAPageGaps(allPages);
-      if (_ctaGapsInPanel.length) {
-        html += '<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">';
-        html += '<div style="font-size:10px;font-weight:500;color:#c2410c;margin-bottom:4px"><i class="ti ti-click" style="font-size:10px"></i> CTA Landing Page Gaps</div>';
-        _ctaGapsInPanel.forEach(function(g) {
-          html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;padding-left:12px">';
-          html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
-          html += '<span style="font-size:11px;color:var(--dark)">' + esc(g.suggestion) + '</span>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
-
-      html += '</div></div>';
-    }
-
-    // Unified topic pool — PAA + competitor gaps + D8 content hooks + D0 purchase triggers
-    const _allSources = [
-      ...paaQuestions.map(q => ({ text: q.question, source: 'paa', meta: q.seed || '' })),
-      ...gapKeywords.map(k => ({ text: (k.keyword||k.kw||String(k)), source: 'gap', meta: 'vol: '+(k.volume||k.vol||'?') }))
-    ];
-    // Inject D8 content hooks as blog opportunities
-    var _nar = S.strategy && S.strategy.narrative;
-    if (_nar && _nar.content_hooks) {
-      var _hookStages = ['unaware','problem_aware','solution_aware','product_aware','most_aware'];
-      var _hookLabels = { unaware:'Unaware', problem_aware:'Problem Aware', solution_aware:'Solution Aware', product_aware:'Product Aware', most_aware:'Most Aware' };
-      _hookStages.forEach(function(stage) {
-        var hooks = _nar.content_hooks[stage];
-        if (hooks && hooks.length) {
-          hooks.forEach(function(h) {
-            if (h && !_allSources.some(function(s) { return s.text === h; })) {
-              _allSources.push({ text: h, source: 'D8', meta: _hookLabels[stage] || stage });
-            }
-          });
-        }
-      });
-    }
-    // Inject D0 purchase triggers as blog opportunities
-    var _aud = S.strategy && S.strategy.audience;
-    if (_aud && _aud.purchase_triggers && _aud.purchase_triggers.length) {
-      _aud.purchase_triggers.forEach(function(t) {
-        if (t.trigger && t.messaging_angle) {
-          var _trigText = t.messaging_angle;
-          if (!_allSources.some(function(s) { return s.text === _trigText; })) {
-            _allSources.push({ text: _trigText, source: 'D0', meta: t.urgency_level || '' });
-          }
-        }
-      });
-    }
-    // Inject D0 perceived alternatives as blog opportunities
-    if (_aud && _aud.perceived_alternatives && _aud.perceived_alternatives.length) {
-      _aud.perceived_alternatives.forEach(function(alt) {
-        if (alt.alternative && alt.counter_positioning) {
-          var _altText = 'Why ' + alt.alternative + ' falls short: ' + alt.counter_positioning.slice(0, 80);
-          if (!_allSources.some(function(s) { return s.text === _altText; })) {
-            _allSources.push({ text: _altText, source: 'D0', meta: 'vs ' + alt.alternative });
-          }
-        }
-      });
-    }
-    const _selectedTexts = new Set(blogTopics.map(t => t.text));
-    if (_allSources.length > 0) {
-      html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--bg);border-bottom:1px solid var(--border)">';
-      html += '<span style="font-size:11px;font-weight:500;color:var(--dark)">All Blog Opportunities <span style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3)">'+_allSources.length+'</span></span>';
-      html += '<span style="font-size:10px;color:var(--n2)">Click + Blog to queue a post</span>';
-      html += '</div>';
-      html += '<div style="max-height:260px;overflow-y:auto">';
-      _allSources.forEach(item => {
-        const isAdded = _selectedTexts.has(item.text);
-        const srcColor = item.source === 'paa' ? 'var(--green)' : item.source === 'D8' ? '#7c3aed' : item.source === 'D0' ? '#3b82f6' : 'var(--n2)';
-        const safeText = item.text.replace(/'/g,'&#39;').replace(/"/g,'&quot;');
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid rgba(0,0,0,0.04)">';
-        html += '<span style="font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:'+srcColor+';min-width:28px">'+item.source.toUpperCase()+'</span>';
-        html += '<span style="flex:1;font-size:11.5px;color:var(--dark)">'+esc(item.text)+'</span>';
-        if (item.meta) html += '<span style="font-size:10px;color:var(--n2);white-space:nowrap;margin-right:4px">'+esc(item.meta)+'</span>';
-        if (isAdded) {
-          html += '<span style="font-size:10px;color:var(--green);font-weight:500">✓ added</span>';
-        } else {
-          html += '<button onclick="addBlogTopic(\''+item.source+'\',\''+safeText+'\',\''+esc(item.meta)+'\',this)" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);white-space:nowrap">+ Blog</button>';
-        }
-        html += '</div>';
-      });
-      html += '</div></div>';
-    }
-
-    // ── Blog Topics bucket ──
-    html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg)">';
-    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:7px"><i class="ti ti-notes" style="font-size:12px;color:var(--n2)"></i><span style="font-size:11px;font-weight:500;color:var(--dark)">Blog Topics</span><span style="font-size:10px;color:var(--n2)">(select + Blog on any item above)</span></div>';
-    html += '<div id="ci-topics-panel"></div>';
-    html += '</div>';
-
-    html += '</div>'; // end card
-  }
+  // ── Content Intelligence: Health Checks + Blog Discovery ──
+  html += _renderHealthChecksCard(allPages);
+  html += _renderBlogDiscoveryCard(allPages);
 
 
   if (!approved) {
@@ -3441,6 +3224,585 @@ function _renderSitemapResultsInner(approved) {
 
 
 // ── CONTENT INTELLIGENCE ───────────────────────────────────────────
+
+// Session flag for collapsible data sources panel
+var _ciSourcesExpanded = false;
+
+function _toggleCISources() {
+  _ciSourcesExpanded = !_ciSourcesExpanded;
+  var body = document.getElementById('ci-sources-body');
+  var arrow = document.getElementById('ci-sources-arrow');
+  if (body) body.style.display = _ciSourcesExpanded ? 'block' : 'none';
+  if (arrow) arrow.style.transform = _ciSourcesExpanded ? 'rotate(90deg)' : '';
+}
+
+/**
+ * Score a blog opportunity item 0-100 across 4 dimensions.
+ * item shape: { text, source, meta, vol, kd, dfsScore, urgency, threat, awarenessStage, _hasOverlap }
+ */
+function scoreBlogOpportunity(item) {
+  var score = 0;
+
+  // 1. Search Demand (0-40) — GAP only
+  if (item.source === 'gap' && item.vol > 0) {
+    var volScore = Math.min(40, Math.log10((item.vol || 0) + 1) * 10);
+    var kdPenalty = 1 - ((item.kd || 0) / 150);
+    if (kdPenalty < 0.2) kdPenalty = 0.2;
+    score += volScore * kdPenalty;
+  }
+
+  // 2. Strategic Alignment (0-30)
+  if (item.source === 'D8') {
+    score += 25;
+    var stage = (item.awarenessStage || '').toLowerCase();
+    if (stage === 'unaware' || stage === 'problem_aware') score += 5;
+  } else if (item.source === 'D0') {
+    score += 20;
+    var urg = (item.urgency || '').toLowerCase();
+    var thr = (item.threat || '').toLowerCase();
+    if (urg === 'high' || urg === 'critical') score += 5;
+    if (thr === 'high' || thr === 'critical') score += 5;
+  } else if (item.source === 'gap') {
+    score += 15;
+    if (item.dfsScore >= 70) score += 5;
+    if (item.dfsScore >= 90) score += 5;
+  } else if (item.source === 'paa') {
+    score += 10;
+  }
+
+  // 3. Content Gap (0-20) — all items are deduped, base 15
+  score += 15;
+  if (!item._hasOverlap) score += 5;
+
+  // 4. Source Quality (0-10)
+  if (item.source === 'gap') score += 10;
+  else if (item.source === 'D8') score += 8;
+  else if (item.source === 'D0') score += 7;
+  else if (item.source === 'paa') score += 5;
+
+  return Math.min(100, Math.round(score));
+}
+
+/**
+ * Build the unified scored pool from all 5 data sources.
+ * Returns sorted array desc by _score.
+ */
+function _buildScoredPool() {
+  var ci = S.contentIntel || {};
+  var paaQuestions = (ci.paa && ci.paa.questions) || [];
+  var gapKeywords = (ci.gap && ci.gap.keywords) || [];
+
+  // Collect existing page keywords for overlap detection
+  var _existingKws = new Set();
+  (S.pages || []).forEach(function(p) {
+    if (p.primary_keyword) _existingKws.add(p.primary_keyword.toLowerCase());
+    (p.supporting_keywords || []).forEach(function(sk) {
+      var kw = typeof sk === 'object' ? sk.kw : sk;
+      if (kw) _existingKws.add(kw.toLowerCase());
+    });
+  });
+
+  var pool = [];
+  var _seen = new Set();
+
+  // PAA questions
+  paaQuestions.forEach(function(q) {
+    var txt = q.question;
+    if (_seen.has(txt)) return;
+    _seen.add(txt);
+    pool.push({ text: txt, source: 'paa', meta: q.source || '', vol: 0, kd: 0, dfsScore: 0, urgency: '', threat: '', awarenessStage: '', _hasOverlap: _existingKws.has(txt.toLowerCase()) });
+  });
+
+  // Competitor gap keywords
+  gapKeywords.forEach(function(k) {
+    var txt = k.keyword || k.kw || String(k);
+    if (_seen.has(txt)) return;
+    _seen.add(txt);
+    pool.push({ text: txt, source: 'gap', meta: 'vol: ' + (k.volume || k.vol || '?'), vol: k.volume || k.vol || 0, kd: k.kd || 0, dfsScore: k.score || 0, urgency: '', threat: '', awarenessStage: '', _hasOverlap: _existingKws.has(txt.toLowerCase()) });
+  });
+
+  // D8 content hooks
+  var _nar = S.strategy && S.strategy.narrative;
+  if (_nar && _nar.content_hooks) {
+    var _hookStages = ['unaware','problem_aware','solution_aware','product_aware','most_aware'];
+    var _hookLabels = { unaware:'Unaware', problem_aware:'Problem Aware', solution_aware:'Solution Aware', product_aware:'Product Aware', most_aware:'Most Aware' };
+    _hookStages.forEach(function(stage) {
+      var hooks = _nar.content_hooks[stage];
+      if (hooks && hooks.length) {
+        hooks.forEach(function(h) {
+          if (h && !_seen.has(h)) {
+            _seen.add(h);
+            pool.push({ text: h, source: 'D8', meta: _hookLabels[stage] || stage, vol: 0, kd: 0, dfsScore: 0, urgency: '', threat: '', awarenessStage: stage, _hasOverlap: _existingKws.has(h.toLowerCase()) });
+          }
+        });
+      }
+    });
+  }
+
+  // D0 purchase triggers
+  var _aud = S.strategy && S.strategy.audience;
+  if (_aud && _aud.purchase_triggers && _aud.purchase_triggers.length) {
+    _aud.purchase_triggers.forEach(function(t) {
+      if (t.trigger && t.messaging_angle) {
+        var txt = t.messaging_angle;
+        if (!_seen.has(txt)) {
+          _seen.add(txt);
+          pool.push({ text: txt, source: 'D0', meta: t.urgency_level || '', vol: 0, kd: 0, dfsScore: 0, urgency: t.urgency_level || '', threat: '', awarenessStage: '', _hasOverlap: _existingKws.has(txt.toLowerCase()) });
+        }
+      }
+    });
+  }
+
+  // D0 perceived alternatives
+  if (_aud && _aud.perceived_alternatives && _aud.perceived_alternatives.length) {
+    _aud.perceived_alternatives.forEach(function(alt) {
+      if (alt.alternative && alt.counter_positioning) {
+        var txt = 'Why ' + alt.alternative + ' falls short: ' + alt.counter_positioning.slice(0, 80);
+        if (!_seen.has(txt)) {
+          _seen.add(txt);
+          pool.push({ text: txt, source: 'D0', meta: 'vs ' + alt.alternative, vol: 0, kd: 0, dfsScore: 0, urgency: '', threat: alt.threat_level || '', awarenessStage: '', _hasOverlap: _existingKws.has(txt.toLowerCase()) });
+        }
+      }
+    });
+  }
+
+  // Score all items
+  pool.forEach(function(item) {
+    item._score = scoreBlogOpportunity(item);
+  });
+
+  // Sort descending by score
+  pool.sort(function(a, b) { return b._score - a._score; });
+
+  return pool;
+}
+
+/**
+ * Add top N blog topics by score to the queue.
+ */
+async function addTopBlogTopics(count) {
+  count = count || 5;
+
+  // Check which data sources are missing
+  var hasPAA = S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0;
+  var hasGap = S.contentIntel && S.contentIntel.gap && S.contentIntel.gap.keywords && S.contentIntel.gap.keywords.length > 0;
+
+  // If either source is missing, auto-fetch before scoring
+  if (!hasPAA || !hasGap) {
+    var topBtn = document.querySelector('[onclick="addTopBlogTopics(5)"]');
+    if (topBtn) {
+      topBtn.disabled = true;
+      topBtn.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;vertical-align:middle"></span> Fetching data...';
+    }
+
+    var fetches = [];
+
+    if (!hasPAA) {
+      // Build seeds from page keywords or D0 pain drivers
+      var _paaSeeds = [];
+      var _seedEl = document.getElementById('ci-paa-seeds');
+      if (_seedEl && _seedEl.value.trim()) {
+        _paaSeeds = _seedEl.value.trim().split(',').map(function(s) { return s.trim(); }).filter(Boolean).slice(0, 8);
+      }
+      if (!_paaSeeds.length) {
+        (S.pages || []).filter(function(p) { return p.priority === 'P1' && p.primary_keyword && !p.is_structural; }).slice(0, 6).forEach(function(p) { _paaSeeds.push(p.primary_keyword); });
+      }
+      if (_paaSeeds.length) {
+        var geo = ((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '').replace(/,.*$/, '').trim();
+        var country = detectCountry((geo + '').toLowerCase());
+        fetches.push(
+          fetch('/api/paa', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keywords: _paaSeeds, country: country }) })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.questions && data.questions.length) {
+                if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+                var savedSeeds = (_seedEl && _seedEl.value.trim()) || _paaSeeds.join(', ');
+                S.contentIntel.paa = { questions: data.questions, seeds: savedSeeds, fetchedAt: Date.now() };
+              }
+            })
+            .catch(function(err) { console.warn('[Add Top 5] PAA fetch failed:', err.message); })
+        );
+      }
+    }
+
+    if (!hasGap) {
+      // Build competitor domains from research or setup
+      var _gapDomains = [];
+      var _domEl = document.getElementById('ci-gap-domains');
+      if (_domEl && _domEl.value.trim()) {
+        _gapDomains = _domEl.value.trim().split(/[\s,\n]+/).map(function(d) { return d.trim().replace(/^https?:\/\//, ''); }).filter(function(d) { return d.includes('.'); });
+      }
+      if (!_gapDomains.length) {
+        var _rc = (S.research && S.research.competitors) || [];
+        _rc.forEach(function(c) {
+          var u = (c.url || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '').trim();
+          if (!u) u = (c.name || '').toLowerCase().replace(/\s+/g, '') + '.com';
+          if (u) _gapDomains.push(u);
+        });
+        _gapDomains = _gapDomains.slice(0, 5);
+      }
+      if (!_gapDomains.length) {
+        var _sr = ((S.setup && S.setup.competitors) || '').replace(/\n/g, ' ');
+        var _sd = _sr.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
+        _gapDomains = _sd.map(function(d) { return d.replace(/^https?:\/\/(www\.)?/, ''); }).filter(Boolean).slice(0, 4);
+      }
+      if (_gapDomains.length) {
+        var gapGeo = ((S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '').replace(/,.*$/, '').trim();
+        var gapCountry = detectCountry((gapGeo + '').toLowerCase());
+        var ownKeywords = [];
+        (S.pages || []).forEach(function(p) {
+          if (p.primary_keyword) ownKeywords.push(p.primary_keyword);
+          (p.supporting_keywords || []).forEach(function(sk) { ownKeywords.push(typeof sk === 'object' ? sk.kw : sk); });
+        });
+        fetches.push(
+          fetch('/api/competitor-gap', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domains: _gapDomains, ownKeywords: ownKeywords, country: gapCountry }) })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.keywords && data.keywords.length) {
+                if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+                var cacheKey = _gapDomains.sort().join(',');
+                S.contentIntel.gap = { keywords: data.keywords, domains: _gapDomains, cacheKey: cacheKey, fetchedAt: Date.now() };
+              }
+            })
+            .catch(function(err) { console.warn('[Add Top 5] Gap fetch failed:', err.message); })
+        );
+      }
+    }
+
+    if (fetches.length) {
+      if (typeof aiBarNotify === 'function') aiBarNotify('Fetching PAA + competitor gap data...', { duration: 4000 });
+      await Promise.all(fetches);
+      scheduleSave();
+    }
+
+    // Restore button
+    if (topBtn) {
+      topBtn.disabled = false;
+      topBtn.innerHTML = '<i class="ti ti-stars" style="font-size:11px"></i> Add Top 5';
+    }
+  }
+
+  // Now score with full data
+  var pool = _buildScoredPool();
+  if (!pool.length) {
+    if (typeof aiBarNotify === 'function') aiBarNotify('No blog opportunities found — check your keywords and competitor domains', { isError: true, duration: 3000 });
+    return;
+  }
+  if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
+  if (!S.contentIntel.blogTopics) S.contentIntel.blogTopics = [];
+  var existing = new Set(S.contentIntel.blogTopics.map(function(t) { return t.text; }));
+  var added = 0;
+  for (var i = 0; i < pool.length && added < count; i++) {
+    if (!existing.has(pool[i].text)) {
+      S.contentIntel.blogTopics.push({ text: pool[i].text, source: pool[i].source, meta: pool[i].meta, _score: pool[i]._score });
+      existing.add(pool[i].text);
+      added++;
+    }
+  }
+  if (added > 0) {
+    scheduleSave();
+    renderSitemapResults(S.sitemapApproved);
+    if (typeof aiBarNotify === 'function') aiBarNotify('Added top ' + added + ' blog topics by score', { duration: 2500 });
+  } else {
+    if (typeof aiBarNotify === 'function') aiBarNotify('All top topics already queued', { duration: 2000 });
+  }
+}
+
+/**
+ * Card A: Sitemap Health Checks — persona coverage + CTA gaps.
+ */
+function _renderHealthChecksCard(allPages) {
+  var _pcPersonas = _getAllPersonas();
+  if (!_pcPersonas.length) return '';
+  var html = '';
+  html += '<div class="card" style="margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-shield-check" style="color:#7c3aed"></i> Sitemap Health Checks</div>';
+  html += '<button onclick="renderSitemapResults(S.sitemapApproved)" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> Refresh</button>';
+  html += '</div>';
+
+  // Persona coverage
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">';
+  html += '<div style="padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+  html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-user-check" style="font-size:11px;color:#7c3aed"></i> Persona Coverage</span>';
+  html += '</div>';
+  html += '<div style="padding:10px 12px;max-height:320px;overflow-y:auto">';
+  var _pcResults = _runPersonaCoverageCheck(allPages);
+  _pcResults.forEach(function(r) {
+    if (r.priority === 'parked') {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;opacity:0.5">';
+      html += '<span style="font-size:11px;color:var(--n2)"><i class="ti ti-player-pause" style="font-size:10px"></i> ' + esc(r.persona) + ' — Parked</span>';
+      html += '</div>';
+      return;
+    }
+    var covPct = Math.round((r.coverage || 0) * 100);
+    var covColor = covPct >= 75 ? 'var(--green)' : covPct >= 50 ? 'var(--warn)' : 'var(--error)';
+    html += '<div style="margin-bottom:8px">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+    html += '<span style="font-size:11.5px;font-weight:500;color:var(--dark)">' + esc(r.persona) + '</span>';
+    if (r.segment && r.segment !== r.persona) html += '<span style="font-size:10px;color:var(--n2)">(' + esc(r.segment) + ')</span>';
+    html += '<span style="font-size:10px;color:' + covColor + ';font-weight:500;margin-left:auto">' + covPct + '%</span>';
+    html += '</div>';
+    r.checks.forEach(function(c) {
+      html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0;padding-left:12px">';
+      if (c.passed) {
+        html += '<span style="font-size:10px;color:var(--green);flex-shrink:0">✓</span>';
+        html += '<span style="font-size:11px;color:var(--n3)">' + esc(c.label) + '</span>';
+      } else {
+        html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
+        html += '<span style="font-size:11px;color:var(--dark)">' + esc(c.label) + '</span>';
+        if (c.suggestion) {
+          var _sugSlug = c.suggestion.replace(/^Create:\s*\/?/, '').replace(/\s+/g, '-').toLowerCase();
+          var _sugName = c.suggestion.replace(/^Create:\s*\/?/, '');
+          var _safeSlug = _sugSlug.replace(/'/g, '');
+          var _safeName = _sugName.replace(/'/g, '');
+          html += '<button onclick="addPageFromGap(\'' + _safeSlug + '\',\'' + _safeName + '\',\'' + esc(r.persona).replace(/'/g, '') + '\')" style="background:transparent;border:1px solid rgba(168,85,247,0.3);border-radius:3px;padding:1px 6px;font-size:9px;color:#7c3aed;cursor:pointer;font-family:var(--font);white-space:nowrap;margin-left:4px;flex-shrink:0">+ Create</button>';
+        }
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  // CTA gap checks
+  var _ctaGapsInPanel = _checkCTAPageGaps(allPages);
+  if (_ctaGapsInPanel.length) {
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+    html += '<div style="padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+    html += '<span style="font-size:11px;font-weight:500;color:#c2410c;display:flex;align-items:center;gap:5px"><i class="ti ti-click" style="font-size:11px"></i> CTA Landing Page Gaps</span>';
+    html += '</div>';
+    html += '<div style="padding:10px 12px">';
+    _ctaGapsInPanel.forEach(function(g) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;padding-left:12px">';
+      html += '<span style="font-size:10px;color:var(--error);flex-shrink:0">✕</span>';
+      html += '<span style="font-size:11px;color:var(--dark)">' + esc(g.suggestion) + '</span>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  html += '</div>'; // end card
+  return html;
+}
+
+/**
+ * Card B: Blog Discovery & Queue — data sources, ranked table, queue.
+ */
+function _renderBlogDiscoveryCard(allPages) {
+  var ci = S.contentIntel || {};
+  var blogTopics = ci.blogTopics || [];
+  var paaDone = ((ci.paa && ci.paa.questions) ? ci.paa.questions.length : 0);
+  var gapDone = ((ci.gap && ci.gap.keywords) ? ci.gap.keywords.length : 0);
+
+  // Competitor domains source
+  var _researchComps = (S.research && S.research.competitors ? S.research.competitors : []).map(function(c) {
+    var u = (c.url || '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '').trim();
+    return u || (c.name || '').toLowerCase().replace(/\s+/g, '') + '.com';
+  }).filter(Boolean).slice(0, 5);
+  var _setupRaw = ((S.setup && S.setup.competitors) || '').replace(/\n/g, ' ');
+  var _setupDomains = _setupRaw.match(/(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.[a-z]{2,}(?:\.[a-z]{2,})?)/gi) || [];
+  var _setupComps = _setupDomains.map(function(d) { return d.replace(/^https?:\/\/(www\.)?/, ''); }).filter(Boolean).slice(0, 4);
+  var _existingGapEl = document.getElementById('ci-gap-domains');
+  var _savedGapDomains = _existingGapEl ? _existingGapEl.value.trim() : '';
+  var competitorStr = _savedGapDomains || (_researchComps.length ? _researchComps.join(', ') : _setupComps.join(', '));
+
+  // Build scored pool
+  var pool = _buildScoredPool();
+  var _selectedTexts = new Set(blogTopics.map(function(t) { return t.text; }));
+
+  var html = '';
+  html += '<div class="card" style="margin-bottom:8px">';
+
+  // Header with action buttons
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+  html += '<div>';
+  html += '<div style="font-size:13px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:6px"><i class="ti ti-bulb" style="color:var(--green)"></i> Blog Discovery</div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Discover, score, and queue blog topics from multiple sources</div>';
+  html += '</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  if (pool.length >= 5) {
+    var _addTopBtn = document.createElement('button');
+    html += '<button onclick="addTopBlogTopics(5)" class="btn btn-primary sm" style="font-size:11px;padding:4px 10px"><i class="ti ti-stars" style="font-size:11px"></i> Add Top 5</button>';
+  }
+  html += '</div>';
+  html += '</div>';
+
+  // ── Collapsible Data Sources ──
+  var _hasData = paaDone > 0 || gapDone > 0;
+  var _sourcesOpen = _ciSourcesExpanded || !_hasData;
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px">';
+  html += '<div onclick="_toggleCISources()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border);cursor:pointer;user-select:none">';
+  html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px">';
+  html += '<i id="ci-sources-arrow" class="ti ti-chevron-right" style="font-size:10px;transition:transform .15s;' + (_sourcesOpen ? 'transform:rotate(90deg)' : '') + '"></i>';
+  html += ' Data Sources</span>';
+  if (_hasData) {
+    html += '<span style="font-size:10px;color:var(--n2)">';
+    var _parts = [];
+    if (paaDone) _parts.push(paaDone + ' PAA questions');
+    if (gapDone) _parts.push(gapDone + ' gap keywords');
+    html += _parts.join(' | ');
+    html += '</span>';
+  }
+  html += '</div>';
+  html += '<div id="ci-sources-body" style="display:' + (_sourcesOpen ? 'block' : 'none') + '">';
+
+  // Two mini-panels: PAA + Competitor Gap
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px">';
+
+  // PAA panel
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+  html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-help-circle" style="font-size:11px;color:var(--n2)"></i> People Also Ask';
+  if (paaDone) html += '<span id="ci-paa-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">' + paaDone + '</span>';
+  else html += '<span id="ci-paa-count"></span>';
+  html += '</span>';
+  html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-paa-status"></span>';
+  html += '<button id="ci-paa-btn" onclick="runPAA()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ' + (paaDone ? 'Refresh' : 'Run') + '</button></div>';
+  html += '</div>';
+  // PAA seed dropdown
+  var _allKwPages = (S.pages || []).filter(function(p) { return p.primary_keyword; }).sort(function(a, b) { var o = { P1: 0, P2: 1, P3: 2 }; return (o[a.priority] || 3) - (o[b.priority] || 3); });
+  var _seenKws = new Set();
+  var _kwEntries = _allKwPages.reduce(function(acc, p) { if (!_seenKws.has(p.primary_keyword)) { _seenKws.add(p.primary_keyword); acc.push({ kw: p.primary_keyword, pri: p.priority || '' }); } return acc; }, []);
+  var _existingSeedEl = document.getElementById('ci-paa-seeds');
+  var paaSeeds = (_existingSeedEl && _existingSeedEl.value.trim()) ? _existingSeedEl.value.trim() : (_kwEntries[0] ? _kwEntries[0].kw : '');
+  var _d0PainSeeds = [];
+  var _d0Aud = S.strategy && S.strategy.audience;
+  if (_d0Aud && _d0Aud.segments) {
+    _d0Aud.segments.forEach(function(seg) {
+      if (seg.pain_driver && !_seenKws.has(seg.pain_driver)) {
+        _seenKws.add(seg.pain_driver);
+        _d0PainSeeds.push({ kw: seg.pain_driver, pri: 'D0' });
+      }
+    });
+  }
+  var _allKwEntries = _kwEntries.concat(_d0PainSeeds);
+  var _kwOptions = _allKwEntries.map(function(e) { return '<option value="' + esc(e.kw) + '"' + (e.kw === paaSeeds ? ' selected' : '') + '>' + esc(e.kw) + (e.pri ? ' (' + e.pri + ')' : '') + '</option>'; }).join('');
+  html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+  html += '<select id="ci-paa-seeds" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font);cursor:pointer">' + _kwOptions + '</select>';
+  html += '</div>';
+  html += '<div id="ci-paa-panel" style="max-height:220px;overflow-y:auto">';
+  if (!paaDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Select a keyword above and click Run.</div>';
+  html += '</div></div>';
+
+  // Competitor Gap panel
+  html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border)">';
+  html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px"><i class="ti ti-git-compare" style="font-size:11px;color:var(--n2)"></i> Competitor Gaps';
+  if (gapDone) html += '<span id="ci-gap-count" style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3);margin-left:4px">' + gapDone + '</span>';
+  else html += '<span id="ci-gap-count"></span>';
+  html += '</span>';
+  html += '<div style="display:flex;align-items:center;gap:6px"><span id="ci-gap-status"></span>';
+  html += '<button id="ci-gap-btn" onclick="runCompetitorGap()" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);display:flex;align-items:center;gap:4px"><i class="ti ti-refresh" style="font-size:9px"></i> ' + (gapDone ? 'Refresh' : 'Run') + '</button></div>';
+  html += '</div>';
+  html += '<div style="padding:5px 10px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.02)">';
+  html += '<input id="ci-gap-domains" value="' + esc(competitorStr) + '" placeholder="e.g. brainlabs.com, jellyfish.com" style="width:100%;font-size:11px;color:var(--dark);background:transparent;border:none;outline:none;font-family:var(--font)" />';
+  html += '</div>';
+  html += '<div id="ci-gap-panel" style="max-height:220px;overflow-y:auto">';
+  if (!gapDone) html += '<div style="padding:12px;font-size:11px;color:var(--n2)">Enter competitor domains above and click Run.</div>';
+  html += '</div></div>';
+
+  html += '</div>'; // end two-col grid
+  html += '</div>'; // end sources body
+  html += '</div>'; // end sources card
+
+  // ── Ranked Opportunities Table ──
+  if (pool.length > 0) {
+    // Source filter tabs
+    var _srcCounts = { all: pool.length, paa: 0, gap: 0, D8: 0, D0: 0 };
+    pool.forEach(function(item) { if (_srcCounts[item.source] !== undefined) _srcCounts[item.source]++; });
+
+    html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:4px">';
+    html += '<span style="font-size:11px;font-weight:500;color:var(--dark)">Ranked Opportunities <span style="background:var(--n1);border-radius:10px;padding:1px 6px;font-size:10px;color:var(--n3)">' + pool.length + '</span></span>';
+    html += '<div style="display:flex;gap:4px;align-items:center">';
+    var _filters = [
+      { key: 'all', label: 'All' },
+      { key: 'paa', label: 'PAA' },
+      { key: 'gap', label: 'Gap' },
+      { key: 'D8', label: 'D8' },
+      { key: 'D0', label: 'D0' }
+    ];
+    _filters.forEach(function(f) {
+      if (f.key !== 'all' && !_srcCounts[f.key]) return;
+      html += '<button onclick="filterBlogPool(\'' + f.key + '\')" data-ci-filter="' + f.key + '" style="background:transparent;border:1px solid var(--border);border-radius:3px;padding:1px 7px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2)">' + f.label + '</button>';
+    });
+    html += '</div>';
+    html += '</div>';
+
+    // Table header
+    html += '<div id="ci-pool-table" style="max-height:340px;overflow-y:auto">';
+    html += '<div style="display:grid;grid-template-columns:28px 36px 1fr 50px 46px;gap:4px;padding:4px 12px;border-bottom:1px solid var(--border);position:sticky;top:0;background:white;z-index:1">';
+    html += '<span style="font-size:9.5px;color:var(--n2);text-align:center">#</span>';
+    html += '<span style="font-size:9.5px;color:var(--n2)">Source</span>';
+    html += '<span style="font-size:9.5px;color:var(--n2)">Topic</span>';
+    html += '<span style="font-size:9.5px;color:var(--n2);text-align:right">Score</span>';
+    html += '<span></span>';
+    html += '</div>';
+
+    pool.forEach(function(item, idx) {
+      var isAdded = _selectedTexts.has(item.text);
+      var srcColor = item.source === 'paa' ? 'var(--green)' : item.source === 'gap' ? 'var(--n2)' : item.source === 'D8' ? '#7c3aed' : '#3b82f6';
+      var safeText = item.text.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+      var scoreColor = item._score >= 60 ? 'var(--green)' : item._score >= 40 ? 'var(--warn)' : 'var(--n2)';
+      html += '<div class="ci-pool-row" data-ci-src="' + item.source + '" style="display:grid;grid-template-columns:28px 36px 1fr 50px 46px;gap:4px;align-items:center;padding:5px 12px;border-bottom:1px solid rgba(0,0,0,0.04)">';
+      html += '<span style="font-size:10px;color:var(--n2);text-align:center">' + (idx + 1) + '</span>';
+      html += '<span style="font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;color:' + srcColor + '">' + item.source.toUpperCase() + '</span>';
+      html += '<div style="display:flex;align-items:center;gap:6px;min-width:0">';
+      html += '<span style="flex:1;font-size:11.5px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + safeText + '">' + esc(item.text) + '</span>';
+      if (item.meta && item.source !== 'gap') html += '<span style="font-size:10px;color:var(--n2);white-space:nowrap;flex-shrink:0">' + esc(item.meta) + '</span>';
+      if (item.source === 'gap' && item.vol) html += '<span style="font-size:10px;color:var(--n2);white-space:nowrap;flex-shrink:0">' + item.vol.toLocaleString() + ' vol</span>';
+      html += '</div>';
+      html += '<span style="font-size:11px;font-weight:500;color:' + scoreColor + ';text-align:right">' + item._score + '</span>';
+      if (isAdded) {
+        html += '<span style="font-size:10px;color:var(--green);text-align:center">✓</span>';
+      } else {
+        html += '<button onclick="addBlogTopic(\'' + item.source + '\',\'' + safeText + '\',\'' + esc(item.meta || '').replace(/'/g, '') + '\',this,' + item._score + ')" style="background:transparent;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;font-family:var(--font);color:var(--n2);white-space:nowrap">+ Blog</button>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // ── Queued Topics ──
+  html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg)">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">';
+  html += '<div style="display:flex;align-items:center;gap:6px"><i class="ti ti-notes" style="font-size:12px;color:var(--n2)"></i><span style="font-size:11px;font-weight:500;color:var(--dark)">Queued</span><span id="ci-queue-count" style="font-size:10px;color:var(--n2)">(' + blogTopics.length + ')</span></div>';
+  html += '<div id="ci-queue-actions"></div>';
+  html += '</div>';
+  html += '<div id="ci-topics-panel"></div>';
+  html += '</div>';
+
+  html += '</div>'; // end card
+  return html;
+}
+
+/**
+ * Filter the ranked opportunities table by source.
+ */
+function filterBlogPool(src) {
+  var rows = document.querySelectorAll('.ci-pool-row');
+  rows.forEach(function(row) {
+    if (src === 'all') {
+      row.style.display = '';
+    } else {
+      row.style.display = row.getAttribute('data-ci-src') === src ? '' : 'none';
+    }
+  });
+  // Highlight active filter
+  var btns = document.querySelectorAll('[data-ci-filter]');
+  btns.forEach(function(b) {
+    if (b.getAttribute('data-ci-filter') === src) {
+      b.style.background = 'var(--dark)';
+      b.style.color = 'white';
+      b.style.borderColor = 'var(--dark)';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--n2)';
+      b.style.borderColor = 'var(--border)';
+    }
+  });
+}
 
 async function runPAA() {
   const btn    = document.getElementById('ci-paa-btn');
@@ -3657,12 +4019,14 @@ function renderGapPanel() {
   renderBlogTopics();
 }
 
-function addBlogTopic(source, text, meta, btn) {
+function addBlogTopic(source, text, meta, btn, score) {
   if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
   if (!S.contentIntel.blogTopics) S.contentIntel.blogTopics = [];
-  const exists = S.contentIntel.blogTopics.some(t => t.text === text);
+  var exists = S.contentIntel.blogTopics.some(function(t) { return t.text === text; });
   if (exists) return;
-  S.contentIntel.blogTopics.push({ text, source, meta });
+  var entry = { text: text, source: source, meta: meta };
+  if (score) entry._score = score;
+  S.contentIntel.blogTopics.push(entry);
   scheduleSave();
   // Update button in-place
   if (btn) { btn.textContent = '✓ added'; btn.disabled = true; btn.style.color = 'var(--green)'; btn.style.borderColor = 'var(--green)'; }
@@ -3678,39 +4042,52 @@ function removeBlogTopic(text) {
 }
 
 function renderCIQueueActions() {
-  const el = document.getElementById('ci-queue-actions');
+  var el = document.getElementById('ci-queue-actions');
   if (!el) return;
-  const topics = S.contentIntel?.blogTopics || [];
+  var topics = (S.contentIntel && S.contentIntel.blogTopics) || [];
   if (!topics.length) { el.innerHTML = ''; return; }
-  const existingSlugs = new Set((S.pages||[]).map(p=>p.slug));
-  const newCount = topics.filter(t => !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''))).length;
-  let h = '<div style="display:flex;gap:6px;align-items:center">';
+  var existingSlugs = new Set((S.pages || []).map(function(p) { return p.slug; }));
+  var newCount = topics.filter(function(t) { return !existingSlugs.has('blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')); }).length;
+  var h = '<div style="display:flex;gap:6px;align-items:center">';
   if (newCount > 0) {
-    h += `<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ${newCount} to Copy Queue</button>`;
+    h += '<button class="btn btn-primary sm" onclick="addBlogPagesToSitemap()"><i class="ti ti-plus"></i> Add ' + newCount + ' to Sitemap</button>';
   } else {
-    h += `<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>`;
+    h += '<span style="font-size:10px;color:var(--green);display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i> All added</span>';
   }
-  h += `<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>`;
+  h += '<button id="ci-copy-btn" class="btn btn-ghost sm" onclick="copyBlogTopics()"><i class="ti ti-copy"></i> Copy</button>';
   h += '</div>';
   el.innerHTML = h;
 }
 
+function _srcBadgeColor(source) {
+  if (source === 'paa') return 'var(--green)';
+  if (source === 'gap') return 'var(--n2)';
+  if (source === 'D8') return '#7c3aed';
+  if (source === 'D0') return '#3b82f6';
+  return 'var(--n2)';
+}
+
 function renderBlogTopics() {
-  const el = document.getElementById('ci-topics-panel');
+  var el = document.getElementById('ci-topics-panel');
   if (!el) return;
-  const topics = S.contentIntel?.blogTopics || [];
+  var topics = (S.contentIntel && S.contentIntel.blogTopics) || [];
   renderCIQueueActions();
+  // Update queue count badge
+  var countEl = document.getElementById('ci-queue-count');
+  if (countEl) countEl.textContent = '(' + topics.length + ')';
   if (!topics.length) {
-    el.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:4px 0">No topics selected yet — click + Blog on any question or gap keyword above.</div>';
+    el.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:4px 0">No topics queued yet — click + Blog on any opportunity above, or use Add Top 5.</div>';
     return;
   }
-  let h = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">';
-  topics.forEach(t => {
-    const srcColor = t.source === 'paa' ? 'var(--green)' : 'var(--n2)';
-    h += `<div style="display:inline-flex;align-items:center;gap:5px;background:var(--n1);border:1px solid var(--border);border-radius:14px;padding:3px 8px 3px 10px;font-size:11px;color:var(--dark);max-width:320px">`;
-    h += `<span style="font-size:9px;color:${srcColor};font-weight:500;text-transform:uppercase;letter-spacing:.04em">${t.source==='paa'?'PAA':'GAP'}</span>`;
-    h += `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.text)}">${esc(t.text)}</span>`;
-    h += `<button onclick="removeBlogTopic('${t.text.replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0;line-height:1;margin-left:2px" title="Remove">✕</button>`;
+  var h = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">';
+  topics.forEach(function(t) {
+    var srcColor = _srcBadgeColor(t.source);
+    var scoreStr = t._score ? ' ' + t._score : '';
+    h += '<div style="display:inline-flex;align-items:center;gap:5px;background:var(--n1);border:1px solid var(--border);border-radius:14px;padding:3px 8px 3px 10px;font-size:11px;color:var(--dark);max-width:340px">';
+    h += '<span style="font-size:9px;color:' + srcColor + ';font-weight:500;text-transform:uppercase;letter-spacing:.04em">' + t.source.toUpperCase() + '</span>';
+    if (t._score) h += '<span style="font-size:9px;color:var(--n2);font-weight:500">' + t._score + '</span>';
+    h += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(t.text) + '">' + esc(t.text) + '</span>';
+    h += '<button onclick="removeBlogTopic(\'' + t.text.replace(/'/g, '') + '\')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:0;line-height:1;margin-left:2px" title="Remove">✕</button>';
     h += '</div>';
   });
   h += '</div>';
@@ -3728,16 +4105,17 @@ function copyBlogTopics() {
 }
 
 function addBlogPagesToSitemap() {
-  if (!S.contentIntel?.blogTopics?.length) return;
-  const existingSlugs = new Set((S.pages||[]).map(p => p.slug));
-  let added = 0;
-  S.contentIntel.blogTopics.forEach(t => {
-    const slug = 'blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0, 60);
+  if (!S.contentIntel || !S.contentIntel.blogTopics || !S.contentIntel.blogTopics.length) return;
+  var existingSlugs = new Set((S.pages || []).map(function(p) { return p.slug; }));
+  var added = 0;
+  var _sourceLabels = { paa: 'People Also Ask', gap: 'Competitor Gap', D8: 'D8 Content Hook', D0: 'D0 Audience Signal' };
+  S.contentIntel.blogTopics.forEach(function(t) {
+    var slug = 'blog/' + t.text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
     if (existingSlugs.has(slug)) return;
     existingSlugs.add(slug);
     S.pages.push({
       page_name: t.text,
-      slug,
+      slug: slug,
       page_type: 'blog',
       is_structural: false,
       priority: 'P3',
@@ -3746,7 +4124,7 @@ function addBlogPagesToSitemap() {
       supporting_keywords: [],
       search_intent: 'informational',
       word_count_target: 1200,
-      notes: `Source: ${t.source === 'paa' ? 'People Also Ask' : 'Competitor Gap'}${t.meta ? ' — ' + t.meta : ''}`,
+      notes: 'Source: ' + (_sourceLabels[t.source] || t.source) + (t.meta ? ' — ' + t.meta : '') + (t._score ? ' (score: ' + t._score + ')' : ''),
       target_persona: '',
       voice_overlay: 'base',
       awareness_stage: _inferAwarenessStage({ page_type: 'blog', search_intent: 'informational' })
