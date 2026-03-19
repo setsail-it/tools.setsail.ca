@@ -314,6 +314,7 @@ function buildProposalText() {
   var r = S.research || {};
   var st = S.strategy || {};
   var si = st.sales_intel || {};
+  var nar = st.narrative || {};
   var setup = S.setup || {};
   var clientName = r.client_name || setup.client || 'Client';
   var date = new Date().toLocaleDateString('en-CA', { year:'numeric', month:'long', day:'numeric' });
@@ -321,17 +322,41 @@ function buildProposalText() {
   var md = '# ' + clientName + ' \u2014 Growth Proposal\n';
   md += '*Prepared by Setsail Marketing | ' + date + '*\n\n';
 
-  // Executive Summary
+  // Executive Summary — pull from D9 pitch + StoryBrand + D8 narrative
   md += '## Executive Summary\n\n';
-  if (si.pitch_angle) md += si.pitch_angle + '\n\n';
+  if (si.pitch_angle) md += '**' + si.pitch_angle + '**\n\n';
   if (si.sales_storybrand && si.sales_storybrand.hero) {
     md += si.sales_storybrand.hero + ' ';
     if (si.sales_storybrand.external_problem) md += si.sales_storybrand.external_problem + ' ';
-    if (si.sales_storybrand.success_transformation) md += 'Our goal: ' + si.sales_storybrand.success_transformation;
+    if (si.sales_storybrand.success_transformation) md += '\n\n**Our goal:** ' + si.sales_storybrand.success_transformation;
     md += '\n\n';
   }
+  // Pull from D8 narrative as enrichment
+  if (nar.storybrand && nar.storybrand.hero && !si.sales_storybrand) {
+    md += '*Your target customer:* ' + nar.storybrand.hero + '\n\n';
+  }
 
-  // Situation Analysis
+  // The Challenge — from D9 StoryBrand problems + D8 client narrative
+  var hasChallenge = (si.sales_storybrand && (si.sales_storybrand.internal_problem || si.sales_storybrand.philosophical_problem)) || (nar.storybrand && nar.storybrand.external_problem);
+  if (hasChallenge) {
+    md += '## The Challenge\n\n';
+    if (si.sales_storybrand) {
+      if (si.sales_storybrand.internal_problem) md += si.sales_storybrand.internal_problem + '\n\n';
+      if (si.sales_storybrand.philosophical_problem) md += '*' + si.sales_storybrand.philosophical_problem + '*\n\n';
+    }
+    // D8 context: what their customers face (shows we understand their market)
+    if (nar.storybrand && nar.storybrand.external_problem) {
+      md += '**What your customers are telling us:** ' + nar.storybrand.external_problem + '\n\n';
+    }
+  }
+
+  // Why Now — urgency triggers from D9
+  if (si.why_now) {
+    md += '## Why Now\n\n';
+    md += si.why_now + '\n\n';
+  }
+
+  // Situation Analysis — metrics + economics
   md += '## Situation Analysis\n\n';
   var snap = S.snapshot || {};
   var dm = snap.domainMetrics || {};
@@ -343,13 +368,43 @@ function buildProposalText() {
     if (st.unit_economics.cpl) md += '- **Current CPL:** $' + st.unit_economics.cpl + '\n';
     if (st.unit_economics.cac) md += '- **Current CAC:** $' + st.unit_economics.cac + '\n';
     if (st.unit_economics.ltv) md += '- **Customer LTV:** $' + st.unit_economics.ltv + '\n';
+    if (st.unit_economics.ltv_cac_ratio) md += '- **LTV:CAC Ratio:** ' + st.unit_economics.ltv_cac_ratio + 'x\n';
   }
   if (st.demand_validation && st.demand_validation.total_monthly_volume) {
     md += '- **Total Addressable Search Volume:** ' + Number(st.demand_validation.total_monthly_volume).toLocaleString() + '/mo\n';
   }
+  // Competitor context
+  if (dm.competitors && dm.competitors.length) {
+    md += '\n**Competitive Landscape:**\n';
+    dm.competitors.slice(0, 5).forEach(function(c) {
+      md += '- ' + (c.domain || c.url || '') + (c.dr ? ' (DR ' + c.dr + ')' : '') + '\n';
+    });
+  }
   md += '\n';
 
-  // Recommended Approach
+  // Audience & Positioning — from D0 + D2
+  if (st.audience && st.audience.segments && st.audience.segments.length) {
+    md += '## Target Audience\n\n';
+    st.audience.segments.slice(0, 4).forEach(function(seg) {
+      md += '- **' + (seg.segment_name || '') + ':** ' + (seg.description || seg.segment_name || '') + '\n';
+    });
+    md += '\n';
+  }
+
+  // Messaging direction — from D8 pillars (what resonates with THEIR customers)
+  if (nar.messaging_pillars && nar.messaging_pillars.length) {
+    md += '## Messaging Direction\n\n';
+    md += 'Based on our analysis, these are the key messages that will resonate with your target audience:\n\n';
+    nar.messaging_pillars.slice(0, 3).forEach(function(p, i) {
+      md += (i + 1) + '. **' + (p.pillar || '') + '**\n';
+      if (p.evidence && p.evidence.length) {
+        p.evidence.slice(0, 2).forEach(function(e) { md += '   - ' + e + '\n'; });
+      }
+    });
+    md += '\n';
+  }
+
+  // Recommended Approach — phased from Gantt
   md += '## Recommended Approach\n\n';
   var ganttItems = typeof _buildGanttItems === 'function' ? _buildGanttItems(st) : [];
   if (ganttItems.length) {
@@ -362,7 +417,10 @@ function buildProposalText() {
     Object.keys(phases).sort().forEach(function(p) {
       md += '**Phase ' + (parseInt(p) + 1) + ':**\n';
       phases[p].forEach(function(item) {
-        md += '- ' + item.label + (item.duration ? ' (' + item.duration + ')' : '') + '\n';
+        var costLabel = '';
+        if (item.cost_monthly) costLabel = ' \u2014 $' + Number(item.cost_monthly).toLocaleString() + '/mo';
+        else if (item.cost_project) costLabel = ' \u2014 $' + Number(item.cost_project).toLocaleString();
+        md += '- ' + item.label + (item.duration ? ' (' + item.duration + ')' : '') + costLabel + '\n';
       });
       md += '\n';
     });
@@ -372,13 +430,16 @@ function buildProposalText() {
   md += '## Investment Summary\n\n';
   var investText = typeof buildInvestmentText === 'function' ? buildInvestmentText() : '';
   if (investText) {
-    // Strip the header from investText since we have our own
     md += investText.replace(/^#[^\n]*\n/, '').replace(/^\*[^\n]*\n/, '') + '\n';
   }
 
-  // Why Setsail
+  // Why Setsail — from D9 + case studies + certs
   md += '## Why Setsail\n\n';
   if (si.why_setsail) md += si.why_setsail + '\n\n';
+  // D9 guide authority
+  if (si.sales_storybrand && si.sales_storybrand.guide_authority) {
+    md += '**Our Credentials:** ' + si.sales_storybrand.guide_authority + '\n\n';
+  }
   if (r.case_studies && r.case_studies.length) {
     md += '**Relevant Results:**\n';
     r.case_studies.slice(0, 5).forEach(function(cs) {
@@ -388,6 +449,24 @@ function buildProposalText() {
   }
   if (r.awards_certifications && r.awards_certifications.length) {
     md += '**Certifications:** ' + r.awards_certifications.join(', ') + '\n\n';
+  }
+
+  // Success Vision — what 12 months looks like
+  if (si.sales_storybrand && si.sales_storybrand.success_transformation) {
+    md += '## What Success Looks Like\n\n';
+    md += si.sales_storybrand.success_transformation + '\n\n';
+    if (si.sales_storybrand.failure_stakes) {
+      md += '*Without action:* ' + si.sales_storybrand.failure_stakes + '\n\n';
+    }
+  }
+
+  // Next Steps — from D9 plan + CTAs
+  if (si.sales_storybrand && si.sales_storybrand.plan && si.sales_storybrand.plan.length) {
+    md += '## Next Steps\n\n';
+    si.sales_storybrand.plan.forEach(function(step, i) {
+      md += (i + 1) + '. ' + step + '\n';
+    });
+    md += '\n';
   }
 
   // Terms
@@ -8282,7 +8361,12 @@ function _renderNarrative(st) {
 function _renderSalesIntel(st) {
   var si = st.sales_intel || {};
   if (!si.sales_storybrand && !si.sales_pillars) {
-    return '<div style="padding:40px;text-align:center;color:var(--n2)"><i class="ti ti-briefcase" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.3"></i><div style="font-size:13px">Run D9 Sales Intelligence to generate pitch framework, proposal data, and objection prep.</div></div>';
+    return '<div style="padding:48px 32px;text-align:center;border:2px dashed var(--border);border-radius:12px;background:rgba(0,0,0,0.01)">'
+      + '<i class="ti ti-briefcase" style="font-size:40px;display:block;margin-bottom:16px;color:var(--green);opacity:0.4"></i>'
+      + '<div style="font-size:15px;font-weight:500;color:var(--dark);margin-bottom:8px">Sales Intelligence Not Generated Yet</div>'
+      + '<div style="font-size:12.5px;color:var(--n2);max-width:420px;margin:0 auto 20px;line-height:1.5">Run D9 to generate the pitch framework, sales StoryBrand, objection cheat sheet, deal stage talk tracks, and proposal data for this client.</div>'
+      + '<button class="btn btn-primary sm" onclick="runDiagnostic(9).then(function(){renderStrategyTabContent();})" style="font-size:12px;padding:8px 20px"><i class="ti ti-sparkles" style="margin-right:6px"></i>Generate Sales Intelligence</button>'
+      + '</div>';
   }
   var html = '';
 
@@ -9120,10 +9204,20 @@ function _renderOutput(st) {
 
   // Sales Intelligence view
   if (_outputView === 'sales') {
+    var _si = st.sales_intel || {};
+    var _hasD9 = !!(_si.sales_storybrand || _si.sales_pillars);
+
+    // Re-generate button when D9 data exists
+    if (_hasD9) {
+      html += '<div style="display:flex;gap:6px;margin-bottom:14px">';
+      html += '<button class="btn btn-ghost sm" onclick="runDiagnostic(9).then(function(){renderStrategyTabContent();})" data-tip="Re-run D9 to refresh sales intelligence"><i class="ti ti-refresh" style="font-size:11px;margin-right:4px"></i>Re-generate Sales Intel</button>';
+      html += '</div>';
+    }
+
     html += _renderSalesIntel(st);
 
-    // Proposal preview
-    var proposalMd = buildProposalText();
+    // Proposal preview — only show when D9 has data
+    var proposalMd = _hasD9 ? buildProposalText() : '';
     if (proposalMd) {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px">';
       html += '<div style="font-size:12px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Proposal Preview</div>';
