@@ -1030,11 +1030,15 @@ let _sitemapCatTab = 'all'; // 'all' | 'service' | 'location' | 'blog' | 'core'
 let _sitemapIssuesExpanded = false;
 let _sitemapWorkflowIssues = null;
 
+var _ctxUpdateTimer = null;
 function scheduleSave() {
   if (!S.projectId) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveProject, 1500);
   showSaveIndicator('saving');
+  // Debounced context bar update — refreshes 2s after last state change
+  clearTimeout(_ctxUpdateTimer);
+  _ctxUpdateTimer = setTimeout(function() { if (typeof _updateContextBar === 'function') _updateContextBar(); }, 2000);
 }
 
 var _saveInFlight = false;
