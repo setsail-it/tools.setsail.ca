@@ -1193,12 +1193,41 @@ function _mountIssuesPanel() {
 }
 
 // Clean AI JSON responses — strip markdown fences, control chars, trailing commas
+// Then attempt parse with progressive repair if initial parse fails
 function _cleanAiJson(raw) {
   return raw
     .replace(/```json\s*/gi, '').replace(/```\s*/g, '')
     .replace(/[\x00-\x1F\x7F]/g, ' ')  // strip control characters
     .replace(/,\s*([\]}])/g, '$1')       // trailing commas
     .trim();
+}
+
+function _parseAiJson(raw) {
+  var clean = _cleanAiJson(raw);
+  // Attempt 1: direct parse
+  try { return JSON.parse(clean); } catch(e) {}
+  // Attempt 2: extract array between first [ and last ]
+  try {
+    var s = clean.indexOf('['); var e = clean.lastIndexOf(']');
+    if (s >= 0 && e > s) return JSON.parse(clean.slice(s, e + 1));
+  } catch(e) {}
+  // Attempt 3: fix truncated response — find last complete object and close array
+  try {
+    var s2 = clean.indexOf('[');
+    if (s2 >= 0) {
+      var lastBrace = clean.lastIndexOf('}');
+      if (lastBrace > s2) return JSON.parse(clean.slice(s2, lastBrace + 1) + ']');
+    }
+  } catch(e) {}
+  // Attempt 4: extract individual objects with regex
+  try {
+    var matches = clean.match(/\{[^{}]*\}/g);
+    if (matches && matches.length) {
+      var arr = matches.map(function(m) { try { return JSON.parse(m); } catch(e) { return null; } }).filter(Boolean);
+      if (arr.length) return arr;
+    }
+  } catch(e) {}
+  throw new Error('Could not parse AI response as JSON');
 }
 
 // AI-powered issue fixing
@@ -1229,7 +1258,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result = '';
       await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result += chunk; }, 4096, 'kw-fix');
-      var parsed = JSON.parse(_cleanAiJson(result));
+      var parsed = _parseAiJson(result);
       var assigned = 0;
       if (Array.isArray(parsed)) {
         parsed.forEach(function(item) {
@@ -1271,7 +1300,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result2 = '';
       await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 += chunk; }, 4096, 'vol-fix');
-      var parsed2 = JSON.parse(_cleanAiJson(result2));
+      var parsed2 = _parseAiJson(result2);
       var fixed = 0;
       if (Array.isArray(parsed2)) {
         parsed2.forEach(function(item) {
@@ -1314,7 +1343,7 @@ async function _aiFixIssue(fixId) {
     try {
       var result3 = '';
       await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 += chunk; }, 2048, 'cannibal-fix');
-      var parsed3 = JSON.parse(_cleanAiJson(result3));
+      var parsed3 = _parseAiJson(result3);
       var resolved = 0;
       if (Array.isArray(parsed3)) {
         parsed3.forEach(function(item) {
@@ -2231,7 +2260,7 @@ async function _generateGoalBatch(indices) {
     + '\n\nReturn ONLY a JSON array [{"slug":"...","goal":"..."}]. No markdown, no explanation.';
 
   var result = await callClaude(sys, user, null, 4096, 'goals-batch');
-  var parsed = JSON.parse(_cleanAiJson(result));
+  var parsed = _parseAiJson(result);
   var count = 0;
   if (Array.isArray(parsed)) {
     parsed.forEach(function(item) {
