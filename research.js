@@ -1461,11 +1461,44 @@ async function pullGMB() {
   }
 }
 
+async function scrapeWebsiteStructured() {
+  var btn = document.getElementById('scrape-website-btn');
+  var statusEl = document.getElementById('scrape-website-status');
+  if (!S.setup || !S.setup.url) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">No website URL set in Setup</span>';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block"></span> Scraping...'; }
+  if (statusEl) statusEl.textContent = '';
+  try {
+    var result = await _fetchStructuredScrape(true);
+    if (result) {
+      var parts = [];
+      if (result.social_profiles && result.social_profiles.length) parts.push(result.social_profiles.length + ' social profiles');
+      if (result.faqs && result.faqs.length) parts.push(result.faqs.length + ' FAQs');
+      if (result.reviews && result.reviews.length) parts.push(result.reviews.length + ' reviews');
+      if (result.blog_posts && result.blog_posts.length) parts.push(result.blog_posts.length + ' blog posts');
+      if (result.case_studies && result.case_studies.length) parts.push(result.case_studies.length + ' case studies');
+      if (result.team_members && result.team_members.length) parts.push(result.team_members.length + ' team members');
+      if (result.services && result.services.length) parts.push(result.services.length + ' services');
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)">' + (parts.length ? 'Found: ' + parts.join(', ') : 'No structured data found') + '</span>';
+      renderResearch();
+    } else {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--n2)">No data found</span>';
+    }
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + (e.message || '').slice(0,60) + '</span>';
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-world-search"></i> Scrape Website'; }
+}
+
 function renderRSchema(r) {
   let html = rTabActions('schema');
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'
     + '<button class="btn btn-ghost" onclick="pullGMB()" id="gmb-pull-btn"><i class="ti ti-brand-google"></i> Pull from Google Business Profile</button>'
     + '<span id="gmb-pull-status" style="font-size:12px;color:var(--n2)"></span>'
+    + '<button class="btn btn-ghost" onclick="scrapeWebsiteStructured()" id="scrape-website-btn"><i class="ti ti-world-search"></i> Scrape Website</button>'
+    + '<span id="scrape-website-status" style="font-size:12px;color:var(--n2)"></span>'
     + '</div>';
   html += rSec('Business Info',
     rField('schema_business_type','Business Type', r.schema_business_type, 'select', {options:['LocalBusiness','Organization']}) +
@@ -1554,8 +1587,8 @@ async function enrichOneTab(tab) {
 }
 
 async function enrichAll(forceAll, startFrom) {
-  const steps = ['gmb','website','brand-assets','business','audience','client-pain','brand','schema','competitors'];
-  const stepLabels = { gmb:'Google Business Profile', website:'Website Scrape', 'brand-assets':'Brand Assets', business:'Business', audience:'Audience', 'client-pain':'Client Pain', brand:'Brand', schema:'Schema & Local', competitors:'Competitors' };
+  const steps = ['gmb','website','brand-assets','structured-scrape','business','audience','client-pain','brand','schema','competitors'];
+  const stepLabels = { gmb:'Google Business Profile', website:'Website Scrape', 'brand-assets':'Brand Assets', 'structured-scrape':'Structured Data Scrape', business:'Business', audience:'Audience', 'client-pain':'Client Pain', brand:'Brand', schema:'Schema & Local', competitors:'Competitors' };
   const btn = document.getElementById('research-enrich-btn');
   const statusEl = document.getElementById('research-enrich-status');
   const msgEl = document.getElementById('research-enrich-msg');
@@ -1637,6 +1670,32 @@ async function enrichAll(forceAll, startFrom) {
         }
       } catch(e) {
         if (msgEl) msgEl.textContent = 'Brand asset extraction skipped — ' + (e.message || '').slice(0,40);
+      }
+      await new Promise(function(res){ setTimeout(res, 800); });
+      continue;
+    }
+
+    // Step 3: Structured website scrape (social links, FAQs, reviews, blog, team, services)
+    if (step === 'structured-scrape') {
+      try {
+        _cachedStructuredScrape = null;
+        var scrapeResult = await _fetchStructuredScrape(true);
+        if (scrapeResult) {
+          _enrichDone.add('structured-scrape');
+          var _sp = [];
+          if (scrapeResult.social_profiles && scrapeResult.social_profiles.length) _sp.push(scrapeResult.social_profiles.length + ' social profiles');
+          if (scrapeResult.faqs && scrapeResult.faqs.length) _sp.push(scrapeResult.faqs.length + ' FAQs');
+          if (scrapeResult.reviews && scrapeResult.reviews.length) _sp.push(scrapeResult.reviews.length + ' reviews');
+          if (scrapeResult.blog_posts && scrapeResult.blog_posts.length) _sp.push(scrapeResult.blog_posts.length + ' blog posts');
+          if (scrapeResult.case_studies && scrapeResult.case_studies.length) _sp.push(scrapeResult.case_studies.length + ' case studies');
+          if (scrapeResult.team_members && scrapeResult.team_members.length) _sp.push(scrapeResult.team_members.length + ' team members');
+          if (scrapeResult.services && scrapeResult.services.length) _sp.push(scrapeResult.services.length + ' services');
+          if (msgEl) msgEl.textContent = 'Structured scrape: ' + (_sp.length ? _sp.join(', ') : 'no structured data found') + ' \u2713';
+        } else {
+          if (msgEl) msgEl.textContent = 'Structured scrape — no data found, continuing';
+        }
+      } catch(e) {
+        if (msgEl) msgEl.textContent = 'Structured scrape skipped — ' + (e.message || '').slice(0,40);
       }
       await new Promise(function(res){ setTimeout(res, 800); });
       continue;
@@ -1785,6 +1844,109 @@ async function _fetchWebsiteText() {
   return _cachedWebsiteText;
 }
 
+// Cached structured scrape result for enrichment context
+var _cachedStructuredScrape = null;
+
+async function _fetchStructuredScrape(force) {
+  if (_cachedStructuredScrape && !force) return _cachedStructuredScrape;
+  var siteUrl = (S.setup && S.setup.url) || '';
+  if (!siteUrl) { _cachedStructuredScrape = null; return null; }
+  try {
+    var res = await fetch('/api/scrape-structured', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: siteUrl })
+    });
+    if (!res.ok) { console.warn('[structured-scrape] HTTP', res.status); return null; }
+    var data = await res.json();
+    _cachedStructuredScrape = data;
+    // Auto-populate research fields from deterministic scrape
+    if (!S.research) S.research = researchDefaults();
+    var r = S.research;
+    // Social profiles — merge, deduplicate by platform
+    if (data.social_profiles && data.social_profiles.length) {
+      if (!r.social_profiles || !r.social_profiles.length) {
+        r.social_profiles = data.social_profiles.map(function(sp) { return { platform: sp.platform, url: sp.url }; });
+      } else {
+        var existing = new Set(r.social_profiles.map(function(sp) { return sp.platform; }));
+        data.social_profiles.forEach(function(sp) {
+          if (!existing.has(sp.platform)) r.social_profiles.push({ platform: sp.platform, url: sp.url });
+        });
+      }
+    }
+    // FAQs
+    if (data.faqs && data.faqs.length && (!r.current_faqs || !r.current_faqs.length)) {
+      r.current_faqs = data.faqs.map(function(f) { return { question: f.question, answer: f.answer }; });
+    }
+    // Reviews
+    if (data.reviews && data.reviews.length && (!r.reviews || !r.reviews.length)) {
+      r.reviews = data.reviews.map(function(rv) { return { author_name: rv.author_name || '', rating_value: rv.rating_value || '', review_body_short: rv.review_body_short || '' }; });
+    }
+    // Blog
+    if (data.has_blog && (!r.has_blog || r.has_blog === 'No')) {
+      r.has_blog = 'Yes';
+    }
+    // FAQ section
+    if (data.has_faq_section && (!r.has_faq_section || r.has_faq_section === 'No')) {
+      r.has_faq_section = 'Yes';
+    }
+    // Case studies
+    if (data.case_studies && data.case_studies.length && (!r.case_studies || !r.case_studies.length)) {
+      r.case_studies = data.case_studies.map(function(cs) { return { client: cs.client, result: cs.result || '', url: cs.url || '' }; });
+    }
+    // Services — populate schema_services
+    if (data.services && data.services.length && (!r.schema_services || !r.schema_services.length)) {
+      r.schema_services = data.services.map(function(s) { return { name: s.name, url: s.url || '' }; });
+    }
+    // Team credentials
+    if (data.team_members && data.team_members.length && !r.team_credentials) {
+      r.team_credentials = data.team_members.map(function(t) { return t.name + (t.title ? ' — ' + t.title : ''); }).join(', ');
+    }
+    scheduleSave();
+    return data;
+  } catch(e) {
+    console.warn('[structured-scrape] failed:', e.message);
+    _cachedStructuredScrape = null;
+    return null;
+  }
+}
+
+function _structuredScrapeCtx() {
+  var d = _cachedStructuredScrape;
+  if (!d) return '';
+  var parts = ['\nSTRUCTURED WEBSITE DATA (deterministic scrape):'];
+  if (d.social_profiles && d.social_profiles.length) {
+    parts.push('Social Profiles: ' + d.social_profiles.map(function(sp) { return sp.platform + ': ' + sp.url; }).join(', '));
+  }
+  if (d.faqs && d.faqs.length) {
+    parts.push('FAQs found: ' + d.faqs.length);
+    d.faqs.slice(0, 5).forEach(function(f) { parts.push('  Q: ' + f.question); });
+  }
+  if (d.reviews && d.reviews.length) {
+    parts.push('Reviews found: ' + d.reviews.length);
+    if (d.aggregate_rating) parts.push('  Aggregate rating: ' + d.aggregate_rating.value + '/5 (' + d.aggregate_rating.count + ' reviews)');
+  }
+  if (d.blog_posts && d.blog_posts.length) {
+    parts.push('Blog posts found: ' + d.blog_posts.length);
+    d.blog_posts.slice(0, 3).forEach(function(bp) { parts.push('  - ' + bp.title); });
+  }
+  if (d.case_studies && d.case_studies.length) {
+    parts.push('Case studies/portfolio: ' + d.case_studies.length);
+    d.case_studies.slice(0, 3).forEach(function(cs) { parts.push('  - ' + cs.client); });
+  }
+  if (d.team_members && d.team_members.length) {
+    parts.push('Team members found: ' + d.team_members.length);
+    d.team_members.slice(0, 5).forEach(function(t) { parts.push('  - ' + t.name + (t.title ? ' (' + t.title + ')' : '')); });
+  }
+  if (d.services && d.services.length) {
+    parts.push('Services listed: ' + d.services.map(function(s) { return s.name; }).join(', '));
+  }
+  if (d.json_ld_types && d.json_ld_types.length) {
+    parts.push('JSON-LD types: ' + d.json_ld_types.join(', '));
+  }
+  return parts.length > 1 ? parts.join('\n') : '';
+}
+
 // Cached GMB result for enrichment context
 var _cachedGMBData = null;
 
@@ -1921,10 +2083,11 @@ async function enrichRTab(tab, forceAll) {
   var r = S.research;
   var s = S.setup || {};
 
-  // Pre-fetch website content, GMB data, and brand assets if not already cached (enrichAll pre-fetches all)
+  // Pre-fetch website content, GMB data, brand assets, and structured scrape if not already cached (enrichAll pre-fetches all)
   if (!_cachedWebsiteText) await _fetchWebsiteText();
   if (!_cachedGMBData) await _autoGMB();
   if (!_cachedBrandAssets) await _fetchBrandAssets();
+  if (!_cachedStructuredScrape) await _fetchStructuredScrape();
   var websiteText = _cachedWebsiteText || '';
 
   var ctx = buildEnrichCtx();
@@ -1933,6 +2096,8 @@ async function enrichRTab(tab, forceAll) {
   ctx += _gmbCtx();
   // Inject brand assets (colours, fonts, logo) into context
   ctx += _brandAssetsCtx();
+  // Inject structured scrape data (social links, FAQs, reviews, blog, team, services)
+  ctx += _structuredScrapeCtx();
 
   // Cross-tab context: pass already-enriched fields so later tabs can build on them
   var crossCtx = '';

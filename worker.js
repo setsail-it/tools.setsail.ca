@@ -174,7 +174,7 @@ const ENDPOINT_RATE_GROUP = {
   '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
   '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
   '/api/gkp-ideas': 'data', '/api/gkp-forecast': 'data', '/api/gkp-status': 'data',
-  '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data', '/api/snapshot-brand-serp': 'data',
+  '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data', '/api/snapshot-brand-serp': 'data', '/api/scrape-structured': 'data',
   '/api/queue-submit': 'queue',
   '/api/generate-image': 'image',
 };
@@ -1436,6 +1436,298 @@ export default {
           totalLen += trimmed[trimmed.length - 1].text.length;
         }
         return new Response(JSON.stringify({ pages: trimmed }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    // ── STRUCTURED WEBSITE SCRAPE (social links, FAQs, reviews, blog, team, services from HTML) ────
+    if (url.pathname === '/api/scrape-structured' && request.method === 'POST') {
+      try {
+        const { url: siteUrl } = await request.json();
+        if (!siteUrl) return new Response(JSON.stringify({ error: 'url required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        let base = siteUrl.trim().replace(/\/+$/, '');
+        if (!base.startsWith('http')) base = 'https://' + base;
+        const UA = 'Mozilla/5.0 (compatible; SetSailOS/1.0; +https://setsail.ca)';
+
+        // Pages to scrape — homepage + key inner pages
+        const paths = ['', '/about', '/about-us', '/services', '/our-services', '/team', '/our-team',
+          '/blog', '/news', '/insights', '/faq', '/faqs', '/frequently-asked-questions',
+          '/case-studies', '/our-work', '/portfolio', '/work', '/projects',
+          '/testimonials', '/reviews', '/contact', '/contact-us', '/pricing'];
+        const urls = paths.map(p => base + p);
+
+        // Fetch all pages in parallel (6s timeout each), keep raw HTML
+        const results = await Promise.allSettled(urls.map(async (pageUrl) => {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 6000);
+          try {
+            const res = await fetch(pageUrl, {
+              headers: { 'User-Agent': UA }, redirect: 'follow',
+              signal: ctrl.signal, cf: { cacheTtl: 300 }
+            });
+            clearTimeout(timer);
+            if (!res.ok) return { url: pageUrl, html: '' };
+            const html = (await res.text()).slice(0, 200000);
+            return { url: pageUrl, html };
+          } catch(e) { clearTimeout(timer); return { url: pageUrl, html: '' }; }
+        }));
+
+        const pages = results.map(r => r.status === 'fulfilled' ? r.value : { url: '', html: '' }).filter(p => p.html);
+        const allHtml = pages.map(p => p.html).join('\n');
+
+        // 1. Extract JSON-LD structured data
+        const jsonLdBlocks = [];
+        const jsonLdRe = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+        let ldMatch;
+        while ((ldMatch = jsonLdRe.exec(allHtml)) !== null) {
+          try { jsonLdBlocks.push(JSON.parse(ldMatch[1].trim())); } catch(e) {}
+        }
+        // Flatten @graph arrays
+        const ldItems = [];
+        for (const block of jsonLdBlocks) {
+          if (block['@graph']) ldItems.push(...block['@graph']);
+          else ldItems.push(block);
+        }
+        const jsonLdTypes = [...new Set(ldItems.map(i => i['@type']).filter(Boolean).flat())];
+
+        // 2. Extract social media links
+        const socialDomains = { 'facebook.com': 'Facebook', 'fb.com': 'Facebook', 'twitter.com': 'Twitter', 'x.com': 'X',
+          'instagram.com': 'Instagram', 'linkedin.com': 'LinkedIn', 'youtube.com': 'YouTube',
+          'tiktok.com': 'TikTok', 'pinterest.com': 'Pinterest', 'github.com': 'GitHub', 'threads.net': 'Threads' };
+        const socialProfiles = [];
+        const socialSeen = new Set();
+        // From JSON-LD sameAs
+        for (const item of ldItems) {
+          const sameAs = item.sameAs || [];
+          const links = Array.isArray(sameAs) ? sameAs : [sameAs];
+          for (const link of links) {
+            if (typeof link !== 'string') continue;
+            for (const [domain, platform] of Object.entries(socialDomains)) {
+              if (link.includes(domain) && !socialSeen.has(platform)) {
+                socialSeen.add(platform);
+                socialProfiles.push({ platform, url: link });
+              }
+            }
+          }
+        }
+        // From HTML href attributes
+        const hrefRe = /href\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+        let hrefMatch;
+        while ((hrefMatch = hrefRe.exec(allHtml)) !== null) {
+          const href = hrefMatch[1];
+          // Skip internal links
+          if (href.includes(base.replace(/^https?:\/\//, ''))) continue;
+          for (const [domain, platform] of Object.entries(socialDomains)) {
+            if (href.includes(domain) && !socialSeen.has(platform)) {
+              socialSeen.add(platform);
+              socialProfiles.push({ platform, url: href });
+            }
+          }
+        }
+
+        // 3. Extract FAQs from JSON-LD FAQPage
+        const faqs = [];
+        for (const item of ldItems) {
+          if (item['@type'] === 'FAQPage' && item.mainEntity) {
+            const entities = Array.isArray(item.mainEntity) ? item.mainEntity : [item.mainEntity];
+            for (const e of entities) {
+              if (e.name && e.acceptedAnswer) {
+                const answer = typeof e.acceptedAnswer === 'string' ? e.acceptedAnswer
+                  : (e.acceptedAnswer.text || '');
+                faqs.push({ question: e.name, answer: answer.replace(/<[^>]+>/g, '').slice(0, 500) });
+              }
+            }
+          }
+        }
+        // Also try HTML patterns: <details>/<summary>, accordion, faq class
+        if (faqs.length === 0) {
+          // Look for FAQ-like pages
+          for (const p of pages) {
+            if (!/faq|frequently/i.test(p.url)) continue;
+            // Try details/summary
+            const detailsRe = /<summary[^>]*>([\s\S]*?)<\/summary>[\s\S]*?<(?:div|p)[^>]*>([\s\S]*?)<\/(?:div|p)>/gi;
+            let dm;
+            while ((dm = detailsRe.exec(p.html)) !== null && faqs.length < 30) {
+              const q = dm[1].replace(/<[^>]+>/g, '').trim();
+              const a = dm[2].replace(/<[^>]+>/g, '').trim();
+              if (q && a && q.length > 5) faqs.push({ question: q, answer: a.slice(0, 500) });
+            }
+            // Try h3/h4 + p pairs on FAQ pages
+            if (faqs.length === 0) {
+              const hpRe = /<h[34][^>]*>([\s\S]*?)<\/h[34]>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
+              let hm;
+              while ((hm = hpRe.exec(p.html)) !== null && faqs.length < 30) {
+                const q = hm[1].replace(/<[^>]+>/g, '').trim();
+                const a = hm[2].replace(/<[^>]+>/g, '').trim();
+                if (q && a && q.length > 10 && (q.includes('?') || q.length < 120)) {
+                  faqs.push({ question: q, answer: a.slice(0, 500) });
+                }
+              }
+            }
+          }
+        }
+
+        // 4. Extract reviews from JSON-LD
+        const reviews = [];
+        let aggregateRating = null;
+        for (const item of ldItems) {
+          if (item.aggregateRating) {
+            aggregateRating = {
+              value: String(item.aggregateRating.ratingValue || ''),
+              count: String(item.aggregateRating.reviewCount || item.aggregateRating.ratingCount || '')
+            };
+          }
+          const revArr = item.review || item.reviews || [];
+          const revList = Array.isArray(revArr) ? revArr : [revArr];
+          for (const rv of revList) {
+            if (rv.author || rv.reviewBody) {
+              reviews.push({
+                author_name: (typeof rv.author === 'string' ? rv.author : (rv.author && rv.author.name)) || '',
+                rating_value: String((rv.reviewRating && rv.reviewRating.ratingValue) || ''),
+                review_body_short: (rv.reviewBody || '').replace(/<[^>]+>/g, '').slice(0, 300)
+              });
+            }
+          }
+        }
+        // Also scrape testimonial patterns from HTML if no JSON-LD reviews
+        if (reviews.length === 0) {
+          for (const p of pages) {
+            if (!/testimonial|review/i.test(p.url) && p.url !== base) continue;
+            const bqRe = /<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi;
+            let bm;
+            while ((bm = bqRe.exec(p.html)) !== null && reviews.length < 20) {
+              const text = bm[1].replace(/<[^>]+>/g, '').trim();
+              if (text.length > 20) reviews.push({ author_name: '', rating_value: '', review_body_short: text.slice(0, 300) });
+            }
+          }
+        }
+
+        // 5. Extract blog posts from /blog page
+        const blogPosts = [];
+        let hasBlog = false;
+        for (const p of pages) {
+          if (!/\/blog|\/news|\/insights/i.test(p.url)) continue;
+          hasBlog = true;
+          // Extract article links — look for <a> tags with /blog/ in href
+          const blogLinkRe = /<a[^>]+href\s*=\s*["']([^"']*\/(?:blog|news|insights|posts|articles)\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+          let blm;
+          while ((blm = blogLinkRe.exec(p.html)) !== null && blogPosts.length < 20) {
+            let href = blm[1];
+            const title = blm[2].replace(/<[^>]+>/g, '').trim();
+            if (!title || title.length < 5 || title.length > 200) continue;
+            if (!href.startsWith('http')) href = base + (href.startsWith('/') ? '' : '/') + href;
+            // Dedupe
+            if (blogPosts.some(bp => bp.url === href)) continue;
+            blogPosts.push({ title, url: href, date: '' });
+          }
+        }
+        // Also check JSON-LD BlogPosting
+        for (const item of ldItems) {
+          if (item['@type'] === 'BlogPosting' || item['@type'] === 'Article' || item['@type'] === 'NewsArticle') {
+            hasBlog = true;
+            if (item.headline) {
+              const url = item.url || item.mainEntityOfPage || '';
+              if (!blogPosts.some(bp => bp.title === item.headline)) {
+                blogPosts.push({ title: item.headline, url: typeof url === 'string' ? url : '', date: item.datePublished || '' });
+              }
+            }
+          }
+        }
+
+        // 6. Extract team members
+        const teamMembers = [];
+        // From JSON-LD Person
+        for (const item of ldItems) {
+          if (item['@type'] === 'Person' && item.name) {
+            teamMembers.push({ name: item.name, title: item.jobTitle || '', url: item.url || '' });
+          }
+        }
+        // From team/about pages if no JSON-LD
+        if (teamMembers.length === 0) {
+          for (const p of pages) {
+            if (!/\/team|\/our-team|\/about/i.test(p.url)) continue;
+            // Look for repeated name+title patterns: h3+p, h4+p inside team sections
+            const teamSectionRe = /(?:class|id)\s*=\s*["'][^"']*team[^"']*["']/i;
+            if (!teamSectionRe.test(p.html) && !/\/team/i.test(p.url)) continue;
+            const nameRe = /<h[23456][^>]*>([\s\S]*?)<\/h[23456]>\s*(?:<(?:p|span|div)[^>]*>([\s\S]*?)<\/(?:p|span|div)>)?/gi;
+            let nm;
+            while ((nm = nameRe.exec(p.html)) !== null && teamMembers.length < 30) {
+              const name = nm[1].replace(/<[^>]+>/g, '').trim();
+              const title = nm[2] ? nm[2].replace(/<[^>]+>/g, '').trim() : '';
+              if (name && name.length > 2 && name.length < 60 && !/</.test(name) && /^[A-Z]/.test(name)) {
+                // Skip if it looks like a section heading, not a person
+                if (/our team|meet the|about us|leadership/i.test(name)) continue;
+                teamMembers.push({ name, title: title.slice(0, 100), url: '' });
+              }
+            }
+          }
+        }
+
+        // 7. Extract services from /services page
+        const services = [];
+        for (const p of pages) {
+          if (!/\/services|\/our-services/i.test(p.url)) continue;
+          // Headings as service names
+          const svcRe = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
+          let sm;
+          while ((sm = svcRe.exec(p.html)) !== null && services.length < 30) {
+            const name = sm[1].replace(/<[^>]+>/g, '').trim();
+            if (name && name.length > 2 && name.length < 80) {
+              // Try to find preceding <a> for URL
+              const before = p.html.slice(Math.max(0, sm.index - 300), sm.index);
+              const aMatch = before.match(/href\s*=\s*["']([^"']+)["'][^>]*>\s*$/i);
+              let svcUrl = aMatch ? aMatch[1] : '';
+              if (svcUrl && !svcUrl.startsWith('http')) svcUrl = base + (svcUrl.startsWith('/') ? '' : '/') + svcUrl;
+              services.push({ name, url: svcUrl });
+            }
+          }
+        }
+        // Also from JSON-LD Service
+        for (const item of ldItems) {
+          if (item['@type'] === 'Service' && item.name) {
+            if (!services.some(s => s.name === item.name)) {
+              services.push({ name: item.name, url: item.url || '' });
+            }
+          }
+        }
+
+        // 8. Case studies / portfolio items
+        const caseStudies = [];
+        for (const p of pages) {
+          if (!/case-stud|portfolio|our-work|\/work|\/projects/i.test(p.url)) continue;
+          const csRe = /<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>\s*<[^>]*>?\s*([\s\S]*?)\s*<\/a>/gi;
+          let cm;
+          while ((cm = csRe.exec(p.html)) !== null && caseStudies.length < 20) {
+            let href = cm[1];
+            const title = cm[2].replace(/<[^>]+>/g, '').trim();
+            if (!title || title.length < 3 || title.length > 150) continue;
+            if (href.includes('#') || /\.(jpg|png|gif|svg|css|js)/i.test(href)) continue;
+            if (!href.startsWith('http')) href = base + (href.startsWith('/') ? '' : '/') + href;
+            if (caseStudies.some(cs => cs.url === href)) continue;
+            caseStudies.push({ client: title, result: '', url: href });
+          }
+        }
+
+        const hasFaqSection = faqs.length > 0 || pages.some(p => /\/faq/i.test(p.url));
+
+        const output = {
+          social_profiles: socialProfiles,
+          faqs: faqs.slice(0, 30),
+          reviews: reviews.slice(0, 20),
+          blog_posts: blogPosts.slice(0, 20),
+          case_studies: caseStudies.slice(0, 20),
+          team_members: teamMembers.slice(0, 30),
+          services: services.slice(0, 30),
+          json_ld_types: jsonLdTypes,
+          has_blog: hasBlog,
+          has_faq_section: hasFaqSection,
+          aggregate_rating: aggregateRating,
+          _pages_fetched: pages.length,
+          _pages_with_data: pages.filter(p => p.html.length > 500).length
+        };
+
+        return new Response(JSON.stringify(output), { headers: { 'Content-Type': 'application/json', ...cors } });
       } catch (err) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
       }
