@@ -1161,7 +1161,7 @@ export default {
           : { keywordSeed: { keywords: seeds.slice(0, 20) } };
 
         const gadsRes = await fetch(
-          'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordIdeas',
+          'https://googleads.googleapis.com/v21/customers/' + customerId + ':generateKeywordIdeas',
           {
             method: 'POST',
             headers: gadsHeaders(env, token),
@@ -1182,7 +1182,7 @@ export default {
             await env.SETSAIL_OS.delete('gads:access_token');
             const retryToken = await getGoogleAdsToken(env);
             const retryRes = await fetch(
-              'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordIdeas',
+              'https://googleads.googleapis.com/v21/customers/' + customerId + ':generateKeywordIdeas',
               {
                 method: 'POST',
                 headers: gadsHeaders(env, retryToken),
@@ -1245,7 +1245,7 @@ export default {
         const budgetMicros = String(Math.round((dailyBudget || 50) * 1000000));
 
         const forecastRes = await fetch(
-          'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordForecastMetrics',
+          'https://googleads.googleapis.com/v21/customers/' + customerId + ':generateKeywordForecastMetrics',
           {
             method: 'POST',
             headers: gadsHeaders(env, token),
@@ -1268,7 +1268,7 @@ export default {
             await env.SETSAIL_OS.delete('gads:access_token');
             const retryToken = await getGoogleAdsToken(env);
             const retryRes = await fetch(
-              'https://googleads.googleapis.com/v18/customers/' + customerId + ':generateKeywordForecastMetrics',
+              'https://googleads.googleapis.com/v21/customers/' + customerId + ':generateKeywordForecastMetrics',
               {
                 method: 'POST',
                 headers: gadsHeaders(env, retryToken),
