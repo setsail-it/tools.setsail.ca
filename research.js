@@ -1894,9 +1894,9 @@ async function _fetchStructuredScrape(force) {
     if (data.case_studies && data.case_studies.length && (!r.case_studies || !r.case_studies.length)) {
       r.case_studies = data.case_studies.map(function(cs) { return { client: cs.client, result: cs.result || '', url: cs.url || '' }; });
     }
-    // Services — populate schema_services
+    // Services — populate schema_services (match AI enrichment field names)
     if (data.services && data.services.length && (!r.schema_services || !r.schema_services.length)) {
-      r.schema_services = data.services.map(function(s) { return { name: s.name, url: s.url || '' }; });
+      r.schema_services = data.services.map(function(s) { return { service_name: s.name, service_page_url: s.url || '', service_description_short: '' }; });
     }
     // Team credentials
     if (data.team_members && data.team_members.length && !r.team_credentials) {
@@ -2323,17 +2323,17 @@ async function enrichRTab(tab, forceAll) {
         result = await callClaude(activeSys, prompts[tab], null, tabTokens);
       } else { throw rateErr; }
     }
-    console.error('ENRICH RAW ['+tab+']:', result.slice(0,600));
+    console.log('ENRICH RAW ['+tab+']:', result.slice(0,600));
     var parsed = parseEnrichResult(result);
-    console.error('ENRICH PARSED ['+tab+']:', JSON.stringify(parsed));
+    console.log('ENRICH PARSED ['+tab+']:', JSON.stringify(parsed));
     if (parsed) {
       // Competitors: direct write, skip mergeEnriched entirely
       if (tab === 'competitors') {
         if (parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
           r.competitors = parsed.competitors;
-          console.error('COMPETITORS WRITTEN:', r.competitors.length, 'items', JSON.stringify(r.competitors[0]));
+          console.log('COMPETITORS WRITTEN:', r.competitors.length, 'items', JSON.stringify(r.competitors[0]));
         } else {
-          console.error('COMPETITORS EMPTY IN PARSED:', JSON.stringify(parsed));
+          console.warn('COMPETITORS EMPTY IN PARSED:', JSON.stringify(parsed));
         }
         scheduleSave();
         _rTab = 'competitors';
