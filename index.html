@@ -2141,7 +2141,7 @@ function aiBarQueue(done, total, avgSeconds) {
   }
 }
 
-async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
+async function callClaude(system, user, onChunk, maxTokens, _aiLabel, _model) {
   aiBarStart(_aiLabel || window._aiBarLabel || 'Generating…');
   var ctrl = new AbortController();
   window._aiAbortCtrl = ctrl;
@@ -2150,7 +2150,7 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel) {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      model:'claude-sonnet-4-20250514',
+      model: _model || 'claude-sonnet-4-20250514',
       max_tokens: maxTokens || 3000,
       stream:true,
       system,

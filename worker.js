@@ -614,7 +614,7 @@ export default {
       try {
         const body = await request.json();
         // ── Security: lock down proxy to allowed models + cap tokens ──
-        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-20250514'];
         const MAX_TOKENS_CAP = 8192;
         if (body.model && !ALLOWED_MODELS.includes(body.model)) {
           return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
@@ -1538,7 +1538,7 @@ export default {
       try {
         const body = await request.json();
         // ── Security: same lockdown as /api/claude ──
-        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001'];
+        const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-20250514'];
         const MAX_TOKENS_CAP = 8192;
         if (body.model && !ALLOWED_MODELS.includes(body.model)) {
           return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });

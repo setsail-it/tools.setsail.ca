@@ -3962,7 +3962,9 @@ async function runDiagnostic(num) {
     // Append strategist notes if present
     prompt = _appendStrategistNotes(prompt, num);
 
-    var result = await callClaude(DIAGNOSTIC_SYSTEM, prompt, null, 8000, label);
+    // D8 (Narrative) uses Opus for higher-quality strategic writing
+    var diagModel = (num === 8) ? 'claude-opus-4-20250514' : undefined;
+    var result = await callClaude(DIAGNOSTIC_SYSTEM, prompt, null, 8000, label, diagModel);
     var parsed = parseEnrichResult(result);
     if (!parsed) {
       aiBarNotify('D' + num + ': could not parse response', { duration: 4000 });
@@ -9173,7 +9175,7 @@ async function compileStrategyOutput() {
 
   aiBarStart('Compiling strategy document...');
   try {
-    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 28000), null, 8192, 'Strategy output');
+    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 28000), null, 8192, 'Strategy output', 'claude-opus-4-20250514');
     // Append data tables after the AI prose
     S.strategy.compiled_output = result + appendices;
     // Also update the webStrategy brief (shorter version for downstream)
