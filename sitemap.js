@@ -1351,7 +1351,7 @@ async function _aiFixIssue(fixId) {
     aiBarStart('AI assigning keywords to ' + needKw.length + ' pages\u2026');
     try {
       var result = '';
-      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result += chunk; }, 4096, 'kw-fix');
+      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result = chunk; }, 4096, 'kw-fix');
       var parsed = _parseAiJson(result);
       var assigned = 0;
       if (Array.isArray(parsed)) {
@@ -1393,7 +1393,7 @@ async function _aiFixIssue(fixId) {
     aiBarStart('AI finding better keywords for ' + zeroPages.length + ' pages\u2026');
     try {
       var result2 = '';
-      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 += chunk; }, 4096, 'vol-fix');
+      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 = chunk; }, 4096, 'vol-fix');
       var parsed2 = _parseAiJson(result2);
       var fixed = 0;
       if (Array.isArray(parsed2)) {
@@ -1436,7 +1436,7 @@ async function _aiFixIssue(fixId) {
     aiBarStart('AI resolving cannibalisation for "' + cannibalKw + '"\u2026');
     try {
       var result3 = '';
-      await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 += chunk; }, 2048, 'cannibal-fix');
+      await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 = chunk; }, 2048, 'cannibal-fix');
       var parsed3 = _parseAiJson(result3);
       var resolved = 0;
       if (Array.isArray(parsed3)) {

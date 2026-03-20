@@ -922,7 +922,7 @@ async function generateMissingBuyerPsych() {
 
   try {
     var resp = '';
-    await callClaude('You are a buyer psychology analyst. Return only valid JSON.', prompt, function(chunk) { resp += chunk; }, 4000, 'Buyer Psychology');
+    await callClaude('You are a buyer psychology analyst. Return only valid JSON.', prompt, function(chunk) { resp = chunk; }, 4000, 'Buyer Psychology');
     var clean = resp.replace(/```json\s*/gi, '').replace(/```\s*/g, '').replace(/[\x00-\x1F\x7F]/g, ' ').trim();
     // Extract JSON object boundaries if Claude added prose around it
     var jsonStart = clean.indexOf('{'), jsonEnd = clean.lastIndexOf('}');

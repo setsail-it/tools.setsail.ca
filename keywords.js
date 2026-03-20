@@ -2927,7 +2927,7 @@ async function openKwFinder(pageIdx) {
   let aiResult = null;
   try {
     let raw = '';
-    await callClaude(aiSystem, aiUser, chunk => { raw += chunk; });
+    await callClaude(aiSystem, aiUser, chunk => { raw = chunk; });
     const stripped = raw.replace(/```json\s*/gi,'').replace(/```/g,'');
     const candidates = [];
     for (let si = 0; si < stripped.length; si++) {
