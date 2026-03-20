@@ -1103,6 +1103,13 @@ async function enrichWithGKP() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seeds: batch, country: country, geoTargetId: _getGeoTargetId() })
       });
+      if (!res.ok) {
+        var errText = await res.text().catch(function() { return res.status + ' ' + res.statusText; });
+        console.error('[GKP enrich] HTTP ' + res.status + ':', errText.slice(0, 300));
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: HTTP ' + res.status + ' — ' + esc(errText.slice(0, 100)) + '</span>';
+        if (typeof aiBarEnd === 'function') aiBarEnd();
+        return;
+      }
       var data = await res.json();
       if (data.error) {
         if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">GKP error: ' + esc(data.error) + '</span>';
