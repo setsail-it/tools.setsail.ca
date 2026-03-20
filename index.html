@@ -2499,11 +2499,27 @@ async function _extractDocSync(content, docName) {
           if (inStr && (ch === '\n' || ch === '\r')) { fixed += ' '; continue; }
           fixed += ch;
         }
-        // Fix trailing commas, unquoted keys
-        fixed = fixed
-          .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
-          .replace(/:\s*'([^']*)'/g, ': "$1"')
-          .replace(/,\s*([}\]])/g, '$1');
+        // Apply structural fixes ONLY outside string values
+        var parts = [], inStr2 = false, esc2 = false, seg = '';
+        for (var ci2 = 0; ci2 < fixed.length; ci2++) {
+          var ch2 = fixed[ci2];
+          if (esc2) { seg += ch2; esc2 = false; continue; }
+          if (ch2 === '\\' && inStr2) { seg += ch2; esc2 = true; continue; }
+          if (ch2 === '"') {
+            if (inStr2) { seg += ch2; parts.push(seg); seg = ''; inStr2 = false; }
+            else { if (seg) parts.push(seg); seg = '"'; inStr2 = true; }
+            continue;
+          }
+          seg += ch2;
+        }
+        if (seg) parts.push(seg);
+        fixed = parts.map(function(p) {
+          if (p.charAt(0) === '"') return p;
+          return p
+            .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+            .replace(/:\s*'([^']*)'/g, ': "$1"')
+            .replace(/,\s*([}\]])/g, '$1');
+        }).join('');
         try { parsed = JSON.parse(fixed); } catch(pe2) {
           console.error('[doc-extract] JSON parse failed for "' + docName + '":', pe2.message, fixed.slice(0, 300));
           return null;

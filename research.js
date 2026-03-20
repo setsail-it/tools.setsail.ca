@@ -948,13 +948,33 @@ async function generateMissingBuyerPsych() {
       if (inStr && (ch === '\n' || ch === '\r')) { repaired += ' '; continue; }
       repaired += ch;
     }
-    // Fix unquoted keys, single quotes, trailing commas, Python booleans
-    repaired = repaired
-      .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
-      .replace(/:\s*'([^']*)'/g, ': "$1"')
-      .replace(/,\s*([}\]])/g, '$1')
-      .replace(/:\s*True\b/g, ': true').replace(/:\s*False\b/g, ': false').replace(/:\s*None\b/g, ': null');
-    var parsed = JSON.parse(repaired);
+    // Apply structural fixes ONLY outside string values
+    var parts = [], inStr2 = false, esc2 = false, seg = '';
+    for (var ci2 = 0; ci2 < repaired.length; ci2++) {
+      var ch2 = repaired[ci2];
+      if (esc2) { seg += ch2; esc2 = false; continue; }
+      if (ch2 === '\\' && inStr2) { seg += ch2; esc2 = true; continue; }
+      if (ch2 === '"') {
+        if (inStr2) { seg += ch2; parts.push(seg); seg = ''; inStr2 = false; }
+        else { if (seg) parts.push(seg); seg = '"'; inStr2 = true; }
+        continue;
+      }
+      seg += ch2;
+    }
+    if (seg) parts.push(seg);
+    repaired = parts.map(function(p, idx) {
+      if (p.charAt(0) === '"') return p; // string literal — don't touch
+      return p
+        .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+        .replace(/:\s*'([^']*)'/g, ': "$1"')
+        .replace(/,\s*([}\]])/g, '$1')
+        .replace(/:\s*True\b/g, ': true').replace(/:\s*False\b/g, ': false').replace(/:\s*None\b/g, ': null');
+    }).join('');
+    var parsed;
+    try { parsed = JSON.parse(repaired); } catch(pe2) {
+      console.error('Buyer psych JSON repair failed:', pe2.message, repaired.slice(0, 300));
+      throw pe2;
+    }
 
     if (!S.research.jtbd_forces) S.research.jtbd_forces = { push_forces:[], pull_forces:[], anxieties:[], habits:[] };
     if (parsed.push_forces && !(jf.push_forces || []).length) S.research.jtbd_forces.push_forces = parsed.push_forces;
