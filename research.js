@@ -1711,6 +1711,16 @@ async function enrichAll(forceAll, startFrom) {
       await enrichRTab(step, forceAll);
     } catch(e) { if (e.name === 'AbortError') return; }
     _enrichDone.add(step);
+
+    // After client-pain tab: auto-generate missing buyer psychology fields (JTBD Force Map)
+    if (step === 'client-pain' && !window._aiStopAll) {
+      if (msgEl) msgEl.textContent = 'Generating buyer psychology...';
+      try {
+        await generateMissingBuyerPsych();
+      } catch(e) { console.warn('[enrichAll] buyer psych generation skipped:', (e.message || '').slice(0, 60)); }
+      await new Promise(function(res){ setTimeout(res, 1500); });
+    }
+
     // Pause between AI tabs to avoid Anthropic rate limits
     if (i < steps.length - 1) await new Promise(function(res){ setTimeout(res, 2000); });
   }
