@@ -1176,9 +1176,12 @@ async function loadAllCopyHtml(projectId) {
     if (!listRes.ok) { console.warn('[loadAllCopyHtml] list failed HTTP', listRes.status); return; }
     const { slugs } = await listRes.json();
     console.log('[loadAllCopyHtml] found', (slugs||[]).length, 'slugs:', (slugs||[]).slice(0,5));
-    await Promise.all((slugs || []).map(async function(slug) {
+    await Promise.all((slugs || []).map(async function(rawSlug) {
       try {
-        const res = await fetch('/api/copy/' + projectId + '/' + encodeURIComponent(slug));
+        // KV keys are stored encoded (services%2Fseo-vancouver) but S.copy uses decoded keys (services/seo-vancouver)
+        var slug = decodeURIComponent(rawSlug);
+        var fetchSlug = encodeURIComponent(slug);
+        const res = await fetch('/api/copy/' + projectId + '/' + fetchSlug);
         if (!res.ok) { console.warn('[loadAllCopyHtml] fetch failed for', slug, 'HTTP', res.status); return; }
         const data = await res.json();
         if (data && S.copy[slug]) {
@@ -1188,7 +1191,7 @@ async function loadAllCopyHtml(projectId) {
         } else {
           console.warn('[loadAllCopyHtml] skip', slug, '— data:', !!data, 'S.copy[slug]:', !!S.copy[slug]);
         }
-      } catch(e) { console.warn('[loadAllCopyHtml] error for', slug, e.message); }
+      } catch(e) { console.warn('[loadAllCopyHtml] error for', rawSlug, e.message); }
     }));
   } catch(e) { console.warn('[loadAllCopyHtml] failed', e.message); }
 }
