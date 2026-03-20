@@ -2286,7 +2286,7 @@ function renderDocsList() {
     var sizeSpan = document.createElement('span');
     sizeSpan.style.cssText = 'font-size:11px;color:var(--n2);white-space:nowrap';
     sizeSpan.textContent = Math.round(d.content.length / 1000) + 'k chars';
-    // Extract status indicator
+    // Extract status indicator — shown for ALL docs
     var statusSpan = document.createElement('span');
     statusSpan.style.cssText = 'font-size:11px;white-space:nowrap;display:flex;align-items:center;gap:3px';
     if (d.extractStatus === 'processing') {
@@ -2295,17 +2295,17 @@ function renderDocsList() {
       statusSpan.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green);font-size:13px"></i><span style="color:var(--green)">Extracted</span>';
     } else if (d.extractStatus === 'error') {
       statusSpan.innerHTML = '<i class="ti ti-alert-triangle" style="color:var(--error);font-size:13px"></i><span style="color:var(--error)">Failed</span>';
-    } else if (d.content.length >= 5000) {
-      statusSpan.innerHTML = '<span style="color:var(--n2)">Not extracted</span>';
+    } else {
+      statusSpan.innerHTML = '<i class="ti ti-clock" style="color:var(--n3);font-size:13px"></i><span style="color:var(--n3)">Pending</span>';
     }
-    // Re-extract button (for done, error, or unextracted long docs)
+    // Re-extract / Extract button — available for all docs not currently processing
     var reextBtn = null;
-    if (d.content.length >= 5000 && d.extractStatus !== 'processing') {
+    if (d.extractStatus !== 'processing') {
       reextBtn = document.createElement('button');
       reextBtn.style.cssText = 'border:none;background:none;color:var(--n2);cursor:pointer;font-size:13px;padding:0 2px;line-height:1';
       reextBtn.title = d.extractStatus === 'done' ? 'Re-extract' : 'Extract';
       reextBtn.innerHTML = '<i class="ti ti-refresh"></i>';
-      reextBtn.onclick = function() { _queueDocExtract(i); };
+      reextBtn.onclick = (function(idx) { return function() { _queueDocExtract(idx); }; })(i);
     }
     var removeBtn = document.createElement('button');
     removeBtn.style.cssText = 'border:none;background:none;color:var(--n2);cursor:pointer;font-size:16px;padding:0 2px;line-height:1';
@@ -2336,7 +2336,7 @@ var DOC_EXTRACT_THRESHOLD = 5000; // skip extraction for short docs
 
 function _queueDocExtract(docIdx) {
   var d = (S.setup && S.setup.docs) ? S.setup.docs[docIdx] : null;
-  if (!d || d.content.length < DOC_EXTRACT_THRESHOLD) return;
+  if (!d) return;
   d.extractStatus = 'processing';
   renderDocsList();
   _docExtractQueue.push(docIdx);
