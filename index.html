@@ -1154,33 +1154,41 @@ async function saveProject() {
 }
 
 async function saveCopyHtml(slug) {
-  if (!S.projectId || !slug) return;
+  if (!S.projectId || !slug) { console.warn('[saveCopyHtml] skip — no projectId or slug'); return; }
   const c = S.copy[slug];
-  if (!c || !c.copy) return;
+  if (!c || !c.copy) { console.warn('[saveCopyHtml] skip — no copy data for', slug, 'c=', !!c, 'copy=', !!(c&&c.copy)); return; }
   try {
-    await fetch('/api/copy/' + S.projectId + '/' + encodeURIComponent(slug), {
+    var payload = { copy: c.copy, drafts: (c.drafts || []).map(d => ({ v: d.v, html: d.html, pass: d.pass, generatedAt: d.generatedAt })) };
+    console.log('[saveCopyHtml] saving', slug, 'copy length:', c.copy.length, 'drafts:', (c.drafts||[]).length);
+    var res = await fetch('/api/copy/' + S.projectId + '/' + encodeURIComponent(slug), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ copy: c.copy, drafts: (c.drafts || []).map(d => ({ v: d.v, html: d.html, pass: d.pass, generatedAt: d.generatedAt })) })
+      body: JSON.stringify(payload)
     });
+    if (!res.ok) console.error('[saveCopyHtml] HTTP', res.status, 'for', slug, await res.text().catch(function(){return '';}));
+    else console.log('[saveCopyHtml] saved OK for', slug);
   } catch(e) { console.warn('[saveCopyHtml] failed for', slug, e.message); }
 }
 
 async function loadAllCopyHtml(projectId) {
   try {
     const listRes = await fetch('/api/copy/' + projectId);
-    if (!listRes.ok) return;
+    if (!listRes.ok) { console.warn('[loadAllCopyHtml] list failed HTTP', listRes.status); return; }
     const { slugs } = await listRes.json();
+    console.log('[loadAllCopyHtml] found', (slugs||[]).length, 'slugs:', (slugs||[]).slice(0,5));
     await Promise.all((slugs || []).map(async function(slug) {
       try {
         const res = await fetch('/api/copy/' + projectId + '/' + encodeURIComponent(slug));
-        if (!res.ok) return;
+        if (!res.ok) { console.warn('[loadAllCopyHtml] fetch failed for', slug, 'HTTP', res.status); return; }
         const data = await res.json();
         if (data && S.copy[slug]) {
           S.copy[slug].copy = data.copy || '';
           S.copy[slug].drafts = data.drafts || [];
+          console.log('[loadAllCopyHtml] restored', slug, 'copy length:', (data.copy||'').length);
+        } else {
+          console.warn('[loadAllCopyHtml] skip', slug, '— data:', !!data, 'S.copy[slug]:', !!S.copy[slug]);
         }
-      } catch(e) {}
+      } catch(e) { console.warn('[loadAllCopyHtml] error for', slug, e.message); }
     }));
   } catch(e) { console.warn('[loadAllCopyHtml] failed', e.message); }
 }
