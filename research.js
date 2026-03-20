@@ -744,6 +744,46 @@ function removeRFJTBD(forceType, idx) {
   scheduleScorecard();
 }
 
+// Expand JTBD row into a modal for easier editing
+function expandJTBDRow(forceType, idx) {
+  var item = (_getJTBDForces(forceType))[idx];
+  if (!item) return;
+  var labels = { push_forces:'Push Force', pull_forces:'Pull Force', anxieties:'Anxiety', habits:'Habit' };
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center';
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;width:520px;max-width:90vw;box-shadow:0 12px 40px rgba(0,0,0,.25)';
+  card.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:14px">' + esc(labels[forceType] || forceType) + ' #' + (idx + 1) + '</div>'
+    + '<label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);display:block;margin-bottom:4px">Force / Behaviour</label>'
+    + '<textarea id="_jtbd-force" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;font-size:13px;font-family:var(--font);color:var(--dark);resize:vertical;box-sizing:border-box">' + esc(item.force || '') + '</textarea>'
+    + '<label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);display:block;margin:12px 0 4px">Supporting Quote</label>'
+    + '<textarea id="_jtbd-quote" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;font-size:13px;font-family:var(--font);color:var(--dark);resize:vertical;font-style:italic;box-sizing:border-box">' + esc(item.quote || '') + '</textarea>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-top:12px">'
+    + '<label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Intensity</label>'
+    + '<select id="_jtbd-int" style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 4px;font-size:12px;font-family:var(--font);color:var(--dark)">'
+    + [1,2,3,4,5].map(function(s) { return '<option value="'+s+'"'+((item.intensity||3)===s?' selected':'')+'>'+s+'</option>'; }).join('')
+    + '</select><div style="flex:1"></div>'
+    + '<button id="_jtbd-save" class="btn btn-primary" style="font-size:12px;padding:6px 16px">Save</button>'
+    + '<button id="_jtbd-cancel" class="btn btn-ghost" style="font-size:12px;padding:6px 12px">Cancel</button>'
+    + '</div>';
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  var forceEl = document.getElementById('_jtbd-force');
+  forceEl.focus();
+  function close() { document.body.removeChild(overlay); }
+  function save() {
+    setRFJTBD(forceType, idx, 'force', forceEl.value);
+    setRFJTBD(forceType, idx, 'quote', document.getElementById('_jtbd-quote').value);
+    setRFJTBD(forceType, idx, 'intensity', parseInt(document.getElementById('_jtbd-int').value));
+    close();
+    renderResearchTabContent();
+  }
+  document.getElementById('_jtbd-save').onclick = save;
+  document.getElementById('_jtbd-cancel').onclick = close;
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', function(e) { if (e.key === 'Escape') close(); });
+}
+
 // Decision criteria accessors
 function setRFCriterion(idx, field, value) {
   if (!S.research) S.research = researchDefaults();
@@ -769,6 +809,43 @@ function removeRFCriterion(idx) {
   scheduleScorecard();
 }
 
+// Expand criterion row into a modal
+function expandCriterionRow(idx) {
+  var items = (S.research && S.research.decision_criteria) || [];
+  var item = items[idx];
+  if (!item) return;
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center';
+  var card = document.createElement('div');
+  card.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;width:480px;max-width:90vw;box-shadow:0 12px 40px rgba(0,0,0,.25)';
+  card.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:14px">Decision Criterion #' + (idx + 1) + '</div>'
+    + '<label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);display:block;margin-bottom:4px">Criterion</label>'
+    + '<textarea id="_dc-crit" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;font-size:13px;font-family:var(--font);color:var(--dark);resize:vertical;box-sizing:border-box">' + esc(item.criterion || '') + '</textarea>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-top:12px">'
+    + '<label style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Priority</label>'
+    + '<select id="_dc-pri" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)">'
+    + '<option value="must-have"' + ((item.priority || 'must-have') === 'must-have' ? ' selected' : '') + '>Must-have</option>'
+    + '<option value="nice-to-have"' + (item.priority === 'nice-to-have' ? ' selected' : '') + '>Nice-to-have</option>'
+    + '</select><div style="flex:1"></div>'
+    + '<button id="_dc-save" class="btn btn-primary" style="font-size:12px;padding:6px 16px">Save</button>'
+    + '<button id="_dc-cancel" class="btn btn-ghost" style="font-size:12px;padding:6px 12px">Cancel</button>'
+    + '</div>';
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  document.getElementById('_dc-crit').focus();
+  function close() { document.body.removeChild(overlay); }
+  function save() {
+    setRFCriterion(idx, 'criterion', document.getElementById('_dc-crit').value);
+    setRFCriterion(idx, 'priority', document.getElementById('_dc-pri').value);
+    close();
+    renderResearchTabContent();
+  }
+  document.getElementById('_dc-save').onclick = save;
+  document.getElementById('_dc-cancel').onclick = close;
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+  overlay.addEventListener('keydown', function(e) { if (e.key === 'Escape') close(); });
+}
+
 // ── JTBD Force Group Renderer ─────────────────────────────────────
 function rJTBDForceGroup(forceType, label, icon, colour) {
   var items = _getJTBDForces(forceType);
@@ -785,11 +862,12 @@ function rJTBDForceGroup(forceType, label, icon, colour) {
   }
   items.forEach(function(item, i) {
     html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">';
-    html += '<input type="text" value="' + esc(item.force || '') + '" placeholder="e.g. Manual data entry across 6 systems" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'force\',this.value)">';
-    html += '<input type="text" value="' + esc(item.quote || '') + '" placeholder="Verbatim quote..." style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark);font-style:italic" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'quote\',this.value)">';
+    html += '<input type="text" value="' + esc(item.force || '') + '" title="' + esc(item.force || '') + '" placeholder="e.g. Manual data entry across 6 systems" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'force\',this.value);this.title=this.value">';
+    html += '<input type="text" value="' + esc(item.quote || '') + '" title="' + esc(item.quote || '') + '" placeholder="Verbatim quote..." style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark);font-style:italic" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'quote\',this.value);this.title=this.value">';
     html += '<select style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 4px;font-size:12px;font-family:var(--font);color:var(--dark);text-align:center" onchange="setRFJTBD(\'' + forceType + '\',' + i + ',\'intensity\',parseInt(this.value))">';
     for (var s = 1; s <= 5; s++) html += '<option value="' + s + '"' + ((item.intensity || 3) === s ? ' selected' : '') + '>' + s + '</option>';
     html += '</select>';
+    html += '<button onclick="expandJTBDRow(\'' + forceType + '\',' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:14px;line-height:1;flex-shrink:0" title="Expand"><i class="ti ti-arrows-maximize" style="font-size:13px"></i></button>';
     html += '<button onclick="removeRFJTBD(\'' + forceType + '\',' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;flex-shrink:0" title="Remove">\u00d7</button>';
     html += '</div>';
   });
@@ -813,11 +891,12 @@ function rDecisionCriteria() {
   }
   items.forEach(function(item, i) {
     html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">';
-    html += '<input type="text" value="' + esc(item.criterion || '') + '" placeholder="e.g. Must integrate with PropertyWare" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFCriterion(' + i + ',\'criterion\',this.value)">';
+    html += '<input type="text" value="' + esc(item.criterion || '') + '" title="' + esc(item.criterion || '') + '" placeholder="e.g. Must integrate with PropertyWare" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 8px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFCriterion(' + i + ',\'criterion\',this.value);this.title=this.value">';
     html += '<select style="width:110px;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 4px;font-size:12px;font-family:var(--font);color:var(--dark)" onchange="setRFCriterion(' + i + ',\'priority\',this.value)">';
     html += '<option value="must-have"' + ((item.priority || 'must-have') === 'must-have' ? ' selected' : '') + '>Must-have</option>';
     html += '<option value="nice-to-have"' + (item.priority === 'nice-to-have' ? ' selected' : '') + '>Nice-to-have</option>';
     html += '</select>';
+    html += '<button onclick="expandCriterionRow(' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:14px;line-height:1;flex-shrink:0" title="Expand"><i class="ti ti-arrows-maximize" style="font-size:13px"></i></button>';
     html += '<button onclick="removeRFCriterion(' + i + ')" style="border:none;background:none;color:var(--n2);cursor:pointer;padding:2px 4px;font-size:18px;line-height:1;flex-shrink:0" title="Remove">\u00d7</button>';
     html += '</div>';
   });
