@@ -2120,18 +2120,20 @@ async function enrichRTab(tab, forceAll) {
   if (r.geography && r.geography.primary) crossCtx += '\nGEOGRAPHY: ' + r.geography.primary;
   if (crossCtx) ctx += '\n\nALREADY EXTRACTED (from other research tabs):' + crossCtx;
 
-  var sys = 'You are a senior digital marketing strategist at Setsail Marketing. Extract REAL information from the provided documents and website content.\n'
+  var clientName = (S.setup && S.setup.client) || (S.research && S.research.client_name) || 'the client';
+  var sys = 'You are a senior digital marketing strategist at Setsail Marketing. You are researching a CLIENT business called "' + clientName + '" in order to build them a website.\n'
+    + 'CRITICAL: You are extracting information ABOUT THE CLIENT\'S BUSINESS — what THEY sell, what THEY do, who THEIR customers are. You are NOT describing what Setsail Marketing would sell to them.\n'
     + 'CRITICAL RULES:\n'
-    + '1. The WEBSITE CONTENT section contains live scraped data from the actual website — this is your PRIMARY source of truth for factual fields (services, team size, locations, contact info, about info).\n'
+    + '1. The WEBSITE CONTENT section contains live scraped data from the CLIENT\'S actual website — this is your PRIMARY source of truth for factual fields (their services/products, team size, locations, contact info, about info).\n'
     + '2. If the website shows different information than the strategy doc, PREFER the website data — it is more current.\n'
-    + '3. Extract ALL services listed on the website, not just the top 3. Check /services and /our-services pages carefully.\n'
+    + '3. Extract ALL services/products the CLIENT offers on their website, not just the top 3. These are the services the CLIENT sells to THEIR customers.\n'
     + '4. For team_size: check /team, /our-team, /about pages and COUNT the actual team members listed. If the website lists individual team members, count them.\n'
     + '5. Do NOT use placeholder text. If you cannot find information, use an empty string or empty array.\n'
     + '6. Return ONLY valid JSON — no preamble, no markdown fences, no backticks.';
 
   var b = '\n  ';
   var prompts = {
-    business: ctx + '\n\nExtract and return a JSON object. Use actual values from the website and documents.\nRULES:\n- Include EVERY service from the /services page — do not summarise or skip any\n- For team_size: count every individual person named on /about or /team page\n- For pricing in services_detail: pull actual dollar amounts from the /pricing page\n- Prefer website data over strategy doc when they conflict\n- Do NOT include value_proposition, strategic_recommendations, or top_offers — those are handled in the Strategy stage\n{\n'
+    business: ctx + '\n\nExtract and return a JSON object about the CLIENT\'S business ("' + clientName + '"). Use actual values from THEIR website and documents.\nRULES:\n- services_detail = the services or products the CLIENT SELLS to THEIR customers. NOT web design services that Setsail would provide.\n- Include EVERY service/product the client offers from their /services page — do not summarise or skip any\n- For team_size: count every individual person named on /about or /team page\n- For pricing in services_detail: pull actual dollar amounts from the client\'s /pricing page\n- Prefer website data over strategy doc when they conflict\n- Do NOT include value_proposition, strategic_recommendations, or top_offers — those are handled in the Strategy stage\n{\n'
       + b + '"business_overview": "2-3 sentence factual description of what this business does",\n'
       + b + '"industry": "e.g. Healthcare, Construction, Legal Services",\n'
       + b + '"sub_industry": "specific niche within that industry",\n'
@@ -2143,7 +2145,7 @@ async function enrichRTab(tab, forceAll) {
       + b + '"locations_count": "number of physical locations as string, or empty string if unknown",\n'
       + b + '"capacity_constraints": "any limits on capacity, throughput, or availability — or empty string",\n'
       + b + '"seasonality_notes": "seasonal patterns in demand or revenue — or empty string",\n'
-      + b + '"services_detail": [{"name": "service name from website", "description": "1-2 sentence description", "pricing": "pricing from /pricing page e.g. $1800 setup + $2400/mo, or empty string if not found", "target_audience": "who buys this service", "key_differentiator": "what makes this unique"}]\n}',
+      + b + '"services_detail": [{"name": "service or product the CLIENT sells (NOT web design services)", "description": "1-2 sentence description of what the client offers", "pricing": "the client\'s pricing from their /pricing page e.g. $1800 setup + $2400/mo, or empty string if not found", "target_audience": "who buys this service from the client", "key_differentiator": "what makes the client\'s offering unique"}]\n}',
 
     audience: ctx + '\n\nExtract audience and sales process information. Return a JSON object with actual values.\nDo NOT include CTAs (primary_cta, secondary_cta, low_commitment_cta) — those are handled in the Strategy stage.\n{\n'
       + b + '"primary_audience_description": "2-3 sentence profile of who buys from this business",\n'
