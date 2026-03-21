@@ -1108,6 +1108,11 @@ async function saveProject() {
       headers: {'Content-Type':'application/json'},
       body: payloadStr
     });
+    if (res.status === 401) {
+      var authErr = await res.json().catch(function(){return{};});
+      _handleSessionExpired(authErr);
+      return;
+    }
     if (res.status === 409) {
       // Version conflict — queue processed a save while we were editing. Reload fresh state.
       console.warn('[save] version conflict — reloading project');
@@ -2152,6 +2157,43 @@ function aiBarQueue(done, total, avgSeconds) {
   }
 }
 
+// ── Session Expired Handler ──────────────────────────────────────
+var _sessionExpiredShown = false;
+function _handleSessionExpired(errData) {
+  if (_sessionExpiredShown) return; // prevent multiple modals
+  _sessionExpiredShown = true;
+  // Stop any running AI operations
+  window._aiStopAll = true;
+  if (window._aiAbortCtrl) { try { window._aiAbortCtrl.abort(); } catch(e) {} }
+  // Build modal
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:700;display:flex;align-items:center;justify-content:center';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg);border-radius:12px;padding:32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3);text-align:center';
+  var code = (errData && errData.code) || '';
+  var detail = code === 'JWT_INVALID' ? 'Your authentication token has expired.' :
+               code === 'NO_JWT' ? 'No authentication token found.' :
+               'Your session has expired or is no longer valid.';
+  modal.innerHTML = '<div style="font-size:36px;margin-bottom:12px">\uD83D\uDD12</div>'
+    + '<h3 style="margin:0 0 8px;font-size:18px">Session Expired</h3>'
+    + '<p style="color:var(--n2);font-size:13px;margin:0 0 20px;line-height:1.5">' + detail + ' Please log in again to continue. Your work has been saved.</p>'
+    + '<div style="display:flex;gap:8px;justify-content:center">'
+    + '<button id="session-reauth-btn" class="btn btn-primary" style="padding:8px 20px;font-size:13px">Log In Again</button>'
+    + '<button id="session-refresh-btn" class="btn btn-ghost" style="padding:8px 20px;font-size:13px">Refresh Page</button>'
+    + '</div>';
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  // Wire buttons
+  document.getElementById('session-reauth-btn').onclick = function() {
+    // Cloudflare Access re-auth: navigate to the Access login endpoint
+    window.location.href = '/cdn-cgi/access/login?kid=&redirect_url=' + encodeURIComponent(window.location.href);
+  };
+  document.getElementById('session-refresh-btn').onclick = function() {
+    _sessionExpiredShown = false;
+    window.location.reload();
+  };
+}
+
 async function callClaude(system, user, onChunk, maxTokens, _aiLabel, _model) {
   aiBarStart(_aiLabel || window._aiBarLabel || 'Generating…');
   var ctrl = new AbortController();
@@ -2171,6 +2213,11 @@ async function callClaude(system, user, onChunk, maxTokens, _aiLabel, _model) {
   });
   if (!res.ok) {
     const e = await res.json().catch(function(){return{};});
+    if (res.status === 401) {
+      aiBarEnd();
+      _handleSessionExpired(e);
+      throw new Error('Session expired — please log in again');
+    }
     if (res.status === 429) {
       var retryMsg = 'Rate limited' + (e.retryAfter ? ' — try again in ' + e.retryAfter + 's' : '');
       aiBarEnd(); aiBarNotify(retryMsg, { duration: 5000 });
@@ -3841,7 +3888,14 @@ async function initAuth() {
   try {
     const r = await fetch('/api/whoami');
     if (r.status === 401) {
-      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Geist,sans-serif"><div style="text-align:center"><p style="color:var(--mid);font-size:14px">Authenticating\u2026</p></div></div>';
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:Geist,sans-serif">'
+        + '<div style="text-align:center;max-width:400px">'
+        + '<div style="font-size:48px;margin-bottom:16px">\uD83D\uDD12</div>'
+        + '<h2 style="margin:0 0 8px;font-size:20px">Authentication Required</h2>'
+        + '<p style="color:#888;font-size:13px;margin:0 0 24px;line-height:1.5">Your session has expired or you are not logged in. Please authenticate with your Setsail account to continue.</p>'
+        + '<button onclick="window.location.href=\'/cdn-cgi/access/login?kid=&redirect_url=\'+encodeURIComponent(window.location.href)" style="background:#222;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;cursor:pointer;font-family:Geist,sans-serif">Log In with Google</button>'
+        + '<div style="margin-top:12px"><button onclick="window.location.reload()" style="background:none;border:none;color:#888;font-size:12px;cursor:pointer;text-decoration:underline">Refresh Page</button></div>'
+        + '</div></div>';
       return;
     }
     const data = await r.json();
