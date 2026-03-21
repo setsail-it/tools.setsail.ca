@@ -1693,153 +1693,232 @@ var STRATEGY_TABS = [
 // Sources: WordStream Google Ads Benchmarks 2024, Unbounce Conversion Benchmark
 // Report 2024, HubSpot State of Marketing 2024, Ruler Analytics CPL Report 2024.
 // These are starting points — will be refined with real client data over time.
+// Industry benchmark data sourced from published reports:
+// - WordStream/LocaliQ 2025 Google Ads Benchmarks (16,446 US campaigns, Apr 2024–Mar 2025)
+// - LocaliQ Home Services Search Advertising Benchmarks 2025
+// - Unbounce 2024 Conversion Benchmark Report (41,000 landing pages, 464M visitors)
+// - First Page Sage SQL-to-Closed-Won Conversion Rates 2026 (28 industries)
+// - Focus Digital Customer Retention Rates 2025 (16 industries)
+// - HubSpot State of Sales 2024, Clio Legal Trends, Dandy/Dental Intelligence PLV data
+// - Ruler Analytics, Flyweel CPL/CAC Benchmark Index 2025
+// Last updated: 2026-03-20
 var INDUSTRY_BENCHMARKS = {
   'construction': {
-    landing_page_cvr: { low: 0.03, mid: 0.045, high: 0.07 },
-    avg_cpl: { low: 40, mid: 85, high: 180 },
-    close_rate: { low: 0.20, mid: 0.30, high: 0.40 },
-    retention_multiplier: { low: 1.0, mid: 1.2, high: 1.5 },
-    source: 'WordStream/Unbounce 2024 — Construction & Home Services'
+    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 100, mid: 166, high: 250 },
+    close_rate: { low: 0.12, mid: 0.16, high: 0.25 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'LocaliQ 2025 (Construction & Contractors CVR 2.61%, CPL $165.67) + First Page Sage 2026 (close 16%)'
   },
   'home services': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
-    avg_cpl: { low: 30, mid: 65, high: 130 },
-    close_rate: { low: 0.25, mid: 0.35, high: 0.50 },
-    retention_multiplier: { low: 1.2, mid: 1.8, high: 2.5 },
-    source: 'WordStream/Unbounce 2024 — Home Services'
+    landing_page_cvr: { low: 0.05, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 55, mid: 91, high: 140 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.40 },
+    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
+    source: 'WordStream 2025 (Home & Home Improvement CVR 7.33%, CPL $90.92) + HookAgency close rates'
   },
   'hvac': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.07 },
-    avg_cpl: { low: 35, mid: 70, high: 150 },
-    close_rate: { low: 0.25, mid: 0.35, high: 0.45 },
-    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
-    source: 'WordStream 2024 — HVAC & Mechanical'
+    landing_page_cvr: { low: 0.05, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 75, mid: 128, high: 175 },
+    close_rate: { low: 0.20, mid: 0.29, high: 0.40 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'LocaliQ 2025 (HVAC CVR 6.56%, CPL $127.74) + First Page Sage 2026 (HVAC close 29%)'
   },
   'plumbing': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
-    avg_cpl: { low: 25, mid: 55, high: 120 },
-    close_rate: { low: 0.30, mid: 0.40, high: 0.55 },
-    retention_multiplier: { low: 1.3, mid: 2.0, high: 3.0 },
-    source: 'WordStream 2024 — Plumbing & Drain'
+    landing_page_cvr: { low: 0.05, mid: 0.08, high: 0.12 },
+    avg_cpl: { low: 75, mid: 129, high: 175 },
+    close_rate: { low: 0.18, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'LocaliQ 2025 (Plumbing CVR 7.63%, CPL $129.02) + Focus Digital 2025 (construction retention 80%)'
   },
   'roofing': {
     landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 45, mid: 100, high: 200 },
-    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
-    retention_multiplier: { low: 1.0, mid: 1.1, high: 1.3 },
-    source: 'WordStream 2024 — Roofing'
+    avg_cpl: { low: 150, mid: 228, high: 350 },
+    close_rate: { low: 0.10, mid: 0.16, high: 0.25 },
+    retention_multiplier: { low: 1.5, mid: 2.0, high: 3.0 },
+    source: 'LocaliQ 2025 (Roofing CVR 3.70%, CPL $228.15) + First Page Sage 2026 (construction close 16%)'
+  },
+  'electrical': {
+    landing_page_cvr: { low: 0.06, mid: 0.09, high: 0.14 },
+    avg_cpl: { low: 60, mid: 94, high: 140 },
+    close_rate: { low: 0.18, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'LocaliQ 2025 (Electricians CVR 9.08%, CPL $93.69) + home services close rate range'
   },
   'landscaping': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
-    avg_cpl: { low: 20, mid: 45, high: 90 },
-    close_rate: { low: 0.25, mid: 0.35, high: 0.50 },
-    retention_multiplier: { low: 2.0, mid: 3.0, high: 5.0 },
-    source: 'WordStream 2024 — Landscaping & Lawn Care'
+    landing_page_cvr: { low: 0.04, mid: 0.06, high: 0.10 },
+    avg_cpl: { low: 70, mid: 118, high: 170 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.35 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'LocaliQ 2025 (Landscaping CVR 6.42%, CPL $117.92) + recurring service contracts'
+  },
+  'cleaning': {
+    landing_page_cvr: { low: 0.12, mid: 0.18, high: 0.25 },
+    avg_cpl: { low: 25, mid: 47, high: 75 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 3.0, mid: 4.5, high: 6.0 },
+    source: 'LocaliQ 2025 (Cleaning/Maid CVR 17.65%, CPL $46.99) + recurring contract retention'
   },
   'dental': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
-    avg_cpl: { low: 35, mid: 65, high: 120 },
-    close_rate: { low: 0.30, mid: 0.45, high: 0.60 },
-    retention_multiplier: { low: 2.0, mid: 3.5, high: 6.0 },
-    source: 'WordStream/HubSpot 2024 — Dental'
+    landing_page_cvr: { low: 0.06, mid: 0.09, high: 0.13 },
+    avg_cpl: { low: 50, mid: 84, high: 130 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.35 },
+    retention_multiplier: { low: 5.0, mid: 7.0, high: 10.0 },
+    source: 'WordStream 2025 (Dental CVR 9.08%, CPL $83.93) + Dandy PLV data ($2,800-$5,000 lifetime, 17% annual attrition)'
   },
   'medical': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 50, mid: 120, high: 250 },
-    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
-    retention_multiplier: { low: 2.0, mid: 4.0, high: 8.0 },
-    source: 'WordStream 2024 — Healthcare & Medical'
+    landing_page_cvr: { low: 0.08, mid: 0.12, high: 0.16 },
+    avg_cpl: { low: 35, mid: 57, high: 90 },
+    close_rate: { low: 0.10, mid: 0.13, high: 0.20 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 7.0 },
+    source: 'WordStream 2025 (Physicians CVR 11.62%, CPL $56.83) + First Page Sage 2026 (healthcare close 13%)'
   },
   'legal': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.07 },
-    avg_cpl: { low: 80, mid: 175, high: 350 },
-    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
-    retention_multiplier: { low: 1.0, mid: 1.3, high: 1.8 },
-    source: 'WordStream 2024 — Legal Services'
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 80, mid: 132, high: 200 },
+    close_rate: { low: 0.12, mid: 0.19, high: 0.28 },
+    retention_multiplier: { low: 1.0, mid: 2.0, high: 3.0 },
+    source: 'WordStream 2025 (Legal CVR 5.09%, CPL $131.63) + First Page Sage 2026 (legal close 19%) + Clio CLV data'
   },
   'real estate': {
-    landing_page_cvr: { low: 0.02, mid: 0.035, high: 0.05 },
-    avg_cpl: { low: 30, mid: 70, high: 150 },
-    close_rate: { low: 0.02, mid: 0.04, high: 0.08 },
+    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 60, mid: 100, high: 160 },
+    close_rate: { low: 0.08, mid: 0.14, high: 0.22 },
     retention_multiplier: { low: 1.0, mid: 1.5, high: 2.5 },
-    source: 'WordStream/Ruler 2024 — Real Estate'
+    source: 'WordStream 2025 (Real Estate CVR 3.28%, CPL $100.48) + First Page Sage 2026 (real estate close 14%)'
   },
   'financial services': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 60, mid: 140, high: 300 },
-    close_rate: { low: 0.10, mid: 0.20, high: 0.30 },
-    retention_multiplier: { low: 3.0, mid: 5.0, high: 10.0 },
-    source: 'WordStream 2024 — Financial & Insurance'
+    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 50, mid: 84, high: 140 },
+    close_rate: { low: 0.12, mid: 0.16, high: 0.22 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'WordStream 2025 (Finance & Insurance CVR 2.55%, CPL $83.93) + First Page Sage 2026 (financial close 16%)'
   },
   'insurance': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 50, mid: 110, high: 220 },
-    close_rate: { low: 0.08, mid: 0.15, high: 0.25 },
-    retention_multiplier: { low: 3.0, mid: 5.0, high: 8.0 },
-    source: 'WordStream 2024 — Insurance'
+    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 50, mid: 84, high: 140 },
+    close_rate: { low: 0.12, mid: 0.19, high: 0.25 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'WordStream 2025 (Finance & Insurance CVR 2.55%) + First Page Sage 2026 (business insurance close 19%) + Glassbox (83% retention)'
   },
   'saas': {
-    landing_page_cvr: { low: 0.02, mid: 0.035, high: 0.05 },
-    avg_cpl: { low: 50, mid: 120, high: 250 },
-    close_rate: { low: 0.05, mid: 0.12, high: 0.20 },
-    retention_multiplier: { low: 8.0, mid: 15.0, high: 30.0 },
-    source: 'Unbounce/HubSpot 2024 — SaaS & Software'
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.07 },
+    avg_cpl: { low: 60, mid: 104, high: 160 },
+    close_rate: { low: 0.08, mid: 0.12, high: 0.20 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'Unbounce 2024 (SaaS median CVR 3.8%) + First Page Sage 2026 (B2B SaaS close 12%) + Shopify (SaaS 77% annual retention)'
   },
   'ecommerce': {
-    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
-    avg_cpl: { low: 15, mid: 40, high: 80 },
-    close_rate: { low: 0.01, mid: 0.025, high: 0.04 },
-    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
-    source: 'WordStream/Unbounce 2024 — E-commerce'
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.07 },
+    avg_cpl: { low: 30, mid: 70, high: 120 },
+    close_rate: { low: 0.01, mid: 0.03, high: 0.05 },
+    retention_multiplier: { low: 1.5, mid: 2.0, high: 3.0 },
+    source: 'WordStream 2025 (Apparel CVR 3.99%, CPL $101.49) + Shopify (e-commerce 38% retention, repeat buyers spend 67% more)'
   },
   'restaurant': {
-    landing_page_cvr: { low: 0.04, mid: 0.06, high: 0.10 },
-    avg_cpl: { low: 10, mid: 25, high: 50 },
-    close_rate: { low: 0.40, mid: 0.60, high: 0.80 },
-    retention_multiplier: { low: 3.0, mid: 6.0, high: 12.0 },
-    source: 'WordStream 2024 — Food & Restaurant'
+    landing_page_cvr: { low: 0.05, mid: 0.07, high: 0.12 },
+    avg_cpl: { low: 15, mid: 30, high: 55 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 5.0, mid: 10.0, high: 15.0 },
+    source: 'WordStream 2025 (Restaurant CVR 7.09%, CPL $30.27) + Incentivio/ChowNow (regulars 5-15x annual value)'
   },
   'automotive': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 30, mid: 75, high: 150 },
-    close_rate: { low: 0.10, mid: 0.18, high: 0.28 },
-    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
-    source: 'WordStream 2024 — Automotive'
+    landing_page_cvr: { low: 0.05, mid: 0.08, high: 0.12 },
+    avg_cpl: { low: 20, mid: 39, high: 65 },
+    close_rate: { low: 0.15, mid: 0.20, high: 0.30 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'WordStream 2025 (Auto For Sale CVR 7.76%, Auto Repair CVR 14.67%) + First Page Sage 2026 (automotive close 20%)'
+  },
+  'auto repair': {
+    landing_page_cvr: { low: 0.10, mid: 0.15, high: 0.20 },
+    avg_cpl: { low: 15, mid: 29, high: 45 },
+    close_rate: { low: 0.25, mid: 0.35, high: 0.50 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'WordStream 2025 (Auto Repair CVR 14.67%, CPL $28.50) + Focus Digital (automotive 83% retention)'
   },
   'education': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 40, mid: 90, high: 180 },
-    close_rate: { low: 0.10, mid: 0.20, high: 0.30 },
-    retention_multiplier: { low: 1.0, mid: 2.0, high: 4.0 },
-    source: 'WordStream 2024 — Education'
+    landing_page_cvr: { low: 0.07, mid: 0.11, high: 0.16 },
+    avg_cpl: { low: 55, mid: 90, high: 140 },
+    close_rate: { low: 0.10, mid: 0.15, high: 0.22 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 4.0 },
+    source: 'WordStream 2025 (Education CVR 11.38%, CPL $90.02) + Focus Digital retention data'
   },
   'accounting': {
-    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.07 },
-    avg_cpl: { low: 40, mid: 85, high: 170 },
-    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
-    retention_multiplier: { low: 5.0, mid: 8.0, high: 15.0 },
-    source: 'WordStream/Ruler 2024 — Accounting & Tax'
+    landing_page_cvr: { low: 0.04, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 60, mid: 104, high: 150 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.32 },
+    retention_multiplier: { low: 5.0, mid: 7.0, high: 10.0 },
+    source: 'WordStream 2025 (Business Services CVR 5.14%, CPL $103.54) + Focus Digital (professional services 84% retention)'
   },
   'consulting': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 50, mid: 110, high: 220 },
-    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
-    retention_multiplier: { low: 2.0, mid: 4.0, high: 8.0 },
-    source: 'HubSpot/Ruler 2024 — B2B Consulting'
+    landing_page_cvr: { low: 0.04, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 60, mid: 104, high: 150 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.32 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 8.0 },
+    source: 'WordStream 2025 (Business Services CVR 5.14%) + Focus Digital (professional services 84% retention)'
   },
   'marketing agency': {
     landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
-    avg_cpl: { low: 40, mid: 90, high: 180 },
-    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
-    retention_multiplier: { low: 6.0, mid: 12.0, high: 24.0 },
-    source: 'HubSpot/Ruler 2024 — Marketing & Advertising Agency'
+    avg_cpl: { low: 70, mid: 104, high: 150 },
+    close_rate: { low: 0.12, mid: 0.18, high: 0.28 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 6.0 },
+    source: 'WordStream 2025 (Business Services CVR 5.14%) + Focus Digital (professional services 84% retention)'
+  },
+  'fitness': {
+    landing_page_cvr: { low: 0.05, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 35, mid: 63, high: 95 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.35 },
+    retention_multiplier: { low: 1.5, mid: 2.0, high: 2.5 },
+    source: 'WordStream 2025 (Health & Fitness CVR 6.80%, CPL $62.80) + WellnessLiving (avg membership 17-24 months)'
+  },
+  'pet services': {
+    landing_page_cvr: { low: 0.08, mid: 0.13, high: 0.18 },
+    avg_cpl: { low: 18, mid: 32, high: 50 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'WordStream 2025 (Animals & Pets CVR 13.07%, CPL $31.82) + Opensend (consumables 40%+ repeat rate)'
+  },
+  'manufacturing': {
+    landing_page_cvr: { low: 0.04, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 50, mid: 86, high: 130 },
+    close_rate: { low: 0.10, mid: 0.13, high: 0.20 },
+    retention_multiplier: { low: 3.0, mid: 4.0, high: 5.0 },
+    source: 'WordStream 2025 (Industrial CVR 7.17%, CPL $85.63) + First Page Sage 2026 (manufacturing close 13%)'
+  },
+  'moving': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 70, mid: 120, high: 180 },
+    close_rate: { low: 0.15, mid: 0.20, high: 0.30 },
+    retention_multiplier: { low: 1.0, mid: 1.2, high: 2.0 },
+    source: 'LocaliQ 2025 (Storage CVR 4.65%, CPL $120.30) + one-time purchase industry baseline'
+  },
+  'photography': {
+    landing_page_cvr: { low: 0.04, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 40, mid: 70, high: 110 },
+    close_rate: { low: 0.15, mid: 0.22, high: 0.35 },
+    retention_multiplier: { low: 1.0, mid: 1.5, high: 2.0 },
+    source: 'WordStream 2025 (Personal Services CVR 9.74%, CPL $53.52) + one-time purchase w/ referral multiplier'
+  },
+  'wedding': {
+    landing_page_cvr: { low: 0.04, mid: 0.07, high: 0.10 },
+    avg_cpl: { low: 40, mid: 70, high: 110 },
+    close_rate: { low: 0.12, mid: 0.20, high: 0.30 },
+    retention_multiplier: { low: 1.0, mid: 1.2, high: 1.5 },
+    source: 'WordStream 2025 (Personal Services CVR 9.74%) + one-time purchase industry (referral-driven repeat)'
+  },
+  'beauty': {
+    landing_page_cvr: { low: 0.05, mid: 0.08, high: 0.12 },
+    avg_cpl: { low: 35, mid: 60, high: 95 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 8.0 },
+    source: 'WordStream 2025 (Beauty & Personal Care CVR 7.82%, CPL $60.34) + recurring appointment model'
   },
   '_default': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
-    avg_cpl: { low: 40, mid: 90, high: 200 },
-    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    landing_page_cvr: { low: 0.04, mid: 0.075, high: 0.11 },
+    avg_cpl: { low: 40, mid: 70, high: 120 },
+    close_rate: { low: 0.12, mid: 0.20, high: 0.30 },
     retention_multiplier: { low: 1.5, mid: 3.0, high: 6.0 },
-    source: 'Cross-industry average (WordStream/HubSpot 2024)'
+    source: 'WordStream 2025 all-industry avg (CVR 7.52%, CPL $70.11) + First Page Sage 2026 + Focus Digital 2025'
   }
 };
 
@@ -1847,20 +1926,30 @@ var INDUSTRY_BENCHMARKS = {
 var _BENCHMARK_ALIASES = {
   'trades': 'home services', 'professional': 'consulting', 'agency': 'marketing agency',
   'healthcare': 'medical', 'health': 'medical', 'finance': 'financial services',
-  'law': 'legal', 'attorney': 'legal', 'lawyer': 'legal',
+  'law': 'legal', 'attorney': 'legal', 'lawyer': 'legal', 'personal injury': 'legal', 'family law': 'legal',
   'contractor': 'construction', 'general contractor': 'construction', 'renovation': 'construction',
-  'flooring': 'construction', 'painting': 'construction', 'electrical': 'home services',
-  'cleaning': 'home services', 'pest control': 'home services', 'moving': 'home services',
+  'flooring': 'construction', 'painting': 'construction',
+  'pest control': 'home services', 'handyman': 'home services',
+  'maid': 'cleaning', 'janitorial': 'cleaning', 'carpet cleaning': 'cleaning',
   'therapy': 'medical', 'chiropractic': 'medical', 'physiotherapy': 'medical',
-  'optometry': 'medical', 'veterinary': 'medical', 'pharmacy': 'medical',
-  'wealth management': 'financial services', 'mortgage': 'financial services',
-  'bookkeeping': 'accounting', 'tax': 'accounting',
-  'web design': 'marketing agency', 'digital marketing': 'marketing agency',
-  'it services': 'consulting', 'technology': 'saas',
-  'retail': 'ecommerce', 'online store': 'ecommerce',
-  'food': 'restaurant', 'catering': 'restaurant', 'cafe': 'restaurant',
-  'fitness': 'medical', 'gym': 'medical', 'wellness': 'medical',
-  'property management': 'real estate', 'realtor': 'real estate'
+  'optometry': 'medical', 'pharmacy': 'medical',
+  'veterinary': 'pet services', 'vet': 'pet services', 'grooming': 'pet services', 'dog': 'pet services',
+  'wealth management': 'financial services', 'mortgage': 'financial services', 'banking': 'financial services',
+  'bookkeeping': 'accounting', 'tax': 'accounting', 'cpa': 'accounting',
+  'web design': 'marketing agency', 'digital marketing': 'marketing agency', 'seo': 'marketing agency',
+  'it services': 'consulting', 'technology': 'saas', 'software': 'saas', 'fintech': 'saas',
+  'retail': 'ecommerce', 'online store': 'ecommerce', 'shopify': 'ecommerce',
+  'food': 'restaurant', 'catering': 'restaurant', 'cafe': 'restaurant', 'bakery': 'restaurant',
+  'gym': 'fitness', 'wellness': 'fitness', 'spa': 'fitness', 'yoga': 'fitness', 'pilates': 'fitness',
+  'property management': 'real estate', 'realtor': 'real estate',
+  'auto body': 'auto repair', 'mechanic': 'auto repair', 'car repair': 'auto repair',
+  'car dealer': 'automotive', 'dealership': 'automotive',
+  'storage': 'moving', 'relocation': 'moving',
+  'videography': 'photography', 'photographer': 'photography',
+  'event planning': 'wedding', 'event planner': 'wedding', 'bridal': 'wedding',
+  'salon': 'beauty', 'barbershop': 'beauty', 'aesthetics': 'beauty', 'cosmetics': 'beauty', 'hair': 'beauty',
+  'industrial': 'manufacturing', 'fabrication': 'manufacturing',
+  'school': 'education', 'university': 'education', 'tutoring': 'education', 'training': 'education'
 };
 
 function _matchIndustryBenchmark(industry) {
