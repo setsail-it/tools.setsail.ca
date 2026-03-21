@@ -652,6 +652,31 @@ function buildCopyPrompt(page) {
           + _vocSeeds.map(function(v) { return '- "' + (v.quote || '') + '" [' + (v.usage || '') + ']'; }).join('\n') + '\n';
       }
     }
+    // Emotional veins — inject all for copy to weave emotional depth
+    if (_narC.emotional_veins && _narC.emotional_veins.length) {
+      _narrativeCopyCtx += '\nEMOTIONAL VEINS (weave these deep psychological drivers into the copy where natural):\n'
+        + _narC.emotional_veins.slice(0, 4).map(function(ev) { return '- ' + (ev.vein || '') + ': ' + (ev.messaging || ''); }).join('\n') + '\n';
+    }
+    // Emotional journey stage matched to page awareness
+    if (_narC.emotional_journey && _narC.emotional_journey.length && page.awareness_stage) {
+      var _copyJMap = { problem_aware: 'scar', solution_aware: 'search', product_aware: 'moment', most_aware: 'relief' };
+      var _copyJStage = _copyJMap[page.awareness_stage];
+      if (_copyJStage) {
+        var _copyJMatch = _narC.emotional_journey.find(function(ej) { return ej.stage === _copyJStage; });
+        if (_copyJMatch) {
+          _narrativeCopyCtx += '\nEMOTIONAL STAGE (' + _copyJStage + '): The buyer feels ' + (_copyJMatch.emotion_from || '') + ' shifting to ' + (_copyJMatch.emotion_to || '') + '. ' + (_copyJMatch.language_direction || '') + '\n';
+        }
+      }
+    }
+    // Touchpoint messaging for this page type
+    if (_narC.touchpoint_messaging) {
+      var _copyTpMap = { home: 'homepage_headline', service: 'diagnostic_presentation', landing: 'proposal_close' };
+      var _copyTpKey = _copyTpMap[(page.page_type || '').toLowerCase()];
+      if (_copyTpKey && _narC.touchpoint_messaging[_copyTpKey]) {
+        var _copyTp = _narC.touchpoint_messaging[_copyTpKey];
+        _narrativeCopyCtx += 'TOUCHPOINT TONE — Rational: ' + (_copyTp.rational || '') + ' | Emotional: ' + (_copyTp.emotional || '') + '\n';
+      }
+    }
   }
 
   // D0 Buying motion + purchase triggers (missing from generation)

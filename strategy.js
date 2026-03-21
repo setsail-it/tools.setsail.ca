@@ -2411,7 +2411,11 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'has_content_hooks', label:'Content hooks for 3+ stages', check: function(d) { if (!d.content_hooks) return false; var stages = ['unaware','problem_aware','solution_aware','product_aware','most_aware']; var filled = stages.filter(function(s) { return d.content_hooks[s] && d.content_hooks[s].length >= 1; }); return filled.length >= 3; } },
     { id:'has_voc_swipe', label:'VoC swipe file has entries', check: function(d) { return d.voc_swipe_file && d.voc_swipe_file.length >= 3; } },
     { id:'has_entry_point', label:'Recommended entry point set', check: function(d) { return d.recommended_entry_point && d.recommended_entry_point.length > 5; } },
-    { id:'has_confidence', label:'Confidence score provided', check: function(d) { return d.confidence !== undefined && d.confidence !== null; } }
+    { id:'has_confidence', label:'Confidence score provided', check: function(d) { return d.confidence !== undefined && d.confidence !== null; } },
+    { id:'has_emotional_journey', label:'Emotional journey has 4 stages', check: function(d) { return d.emotional_journey && d.emotional_journey.length === 4; } },
+    { id:'has_emotional_veins', label:'Emotional veins identified (3-5)', check: function(d) { return d.emotional_veins && d.emotional_veins.length >= 3; } },
+    { id:'has_touchpoint_messaging', label:'Touchpoint messaging covers 5+ touchpoints', check: function(d) { return d.touchpoint_messaging && Object.keys(d.touchpoint_messaging).length >= 5; } },
+    { id:'has_vertical_resonance', label:'Vertical resonance mapped', check: function(d) { return d.vertical_resonance && d.vertical_resonance.length >= 1; } }
   ],
   9: [ // D9: Sales Intelligence
     { id:'has_sales_storybrand', label:'Sales StoryBrand complete', check: function(d) { return d.sales_storybrand && d.sales_storybrand.hero && d.sales_storybrand.external_problem && d.sales_storybrand.plan && d.sales_storybrand.plan.length >= 3; } },
@@ -3327,6 +3331,41 @@ function _buyerIntelBlock(page) {
         }).join('\n'));
       }
     }
+    // Emotional veins — inject top 2 as emotional texture guidance
+    if (_biNar.emotional_veins && _biNar.emotional_veins.length) {
+      _biNarParts.push('EMOTIONAL VEINS (weave emotional depth into copy):\n' + _biNar.emotional_veins.slice(0, 2).map(function(ev) {
+        return '- ' + (ev.vein || '') + ': ' + (ev.messaging || '');
+      }).join('\n'));
+    }
+    // Emotional journey — match awareness stage to journey stage
+    if (_biNar.emotional_journey && _biNar.emotional_journey.length && page.awareness_stage) {
+      var _biJourneyMap = { problem_aware: 'scar', solution_aware: 'search', product_aware: 'moment', most_aware: 'relief' };
+      var _biJourneyStage = _biJourneyMap[page.awareness_stage];
+      if (_biJourneyStage) {
+        var _biJMatch = _biNar.emotional_journey.find(function(ej) { return ej.stage === _biJourneyStage; });
+        if (_biJMatch) {
+          _biNarParts.push('EMOTIONAL REGISTER (' + _biJourneyStage + ' stage): ' + (_biJMatch.emotion_from || '') + ' \u2192 ' + (_biJMatch.emotion_to || '') + '. Direction: ' + (_biJMatch.language_direction || ''));
+        }
+      }
+    }
+    // Touchpoint messaging — match page type to touchpoint
+    if (_biNar.touchpoint_messaging) {
+      var _biTpMap = { home: 'homepage_headline', service: 'diagnostic_presentation', landing: 'proposal_close' };
+      var _biTpKey = _biTpMap[(page.page_type || '').toLowerCase()];
+      if (_biTpKey && _biNar.touchpoint_messaging[_biTpKey]) {
+        var _biTp = _biNar.touchpoint_messaging[_biTpKey];
+        _biNarParts.push('TOUCHPOINT MESSAGING: Rational: ' + (_biTp.rational || '') + ' | Emotional: ' + (_biTp.emotional || ''));
+      }
+    }
+    // Vertical resonance — inject when page has target persona matching a vertical
+    if (_biNar.vertical_resonance && _biNar.vertical_resonance.length && page.target_persona) {
+      var _biVrMatch = _biNar.vertical_resonance.find(function(vr) {
+        return page.target_persona.toLowerCase().indexOf((vr.vertical || '').toLowerCase().split(' ')[0]) >= 0;
+      });
+      if (_biVrMatch) {
+        _biNarParts.push('VERTICAL RESONANCE (' + _biVrMatch.vertical + '): Fear: ' + (_biVrMatch.fear || '') + ' \u2014 Language: ' + (_biVrMatch.tailored_language || ''));
+      }
+    }
     if (_biNarParts.length) parts.push(_biNarParts.join('\n'));
   }
 
@@ -4204,7 +4243,11 @@ function buildDiagnosticPrompt(num) {
       + '- emotional_register options: frustration, aspiration, urgency, trust, skepticism, relief\n'
       + '- usage options: headline, subhead, cta, testimonial_seed, email_subject, ad_copy, landing_page\n'
       + '- recommended_entry_point: which awareness stage to target the CLIENT\'S CUSTOMERS first\n'
-      + '- call_shape: "education-led" or "proof-led" based on the CLIENT\'S CUSTOMER sophistication\n\n'
+      + '- call_shape: "education-led" or "proof-led" based on the CLIENT\'S CUSTOMER sophistication\n'
+      + '- emotional_journey: MUST have exactly 4 stages in order: scar, search, moment, relief. Maps the burned buyer\'s emotional arc from past pain to choosing this brand. Each stage has an emotion transition (from→to), buyer inner voice, and copy direction.\n'
+      + '- emotional_veins: 3-5 deep emotional drivers underlying the purchase decision. Go deeper than surface objections — identify the psychology (shame, fatigue, fear of repeating mistakes, loneliness of the decision, desire for control). Each vein gets specific messaging guidance.\n'
+      + '- touchpoint_messaging: rational (logical argument) + emotional (feeling-layer) message for EACH of 9 buyer touchpoints. These are what the CLIENT should say at each moment in the buyer journey.\n'
+      + '- vertical_resonance: when the client serves multiple verticals/segments, map the specific fear and tailored language per vertical. Use D0 audience segments as the source. If single-vertical, provide at least 2-3 sub-segments.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "storybrand": {\n'
       + '    "hero": "the CLIENT\'S CUSTOMER — who they are, role + context (NOT the client themselves)",\n'
@@ -4245,6 +4288,29 @@ function buildDiagnosticPrompt(num) {
       + '    "emotional_register": "frustration|aspiration|urgency|trust|skepticism|relief",\n'
       + '    "usage": "headline|subhead|cta|testimonial_seed|email_subject|ad_copy|landing_page"\n'
       + '  }],\n'
+      + '  "emotional_journey": [\n'
+      + '    {"stage": "scar", "emotion_from": "starting emotion (e.g. betrayal)", "emotion_to": "resulting state (e.g. distrust)", "buyer_voice": "what the buyer says/thinks at this stage", "language_direction": "how copy should sound at this stage"},\n'
+      + '    {"stage": "search", "emotion_from": "...", "emotion_to": "...", "buyer_voice": "...", "language_direction": "..."},\n'
+      + '    {"stage": "moment", "emotion_from": "...", "emotion_to": "...", "buyer_voice": "...", "language_direction": "..."},\n'
+      + '    {"stage": "relief", "emotion_from": "...", "emotion_to": "...", "buyer_voice": "...", "language_direction": "..."}\n'
+      + '  ],\n'
+      + '  "emotional_veins": [\n'
+      + '    {"vein": "deep emotional driver name (e.g. shame of being fooled, exhaustion of evaluating)", "description": "what this fear/desire really is underneath — the psychology", "messaging": "specific language direction for copy that taps this vein"}\n'
+      + '  ],\n'
+      + '  "touchpoint_messaging": {\n'
+      + '    "homepage_headline": {"rational": "logical message for this touchpoint", "emotional": "feeling-layer message"},\n'
+      + '    "homepage_subhead": {"rational": "...", "emotional": "..."},\n'
+      + '    "discovery_call": {"rational": "...", "emotional": "..."},\n'
+      + '    "diagnostic_presentation": {"rational": "...", "emotional": "..."},\n'
+      + '    "proposal_close": {"rational": "...", "emotional": "..."},\n'
+      + '    "objection_price": {"rational": "...", "emotional": "..."},\n'
+      + '    "objection_burned": {"rational": "...", "emotional": "..."},\n'
+      + '    "onboarding": {"rational": "...", "emotional": "..."},\n'
+      + '    "case_study": {"rational": "...", "emotional": "..."}\n'
+      + '  },\n'
+      + '  "vertical_resonance": [\n'
+      + '    {"vertical": "industry vertical or buyer segment", "fear": "what this vertical fears most when hiring", "tailored_language": "how to speak to this vertical specifically"}\n'
+      + '  ],\n'
       + '  "recommended_entry_point": "which awareness stage to enter at",\n'
       + '  "call_shape": "education-led or proof-led",\n'
       + '  "confidence": 7\n'
@@ -4298,6 +4364,8 @@ function buildDiagnosticPrompt(num) {
       + (st.demand_validation ? '\nDEMAND: ' + (st.demand_validation.overall_verdict || '') + ', volume: ' + (st.demand_validation.total_monthly_volume || '?') + '/mo' : '')
       + (st.narrative && st.narrative.storybrand ? '\nCLIENT STORYBRAND HERO: ' + st.narrative.storybrand.hero : '')
       + (st.narrative && st.narrative.messaging_pillars ? '\nCLIENT TOP PILLAR: ' + st.narrative.messaging_pillars[0].pillar : '')
+      + (st.narrative && st.narrative.emotional_veins && st.narrative.emotional_veins.length ? '\nCLIENT EMOTIONAL VEINS: ' + st.narrative.emotional_veins.map(function(ev) { return ev.vein; }).join(', ') : '')
+      + (st.narrative && st.narrative.vertical_resonance && st.narrative.vertical_resonance.length ? '\nVERTICAL FEARS: ' + st.narrative.vertical_resonance.map(function(vr) { return vr.vertical + ': ' + vr.fear; }).join('; ') : '')
       + scopeCtx
       + investCtx
       + '\n\n--- JTBD FORCES (client switching psychology) ---\n'
@@ -8892,6 +8960,77 @@ function _renderNarrative(st) {
     });
     html += '</div>';
   }
+  // ── Emotional Journey ──
+  if (n.emotional_journey && n.emotional_journey.length) {
+    var _ejStageColours = { scar: '#b91c1c', search: '#c2410c', moment: '#15803d', relief: '#1d4ed8' };
+    var _ejStageLabels = { scar: 'The Scar', search: 'The Search', moment: 'The Moment', relief: 'The Relief' };
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:4px">Emotional Journey</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px">The burned buyer\'s emotional arc — how they feel at each stage of finding and choosing this brand</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(' + Math.min(n.emotional_journey.length, 4) + ',1fr);gap:10px">';
+    n.emotional_journey.forEach(function(ej) {
+      var col = _ejStageColours[ej.stage] || '#666';
+      html += '<div style="border-left:3px solid ' + col + ';padding:10px 12px;background:' + col + '08;border-radius:0 6px 6px 0">';
+      html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:' + col + ';font-weight:600;margin-bottom:4px">' + esc(_ejStageLabels[ej.stage] || ej.stage) + '</div>';
+      html += '<div style="font-size:13px;font-weight:600;margin-bottom:6px">' + esc(ej.emotion_from || '') + ' \u2192 ' + esc(ej.emotion_to || '') + '</div>';
+      if (ej.buyer_voice) html += '<div style="font-size:11.5px;font-style:italic;color:var(--dark);margin-bottom:6px;line-height:1.4">\u201C' + esc(ej.buyer_voice) + '\u201D</div>';
+      if (ej.language_direction) html += '<div style="font-size:10.5px;color:var(--n2);line-height:1.4;background:rgba(0,0,0,0.03);padding:6px 8px;border-radius:4px">' + esc(ej.language_direction) + '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  // ── Emotional Veins ──
+  if (n.emotional_veins && n.emotional_veins.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:4px">Emotional Veins</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px">Deep emotional drivers underlying the purchase decision — the psychology beneath the surface objections</div>';
+    n.emotional_veins.forEach(function(ev, i) {
+      html += '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px">';
+      html += '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">' + (i+1) + '. ' + esc(ev.vein || '') + '</div>';
+      if (ev.description) html += '<div style="font-size:11.5px;color:var(--dark);line-height:1.5;margin-bottom:6px">' + esc(ev.description) + '</div>';
+      if (ev.messaging) html += '<div style="font-size:10.5px;color:var(--n2);line-height:1.4;background:rgba(59,130,246,0.05);padding:6px 8px;border-radius:4px;border-left:2px solid rgba(59,130,246,0.3)"><strong>Language direction:</strong> ' + esc(ev.messaging) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Touchpoint Messaging ──
+  if (n.touchpoint_messaging && Object.keys(n.touchpoint_messaging).length) {
+    var _tpLabels = {
+      homepage_headline: 'Homepage Headline', homepage_subhead: 'Homepage Subhead',
+      discovery_call: 'Discovery Call Opener', diagnostic_presentation: 'Diagnostic Presentation',
+      proposal_close: 'Proposal Close', objection_price: 'Objection: Price',
+      objection_burned: 'Objection: Burned Before', onboarding: 'Onboarding Email',
+      case_study: 'Case Study Headline'
+    };
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:4px">Touchpoint Messaging</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px">Rational (logical argument) + emotional (feeling-layer) message for each buyer touchpoint</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+    html += '<thead><tr style="border-bottom:2px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);width:160px">Touchpoint</th><th style="text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Rational</th><th style="text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2)">Emotional</th></tr></thead><tbody>';
+    Object.keys(n.touchpoint_messaging).forEach(function(key) {
+      var tp = n.touchpoint_messaging[key];
+      html += '<tr style="border-bottom:1px solid var(--border)">';
+      html += '<td style="padding:6px 8px;font-weight:500;white-space:nowrap">' + esc(_tpLabels[key] || key.replace(/_/g, ' ')) + '</td>';
+      html += '<td style="padding:6px 8px;color:var(--dark);line-height:1.4">' + esc(tp.rational || '') + '</td>';
+      html += '<td style="padding:6px 8px;color:var(--dark);line-height:1.4;font-style:italic">\u201C' + esc(tp.emotional || '') + '\u201D</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // ── Vertical Resonance ──
+  if (n.vertical_resonance && n.vertical_resonance.length) {
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:4px">Vertical Resonance</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px">Per-vertical emotional triggers and tailored language for different buyer segments</div>';
+    n.vertical_resonance.forEach(function(vr) {
+      html += '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px">';
+      html += '<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">' + esc(vr.vertical || '') + '</div>';
+      if (vr.fear) html += '<div style="font-size:11.5px;color:var(--dark);margin-bottom:6px"><strong>Fear:</strong> ' + esc(vr.fear) + '</div>';
+      if (vr.tailored_language) html += '<div style="font-size:11px;font-style:italic;color:var(--accent);line-height:1.4">\u201C' + esc(vr.tailored_language) + '\u201D</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   // Strategic Recommendations
   html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Strategic Recommendations</div>';
   if (n.recommended_entry_point) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Entry Point</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.recommended_entry_point) + '</span></div>';
@@ -9528,6 +9667,15 @@ async function compileStrategyOutput() {
     }
     if (nar.recommended_entry_point) ctx += '- Recommended entry: ' + nar.recommended_entry_point + '\n';
     if (nar.call_shape) ctx += '- Call shape: ' + nar.call_shape + '\n';
+    if (nar.emotional_journey && nar.emotional_journey.length) {
+      ctx += '- Emotional journey: ' + nar.emotional_journey.map(function(ej) { return ej.stage + ' (' + (ej.emotion_from || '') + ' \u2192 ' + (ej.emotion_to || '') + ')'; }).join(' \u2192 ') + '\n';
+    }
+    if (nar.emotional_veins && nar.emotional_veins.length) {
+      ctx += '- Emotional veins: ' + nar.emotional_veins.map(function(ev) { return ev.vein + ': ' + (ev.messaging || '').slice(0, 60); }).join('; ') + '\n';
+    }
+    if (nar.vertical_resonance && nar.vertical_resonance.length) {
+      ctx += '- Vertical resonance: ' + nar.vertical_resonance.map(function(vr) { return vr.vertical + ' (fear: ' + (vr.fear || '').slice(0, 40) + ')'; }).join('; ') + '\n';
+    }
   }
 
   // Strategy scoring summary
