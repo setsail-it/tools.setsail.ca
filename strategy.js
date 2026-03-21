@@ -1687,6 +1687,202 @@ var STRATEGY_TABS = [
   { id:'output',       label:'Output',             icon:'ti-file-text' }
 ];
 
+// ── Industry Benchmark Table ─────────────────────────────────────
+// Static benchmark data keyed by industry vertical. Each metric has low/mid/high
+// ranges for conservative/base/optimistic sensitivity scenarios.
+// Sources: WordStream Google Ads Benchmarks 2024, Unbounce Conversion Benchmark
+// Report 2024, HubSpot State of Marketing 2024, Ruler Analytics CPL Report 2024.
+// These are starting points — will be refined with real client data over time.
+var INDUSTRY_BENCHMARKS = {
+  'construction': {
+    landing_page_cvr: { low: 0.03, mid: 0.045, high: 0.07 },
+    avg_cpl: { low: 40, mid: 85, high: 180 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.40 },
+    retention_multiplier: { low: 1.0, mid: 1.2, high: 1.5 },
+    source: 'WordStream/Unbounce 2024 — Construction & Home Services'
+  },
+  'home services': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 30, mid: 65, high: 130 },
+    close_rate: { low: 0.25, mid: 0.35, high: 0.50 },
+    retention_multiplier: { low: 1.2, mid: 1.8, high: 2.5 },
+    source: 'WordStream/Unbounce 2024 — Home Services'
+  },
+  'hvac': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.07 },
+    avg_cpl: { low: 35, mid: 70, high: 150 },
+    close_rate: { low: 0.25, mid: 0.35, high: 0.45 },
+    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
+    source: 'WordStream 2024 — HVAC & Mechanical'
+  },
+  'plumbing': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 25, mid: 55, high: 120 },
+    close_rate: { low: 0.30, mid: 0.40, high: 0.55 },
+    retention_multiplier: { low: 1.3, mid: 2.0, high: 3.0 },
+    source: 'WordStream 2024 — Plumbing & Drain'
+  },
+  'roofing': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 45, mid: 100, high: 200 },
+    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 1.0, mid: 1.1, high: 1.3 },
+    source: 'WordStream 2024 — Roofing'
+  },
+  'landscaping': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 20, mid: 45, high: 90 },
+    close_rate: { low: 0.25, mid: 0.35, high: 0.50 },
+    retention_multiplier: { low: 2.0, mid: 3.0, high: 5.0 },
+    source: 'WordStream 2024 — Landscaping & Lawn Care'
+  },
+  'dental': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 35, mid: 65, high: 120 },
+    close_rate: { low: 0.30, mid: 0.45, high: 0.60 },
+    retention_multiplier: { low: 2.0, mid: 3.5, high: 6.0 },
+    source: 'WordStream/HubSpot 2024 — Dental'
+  },
+  'medical': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 50, mid: 120, high: 250 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 2.0, mid: 4.0, high: 8.0 },
+    source: 'WordStream 2024 — Healthcare & Medical'
+  },
+  'legal': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.07 },
+    avg_cpl: { low: 80, mid: 175, high: 350 },
+    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 1.0, mid: 1.3, high: 1.8 },
+    source: 'WordStream 2024 — Legal Services'
+  },
+  'real estate': {
+    landing_page_cvr: { low: 0.02, mid: 0.035, high: 0.05 },
+    avg_cpl: { low: 30, mid: 70, high: 150 },
+    close_rate: { low: 0.02, mid: 0.04, high: 0.08 },
+    retention_multiplier: { low: 1.0, mid: 1.5, high: 2.5 },
+    source: 'WordStream/Ruler 2024 — Real Estate'
+  },
+  'financial services': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 60, mid: 140, high: 300 },
+    close_rate: { low: 0.10, mid: 0.20, high: 0.30 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 10.0 },
+    source: 'WordStream 2024 — Financial & Insurance'
+  },
+  'insurance': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 50, mid: 110, high: 220 },
+    close_rate: { low: 0.08, mid: 0.15, high: 0.25 },
+    retention_multiplier: { low: 3.0, mid: 5.0, high: 8.0 },
+    source: 'WordStream 2024 — Insurance'
+  },
+  'saas': {
+    landing_page_cvr: { low: 0.02, mid: 0.035, high: 0.05 },
+    avg_cpl: { low: 50, mid: 120, high: 250 },
+    close_rate: { low: 0.05, mid: 0.12, high: 0.20 },
+    retention_multiplier: { low: 8.0, mid: 15.0, high: 30.0 },
+    source: 'Unbounce/HubSpot 2024 — SaaS & Software'
+  },
+  'ecommerce': {
+    landing_page_cvr: { low: 0.02, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 15, mid: 40, high: 80 },
+    close_rate: { low: 0.01, mid: 0.025, high: 0.04 },
+    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
+    source: 'WordStream/Unbounce 2024 — E-commerce'
+  },
+  'restaurant': {
+    landing_page_cvr: { low: 0.04, mid: 0.06, high: 0.10 },
+    avg_cpl: { low: 10, mid: 25, high: 50 },
+    close_rate: { low: 0.40, mid: 0.60, high: 0.80 },
+    retention_multiplier: { low: 3.0, mid: 6.0, high: 12.0 },
+    source: 'WordStream 2024 — Food & Restaurant'
+  },
+  'automotive': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 30, mid: 75, high: 150 },
+    close_rate: { low: 0.10, mid: 0.18, high: 0.28 },
+    retention_multiplier: { low: 1.5, mid: 2.5, high: 4.0 },
+    source: 'WordStream 2024 — Automotive'
+  },
+  'education': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 40, mid: 90, high: 180 },
+    close_rate: { low: 0.10, mid: 0.20, high: 0.30 },
+    retention_multiplier: { low: 1.0, mid: 2.0, high: 4.0 },
+    source: 'WordStream 2024 — Education'
+  },
+  'accounting': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.07 },
+    avg_cpl: { low: 40, mid: 85, high: 170 },
+    close_rate: { low: 0.20, mid: 0.30, high: 0.45 },
+    retention_multiplier: { low: 5.0, mid: 8.0, high: 15.0 },
+    source: 'WordStream/Ruler 2024 — Accounting & Tax'
+  },
+  'consulting': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 50, mid: 110, high: 220 },
+    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 2.0, mid: 4.0, high: 8.0 },
+    source: 'HubSpot/Ruler 2024 — B2B Consulting'
+  },
+  'marketing agency': {
+    landing_page_cvr: { low: 0.03, mid: 0.05, high: 0.08 },
+    avg_cpl: { low: 40, mid: 90, high: 180 },
+    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 6.0, mid: 12.0, high: 24.0 },
+    source: 'HubSpot/Ruler 2024 — Marketing & Advertising Agency'
+  },
+  '_default': {
+    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.06 },
+    avg_cpl: { low: 40, mid: 90, high: 200 },
+    close_rate: { low: 0.15, mid: 0.25, high: 0.35 },
+    retention_multiplier: { low: 1.5, mid: 3.0, high: 6.0 },
+    source: 'Cross-industry average (WordStream/HubSpot 2024)'
+  }
+};
+
+// Category aliases — maps _detectBusinessCategory() outputs and common industry strings to benchmark keys
+var _BENCHMARK_ALIASES = {
+  'trades': 'home services', 'professional': 'consulting', 'agency': 'marketing agency',
+  'healthcare': 'medical', 'health': 'medical', 'finance': 'financial services',
+  'law': 'legal', 'attorney': 'legal', 'lawyer': 'legal',
+  'contractor': 'construction', 'general contractor': 'construction', 'renovation': 'construction',
+  'flooring': 'construction', 'painting': 'construction', 'electrical': 'home services',
+  'cleaning': 'home services', 'pest control': 'home services', 'moving': 'home services',
+  'therapy': 'medical', 'chiropractic': 'medical', 'physiotherapy': 'medical',
+  'optometry': 'medical', 'veterinary': 'medical', 'pharmacy': 'medical',
+  'wealth management': 'financial services', 'mortgage': 'financial services',
+  'bookkeeping': 'accounting', 'tax': 'accounting',
+  'web design': 'marketing agency', 'digital marketing': 'marketing agency',
+  'it services': 'consulting', 'technology': 'saas',
+  'retail': 'ecommerce', 'online store': 'ecommerce',
+  'food': 'restaurant', 'catering': 'restaurant', 'cafe': 'restaurant',
+  'fitness': 'medical', 'gym': 'medical', 'wellness': 'medical',
+  'property management': 'real estate', 'realtor': 'real estate'
+};
+
+function _matchIndustryBenchmark(industry) {
+  if (!industry) return INDUSTRY_BENCHMARKS['_default'];
+  var key = industry.toLowerCase().trim();
+  // Exact match
+  if (INDUSTRY_BENCHMARKS[key]) return INDUSTRY_BENCHMARKS[key];
+  // Alias match
+  if (_BENCHMARK_ALIASES[key]) return INDUSTRY_BENCHMARKS[_BENCHMARK_ALIASES[key]];
+  // Substring match — check if industry contains any benchmark key
+  var keys = Object.keys(INDUSTRY_BENCHMARKS).filter(function(k) { return k !== '_default'; });
+  for (var i = 0; i < keys.length; i++) {
+    if (key.indexOf(keys[i]) >= 0 || keys[i].indexOf(key) >= 0) return INDUSTRY_BENCHMARKS[keys[i]];
+  }
+  // Alias substring match
+  var aliasKeys = Object.keys(_BENCHMARK_ALIASES);
+  for (var j = 0; j < aliasKeys.length; j++) {
+    if (key.indexOf(aliasKeys[j]) >= 0) return INDUSTRY_BENCHMARKS[_BENCHMARK_ALIASES[aliasKeys[j]]];
+  }
+  return INDUSTRY_BENCHMARKS['_default'];
+}
+
 var STRATEGY_SECTION_WEIGHTS = {
   audience:     0.10,
   positioning:  0.18,
@@ -2952,6 +3148,66 @@ function _buyerIntelBlock(page) {
 }
 
 // Build snapshot context block for strategy diagnostics
+// ── 3-Layer Benchmark Context Block for D1 ───────────────────────
+function _buildBenchmarkContextBlock() {
+  var r = S.research || {};
+  var kwR = S.kwResearch || {};
+  var block = '\nBENCHMARK DATA (3 layers — use highest-confidence source for each metric):\n\n';
+
+  // Layer 1: Static industry benchmarks
+  var bench = _matchIndustryBenchmark(r.industry || r.sub_industry || '');
+  if (bench) {
+    block += 'LAYER 1 — INDUSTRY BENCHMARKS (confidence: LOW — general industry averages):\n'
+      + '- Landing page CVR: ' + (bench.landing_page_cvr.low*100) + '% - ' + (bench.landing_page_cvr.high*100) + '% (mid: ' + (bench.landing_page_cvr.mid*100) + '%)\n'
+      + '- Avg CPL range: $' + bench.avg_cpl.low + ' - $' + bench.avg_cpl.high + ' (mid: $' + bench.avg_cpl.mid + ')\n'
+      + '- Close rate: ' + (bench.close_rate.low*100) + '% - ' + (bench.close_rate.high*100) + '% (mid: ' + (bench.close_rate.mid*100) + '%)\n'
+      + '- Retention multiplier (LTV/deal): ' + bench.retention_multiplier.low + 'x - ' + bench.retention_multiplier.high + 'x (mid: ' + bench.retention_multiplier.mid + 'x)\n'
+      + '- Source: ' + bench.source + '\n\n';
+  } else {
+    block += 'LAYER 1 — INDUSTRY BENCHMARKS: NOT AVAILABLE for "' + (r.industry || 'unknown') + '"\n\n';
+  }
+
+  // Layer 2: GKP forecast conversion data (if available)
+  var fc = kwR.forecasts;
+  if (fc && fc.items && fc.items.length) {
+    var fcWithConv = fc.items.filter(function(f) { return f.conversions && f.conversions > 0; });
+    if (fcWithConv.length > 0) {
+      var totalClicks = 0, totalConv = 0;
+      fcWithConv.forEach(function(f) { totalClicks += (f.clicks || 0); totalConv += (f.conversions || 0); });
+      var gkpCvr = totalClicks > 0 ? Math.round((totalConv / totalClicks) * 10000) / 100 : 0;
+      block += 'LAYER 2 — GOOGLE ADS FORECAST DATA (confidence: MEDIUM — from Google Keyword Planner forecast):\n'
+        + '- Predicted conversion rate: ' + gkpCvr + '%\n'
+        + '- Predicted conversions/mo: ' + Math.round(totalConv) + ' (from ' + fcWithConv.length + ' keywords)\n'
+        + '- Based on forecast budget estimate\n\n';
+    } else {
+      block += 'LAYER 2 — GKP FORECAST: No conversion data available (account may lack conversion tracking)\n\n';
+    }
+  } else {
+    block += 'LAYER 2 — GKP FORECAST: NOT AVAILABLE (Google Ads not configured or forecast not run)\n\n';
+  }
+
+  // Layer 3: Client-provided actuals (highest confidence)
+  var hasActuals = r.known_landing_page_cvr || r.known_cpl || r.known_close_rate;
+  if (hasActuals) {
+    block += 'LAYER 3 — CLIENT-PROVIDED ACTUALS (confidence: HIGHEST — override all other sources):\n';
+    if (r.known_landing_page_cvr) block += '- Known landing page CVR: ' + r.known_landing_page_cvr + '\n';
+    if (r.known_cpl) block += '- Known cost per lead: ' + r.known_cpl + '\n';
+    if (r.known_close_rate) block += '- Known close rate (from CRM): ' + r.known_close_rate + '\n';
+    block += '\n';
+  } else {
+    block += 'LAYER 3 — CLIENT ACTUALS: NOT PROVIDED (all estimates are benchmarks/forecasts)\n\n';
+  }
+
+  // Override rules for Claude
+  block += 'OVERRIDE RULES: For each metric, use the highest-numbered layer that has data.\n'
+    + '- Layer 3 (client actuals) overrides Layer 2 (GKP forecast) overrides Layer 1 (industry benchmarks)\n'
+    + '- Use Layer 1 ranges for conservative/base/optimistic sensitivity scenarios when no higher layer exists\n'
+    + '- When using Layer 1 or 2, flag it as an assumption in the output\n'
+    + '- When Layer 3 is present, use it as fact and mark input_quality as "client-provided" for that metric\n\n';
+
+  return block;
+}
+
 function _snapshotCtxBlock() {
   var snap = S.snapshot || {};
   var dm = snap.domainMetrics || {};
@@ -3227,10 +3483,11 @@ function buildDiagnosticPrompt(num) {
     return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
       + buildPricingContextBlock()
       + _snapshotCtxBlock()
+      + _buildBenchmarkContextBlock()
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + '- Average deal size: ' + (r.average_deal_size || 'UNKNOWN') + '\n'
-      + '- Close rate: ' + (r.close_rate_estimate || 'UNKNOWN \u2014 estimate from industry') + '\n'
+      + '- Close rate: ' + (r.known_close_rate ? r.known_close_rate + ' (CLIENT-PROVIDED from CRM)' : (r.close_rate_estimate || 'UNKNOWN \u2014 use industry benchmark from Layer 1')) + '\n'
       + '- Customer lifetime value: ' + (r.customer_lifetime_value || 'UNKNOWN \u2014 estimate from deal size') + '\n'
       + '- Lead quality (% sales-qualified): ' + (r.lead_quality_percentage || 'UNKNOWN \u2014 assume 30%') + '\n'
       + '- Primary goal: ' + (r.primary_goal || '') + '\n'
@@ -3241,7 +3498,7 @@ function buildDiagnosticPrompt(num) {
       + cpcBlock
       + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '')
       + (setup.decision_timeline ? '- Decision timeline: ' + setup.decision_timeline + '\n' : '') + '\n'
-      + 'TASK: Calculate unit economics. Use the MARKET CPC DATA above to ground your estimated_market_cpl and paid_media_viable assessment — do not guess CPC when real data is available. For UNKNOWN inputs, state your assumption. Mark every assumption explicitly.\n\n'
+      + 'TASK: Calculate unit economics. Use the BENCHMARK DATA layers above — for each metric (CVR, CPL, close rate, retention), prefer the highest-confidence layer available. Use MARKET CPC DATA to ground your estimated_market_cpl. Use industry benchmark RANGES (low/mid/high) for the conservative/base/optimistic sensitivity scenarios. For UNKNOWN inputs, cite which benchmark layer you used. Mark every assumption explicitly.\n\n'
       + 'CRITICAL SENSITIVITY RULES:\n'
       + '1. Always present THREE scenarios (conservative, base, optimistic) — not just the midpoint.\n'
       + '   - CONSERVATIVE: Low end of deal size x low end of retention x lower close rate assumption\n'
@@ -3283,6 +3540,11 @@ function buildDiagnosticPrompt(num) {
       + '  "pricing_strategy": "recommendation",\n'
       + '  "recommendation": "narrative recommendation",\n'
       + '  "assumptions": ["each assumption made"],\n'
+      + '  "benchmark_sources": {\n'
+      + '    "cvr_source": "layer_1_benchmark | layer_2_gkp | layer_3_client | assumption",\n'
+      + '    "cpl_source": "layer_1_benchmark | layer_2_gkp | layer_3_client | cpc_derived",\n'
+      + '    "close_rate_source": "layer_1_benchmark | layer_3_client | client_provided | assumption"\n'
+      + '  },\n'
       + '  "confidence": "high | medium | low"\n}';
   }
 
@@ -6738,6 +7000,30 @@ function _renderEconomics(st) {
 
   if (ue.assumptions && ue.assumptions.length) {
     html += _stratSection('Assumptions', _stratField('Assumptions', ue.assumptions, {span:true}));
+  }
+  // Benchmark sources — show which data layer was used for each metric
+  if (ue.benchmark_sources) {
+    var bs = ue.benchmark_sources;
+    var _srcLabel = function(s) {
+      if (!s) return '\u2014';
+      return s.replace(/layer_1_benchmark/g, 'Industry Benchmark').replace(/layer_2_gkp/g, 'Google Ads Forecast')
+        .replace(/layer_3_client/g, 'Client-Provided').replace(/client_provided/g, 'Client-Provided')
+        .replace(/cpc_derived/g, 'CPC Data').replace(/assumption/g, 'AI Estimate');
+    };
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Data Sources</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px">';
+    html += '<div><span style="color:var(--n2)">CVR:</span> ' + _srcLabel(bs.cvr_source) + '</div>';
+    html += '<div><span style="color:var(--n2)">CPL:</span> ' + _srcLabel(bs.cpl_source) + '</div>';
+    html += '<div><span style="color:var(--n2)">Close Rate:</span> ' + _srcLabel(bs.close_rate_source) + '</div>';
+    html += '</div></div>';
+  }
+  // Show matched industry benchmark for reference
+  var _benchRef = _matchIndustryBenchmark((S.research || {}).industry);
+  if (_benchRef && _benchRef.source) {
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:6px 10px;background:var(--panel);border-radius:6px">'
+      + '<strong>Industry benchmark matched:</strong> ' + esc(_benchRef.source)
+      + ' \u2014 CVR mid: ' + (_benchRef.landing_page_cvr.mid*100) + '%, CPL mid: $' + _benchRef.avg_cpl.mid
+      + ', Close mid: ' + (_benchRef.close_rate.mid*100) + '%</div>';
   }
   return html;
 }

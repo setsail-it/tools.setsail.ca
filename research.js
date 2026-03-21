@@ -48,6 +48,10 @@ var RESEARCH_FIELD_META = {
   current_lead_volume:       { tab:'audience',    label:'Current Monthly Leads',    importance:'normal',   source:'manual' },
   current_marketing_activities:{ tab:'audience',  label:'Current Marketing Activities', importance:'normal', source:'manual' },
   previous_agency_experience:{ tab:'audience',    label:'Previous Agency Experience', importance:'optional', source:'manual' },
+  // Client-provided benchmark actuals
+  known_landing_page_cvr: { tab:'audience', label:'Known Landing Page CVR', importance:'optional', source:'manual' },
+  known_cpl:              { tab:'audience', label:'Known Cost Per Lead',    importance:'optional', source:'manual' },
+  known_close_rate:       { tab:'audience', label:'Known Close Rate (CRM)', importance:'optional', source:'manual' },
   // Buyer Psychology — JTBD Force Map + Buyer Context
   'jtbd_forces.push_forces':  { tab:'audience', label:'JTBD Push Forces',         importance:'normal',  source:'ai' },
   'jtbd_forces.pull_forces':  { tab:'audience', label:'JTBD Pull Forces',         importance:'normal',  source:'ai' },
@@ -381,6 +385,8 @@ function researchDefaults() {
     customer_lifetime_value:'', lead_quality_percentage:'',
     current_lead_volume:'',
     current_marketing_activities:[], previous_agency_experience:'',
+    // Client-provided benchmark actuals
+    known_landing_page_cvr:'', known_cpl:'', known_close_rate:'',
     // Brand
     brand_name:'', current_slogan:'',
     existing_proof:[],
@@ -1351,6 +1357,11 @@ function renderRAudience(r) {
     rField('current_marketing_activities','Current Marketing Activities (one per line)', r.current_marketing_activities, 'textarea-array', {rows:4}) +
     rField('previous_agency_experience','Previous Agency Experience', r.previous_agency_experience, 'select', {options:['','Good experience','Bad experience','No agency','Multiple agencies']})
   );
+  html += rSec('Known Metrics (Client-Provided)',
+    rField('known_landing_page_cvr','Known Landing Page CVR (e.g. 4.2%)', r.known_landing_page_cvr) +
+    rField('known_cpl','Known Cost Per Lead (e.g. $45)', r.known_cpl) +
+    rField('known_close_rate','Known Close Rate from CRM (e.g. 28%)', r.known_close_rate)
+  );
   // Buyer Psychology — JTBD Force Map
   html += renderBuyerPsychCoverage(r);
   html += rSec('Buyer Psychology \u2014 JTBD Force Map',
@@ -2171,6 +2182,9 @@ async function enrichRTab(tab, forceAll) {
       + b + '"current_lead_volume": "extract from docs/transcript if mentioned, otherwise empty string — do NOT guess",\n'
       + b + '"current_marketing_activities": ["extract any mentioned marketing channels — Google Ads, SEO, social media, referrals, etc. — or empty array if not found"],\n'
       + b + '"previous_agency_experience": "one of: Good experience | Bad experience | No agency | Multiple agencies | empty string if unknown",\n'
+      + b + '"known_landing_page_cvr": "extract if client mentions their landing page or form conversion rate, otherwise empty string",\n'
+      + b + '"known_cpl": "extract if client mentions their cost per lead from ads or campaigns, otherwise empty string",\n'
+      + b + '"known_close_rate": "extract if client mentions their CRM close rate from qualified leads, otherwise empty string",\n'
       + b + '"buyer_sophistication": "1-5 based on how much marketing exposure and prior buying cycles the audience has — 1=naive, 5=highly sophisticated. Infer from industry and business model. Return as string.",\n'
       + b + '"perceived_categories": ["how the buyer frames what they are shopping for — e.g. agency, consultant, software, platform"],\n'
       + b + '"switching_triggers": ["what would make them act now — e.g. growth pressure, contract ending, competitor threat"]\n}',

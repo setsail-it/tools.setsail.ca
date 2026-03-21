@@ -1297,7 +1297,9 @@ export default {
               impressions: parseFloat(f.metrics?.impressions || 0),
               cost: parseFloat(f.metrics?.costMicros || 0) / 1000000,
               ctr: parseFloat(f.metrics?.ctr || 0),
-              avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000
+              avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000,
+              conversions: parseFloat(f.metrics?.conversions || 0),
+              conversionRate: parseFloat(f.metrics?.conversionRate || 0)
             }));
             return new Response(JSON.stringify({
               forecasts: retryItems, period: '30d',
@@ -1316,7 +1318,9 @@ export default {
           impressions: parseFloat(f.metrics?.impressions || 0),
           cost: parseFloat(f.metrics?.costMicros || 0) / 1000000,
           ctr: parseFloat(f.metrics?.ctr || 0),
-          avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000
+          avgCpc: parseFloat(f.metrics?.averageCpcMicros || 0) / 1000000,
+          conversions: parseFloat(f.metrics?.conversions || 0),
+          conversionRate: parseFloat(f.metrics?.conversionRate || 0)
         }));
 
         return new Response(JSON.stringify({
