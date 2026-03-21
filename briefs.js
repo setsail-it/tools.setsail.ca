@@ -716,6 +716,11 @@ async function scoreBrief(pageIdx) {
     checks.push({ id: 'persona', label: 'Persona alignment — addresses target persona pains/language' });
   }
 
+  // Emotional depth check (only if D8 emotional data exists)
+  if (S.strategy && S.strategy.narrative && S.strategy.narrative.emotional_veins && S.strategy.narrative.emotional_veins.length) {
+    checks.push({ id: 'emotional_depth', label: 'Emotional depth — brief includes emotional direction or buyer psychology guidance' });
+  }
+
   // Add SERP-aware checks if serpIntel data exists
   var serpContext = '';
   if (p.serpIntel && p.serpIntel.directives) {

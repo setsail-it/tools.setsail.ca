@@ -1266,6 +1266,16 @@ async function runCopyAudit(slug) {
     }
   }
 
+  // Emotional depth check (copy must execute on emotional veins when available)
+  if (S.strategy && S.strategy.narrative && S.strategy.narrative.emotional_veins && S.strategy.narrative.emotional_veins.length) {
+    var _auditVeins = S.strategy.narrative.emotional_veins.slice(0, 3);
+    checks.push({
+      id: 'emotional_depth',
+      label: 'Emotional depth: Copy must tap at least one deep emotional vein beyond surface benefits. Target veins: ' + _auditVeins.map(function(ev) { return ev.vein; }).join(', ') + '. Look for language that addresses the buyer\'s deeper psychology (fear, shame, desire for control, decision fatigue) not just features/benefits. FAIL if copy is purely rational with no emotional resonance.',
+      display: 'Emotional depth — taps buyer psychology, not just features'
+    });
+  }
+
   // VoC language check
   var _auditVocSwipe = (S.strategy && S.strategy.narrative && S.strategy.narrative.voc_swipe_file) || [];
   var _auditVocQuotes = _auditVocSwipe.filter(function(v) { return v.usage && ['headline', 'subhead', 'cta', 'landing_page'].indexOf(v.usage) >= 0; }).slice(0, 3);
