@@ -5725,7 +5725,9 @@ function _stratField(label, value, opts) {
   var strVal = String(value);
   var isLong = strVal.length > 100 || opts.textarea;
   var h = '<div style="margin-bottom:10px;' + (opts.span ? 'grid-column:1/-1;' : '') + '">';
-  h += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">' + esc(label) + '</div>';
+  h += '<div style="font-size:10px;color:var(--n2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">' + esc(label);
+  if (opts.tip) h += ' <span data-tip="' + esc(opts.tip) + '" style="cursor:help;opacity:.6;font-size:9px">ⓘ</span>';
+  h += '</div>';
   if (opts._html) {
     h += '<div style="font-size:13px;color:var(--dark)">' + value + '</div>';
   } else if (isLong) {
@@ -6574,18 +6576,51 @@ function _renderEconomics(st) {
   // Pricing source indicator
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     + _renderPricingIndicator() + '</div>';
+  // Build formula tooltips with actual values
+  var _r = S.research || {};
+  var _budget = _r.monthly_marketing_budget || '?';
+  var _dealSize = _r.average_deal_size || '?';
+  var _closeRate = _r.close_rate_estimate || '?';
+  var _ltv = ue.ltv || '?';
+  var _cac = ue.estimated_cac || '?';
+  var _cpql = ue.cpql || '?';
+  var _leadQual = _r.lead_quality_percentage || '~30%';
+  var _mktCpl = ue.estimated_market_cpl || '?';
+  var _cpcMult = (ue.market_cpc_summary && ue.market_cpc_summary.cpc_to_cpl_multiplier) ? ue.market_cpc_summary.cpc_to_cpl_multiplier + 'x' : '?';
+  var _avgCpc = (ue.market_cpc_summary && ue.market_cpc_summary.avg_cpc) ? '$' + ue.market_cpc_summary.avg_cpc : '?';
+
   html += _stratSection('Unit Economics',
-    _stratField('Max Allowable CPL', ue.max_allowable_cpl ? '$' + ue.max_allowable_cpl : '') +
-    _stratField('Estimated Market CPL', ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '') +
-    _stratField('Budget Supports (leads/mo)', ue.budget_supports_leads) +
-    _stratField('Client Target Leads', ue.client_target_leads) +
-    _stratField('Gap', ue.gap, {span:true}) +
-    _stratField('CPQL', ue.cpql ? '$' + ue.cpql : '') +
-    _stratField('Estimated CAC', ue.estimated_cac ? '$' + ue.estimated_cac : '') +
-    _stratField('LTV', ue.ltv ? '$' + ue.ltv : '') +
-    _stratField('LTV:CAC Ratio', ue.ltv_cac_ratio) +
-    _stratField('LTV:CAC Health', ue.ltv_cac_health) +
-    _stratField('Paid Media Viable', ue.paid_media_viable ? 'Yes' : 'No')
+    _stratField('Max Allowable CPL', ue.max_allowable_cpl ? '$' + ue.max_allowable_cpl : '', {
+      tip: 'Max you can pay per lead and stay profitable. Formula: (Avg Deal x Close Rate x Margin) / target ROI. Inputs: Deal = $' + _dealSize + ', Close Rate = ' + _closeRate
+    }) +
+    _stratField('Estimated Market CPL', ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '', {
+      tip: 'What a lead actually costs in this market. Derived from: Avg CPC (' + _avgCpc + ') x CPC-to-CPL multiplier (' + _cpcMult + '). Multiplier accounts for click-to-lead conversion rate (typically 3-5% for service pages)'
+    }) +
+    _stratField('Budget Supports (leads/mo)', ue.budget_supports_leads, {
+      tip: 'How many leads the budget can generate. Formula: Monthly Budget ($' + _budget + ') / Estimated Market CPL ($' + _mktCpl + ')'
+    }) +
+    _stratField('Client Target Leads', ue.client_target_leads, {
+      tip: 'The number of leads the client needs per month to hit their revenue goal, based on their close rate and average deal size'
+    }) +
+    _stratField('Gap', ue.gap, {span:true, tip: 'Difference between budget-supported leads and target leads. Surplus = budget exceeds need. Shortfall = need exceeds budget'}) +
+    _stratField('CPQL', ue.cpql ? '$' + ue.cpql : '', {
+      tip: 'Cost Per Qualified Lead. Formula: Market CPL ($' + _mktCpl + ') / Lead Quality Rate (' + _leadQual + '). Only a portion of leads are sales-qualified'
+    }) +
+    _stratField('Estimated CAC', ue.estimated_cac ? '$' + ue.estimated_cac : '', {
+      tip: 'Customer Acquisition Cost. Formula: CPQL ($' + _cpql + ') / Close Rate (' + _closeRate + '). The total cost to convert one qualified lead into a paying customer'
+    }) +
+    _stratField('LTV', ue.ltv ? '$' + ue.ltv : '', {
+      tip: 'Lifetime Value — total revenue from one customer over their lifetime. Based on: Avg Deal ($' + _dealSize + ') x retention/repeat rate. Source: client-provided or estimated from industry norms'
+    }) +
+    _stratField('LTV:CAC Ratio', ue.ltv_cac_ratio, {
+      tip: 'Revenue per customer vs cost to acquire. Formula: LTV ($' + _ltv + ') / CAC ($' + _cac + '). Below 3:1 = unsustainable. 3-5:1 = healthy. Above 5:1 = under-investing in growth'
+    }) +
+    _stratField('LTV:CAC Health', ue.ltv_cac_health, {
+      tip: 'Under-investing = ratio above 5:1, can afford to spend more on marketing. Healthy = 3-5:1, balanced. Unsustainable = below 3:1, spending too much to acquire'
+    }) +
+    _stratField('Paid Media Viable', ue.paid_media_viable ? 'Yes' : 'No', {
+      tip: 'Whether paid ads make economic sense. Yes = Max Allowable CPL > Estimated Market CPL (you can afford the going rate). No = market CPL exceeds what the business can sustain'
+    })
   );
   // Service cost reference (from pricing engine)
   if (_pricingCatalog && _pricingCatalog.services) {
@@ -6664,15 +6699,15 @@ function _renderEconomics(st) {
 
   // Sensitivity analysis (Correction 7)
   if (ue.sensitivity && ue.sensitivity.length) {
-    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Sensitivity Analysis</div>';
+    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Sensitivity Analysis <span data-tip="Three scenarios stress-testing the economics. Conservative uses low-end deal size and close rate. Base uses midpoints. Optimistic uses high-end values. Shows how resilient the business model is to changing conditions." style="cursor:help;opacity:.6;font-size:9px">\u24d8</span></div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<tr style="border-bottom:1px solid var(--border)">'
       + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Scenario</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Close Rate</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Avg Deal</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Max CPL</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Leads Needed</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">LTV:CAC</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="What percentage of qualified leads become paying customers">Close Rate</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Average revenue per closed deal">Avg Deal</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Maximum cost per lead that keeps the business profitable at this scenario. Formula: (Avg Deal x Close Rate x Profit Margin) / Target ROI">Max CPL</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Monthly leads required to hit the revenue target at this close rate and deal size">Leads Needed</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Lifetime Value / Customer Acquisition Cost. Below 3:1 = unsustainable. 3-5:1 = healthy. Above 5:1 = under-investing">LTV:CAC</th>'
       + '</tr>';
     ue.sensitivity.forEach(function(s) {
       var rowBg = s.scenario === 'base' ? 'background:var(--panel)' : '';
