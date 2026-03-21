@@ -2353,7 +2353,7 @@ var STRATEGY_AUDIT_CHECKS = {
     { id:'has_value_prop',    label:'Core value proposition written',          check: function(d) { return d.core_value_proposition && d.core_value_proposition.length > 20; } },
     { id:'has_voice',         label:'Brand voice direction specified',         check: function(d) { return d.brand_voice_direction && d.brand_voice_direction.style; } },
     { id:'has_messaging',     label:'Messaging hierarchy defined',            check: function(d) { return d.messaging_hierarchy && d.messaging_hierarchy.primary_message; } },
-    { id:'rejected_tested',   label:'Rejected differentiators analysed',      check: function(d) { return d.rejected_differentiators && d.rejected_differentiators.length >= 1; } },
+    { id:'rejected_tested',   label:'Contested differentiators analysed',      check: function(d) { return (d.contested_differentiators && d.contested_differentiators.length >= 1) || (d.rejected_differentiators && d.rejected_differentiators.length >= 1); } },
     { id:'proof_plan',        label:'Proof-building strategy included',       check: function(d) { return d.proof_strategy && d.proof_strategy.length >= 1; } },
     { id:'has_category_perception', label:'Category perception gap assessed', check: function(d) { return d.category_perception && d.category_perception.buyer_frame && d.category_perception.reframing_language; } }
   ],
@@ -3790,15 +3790,21 @@ function buildDiagnosticPrompt(num) {
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
       + hypCtx
-      + 'TASK: Validate differentiators against competitor reality. Identify unoccupied positioning territory. '
-      + 'Analyse the gap between what the buyer thinks they are buying and what the company actually sells. Most buyers enter with a commodity mental model (e.g. "I need a website" or "I need SEO"). Identify the buyer\'s starting category frame, the company\'s actual value frame, the severity of the gap, and generate reframing language that bridges it.'
+      + 'TASK: Validate differentiators using COMPETITIVE INTENSITY analysis — not binary accept/reject. For each potential differentiator, evaluate HOW DEEPLY competitors actually execute on it (not just whether they mention it). A competitor claiming "AI-powered" on their website is very different from a competitor whose entire product is built on AI.\n\n'
+      + 'COMPETITIVE INTENSITY LEVELS:\n'
+      + '- "uncontested" = No competitor claims this territory. Strong differentiator, lead with it.\n'
+      + '- "weakly_contested" = A competitor mentions it but lacks depth, proof, or genuine execution. CLAIMABLE if the client can prove deeper expertise. Suggest specific proof points.\n'
+      + '- "strongly_contested" = A competitor is genuinely known for this and has real proof (case studies, proprietary tech, certifications). Risky unless the client can demonstrably out-execute.\n'
+      + '- "category_owned" = A competitor IS this in the market\'s mind. Fighting their brand equity is not viable.\n\n'
+      + 'CRITICAL: Do NOT reject a differentiator just because a competitor mentions it. Evaluate the DEPTH of their execution. A competitor listing "AI-powered solutions" as a bullet point on their services page is weakly_contested at best — the client may do it 10x deeper. Only mark as strongly_contested or category_owned when the competitor has genuine proof and market recognition.\n\n'
+      + 'Also analyse the gap between what the buyer thinks they are buying and what the company actually sells. Most buyers enter with a commodity mental model (e.g. "I need a website" or "I need SEO"). Identify the buyer\'s starting category frame, the company\'s actual value frame, the severity of the gap, and generate reframing language that bridges it.'
       + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "market_position": "where client sits vs competitors",\n'
       + '  "authority_gap": "DR/content/backlink gap description",\n'
       + '  "positioning_gaps": ["territories no competitor is claiming"],\n'
-      + '  "validated_differentiators": ["differentiators that survive scrutiny"],\n'
-      + '  "rejected_differentiators": [{"claim": "string", "reason": "which competitor contests this"}],\n'
+      + '  "validated_differentiators": ["differentiators rated uncontested — no competitor claims this territory"],\n'
+      + '  "contested_differentiators": [{"claim": "the differentiator angle", "intensity": "weakly_contested | strongly_contested | category_owned", "competitor": "which competitor(s) contest this", "competitor_depth": "1-2 sentence assessment of HOW DEEPLY the competitor actually executes on this — surface-level marketing copy vs genuine capability", "claimable": true, "proof_needed": "specific proof the client would need to credibly claim this despite competition"}],\n'
       + '  "competitive_advantages": ["genuine advantages"],\n'
       + '  "biggest_threat": "string",\n'
       + '  "direction_required": false,\n'
@@ -6225,7 +6231,9 @@ async function evaluateHypotheses() {
   if (p.validated_differentiators && p.validated_differentiators.length) {
     diffCtx = 'VALIDATED: ' + p.validated_differentiators.join('; ');
   }
-  if (p.rejected_differentiators && p.rejected_differentiators.length) {
+  if (p.contested_differentiators && p.contested_differentiators.length) {
+    diffCtx += '\nCONTESTED: ' + p.contested_differentiators.map(function(cd) { return cd.claim + ' (' + cd.intensity + ': ' + cd.competitor + ' — ' + cd.competitor_depth + ')'; }).join('; ');
+  } else if (p.rejected_differentiators && p.rejected_differentiators.length) {
     diffCtx += '\nREJECTED: ' + p.rejected_differentiators.map(function(rd) { return rd.claim + ' (reason: ' + rd.reason + ')'; }).join('; ');
   }
 
@@ -6985,7 +6993,33 @@ function _renderPositioning(st) {
   if (p.validated_differentiators && p.validated_differentiators.length) {
     html += _stratSection('Validated Differentiators', _stratField('Validated', p.validated_differentiators, {span:true}));
   }
-  if (p.rejected_differentiators && p.rejected_differentiators.length) {
+  // Contested differentiators — competitive intensity analysis (new format)
+  if (p.contested_differentiators && p.contested_differentiators.length) {
+    var intensityColors = { weakly_contested: '#e6a700', strongly_contested: '#f56c6c', category_owned: '#999' };
+    var intensityLabels = { weakly_contested: 'Weakly Contested', strongly_contested: 'Strongly Contested', category_owned: 'Category Owned' };
+    var intensityIcons = { weakly_contested: 'ti-alert-triangle', strongly_contested: 'ti-shield-x', category_owned: 'ti-lock' };
+    html += _stratSection('Competitive Intensity Analysis',
+      '<div style="grid-column:1/-1">' + p.contested_differentiators.map(function(cd) {
+        var color = intensityColors[cd.intensity] || '#999';
+        var label = intensityLabels[cd.intensity] || cd.intensity;
+        var icon = intensityIcons[cd.intensity] || 'ti-alert-circle';
+        var claimable = cd.claimable !== false;
+        return '<div style="margin-bottom:12px;padding:10px 14px;border-radius:8px;border:1px solid ' + color + '33;background:' + color + '08">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          + '<i class="ti ' + icon + '" style="font-size:14px;color:' + color + '"></i>'
+          + '<strong style="font-size:13px">' + esc(cd.claim) + '</strong>'
+          + '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:' + color + '20;color:' + color + ';font-weight:600">' + label + '</span>'
+          + (claimable ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#22c55e20;color:#22c55e;font-weight:600">Claimable with proof</span>' : '')
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--n1);margin-bottom:4px"><strong>Competitor:</strong> ' + esc(cd.competitor || '') + '</div>'
+          + '<div style="font-size:11px;color:var(--n2);margin-bottom:4px"><strong>Their depth:</strong> ' + esc(cd.competitor_depth || '') + '</div>'
+          + (cd.proof_needed ? '<div style="font-size:11px;color:var(--accent);margin-top:4px"><strong>Proof needed to claim:</strong> ' + esc(cd.proof_needed) + '</div>' : '')
+          + '</div>';
+      }).join('') + '</div>'
+    );
+  }
+  // Backwards compatibility: still render old rejected_differentiators if present (from previous runs)
+  if (p.rejected_differentiators && p.rejected_differentiators.length && !(p.contested_differentiators && p.contested_differentiators.length)) {
     html += _stratSection('Rejected Differentiators',
       '<div style="grid-column:1/-1">' + p.rejected_differentiators.map(function(rd) {
         return '<div style="font-size:12px;margin-bottom:4px"><span style="text-decoration:line-through;color:#f56c6c">' + esc(rd.claim) + '</span> \u2014 ' + esc(rd.reason) + '</div>';
