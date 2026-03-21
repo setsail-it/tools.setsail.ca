@@ -2326,15 +2326,26 @@ async function fetchPAAFromKeywords() {
   var statusEl = document.getElementById('kw-questions-fetch-status');
   if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Generating questions with AI...';
 
-  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real business owners and marketing managers type into Google when evaluating or hiring a marketing agency. These should be bottom-of-funnel — evaluation, comparison, cost, and trust questions. Never generic educational questions about marketing theory. Return ONLY a JSON array of 20 question strings, no markdown, no explanation.';
+  var businessType = r.industry || r.sub_industry || setup.industry || '';
+  var businessName = setup.client || r.client_name || setup.businessName || 'this business';
+  var businessOverview = r.business_overview || '';
+
+  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real prospects type into Google when evaluating or hiring this type of business.\n'
+    + 'CRITICAL: The business is a ' + (businessType || 'service provider') + (businessOverview ? ' — ' + businessOverview.slice(0, 200) : '') + '.\n'
+    + 'These should be bottom-of-funnel and mid-funnel — evaluation, comparison, cost, trust, and process questions that someone ready to buy would ask.\n'
+    + 'NEVER include questions about movies, TV shows, celebrities, or anything unrelated to this specific industry.\n'
+    + 'NEVER include generic educational questions (e.g. "What is a contractor?"). Focus on hiring/buying intent.\n'
+    + 'Return ONLY a JSON array of 20 question strings, no markdown, no explanation.';
 
   // Build enriched context for deeper AEO question generation
-  var _qCtx = 'Agency: ' + (setup.businessName || 'marketing agency') + '\n' +
+  var _qCtx = 'Business: ' + businessName + '\n' +
+    'Industry: ' + (businessType || 'professional services') + '\n' +
     'Location: ' + (geo || 'Vancouver, BC') + '\n' +
-    'Services: ' + (services || 'SEO, paid media, web design') + '\n' +
-    'Target audience: ' + (audience || 'small to mid-size businesses') + '\n';
-  if (painPoints) _qCtx += 'Pain points they solve: ' + painPoints + '\n';
-  if (industry) _qCtx += 'Industry focus: ' + industry + '\n';
+    'Services they offer: ' + (services || 'professional services') + '\n' +
+    'Their target customers: ' + (audience || 'local customers') + '\n';
+  if (businessOverview) _qCtx += 'Business overview: ' + businessOverview.slice(0, 300) + '\n';
+  if (painPoints) _qCtx += 'Customer pain points: ' + painPoints + '\n';
+  if (industry) _qCtx += 'Industry: ' + industry + '\n';
   // Services detail — generates service-specific questions
   if ((r.services_detail || []).length) {
     _qCtx += 'Service detail:\n';
@@ -2356,7 +2367,7 @@ async function fetchPAAFromKeywords() {
   if ((r.awards_certifications || []).length) _qCtx += 'Certifications: ' + r.awards_certifications.slice(0, 4).join(', ') + '\n';
 
   var userPrompt = _qCtx +
-    '\nGenerate 20 questions a business owner would Google when deciding whether to hire this agency or evaluating their options. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/ROI questions, red flag questions. Make them specific to the services and location where relevant. Include at least 3 questions specific to individual services listed above.';
+    '\nGenerate 20 questions a potential customer would Google when deciding whether to hire ' + businessName + ' or evaluating their options in the ' + (businessType || 'professional services') + ' industry. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/quality questions, red flag questions. Make them specific to the services and location where relevant. Include at least 3 questions specific to individual services listed above.';
 
   try {
     var res = await fetch('/api/claude', {
@@ -3447,8 +3458,15 @@ async function _pipelineGenerateQuestions() {
   var _sdList = (r.services_detail || []).map(function(sd) { return (sd.name||'') + (sd.differentiator ? ' (' + sd.differentiator + ')' : ''); }).filter(Boolean);
   if (_sdList.length) _qStrat += '\nService differentiators: ' + _sdList.join(', ');
 
-  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real people type into Google when evaluating or hiring this type of business. Focus on questions that align with the business positioning and services. Bottom-of-funnel and mid-funnel questions. Return ONLY a JSON array of 20 question strings, no markdown.';
-  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nLocation: ' + (geo || 'N/A') + '\nServices: ' + (services || 'professional services') + '\nAudience: ' + (audience || 'business owners') + (_qStrat || '') + '\n\nGenerate 20 buyer-intent questions that are specifically relevant to this business and its positioning.';
+  var _pqIndustry = r.industry || r.sub_industry || setup.industry || '';
+  var _pqOverview = r.business_overview || '';
+  var systemPrompt = 'You are an SEO strategist. Generate buyer-intent questions that real prospects type into Google when evaluating or hiring this type of business.\n'
+    + 'CRITICAL: The business is a ' + (_pqIndustry || 'service provider') + (_pqOverview ? ' — ' + _pqOverview.slice(0, 200) : '') + '.\n'
+    + 'Focus on questions that align with the business positioning and services. Bottom-of-funnel and mid-funnel questions.\n'
+    + 'NEVER include questions about movies, TV shows, celebrities, or anything unrelated to this specific industry.\n'
+    + 'NEVER include generic educational questions. Focus on hiring/buying intent.\n'
+    + 'Return ONLY a JSON array of 20 question strings, no markdown.';
+  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nIndustry: ' + (_pqIndustry || 'professional services') + '\nLocation: ' + (geo || 'N/A') + '\nServices they offer: ' + (services || 'professional services') + '\nTheir target customers: ' + (audience || 'local customers') + (_pqOverview ? '\nBusiness overview: ' + _pqOverview.slice(0, 300) : '') + (_qStrat || '') + '\n\nGenerate 20 buyer-intent questions that potential customers of this ' + (_pqIndustry || 'business') + ' would actually search on Google. These should be about hiring, evaluating, or choosing this type of provider — not educational or entertainment questions.';
 
   var result = await callClaude(systemPrompt, userPrompt, null, 1000);
   var raw = result.replace(/```json|```/g, '').trim();
