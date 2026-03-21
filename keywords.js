@@ -1,4 +1,16 @@
 
+// Collect all strategist notes from strategy overrides into a single context string for keyword pipeline
+function _getStrategistNotesCtx() {
+  var overrides = (S.strategy && S.strategy.strategist_overrides) ? S.strategy.strategist_overrides : {};
+  var notes = [];
+  Object.keys(overrides).forEach(function(tabId) {
+    var note = (overrides[tabId] && overrides[tabId].notes) ? overrides[tabId].notes.trim() : '';
+    if (note) notes.push(note);
+  });
+  if (!notes.length) return '';
+  return '\n\nSTRATEGIST NOTES (MUST FOLLOW — these are human overrides from the strategist):\n' + notes.join('\n') + '\n';
+}
+
 async function runKwDebug() {
   const out = document.getElementById('kw-debug-output');
   if (!out) return;
@@ -2366,7 +2378,8 @@ async function fetchPAAFromKeywords() {
   if (r.pricing_model) _qCtx += 'Pricing model: ' + r.pricing_model + '\n';
   if ((r.awards_certifications || []).length) _qCtx += 'Certifications: ' + r.awards_certifications.slice(0, 4).join(', ') + '\n';
 
-  var userPrompt = _qCtx +
+  var _manualQNotes = _getStrategistNotesCtx();
+  var userPrompt = _qCtx + _manualQNotes +
     '\nGenerate 20 questions a potential customer would Google when deciding whether to hire ' + businessName + ' or evaluating their options in the ' + (businessType || 'professional services') + ' industry. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/quality questions, red flag questions. Make them specific to the services and location where relevant. Include at least 3 questions specific to individual services listed above.';
 
   try {
@@ -3466,7 +3479,8 @@ async function _pipelineGenerateQuestions() {
     + 'NEVER include questions about movies, TV shows, celebrities, or anything unrelated to this specific industry.\n'
     + 'NEVER include generic educational questions. Focus on hiring/buying intent.\n'
     + 'Return ONLY a JSON array of 20 question strings, no markdown.';
-  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nIndustry: ' + (_pqIndustry || 'professional services') + '\nLocation: ' + (geo || 'N/A') + '\nServices they offer: ' + (services || 'professional services') + '\nTheir target customers: ' + (audience || 'local customers') + (_pqOverview ? '\nBusiness overview: ' + _pqOverview.slice(0, 300) : '') + (_qStrat || '') + '\n\nGenerate 20 buyer-intent questions that potential customers of this ' + (_pqIndustry || 'business') + ' would actually search on Google. These should be about hiring, evaluating, or choosing this type of provider — not educational or entertainment questions.';
+  var _pqNotes = _getStrategistNotesCtx();
+  var userPrompt = 'Business: ' + (setup.client || r.client_name || 'business') + '\nIndustry: ' + (_pqIndustry || 'professional services') + '\nLocation: ' + (geo || 'N/A') + '\nServices they offer: ' + (services || 'professional services') + '\nTheir target customers: ' + (audience || 'local customers') + (_pqOverview ? '\nBusiness overview: ' + _pqOverview.slice(0, 300) : '') + (_qStrat || '') + _pqNotes + '\n\nGenerate 20 buyer-intent questions that potential customers of this ' + (_pqIndustry || 'business') + ' would actually search on Google. These should be about hiring, evaluating, or choosing this type of provider — not educational or entertainment questions.';
 
   var result = await callClaude(systemPrompt, userPrompt, null, 1000);
   var raw = result.replace(/```json|```/g, '').trim();
@@ -3496,8 +3510,9 @@ async function _pipelineAISeeds() {
   var paaQs = _getQuestionsArray();
   if (paaQs.length) ctx += '\nPEOPLE ALSO ASK:\n' + paaQs.slice(0, 15).map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n';
 
-  var systemPrompt = 'You are an expert SEO strategist. Generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations. Output ONLY a JSON array of strings. No markdown.';
-  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. Output ONLY a JSON array.\n\n' + ctx;
+  var _seedNotes = _getStrategistNotesCtx();
+  var systemPrompt = 'You are an expert SEO strategist. Generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations.' + (_seedNotes ? ' Pay close attention to any strategist notes about which services or topics to include or exclude.' : '') + ' Output ONLY a JSON array of strings. No markdown.';
+  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. Output ONLY a JSON array.\n\n' + ctx + _seedNotes;
 
   var result = await callClaude(systemPrompt, userPrompt, null, 8000);
   var repaired = result.trim().replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
@@ -3640,7 +3655,8 @@ async function _pipelineAISelect() {
     + '4. DIMINISHING RETURNS: Do not select 10 variations of the same phrase. Pick the 2-3 best variations per topic.\n'
     + '5. COMMERCIAL SIGNAL: Keywords with high CPC or high Google Ads bid = strong commercial intent. Weight these higher.\n'
     + '6. VOLUME FLOOR: Do not select keywords with vol < 10 unless they are a must-have service term.\n'
-    + '7. NO FIXED COUNT: Select as many as genuinely qualify. Could be 20, could be 80. Quality over quantity.\n\n'
+    + '7. NO FIXED COUNT: Select as many as genuinely qualify. Could be 20, could be 80. Quality over quantity.\n'
+    + '8. STRATEGIST OVERRIDES: If strategist notes mention excluding specific services, topics, or keyword types, REJECT any keyword related to those excluded items. The strategist knows what the client actually offers.\n\n'
     + 'TIER LABELS for each selected keyword:\n'
     + '- "must-have": Primary service + geo, core business keyword — must build a page for this\n'
     + '- "high-value": Strong volume + commercial intent, clear page opportunity\n'
@@ -3649,11 +3665,13 @@ async function _pipelineAISelect() {
     + '{"selected":[{"kw":"keyword","tier":"must-have|high-value|supporting","reason":"short reason"}],"rejected_examples":[{"kw":"keyword","reason":"competitor brand"}]}\n'
     + 'Include 3-5 rejected_examples to show why certain high-scoring keywords were excluded.';
 
+  var _selectNotes = _getStrategistNotesCtx();
   var userPrompt = 'CLIENT: ' + (setup.client || r.client_name || 'business') + '\n'
     + 'INDUSTRY: ' + (r.industry || '') + '\n'
     + 'GEO: ' + (geo || 'N/A') + '\n'
     + 'SERVICES: ' + (sdList || services || 'professional services') + '\n'
     + (positioning ? 'POSITIONING: ' + positioning + '\n' : '')
+    + _selectNotes
     + '\nKEYWORDS (' + candidates.length + '):\n' + kwBlock;
 
   try {
