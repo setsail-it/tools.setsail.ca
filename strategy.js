@@ -6576,50 +6576,49 @@ function _renderEconomics(st) {
   // Pricing source indicator
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     + _renderPricingIndicator() + '</div>';
-  // Build formula tooltips with actual values
-  var _r = S.research || {};
-  var _budget = _r.monthly_marketing_budget || '?';
-  var _dealSize = _r.average_deal_size || '?';
-  var _closeRate = _r.close_rate_estimate || '?';
-  var _ltv = ue.ltv || '?';
-  var _cac = ue.estimated_cac || '?';
-  var _cpql = ue.cpql || '?';
-  var _leadQual = _r.lead_quality_percentage || '~30%';
+  // Build formula tooltips — use COMPUTED output values (not research inputs that Claude may have overridden)
   var _mktCpl = ue.estimated_market_cpl || '?';
-  var _cpcMult = (ue.market_cpc_summary && ue.market_cpc_summary.cpc_to_cpl_multiplier) ? ue.market_cpc_summary.cpc_to_cpl_multiplier + 'x' : '?';
-  var _avgCpc = (ue.market_cpc_summary && ue.market_cpc_summary.avg_cpc) ? '$' + ue.market_cpc_summary.avg_cpc : '?';
+  var _maxCpl = ue.max_allowable_cpl || '?';
+  var _budgetLeads = ue.budget_supports_leads || '?';
+  var _cpqlVal = ue.cpql || '?';
+  var _cacVal = ue.estimated_cac || '?';
+  var _ltvVal = ue.ltv || '?';
+  // Reverse-engineer the lead quality % Claude used: CPQL = Market CPL / quality_rate → quality_rate = Market CPL / CPQL
+  var _inferredQuality = (ue.estimated_market_cpl && ue.cpql && ue.cpql > 0) ? Math.round((ue.estimated_market_cpl / ue.cpql) * 100) + '%' : '?';
+  // Reverse-engineer close rate Claude used: CAC = CPQL / close_rate → close_rate = CPQL / CAC
+  var _inferredCloseRate = (ue.cpql && ue.estimated_cac && ue.estimated_cac > 0) ? Math.round((ue.cpql / ue.estimated_cac) * 100) + '%' : '?';
 
   html += _stratSection('Unit Economics',
     _stratField('Max Allowable CPL', ue.max_allowable_cpl ? '$' + ue.max_allowable_cpl : '', {
-      tip: 'Max you can pay per lead and stay profitable. Formula: (Avg Deal x Close Rate x Margin) / target ROI. Inputs: Deal = $' + _dealSize + ', Close Rate = ' + _closeRate
+      tip: 'The most you can pay per lead and stay profitable. Derived from deal size, close rate, and customer lifetime value. If Max CPL ($' + _maxCpl + ') > Market CPL ($' + _mktCpl + '), paid acquisition is viable'
     }) +
     _stratField('Estimated Market CPL', ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '', {
-      tip: 'What a lead actually costs in this market. Derived from: Avg CPC (' + _avgCpc + ') x CPC-to-CPL multiplier (' + _cpcMult + '). Multiplier accounts for click-to-lead conversion rate (typically 3-5% for service pages)'
+      tip: 'What a lead actually costs in this market. Calculated from keyword CPC data, landing page conversion rates, and industry benchmarks. See Market CPC Intelligence section below for the source data'
     }) +
     _stratField('Budget Supports (leads/mo)', ue.budget_supports_leads, {
-      tip: 'How many leads the budget can generate. Formula: Monthly Budget ($' + _budget + ') / Estimated Market CPL ($' + _mktCpl + ')'
+      tip: 'How many leads the budget can generate. Formula: Monthly Marketing Budget / Market CPL ($' + _mktCpl + ') = ' + _budgetLeads + ' leads/mo'
     }) +
     _stratField('Client Target Leads', ue.client_target_leads, {
-      tip: 'The number of leads the client needs per month to hit their revenue goal, based on their close rate and average deal size'
+      tip: 'Leads needed per month to hit the client revenue goal. Derived from: Revenue Target / (Avg Deal Size x Close Rate)'
     }) +
-    _stratField('Gap', ue.gap, {span:true, tip: 'Difference between budget-supported leads and target leads. Surplus = budget exceeds need. Shortfall = need exceeds budget'}) +
+    _stratField('Gap', ue.gap, {span:true, tip: 'Compares budget capacity (' + _budgetLeads + ' leads) vs target leads (' + (ue.client_target_leads || '?') + '). Surplus = more capacity than needed. Shortfall = budget cannot support the target'}) +
     _stratField('CPQL', ue.cpql ? '$' + ue.cpql : '', {
-      tip: 'Cost Per Qualified Lead. Formula: Market CPL ($' + _mktCpl + ') / Lead Quality Rate (' + _leadQual + '). Only a portion of leads are sales-qualified'
+      tip: 'Cost Per Qualified Lead. Not every lead is sales-ready. Formula: Market CPL ($' + _mktCpl + ') / Lead Quality Rate (' + _inferredQuality + ') = $' + _cpqlVal
     }) +
     _stratField('Estimated CAC', ue.estimated_cac ? '$' + ue.estimated_cac : '', {
-      tip: 'Customer Acquisition Cost. Formula: CPQL ($' + _cpql + ') / Close Rate (' + _closeRate + '). The total cost to convert one qualified lead into a paying customer'
+      tip: 'Customer Acquisition Cost — total cost to win one paying customer. Formula: CPQL ($' + _cpqlVal + ') / Close Rate (' + _inferredCloseRate + ') = $' + _cacVal
     }) +
     _stratField('LTV', ue.ltv ? '$' + ue.ltv : '', {
-      tip: 'Lifetime Value — total revenue from one customer over their lifetime. Based on: Avg Deal ($' + _dealSize + ') x retention/repeat rate. Source: client-provided or estimated from industry norms'
+      tip: 'Lifetime Value — total revenue from one customer over their relationship. Based on average deal size, repeat purchase rate, and retention. See Assumptions section below for how this was estimated'
     }) +
     _stratField('LTV:CAC Ratio', ue.ltv_cac_ratio, {
-      tip: 'Revenue per customer vs cost to acquire. Formula: LTV ($' + _ltv + ') / CAC ($' + _cac + '). Below 3:1 = unsustainable. 3-5:1 = healthy. Above 5:1 = under-investing in growth'
+      tip: 'How much revenue each acquisition dollar generates. Formula: LTV ($' + _ltvVal + ') / CAC ($' + _cacVal + ') = ' + (ue.ltv_cac_ratio || '?') + '. Below 3:1 = unsustainable, 3-5:1 = healthy, above 5:1 = under-investing in growth'
     }) +
     _stratField('LTV:CAC Health', ue.ltv_cac_health, {
-      tip: 'Under-investing = ratio above 5:1, can afford to spend more on marketing. Healthy = 3-5:1, balanced. Unsustainable = below 3:1, spending too much to acquire'
+      tip: 'Under-investing = ratio above 5:1, room to spend more aggressively on marketing. Healthy = 3-5:1, balanced growth. Unsustainable = below 3:1, acquiring customers costs too much relative to their value'
     }) +
     _stratField('Paid Media Viable', ue.paid_media_viable ? 'Yes' : 'No', {
-      tip: 'Whether paid ads make economic sense. Yes = Max Allowable CPL > Estimated Market CPL (you can afford the going rate). No = market CPL exceeds what the business can sustain'
+      tip: 'Whether paid advertising makes economic sense. Yes when Max Allowable CPL ($' + _maxCpl + ') exceeds Market CPL ($' + _mktCpl + ') — meaning you can afford the going rate for leads in this market'
     })
   );
   // Service cost reference (from pricing engine)
