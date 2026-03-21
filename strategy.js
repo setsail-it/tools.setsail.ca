@@ -1972,6 +1972,104 @@ function _matchIndustryBenchmark(industry) {
   return INDUSTRY_BENCHMARKS['_default'];
 }
 
+// ── Benchmark Table Viewer + CSV Download ────────────────────────────
+function showBenchmarkTable() {
+  var matched = (S.research || {}).industry ? _matchIndustryBenchmark(S.research.industry) : null;
+  var matchedKey = '';
+  if (matched) {
+    var keys = Object.keys(INDUSTRY_BENCHMARKS);
+    for (var ki = 0; ki < keys.length; ki++) {
+      if (INDUSTRY_BENCHMARKS[keys[ki]] === matched) { matchedKey = keys[ki]; break; }
+    }
+  }
+  var html = '<div style="max-height:70vh;overflow:auto">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  html += '<div style="font-size:11px;color:var(--n2)">All benchmarks sourced from published reports. See source column for citations.</div>';
+  html += '<button class="btn btn-ghost" onclick="downloadBenchmarkCSV()" style="font-size:11px;padding:4px 10px"><i class="ti ti-download" style="font-size:11px"></i> Download CSV</button>';
+  html += '</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<thead><tr style="border-bottom:2px solid var(--border);position:sticky;top:0;background:var(--bg)">'
+    + '<th style="text-align:left;padding:6px 8px;font-weight:600">Industry</th>'
+    + '<th style="padding:6px 8px;font-weight:600;text-align:center" colspan="3">Landing Page CVR</th>'
+    + '<th style="padding:6px 8px;font-weight:600;text-align:center" colspan="3">Avg CPL (USD)</th>'
+    + '<th style="padding:6px 8px;font-weight:600;text-align:center" colspan="3">Close Rate</th>'
+    + '<th style="padding:6px 8px;font-weight:600;text-align:center" colspan="3">Retention Mult.</th>'
+    + '<th style="text-align:left;padding:6px 8px;font-weight:600;max-width:250px">Source</th>'
+    + '</tr>';
+  html += '<tr style="border-bottom:1px solid var(--border)">'
+    + '<th></th>'
+    + '<th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Low</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Mid</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">High</th>'
+    + '<th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Low</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Mid</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">High</th>'
+    + '<th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Low</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Mid</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">High</th>'
+    + '<th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Low</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">Mid</th><th style="padding:3px 6px;font-size:9px;color:var(--n2);font-weight:400">High</th>'
+    + '<th></th></tr></thead><tbody>';
+  var sortedKeys = Object.keys(INDUSTRY_BENCHMARKS).filter(function(k) { return k !== '_default'; }).sort();
+  sortedKeys.push('_default');
+  sortedKeys.forEach(function(k) {
+    var b = INDUSTRY_BENCHMARKS[k];
+    var isMatched = k === matchedKey;
+    var rowStyle = isMatched ? 'background:rgba(59,130,246,0.08);font-weight:500' : '';
+    var label = k === '_default' ? 'All Industries (default)' : k.charAt(0).toUpperCase() + k.slice(1);
+    html += '<tr style="border-bottom:1px solid var(--border);' + rowStyle + '">';
+    html += '<td style="padding:5px 8px;white-space:nowrap">' + (isMatched ? '\u2714 ' : '') + esc(label) + '</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + (b.landing_page_cvr.low*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center;font-weight:600">' + (b.landing_page_cvr.mid*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + (b.landing_page_cvr.high*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center">$' + b.avg_cpl.low + '</td>';
+    html += '<td style="padding:5px 6px;text-align:center;font-weight:600">$' + b.avg_cpl.mid + '</td>';
+    html += '<td style="padding:5px 6px;text-align:center">$' + b.avg_cpl.high + '</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + (b.close_rate.low*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center;font-weight:600">' + (b.close_rate.mid*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + (b.close_rate.high*100) + '%</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + b.retention_multiplier.low + 'x</td>';
+    html += '<td style="padding:5px 6px;text-align:center;font-weight:600">' + b.retention_multiplier.mid + 'x</td>';
+    html += '<td style="padding:5px 6px;text-align:center">' + b.retention_multiplier.high + 'x</td>';
+    html += '<td style="padding:5px 8px;font-size:9px;color:var(--n2);max-width:250px;line-height:1.3">' + esc(b.source) + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  // Show in modal
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:599;display:flex;align-items:center;justify-content:center';
+  overlay.onclick = function(e) { if (e.target === overlay) document.body.removeChild(overlay); };
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--bg);border-radius:12px;padding:24px;max-width:95vw;max-height:85vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)';
+  modal.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+    + '<h3 style="margin:0;font-size:16px">Industry Benchmarks Reference</h3>'
+    + '<button onclick="this.closest(\'div[style*=position\\:fixed]\').remove()" style="border:none;background:none;cursor:pointer;font-size:18px;color:var(--n2)">\u2715</button>'
+    + '</div>' + html;
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  // ESC to close
+  var escHandler = function(e) { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+  document.addEventListener('keydown', escHandler);
+}
+
+function downloadBenchmarkCSV() {
+  var rows = [['Industry','CVR Low','CVR Mid','CVR High','CPL Low (USD)','CPL Mid (USD)','CPL High (USD)','Close Rate Low','Close Rate Mid','Close Rate High','Retention Low','Retention Mid','Retention High','Source']];
+  var keys = Object.keys(INDUSTRY_BENCHMARKS).filter(function(k) { return k !== '_default'; }).sort();
+  keys.push('_default');
+  keys.forEach(function(k) {
+    var b = INDUSTRY_BENCHMARKS[k];
+    var label = k === '_default' ? 'All Industries (default)' : k.charAt(0).toUpperCase() + k.slice(1);
+    rows.push([label,
+      (b.landing_page_cvr.low*100)+'%', (b.landing_page_cvr.mid*100)+'%', (b.landing_page_cvr.high*100)+'%',
+      '$'+b.avg_cpl.low, '$'+b.avg_cpl.mid, '$'+b.avg_cpl.high,
+      (b.close_rate.low*100)+'%', (b.close_rate.mid*100)+'%', (b.close_rate.high*100)+'%',
+      b.retention_multiplier.low+'x', b.retention_multiplier.mid+'x', b.retention_multiplier.high+'x',
+      '"' + b.source.replace(/"/g, '""') + '"'
+    ]);
+  });
+  var csv = rows.map(function(r) { return r.join(','); }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'setsailos-industry-benchmarks.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  aiBarNotify('Benchmark CSV downloaded', { duration: 2000 });
+}
+
 var STRATEGY_SECTION_WEIGHTS = {
   audience:     0.10,
   positioning:  0.18,
@@ -7109,10 +7207,12 @@ function _renderEconomics(st) {
   // Show matched industry benchmark for reference
   var _benchRef = _matchIndustryBenchmark((S.research || {}).industry);
   if (_benchRef && _benchRef.source) {
-    html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:6px 10px;background:var(--panel);border-radius:6px">'
-      + '<strong>Industry benchmark matched:</strong> ' + esc(_benchRef.source)
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:6px 10px;background:var(--panel);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<span><strong>Industry benchmark matched:</strong> ' + esc(_benchRef.source)
       + ' \u2014 CVR mid: ' + (_benchRef.landing_page_cvr.mid*100) + '%, CPL mid: $' + _benchRef.avg_cpl.mid
-      + ', Close mid: ' + (_benchRef.close_rate.mid*100) + '%</div>';
+      + ', Close mid: ' + (_benchRef.close_rate.mid*100) + '%</span>'
+      + '<button onclick="showBenchmarkTable()" style="border:none;background:none;color:var(--accent);cursor:pointer;font-size:10px;white-space:nowrap;text-decoration:underline">View All Benchmarks</button>'
+      + '</div>';
   }
   return html;
 }
