@@ -1329,7 +1329,7 @@ export default {
       }
       try {
         var body = await request.json();
-        var propertyId = body.propertyId;
+        var propertyId = (body.propertyId || '').replace(/^properties\//, '');
         if (!propertyId) {
           return new Response(JSON.stringify({ error: 'propertyId required' }), {
             status: 400, headers: { 'Content-Type': 'application/json', ...cors }
