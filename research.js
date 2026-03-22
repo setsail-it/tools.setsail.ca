@@ -1177,8 +1177,12 @@ function _renderSourceBanner(tabName) {
         break;
       case 'ga4':
         label = 'GA4 Data';
-        if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.sessions) {
-          value = S.snapshot.ga4.sessions.toLocaleString() + ' sessions';
+        var ga4t = S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.totals;
+        if (ga4t && ga4t.sessions > 0) {
+          value = ga4t.sessions.toLocaleString() + ' sessions';
+          has = true;
+        } else if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.pageMetrics && S.snapshot.ga4.pageMetrics.length) {
+          value = S.snapshot.ga4.pageMetrics.length + ' pages';
           has = true;
         } else { value = '0'; }
         break;
