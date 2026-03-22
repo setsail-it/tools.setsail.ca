@@ -1092,7 +1092,8 @@ function rTabActions(tab) {
 }
 
 function renderRBusiness(r) {
-  let html = rTabActions('business');
+  let html = renderCurrentPerformance();
+  html += rTabActions('business');
   html += rSec('Core Identity',
     rField('business_overview','Business Overview', r.business_overview, 'textarea', {rows:3}) +
     rField('industry','Industry', r.industry) +
@@ -2441,5 +2442,164 @@ function renderResearchResults(r) {
 function saveResearchEdits() { /* deprecated — fields save on change */ }
 
 function attemptResearchParse() { /* deprecated */ }
+
+// ── Current Performance Card (read-only, from Snapshot) ───────────
+function renderCurrentPerformance() {
+  var snap = S.snapshot || {};
+  var gsc = snap.gsc;
+  var ga4 = snap.ga4;
+  if (!gsc && !ga4) {
+    return '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--border);opacity:.7">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<div class="eyebrow" style="margin:0">Current Performance</div>' +
+      '<span style="font-size:9px;background:var(--n3);color:white;padding:1px 6px;border-radius:3px">FROM SNAPSHOT</span>' +
+      '</div>' +
+      '<p style="font-size:12px;color:var(--n2);margin:0">Connect GSC and GA4 in Setup, then run Snapshot to see real performance data here.</p>' +
+      '</div>';
+  }
+
+  var html = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--blue, #3b82f6)">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+  html += '<div class="eyebrow" style="margin:0">Current Performance</div>';
+  html += '<span style="font-size:9px;background:var(--n3);color:white;padding:1px 6px;border-radius:3px">FROM SNAPSHOT</span>';
+  html += '</div>';
+  html += '<p style="font-size:11px;color:var(--n2);margin:0 0 14px">Real data from Google Search Console and Analytics \u2014 use to verify AI-enriched fields below.</p>';
+
+  // Section 1: GSC Traffic Overview
+  if (gsc) {
+    var queries = gsc.queries || [];
+    var pages = gsc.pages || [];
+    var totalClicks = 0, totalImpr = 0, totalCtr = 0, totalPos = 0, qCount = queries.length;
+    queries.forEach(function(q) {
+      totalClicks += q.clicks || 0;
+      totalImpr += q.impressions || 0;
+    });
+    totalCtr = totalImpr > 0 ? totalClicks / totalImpr : 0;
+    var posSum = 0, posCount = 0;
+    queries.forEach(function(q) { if (q.position) { posSum += q.position; posCount++; } });
+    totalPos = posCount > 0 ? posSum / posCount : 0;
+
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:8px">Search Console (last 90 days)</div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">';
+    html += _perfStat('Clicks', _cpFmtNum(totalClicks));
+    html += _perfStat('Impressions', _cpFmtNum(totalImpr));
+    html += _perfStat('Avg CTR', _cpFmtPct(totalCtr));
+    html += _perfStat('Avg Position', totalPos > 0 ? totalPos.toFixed(1) : '\u2014');
+    html += '</div>';
+
+    // Top 5 queries
+    if (queries.length > 0) {
+      var topQ = queries.slice().sort(function(a, b) { return (b.clicks || 0) - (a.clicks || 0); }).slice(0, 5);
+      html += '<div style="font-size:10px;font-weight:600;color:var(--n2);margin-bottom:4px">Top Queries by Clicks</div>';
+      html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:10px">';
+      html += '<tr style="border-bottom:1px solid var(--border);color:var(--n2)">';
+      html += '<th style="text-align:left;padding:3px 6px">Query</th><th style="text-align:right;padding:3px 6px">Clicks</th><th style="text-align:right;padding:3px 6px">Impr</th><th style="text-align:right;padding:3px 6px">CTR</th><th style="text-align:right;padding:3px 6px">Pos</th></tr>';
+      topQ.forEach(function(q) {
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:3px 6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _cpEsc(q.query) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(q.clicks) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(q.impressions) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtPct(q.ctr) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + (q.position ? q.position.toFixed(1) : '\u2014') + '</td>';
+        html += '</tr>';
+      });
+      html += '</table>';
+    }
+
+    // Top 5 pages
+    if (pages.length > 0) {
+      var topP = pages.slice().sort(function(a, b) { return (b.clicks || 0) - (a.clicks || 0); }).slice(0, 5);
+      html += '<div style="font-size:10px;font-weight:600;color:var(--n2);margin-bottom:4px">Top Pages by Clicks</div>';
+      html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:10px">';
+      html += '<tr style="border-bottom:1px solid var(--border);color:var(--n2)">';
+      html += '<th style="text-align:left;padding:3px 6px">Page</th><th style="text-align:right;padding:3px 6px">Clicks</th><th style="text-align:right;padding:3px 6px">Impr</th><th style="text-align:right;padding:3px 6px">CTR</th><th style="text-align:right;padding:3px 6px">Pos</th></tr>';
+      topP.forEach(function(p) {
+        var pagePath = p.page || '';
+        try { pagePath = new URL(pagePath).pathname; } catch(e) {}
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:3px 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + _cpEsc(p.page) + '">' + _cpEsc(pagePath) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(p.clicks) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(p.impressions) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtPct(p.ctr) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + (p.position ? p.position.toFixed(1) : '\u2014') + '</td>';
+        html += '</tr>';
+      });
+      html += '</table>';
+    }
+    html += '</div>';
+  }
+
+  // Section 2: GA4 Analytics Overview
+  if (ga4) {
+    var totals = ga4.totals || {};
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:8px">Analytics Overview (last 90 days)</div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">';
+    html += _perfStat('Sessions', _cpFmtNum(totals.sessions));
+    html += _perfStat('Conversions', _cpFmtNum(totals.conversions));
+    html += _perfStat('Bounce Rate', _cpFmtPct(totals.bounceRate));
+    html += '</div>';
+    html += '</div>';
+
+    // Section 3: Traffic Channels
+    if (ga4.channels && ga4.channels.length > 0) {
+      html += '<div style="margin-bottom:14px">';
+      html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:8px">Traffic Channels</div>';
+      html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:10px">';
+      html += '<tr style="border-bottom:1px solid var(--border);color:var(--n2)">';
+      html += '<th style="text-align:left;padding:3px 6px">Channel</th><th style="text-align:right;padding:3px 6px">Sessions</th><th style="text-align:right;padding:3px 6px">Conversions</th><th style="text-align:right;padding:3px 6px">Bounce Rate</th><th style="text-align:right;padding:3px 6px">Avg Duration</th></tr>';
+      ga4.channels.forEach(function(ch) {
+        html += '<tr style="border-bottom:1px solid var(--border)">';
+        html += '<td style="padding:3px 6px">' + _cpEsc(ch.channel) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(ch.sessions) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(ch.conversions) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtPct(ch.bounceRate) + '</td>';
+        html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtDur(ch.avgDuration) + '</td>';
+        html += '</tr>';
+      });
+      html += '</table>';
+      html += '</div>';
+    }
+
+    // Section 4: Top Converting Pages
+    if (ga4.pageMetrics && ga4.pageMetrics.length > 0) {
+      var converting = ga4.pageMetrics.filter(function(p) { return p.conversions > 0; });
+      if (converting.length > 0) {
+        converting.sort(function(a, b) { return b.conversions - a.conversions; });
+        html += '<div style="margin-bottom:6px">';
+        html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:8px">Top Converting Pages</div>';
+        html += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
+        html += '<tr style="border-bottom:1px solid var(--border);color:var(--n2)">';
+        html += '<th style="text-align:left;padding:3px 6px">Page Path</th><th style="text-align:right;padding:3px 6px">Sessions</th><th style="text-align:right;padding:3px 6px">Conversions</th><th style="text-align:right;padding:3px 6px">Bounce Rate</th></tr>';
+        converting.forEach(function(p) {
+          html += '<tr style="border-bottom:1px solid var(--border)">';
+          html += '<td style="padding:3px 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + _cpEsc(p.pagePath) + '">' + _cpEsc(p.pagePath) + '</td>';
+          html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(p.sessions) + '</td>';
+          html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtNum(p.conversions) + '</td>';
+          html += '<td style="text-align:right;padding:3px 6px">' + _cpFmtPct(p.bounceRate) + '</td>';
+          html += '</tr>';
+        });
+        html += '</table>';
+        html += '</div>';
+      }
+    }
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── Current Performance helper functions ──────────────────────────
+function _cpEsc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function _cpFmtNum(n) { return n != null ? Number(n).toLocaleString() : '0'; }
+function _cpFmtPct(n) { return n != null ? (n * 100).toFixed(1) + '%' : '0.0%'; }
+function _cpFmtDur(s) { if (!s && s !== 0) return '\u2014'; var m = Math.floor(s / 60); var sec = Math.round(s % 60); return m + ':' + (sec < 10 ? '0' : '') + sec; }
+function _perfStat(label, value) {
+  return '<div style="min-width:80px">' +
+    '<div style="font-size:10px;color:var(--n2);margin-bottom:2px">' + label + '</div>' +
+    '<div style="font-size:16px;font-weight:600;color:var(--dark)">' + value + '</div>' +
+    '</div>';
+}
 
 // ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────

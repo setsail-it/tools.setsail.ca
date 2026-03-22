@@ -3047,6 +3047,42 @@ async function _pullGA4Data() {
       };
       console.log('[snapshot] GA4: ' + pageMetrics.length + ' pages, ' + totalSessions + ' sessions');
     }
+
+    // Pull channel grouping data
+    try {
+      var channelRes = await fetch('/api/ga4-report', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          propertyId: S.setup.ga4PropertyId,
+          startDate: start,
+          endDate: end,
+          dimensions: ['sessionDefaultChannelGroup'],
+          metrics: ['sessions', 'conversions', 'bounceRate', 'averageSessionDuration']
+        })
+      });
+      if (channelRes.ok) {
+        var channelData = await channelRes.json();
+        var channels = [];
+        if (channelData.rows) {
+          channelData.rows.forEach(function(r) {
+            var dims = r.dimensionValues || [];
+            var mets = r.metricValues || [];
+            channels.push({
+              channel: dims[0] && dims[0].value || 'Unknown',
+              sessions: parseInt(mets[0] && mets[0].value || 0),
+              conversions: parseInt(mets[1] && mets[1].value || 0),
+              bounceRate: parseFloat(mets[2] && mets[2].value || 0),
+              avgDuration: parseFloat(mets[3] && mets[3].value || 0)
+            });
+          });
+          channels.sort(function(a, b) { return b.sessions - a.sessions; });
+        }
+        S.snapshot.ga4.channels = channels;
+        console.log('[snapshot] GA4 channels: ' + channels.length + ' channel groups');
+      }
+    } catch(e) { console.warn('[snapshot] GA4 channel pull failed:', e.message); }
+
   } catch(e) {
     console.warn('[snapshot] GA4 pull failed:', e.message);
   }
