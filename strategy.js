@@ -1937,6 +1937,7 @@ var _BENCHMARK_ALIASES = {
   'wealth management': 'financial services', 'mortgage': 'financial services', 'banking': 'financial services',
   'bookkeeping': 'accounting', 'tax': 'accounting', 'cpa': 'accounting',
   'web design': 'marketing agency', 'digital marketing': 'marketing agency', 'seo': 'marketing agency',
+  'marketing & advertising': 'marketing agency', 'advertising': 'marketing agency', 'marketing agency': 'marketing agency', 'marketing': 'marketing agency',
   'it services': 'consulting', 'technology': 'saas', 'software': 'saas', 'fintech': 'saas',
   'retail': 'ecommerce', 'online store': 'ecommerce', 'shopify': 'ecommerce',
   'food': 'restaurant', 'catering': 'restaurant', 'cafe': 'restaurant', 'bakery': 'restaurant',

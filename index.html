@@ -547,6 +547,20 @@ textarea.inp{resize:vertical}
           <div><label style="font-size:12px;display:block;margin-bottom:5px">Primary KPI <span style="color:var(--n2);font-weight:400">— what we measure</span></label><select class="inp" id="f-goal-kpi"><option value="">—</option><option value="qualified_leads">Qualified Leads / Month</option><option value="revenue">Revenue Growth</option><option value="cpl">Cost per Lead</option><option value="organic_traffic">Organic Traffic</option><option value="rankings">Keyword Rankings</option><option value="bookings">Bookings / Appointments</option><option value="calls">Phone Calls</option><option value="brand_awareness">Brand Awareness</option></select></div>
         </div>
       </div>
+      <div class="card" style="padding:20px;margin-bottom:16px">
+        <div class="section-mark"><span class="section-mark-label">Call Transcripts</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px">Paste discovery call transcripts, sales call notes, or client interviews. Each transcript improves buyer psychology, VoC language, and messaging accuracy downstream.</p>
+        <div id="transcripts-list"></div>
+        <div style="margin-top:10px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <input id="transcript-label" type="text" placeholder="e.g. Discovery Call - Mar 20" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--bg);color:var(--dark);font-family:var(--font)">
+          </div>
+          <textarea id="transcript-text" placeholder="Paste the full transcript here..." style="width:100%;min-height:120px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font);background:var(--bg);color:var(--dark);resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary sm" id="add-transcript-btn"><i class="ti ti-plus"></i> Add Transcript</button>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Discovery &amp; Pain Context</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Paste any notes from discovery calls, intake forms, emails, or conversations that describe the client's situation and problems. This feeds Research and Strategy stages.</p>
@@ -3319,11 +3333,42 @@ async function runSnapshot() {
       await _pullGA4Data();
     }
 
+    // Pull competitor DR via Ahrefs if competitors exist and API key is configured
+    if (S.research && S.research.competitors && S.research.competitors.length) {
+      try {
+        var compDomains = S.research.competitors.map(function(c) {
+          return (c.url || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim();
+        }).filter(function(d) { return d; });
+        if (compDomains.length) {
+          aiBarStart('Pulling competitor DR');
+          var drRes = await fetch('/api/ahrefs-dr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domains: compDomains })
+          });
+          if (drRes.ok) {
+            var drData = await drRes.json();
+            if (drData.results) {
+              drData.results.forEach(function(r) {
+                if (r.dr === null) return;
+                var comp = S.research.competitors.find(function(c) {
+                  return (c.url || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').indexOf(r.domain) >= 0;
+                });
+                if (comp) comp.domain_rating = r.dr;
+              });
+              scheduleSave();
+              console.log('[snapshot] Competitor DR:', drData.results.map(function(r) { return r.domain + ': DR ' + r.dr; }).join(', '));
+            }
+          }
+        }
+      } catch(e) { console.warn('[snapshot] Competitor DR pull failed:', e.message); }
+    }
+
     scheduleSave();
     renderSnapshot();
     var statusParts = [data.topPages.length + ' pages', (data.rankings || []).length + ' rankings', (data.techStack || []).length + ' technologies detected'];
     if (S.snapshot.gsc) statusParts.push(S.snapshot.gsc.queries.length + ' GSC queries');
-    if (S.snapshot.ga4) statusParts.push(S.snapshot.ga4.totals.sessions.toLocaleString() + ' GA4 sessions');
+    if (S.snapshot.ga4 && S.snapshot.ga4.totals) statusParts.push(S.snapshot.ga4.totals.sessions.toLocaleString() + ' GA4 sessions');
     status.textContent = 'Snapshot complete — ' + statusParts.join(', ') + '.';
   } catch(e) {
     document.getElementById('snapshot-error-msg').textContent = e.message;

@@ -857,6 +857,29 @@ export default {
 
 
 
+    // ── AHREFS DOMAIN RATING ────────────────────────────────────────
+    if (url.pathname === '/api/ahrefs-dr' && request.method === 'POST') {
+      try {
+        const { domains } = await request.json();
+        if (!domains || !domains.length) return new Response(JSON.stringify({ error: 'domains array required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        if (!env.AHREFS_API_KEY) return new Response(JSON.stringify({ error: 'AHREFS_API_KEY not configured' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
+        const today = new Date().toISOString().slice(0, 10);
+        const results = await Promise.all(domains.slice(0, 10).map(async function(domain) {
+          try {
+            const drRes = await fetch('https://api.ahrefs.com/v3/site-explorer/domain-rating?target=' + encodeURIComponent(domain) + '&date=' + today, {
+              headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
+            });
+            if (!drRes.ok) return { domain, dr: null, error: drRes.status };
+            const drData = await drRes.json();
+            return { domain, dr: Math.round(drData?.domain_rating?.domain_rating || 0) };
+          } catch(e) { return { domain, dr: null, error: e.message }; }
+        }));
+        return new Response(JSON.stringify({ results }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(err) {
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── KEYWORD METRICS (DataForSEO primary, Ahrefs fallback) ────
     if (url.pathname === '/api/ahrefs' && request.method === 'POST') {
       try {
