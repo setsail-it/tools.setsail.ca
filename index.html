@@ -632,11 +632,11 @@ textarea.inp{resize:vertical}
 
       <!-- Top Pages table -->
       <div id="snapshot-pages-wrap" style="display:none;margin-bottom:24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:500">Top Pages by Organic Traffic</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;cursor:pointer" onclick="var tb=document.getElementById('snap-pages-table');var ic=this.querySelector('.ti');if(tb.style.display==='none'){tb.style.display='';ic.className='ti ti-chevron-down'}else{tb.style.display='none';ic.className='ti ti-chevron-right'}">
+          <div style="font-size:13px;font-weight:500"><i class="ti ti-chevron-down" style="font-size:12px;margin-right:4px"></i>Top Pages by Organic Traffic</div>
           <div style="font-size:11px;color:var(--n2)" id="snap-pages-count"></div>
         </div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div id="snap-pages-table" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead>
               <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
@@ -663,13 +663,13 @@ textarea.inp{resize:vertical}
       <!-- 301 Redirect Map -->
       <div id="snapshot-redirects-wrap" style="display:none;margin-bottom:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div>
-            <div style="font-size:13px;font-weight:500">301 Redirect Map</div>
+          <div style="cursor:pointer" onclick="var tb=document.getElementById('snap-redirect-table');var ic=this.querySelector('.ti-chevron-down,.ti-chevron-right');if(tb.style.display==='none'){tb.style.display='';ic.className='ti ti-chevron-down'}else{tb.style.display='none';ic.className='ti ti-chevron-right'}">
+            <div style="font-size:13px;font-weight:500"><i class="ti ti-chevron-down" style="font-size:12px;margin-right:4px"></i>301 Redirect Map</div>
             <div style="font-size:11px;color:var(--n2);margin-top:2px">Map old URLs to new slugs. Complete after Stage 3 (Sitemap). Exports as CSV + Cloudflare _redirects in Stage 8.</div>
           </div>
           <button class="btn btn-ghost sm" onclick="autoMatchRedirects()"><i class="ti ti-wand"></i> Auto-match</button>
         </div>
-        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <div id="snap-redirect-table" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead>
               <tr style="background:var(--panel);border-bottom:1px solid var(--border)">
@@ -3182,7 +3182,7 @@ function _renderGSCCard(snap) {
 }
 
 function _renderGA4Card(snap) {
-  if (!snap.ga4 || !snap.ga4.pageMetrics.length) return '';
+  if (!snap.ga4 || !snap.ga4.pageMetrics || !snap.ga4.pageMetrics.length) return '';
   var ga4 = snap.ga4;
   var t = ga4.totals || {};
   var h = '';
@@ -3224,6 +3224,29 @@ function _renderGA4Card(snap) {
     h += '</tr>';
   });
   h += '</tbody></table></div>';
+
+  // Traffic Channels table (from GA4 channel grouping pull)
+  if (ga4.channels && ga4.channels.length) {
+    h += '<div style="font-size:12px;font-weight:500;margin:14px 0 6px">Traffic Channels</div>';
+    h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel);border-bottom:1px solid var(--border)">';
+    h += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Channel</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Sessions</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Conversions</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Bounce Rate</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Avg Duration</th>';
+    h += '</tr></thead><tbody>';
+    ga4.channels.forEach(function(ch) {
+      h += '<tr style="border-bottom:1px solid var(--border)">';
+      h += '<td style="padding:6px 10px;font-weight:500">' + esc(ch.channel) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtNum(ch.sessions) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtNum(ch.conversions) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtPct(ch.bounceRate) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtDur(ch.avgDuration) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
 
   h += '</div>';
   return h;
