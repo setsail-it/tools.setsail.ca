@@ -174,6 +174,8 @@ const ENDPOINT_RATE_GROUP = {
   '/api/serp-intel': 'data', '/api/niche-expand': 'data', '/api/competitor-gap': 'data',
   '/api/organic-competitors': 'data', '/api/ahrefs': 'data', '/api/kw-debug': 'data',
   '/api/gkp-ideas': 'data', '/api/gkp-forecast': 'data', '/api/gkp-status': 'data',
+  '/api/gsc-performance': 'data', '/api/gsc-sites': 'data', '/api/gsc-status': 'data',
+  '/api/ga4-report': 'data', '/api/ga4-properties': 'data', '/api/ga4-status': 'data',
   '/api/snapshot-tech': 'data', '/api/snapshot-vitals': 'data', '/api/snapshot-rankings': 'data', '/api/snapshot-detect': 'data', '/api/snapshot-brand-serp': 'data', '/api/scrape-structured': 'data',
   '/api/queue-submit': 'queue',
   '/api/generate-image': 'image',
@@ -1125,6 +1127,271 @@ export default {
       }
     }
 
+
+    // ── GOOGLE SEARCH CONSOLE & GA4 ──────────────────────────────────────
+
+    // Helper: check if Google OAuth creds exist (reuses same creds as GKP)
+    function hasGoogleOAuthCreds(env) {
+      return !!(env.GOOGLE_ADS_CLIENT_ID && env.GOOGLE_ADS_CLIENT_SECRET && env.GOOGLE_ADS_REFRESH_TOKEN);
+    }
+
+    // GET /api/gsc-status — check if GSC credentials are configured
+    if (url.pathname === '/api/gsc-status' && request.method === 'GET') {
+      return new Response(JSON.stringify({ configured: hasGoogleOAuthCreds(env) }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
+    // GET /api/ga4-status — check if GA4 credentials are configured
+    if (url.pathname === '/api/ga4-status' && request.method === 'GET') {
+      return new Response(JSON.stringify({ configured: hasGoogleOAuthCreds(env) }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
+    // GET /api/gsc-sites — list verified GSC properties
+    if (url.pathname === '/api/gsc-sites' && request.method === 'GET') {
+      if (!hasGoogleOAuthCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google OAuth not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        var token = await getGoogleAdsToken(env);
+        var gscRes = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!gscRes.ok) {
+          if (gscRes.status === 401 || gscRes.status === 403) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            var retryToken = await getGoogleAdsToken(env);
+            var retryRes = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+              headers: { 'Authorization': 'Bearer ' + retryToken }
+            });
+            if (!retryRes.ok) {
+              var retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'GSC API error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            var retryData = await retryRes.json();
+            return new Response(JSON.stringify(retryData), {
+              headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
+          var errBody = await gscRes.text();
+          return new Response(JSON.stringify({ error: 'GSC API error', detail: errBody.slice(0, 500) }), {
+            status: gscRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        var data = await gscRes.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/gsc-performance — Search Console search analytics query
+    if (url.pathname === '/api/gsc-performance' && request.method === 'POST') {
+      if (!hasGoogleOAuthCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google OAuth not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        var body = await request.json();
+        var siteUrl = body.siteUrl;
+        if (!siteUrl) {
+          return new Response(JSON.stringify({ error: 'siteUrl required' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        // Default to last 90 days
+        var now = new Date();
+        var endDate = body.endDate || now.toISOString().slice(0, 10);
+        var startDate = body.startDate || new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+        var dimensions = body.dimensions || ['query', 'page'];
+        var rowLimit = Math.min(body.rowLimit || 1000, 25000);
+
+        var gscPayload = {
+          startDate: startDate,
+          endDate: endDate,
+          dimensions: dimensions,
+          rowLimit: rowLimit
+        };
+
+        var token = await getGoogleAdsToken(env);
+        var encodedSiteUrl = encodeURIComponent(siteUrl);
+        var gscRes = await fetch(
+          'https://www.googleapis.com/webmasters/v3/sites/' + encodedSiteUrl + '/searchAnalytics/query',
+          {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(gscPayload)
+          }
+        );
+
+        if (!gscRes.ok) {
+          if (gscRes.status === 401 || gscRes.status === 403) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            var retryToken = await getGoogleAdsToken(env);
+            var retryRes = await fetch(
+              'https://www.googleapis.com/webmasters/v3/sites/' + encodedSiteUrl + '/searchAnalytics/query',
+              {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + retryToken, 'Content-Type': 'application/json' },
+                body: JSON.stringify(gscPayload)
+              }
+            );
+            if (!retryRes.ok) {
+              var retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'GSC API error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            var retryData = await retryRes.json();
+            return new Response(JSON.stringify(retryData), {
+              headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
+          var errBody = await gscRes.text();
+          return new Response(JSON.stringify({ error: 'GSC API error', detail: errBody.slice(0, 500) }), {
+            status: gscRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        var data = await gscRes.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // GET /api/ga4-properties — list GA4 account summaries with property IDs
+    if (url.pathname === '/api/ga4-properties' && request.method === 'GET') {
+      if (!hasGoogleOAuthCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google OAuth not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        var token = await getGoogleAdsToken(env);
+        var ga4Res = await fetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!ga4Res.ok) {
+          if (ga4Res.status === 401 || ga4Res.status === 403) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            var retryToken = await getGoogleAdsToken(env);
+            var retryRes = await fetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries', {
+              headers: { 'Authorization': 'Bearer ' + retryToken }
+            });
+            if (!retryRes.ok) {
+              var retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'GA4 Admin API error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            var retryData = await retryRes.json();
+            return new Response(JSON.stringify(retryData), {
+              headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
+          var errBody = await ga4Res.text();
+          return new Response(JSON.stringify({ error: 'GA4 Admin API error', detail: errBody.slice(0, 500) }), {
+            status: ga4Res.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        var data = await ga4Res.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/ga4-report — GA4 Data API runReport
+    if (url.pathname === '/api/ga4-report' && request.method === 'POST') {
+      if (!hasGoogleOAuthCreds(env)) {
+        return new Response(JSON.stringify({ error: 'Google OAuth not configured', code: 'NO_KEY' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+      try {
+        var body = await request.json();
+        var propertyId = body.propertyId;
+        if (!propertyId) {
+          return new Response(JSON.stringify({ error: 'propertyId required' }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        // Default to last 90 days
+        var now = new Date();
+        var endDate = body.endDate || now.toISOString().slice(0, 10);
+        var startDate = body.startDate || new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+        var dimensions = (body.dimensions || ['pagePath']).map(function(d) { return { name: d }; });
+        var metrics = (body.metrics || ['sessions', 'bounceRate', 'averageSessionDuration', 'conversions']).map(function(m) { return { name: m }; });
+
+        var ga4Payload = {
+          dateRanges: [{ startDate: startDate, endDate: endDate }],
+          dimensions: dimensions,
+          metrics: metrics,
+          limit: Math.min(body.rowLimit || 1000, 100000)
+        };
+
+        var token = await getGoogleAdsToken(env);
+        var ga4Url = 'https://analyticsdata.googleapis.com/v1beta/properties/' + propertyId + ':runReport';
+        var ga4Res = await fetch(ga4Url, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify(ga4Payload)
+        });
+
+        if (!ga4Res.ok) {
+          if (ga4Res.status === 401 || ga4Res.status === 403) {
+            await env.SETSAIL_OS.delete('gads:access_token');
+            var retryToken = await getGoogleAdsToken(env);
+            var retryRes = await fetch(ga4Url, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + retryToken, 'Content-Type': 'application/json' },
+              body: JSON.stringify(ga4Payload)
+            });
+            if (!retryRes.ok) {
+              var retryErr = await retryRes.text();
+              return new Response(JSON.stringify({ error: 'GA4 Data API error (retry)', detail: retryErr.slice(0, 500) }), {
+                status: retryRes.status, headers: { 'Content-Type': 'application/json', ...cors }
+              });
+            }
+            var retryData = await retryRes.json();
+            return new Response(JSON.stringify(retryData), {
+              headers: { 'Content-Type': 'application/json', ...cors }
+            });
+          }
+          var errBody = await ga4Res.text();
+          return new Response(JSON.stringify({ error: 'GA4 Data API error', detail: errBody.slice(0, 500) }), {
+            status: ga4Res.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        var data = await ga4Res.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
 
     // ── GOOGLE KEYWORD PLANNER ─────────────────────────────────────────
 

@@ -2210,7 +2210,7 @@ var ANTI_INFLATION_CAPS = [
   { condition:'few_competitors', section:'positioning', dimension:'confidence', cap:5,
     test: function() { var r=S.research||{}; return !r.competitors || r.competitors.length < 3; } },
   { condition:'no_analytics', section:'execution', dimension:'data', cap:5,
-    test: function() { return true; /* no GA/GSC integration yet */ } },
+    test: function() { var s=S.setup||{}; return !s.gscSiteUrl && !s.ga4PropertyId; } },
   { condition:'website_only_voice', section:'brand', dimension:'confidence', cap:5,
     test: function() { var s=S.setup||{}; return !s.strategy && (!s.docs || !s.docs.length); } },
   { condition:'no_dr_data', section:'brand', dimension:'data', cap:5,
