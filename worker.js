@@ -2693,19 +2693,140 @@ export default {
       try {
         const { domain } = await request.json();
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
-        const dfsRes = await fetch('https://api.dataforseo.com/v3/domain_analytics/technologies/domain_technologies/live', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + getDFSCreds(env), 'Content-Type': 'application/json' },
-          body: JSON.stringify([{ target: domain, limit: 1 }])
-        });
-        const dfsData = await dfsRes.json();
-        const techs = dfsData?.tasks?.[0]?.result?.[0]?.technologies || [];
-        // Flatten into categories
-        const stack = techs.map(t => ({
-          name: t.name || t.technology || '',
-          category: t.category || t.group || '',
-          version: t.version || ''
-        })).filter(t => t.name);
+
+        // Try DataForSEO technologies first
+        let stack = [];
+        try {
+          const dfsRes = await fetch('https://api.dataforseo.com/v3/domain_analytics/technologies/domain_technologies/live', {
+            method: 'POST',
+            headers: { 'Authorization': 'Basic ' + getDFSCreds(env), 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ target: domain, limit: 1 }])
+          });
+          const dfsData = await dfsRes.json();
+          const techs = dfsData?.tasks?.[0]?.result?.[0]?.technologies || [];
+          stack = techs.map(t => ({
+            name: t.name || t.technology || '',
+            category: t.category || t.group || '',
+            version: t.version || ''
+          })).filter(t => t.name);
+        } catch(e) { /* DataForSEO tech lookup failed, try HTML detection */ }
+
+        // If DataForSEO returned nothing, detect from live HTML + headers
+        if (stack.length === 0) {
+          try {
+            const pageRes = await fetch('https://' + domain, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SetSailOS/1.0; +https://setsail.ca)' },
+              redirect: 'follow',
+              cf: { cacheTtl: 300 },
+              signal: AbortSignal.timeout(8000)
+            });
+            const headers = Object.fromEntries([...pageRes.headers.entries()]);
+            const html = (await pageRes.text()).slice(0, 300000);
+            const detected = new Map(); // name → { name, category, version }
+
+            // Header-based detection
+            const server = headers['server'] || headers['x-powered-by'] || '';
+            if (/nginx/i.test(server)) detected.set('Nginx', { name: 'Nginx', category: 'Web Server', version: '' });
+            if (/apache/i.test(server)) detected.set('Apache', { name: 'Apache', category: 'Web Server', version: '' });
+            if (/cloudflare/i.test(server)) detected.set('Cloudflare', { name: 'Cloudflare', category: 'CDN', version: '' });
+            if (headers['x-vercel-id']) detected.set('Vercel', { name: 'Vercel', category: 'Hosting', version: '' });
+            if (headers['x-wix-request-id']) detected.set('Wix', { name: 'Wix', category: 'CMS', version: '' });
+            if (headers['x-shopify-stage']) detected.set('Shopify', { name: 'Shopify', category: 'E-commerce', version: '' });
+
+            // HTML/script-based detection patterns
+            const patterns = [
+              // CMS
+              { re: /wp-content|wp-includes|wordpress/i, name: 'WordPress', cat: 'CMS' },
+              { re: /Shopify\.theme|cdn\.shopify\.com/i, name: 'Shopify', cat: 'E-commerce' },
+              { re: /wix\.com|wixsite/i, name: 'Wix', cat: 'CMS' },
+              { re: /squarespace\.com|sqsp/i, name: 'Squarespace', cat: 'CMS' },
+              { re: /webflow\.com|data-wf-/i, name: 'Webflow', cat: 'CMS' },
+              { re: /ghost\.org|ghost-/i, name: 'Ghost', cat: 'CMS' },
+              { re: /drupal\.settings|drupal\.org/i, name: 'Drupal', cat: 'CMS' },
+              { re: /joomla/i, name: 'Joomla', cat: 'CMS' },
+              { re: /hubspot\.com|hs-scripts/i, name: 'HubSpot', cat: 'CMS / Marketing' },
+              // Frameworks
+              { re: /react|__NEXT_DATA__|_next\//i, name: 'React / Next.js', cat: 'JavaScript Framework' },
+              { re: /vue\.js|__VUE__/i, name: 'Vue.js', cat: 'JavaScript Framework' },
+              { re: /angular\.js|ng-app|ng-controller/i, name: 'Angular', cat: 'JavaScript Framework' },
+              { re: /gatsby/i, name: 'Gatsby', cat: 'Static Site Generator' },
+              { re: /nuxt/i, name: 'Nuxt', cat: 'JavaScript Framework' },
+              { re: /astro/i, name: 'Astro', cat: 'Static Site Generator' },
+              // Analytics & Tag Managers
+              { re: /google-analytics\.com|gtag|UA-\d|G-[A-Z0-9]/i, name: 'Google Analytics', cat: 'Analytics' },
+              { re: /googletagmanager\.com|GTM-/i, name: 'Google Tag Manager', cat: 'Tag Manager' },
+              { re: /hotjar\.com|_hj/i, name: 'Hotjar', cat: 'Analytics' },
+              { re: /clarity\.ms/i, name: 'Microsoft Clarity', cat: 'Analytics' },
+              { re: /facebook\.net\/en_US\/fbevents|fbq\(/i, name: 'Meta Pixel', cat: 'Advertising' },
+              { re: /connect\.facebook\.net/i, name: 'Facebook SDK', cat: 'Social' },
+              { re: /plausible\.io/i, name: 'Plausible', cat: 'Analytics' },
+              { re: /mixpanel\.com/i, name: 'Mixpanel', cat: 'Analytics' },
+              { re: /segment\.com|analytics\.js/i, name: 'Segment', cat: 'Analytics' },
+              // Advertising
+              { re: /googlesyndication|adsbygoogle/i, name: 'Google AdSense', cat: 'Advertising' },
+              { re: /googleadservices\.com|google_conversion/i, name: 'Google Ads', cat: 'Advertising' },
+              { re: /ads-twitter\.com/i, name: 'Twitter Ads', cat: 'Advertising' },
+              { re: /snap\.licdn\.com|linkedin\.com\/px/i, name: 'LinkedIn Insight Tag', cat: 'Advertising' },
+              // Chat & Support
+              { re: /intercom\.com|intercomSettings/i, name: 'Intercom', cat: 'Live Chat' },
+              { re: /drift\.com|driftt/i, name: 'Drift', cat: 'Live Chat' },
+              { re: /tawk\.to/i, name: 'Tawk.to', cat: 'Live Chat' },
+              { re: /crisp\.chat/i, name: 'Crisp', cat: 'Live Chat' },
+              { re: /zendesk\.com/i, name: 'Zendesk', cat: 'Support' },
+              { re: /tidio\.co/i, name: 'Tidio', cat: 'Live Chat' },
+              // Marketing & CRM
+              { re: /mailchimp\.com|mc\.js/i, name: 'Mailchimp', cat: 'Email Marketing' },
+              { re: /klaviyo\.com/i, name: 'Klaviyo', cat: 'Email Marketing' },
+              { re: /activecampaign\.com/i, name: 'ActiveCampaign', cat: 'Email Marketing' },
+              { re: /convertkit\.com/i, name: 'ConvertKit', cat: 'Email Marketing' },
+              // SEO & Schema
+              { re: /yoast/i, name: 'Yoast SEO', cat: 'SEO' },
+              { re: /rank-math/i, name: 'Rank Math', cat: 'SEO' },
+              { re: /schema\.org|application\/ld\+json/i, name: 'Schema.org JSON-LD', cat: 'Structured Data' },
+              // Performance & CDN
+              { re: /cdn\.jsdelivr\.net/i, name: 'jsDelivr', cat: 'CDN' },
+              { re: /cdnjs\.cloudflare\.com/i, name: 'cdnjs', cat: 'CDN' },
+              { re: /unpkg\.com/i, name: 'unpkg', cat: 'CDN' },
+              { re: /fonts\.googleapis\.com|fonts\.gstatic\.com/i, name: 'Google Fonts', cat: 'Fonts' },
+              { re: /use\.typekit\.net/i, name: 'Adobe Fonts', cat: 'Fonts' },
+              // CSS Frameworks
+              { re: /bootstrap/i, name: 'Bootstrap', cat: 'CSS Framework' },
+              { re: /tailwindcss|tailwind/i, name: 'Tailwind CSS', cat: 'CSS Framework' },
+              // Payment
+              { re: /stripe\.com|Stripe\(/i, name: 'Stripe', cat: 'Payment' },
+              { re: /paypal\.com/i, name: 'PayPal', cat: 'Payment' },
+              // Booking & Forms
+              { re: /calendly\.com/i, name: 'Calendly', cat: 'Scheduling' },
+              { re: /typeform\.com/i, name: 'Typeform', cat: 'Forms' },
+              { re: /jotform\.com/i, name: 'Jotform', cat: 'Forms' },
+              { re: /gravity\.forms|gform/i, name: 'Gravity Forms', cat: 'Forms' },
+              // Video
+              { re: /youtube\.com\/embed|youtube\.com\/iframe/i, name: 'YouTube Embed', cat: 'Video' },
+              { re: /vimeo\.com/i, name: 'Vimeo', cat: 'Video' },
+              { re: /wistia\.com/i, name: 'Wistia', cat: 'Video' },
+              // Accessibility
+              { re: /accessibe\.com|accessiBe/i, name: 'accessiBe', cat: 'Accessibility' },
+              { re: /userway\.org/i, name: 'UserWay', cat: 'Accessibility' },
+              // Hosting indicators
+              { re: /netlify/i, name: 'Netlify', cat: 'Hosting' },
+              { re: /amazonaws\.com/i, name: 'AWS', cat: 'Hosting' },
+              { re: /azurewebsites\.net|azure/i, name: 'Azure', cat: 'Hosting' },
+              { re: /pantheon\.io/i, name: 'Pantheon', cat: 'Hosting' },
+              { re: /wpengine\.com/i, name: 'WP Engine', cat: 'Hosting' },
+              { re: /godaddy\.com/i, name: 'GoDaddy', cat: 'Hosting' },
+            ];
+
+            patterns.forEach(function(p) {
+              if (p.re.test(html) && !detected.has(p.name)) {
+                detected.set(p.name, { name: p.name, category: p.cat, version: '' });
+              }
+            });
+
+            stack = [...detected.values()];
+            console.log('[snapshot-tech] HTML detection found:', stack.length, 'technologies for', domain);
+          } catch(e2) { console.warn('[snapshot-tech] HTML detection failed:', e2.message); }
+        }
+
         return new Response(JSON.stringify({ techStack: stack, domain }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
