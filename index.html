@@ -2847,9 +2847,11 @@ async function _initAnalyticsConnection() {
         gscSelect.disabled = false;
         // Fetch sites
         var sitesRes = await fetch('/api/gsc-sites');
+        console.log('[setup] GSC sites HTTP', sitesRes.status);
         if (sitesRes.ok) {
           var sitesData = await sitesRes.json();
-          var sites = sitesData.sites || sitesData || [];
+          console.log('[setup] GSC sites response:', JSON.stringify(sitesData).slice(0, 500));
+          var sites = sitesData.siteEntry || sitesData.sites || sitesData || [];
           gscSelect.innerHTML = '<option value="">— Select property</option>';
           sites.forEach(function(site) {
             var url = typeof site === 'string' ? site : (site.siteUrl || site.url || '');
@@ -2864,7 +2866,7 @@ async function _initAnalyticsConnection() {
         }
       }
     }
-  } catch(e) { console.warn('[setup] GSC status check failed:', e.message); }
+  } catch(e) { console.warn('[setup] GSC check failed:', e.message); }
 
   // Check GA4 status
   try {
@@ -2879,8 +2881,10 @@ async function _initAnalyticsConnection() {
         ga4Select.disabled = false;
         // Fetch properties
         var propsRes = await fetch('/api/ga4-properties');
+        console.log('[setup] GA4 properties HTTP', propsRes.status);
         if (propsRes.ok) {
           var propsData = await propsRes.json();
+          console.log('[setup] GA4 properties response:', JSON.stringify(propsData).slice(0, 500));
           ga4Select.innerHTML = '<option value="">— Select property</option>';
           // GA4 returns account summaries with property summaries nested
           var accounts = propsData.accountSummaries || propsData.accounts || propsData || [];
