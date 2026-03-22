@@ -1367,6 +1367,7 @@ async function resumeProject(id) {
   // Pre-fill setup form if returning there
   if (S.stage === 'setup' && S.setup) prefillSetup();
   _initDocDropZone();
+  _initTranscriptBtn();
 
   goTo(S.stage);
 
@@ -1433,6 +1434,134 @@ function prefillSetup() {
     var _ss = document.getElementById('setup-subtitle'); if(_ss) _ss.textContent = 'Edit client details and project settings.';
   }
   renderDocsList();
+  renderTranscriptsList();
+}
+
+// ── CALL TRANSCRIPTS ────────────────────────────────────────────────
+
+function _initTranscriptBtn() {
+  var btn = document.getElementById('add-transcript-btn');
+  if (btn && !btn._bound) { btn._bound = true; btn.onclick = addTranscript; }
+}
+
+function addTranscript() {
+  var labelEl = document.getElementById('transcript-label');
+  var textEl = document.getElementById('transcript-text');
+  if (!labelEl || !textEl) return;
+  var label = labelEl.value.trim();
+  var text = textEl.value.trim();
+  if (!text) { aiBarNotify('Paste a transcript first', { duration: 3000 }); return; }
+  if (!label) {
+    var d = new Date();
+    label = 'Call Transcript - ' + d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  }
+  if (!S.setup) S.setup = {};
+  if (!S.setup.transcripts) S.setup.transcripts = [];
+  var obj = { label: label, text: text, addedAt: Date.now(), charCount: text.length, extracted: null };
+  S.setup.transcripts.push(obj);
+  scheduleSave();
+  labelEl.value = '';
+  textEl.value = '';
+  renderTranscriptsList();
+  aiBarNotify('Transcript added \u2014 extracting buyer language\u2026', { duration: 3000 });
+  extractTranscript(S.setup.transcripts.length - 1);
+}
+
+function removeTranscript(idx) {
+  if (!S.setup || !S.setup.transcripts) return;
+  S.setup.transcripts.splice(idx, 1);
+  _syncTranscriptVoC();
+  scheduleSave();
+  renderTranscriptsList();
+  aiBarNotify('Transcript removed', { duration: 2000 });
+}
+
+function renderTranscriptsList() {
+  var container = document.getElementById('transcripts-list');
+  if (!container) return;
+  if (!S.setup || !S.setup.transcripts || !S.setup.transcripts.length) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--n2);margin:0 0 8px">No transcripts added yet.</p>';
+    return;
+  }
+  var html = '';
+  S.setup.transcripts.forEach(function(t, i) {
+    var statusBadge = t.extracted
+      ? '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(205,232,0,.15);color:var(--lime)">Extracted</span>'
+      : '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(255,180,0,.15);color:#e6a700">Pending</span>';
+    var charLabel = (t.charCount || 0).toLocaleString() + ' chars';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--white)">';
+    html += '<span style="flex:1;font-size:12px;font-weight:500;color:var(--dark)">' + esc(t.label) + '</span>';
+    html += '<span style="font-size:11px;color:var(--n2)">' + charLabel + '</span>';
+    html += statusBadge;
+    html += '<button class="btn btn-ghost sm transcript-re-extract-btn" data-idx="' + i + '" title="Re-extract" style="padding:4px 6px;font-size:12px;min-width:auto">\u21bb</button>';
+    html += '<button class="btn btn-ghost sm transcript-remove-btn" data-idx="' + i + '" title="Remove" style="padding:4px 6px;font-size:12px;min-width:auto;color:var(--red,#e53e3e)">\u00d7</button>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+  container.querySelectorAll('.transcript-re-extract-btn').forEach(function(btn) {
+    btn.onclick = function() { extractTranscript(parseInt(btn.getAttribute('data-idx'), 10)); };
+  });
+  container.querySelectorAll('.transcript-remove-btn').forEach(function(btn) {
+    btn.onclick = function() { removeTranscript(parseInt(btn.getAttribute('data-idx'), 10)); };
+  });
+}
+
+async function extractTranscript(idx) {
+  if (!S.setup || !S.setup.transcripts || !S.setup.transcripts[idx]) return;
+  var t = S.setup.transcripts[idx];
+  var systemPrompt = 'You are a buyer-language extraction expert. Analyse the following call transcript and extract structured buyer intelligence. Return ONLY valid JSON with these fields:\n' +
+    '- pain_points: array of strings \u2014 specific pain points or frustrations mentioned\n' +
+    '- objections: array of strings \u2014 objections, hesitations, or concerns raised\n' +
+    '- quotes: array of strings \u2014 exact buyer quotes (their actual words, verbatim or near-verbatim)\n' +
+    '- emotions: array of strings \u2014 emotional language, feelings, or sentiment expressed\n' +
+    '- criteria: array of strings \u2014 decision criteria, must-haves, or evaluation factors\n' +
+    '- situation: string \u2014 brief summary of the buyer\'s current situation\n\n' +
+    'Extract real language from the transcript. Prefer the buyer\'s exact words over paraphrasing. If a field has no data, return an empty array or empty string.';
+  var userPrompt = 'Transcript: "' + t.label + '"\n\n' + t.text;
+  try {
+    var result = await callClaude(systemPrompt, userPrompt, null, 4000, 'Extracting buyer language from \u201c' + t.label + '\u201d\u2026');
+    var parsed = safeParseJSON(result);
+    if (!parsed) { aiBarNotify('Failed to parse extraction \u2014 try again', { duration: 4000, isError: true }); return; }
+    t.extracted = {
+      pain_points: parsed.pain_points || [],
+      objections: parsed.objections || [],
+      quotes: parsed.quotes || [],
+      emotions: parsed.emotions || [],
+      criteria: parsed.criteria || [],
+      situation: parsed.situation || '',
+      extractedAt: Date.now()
+    };
+    _syncTranscriptVoC();
+    scheduleSave();
+    renderTranscriptsList();
+    aiBarNotify('Extracted ' + (t.extracted.quotes.length || 0) + ' quotes + ' + (t.extracted.pain_points.length || 0) + ' pain points from \u201c' + t.label + '\u201d', { duration: 4000 });
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    aiBarNotify('Extraction failed: ' + (e.message || 'unknown error'), { duration: 5000, isError: true });
+  }
+}
+
+function _syncTranscriptVoC() {
+  if (!S.setup || !S.setup.transcripts) return;
+  var allQuotes = [];
+  S.setup.transcripts.forEach(function(t) {
+    if (t.extracted && t.extracted.quotes) {
+      t.extracted.quotes.forEach(function(q) {
+        allQuotes.push('"' + q + '" \u2014 ' + (t.label || 'Call transcript'));
+      });
+    }
+  });
+  if (allQuotes.length) {
+    if (!S.research) S.research = {};
+    var existing = S.research.voc_swipe_raw || '';
+    var transcriptBlock = '\n\n--- FROM CALL TRANSCRIPTS ---\n' + allQuotes.join('\n');
+    var marker = '--- FROM CALL TRANSCRIPTS ---';
+    if (existing.indexOf(marker) >= 0) {
+      S.research.voc_swipe_raw = existing.substring(0, existing.indexOf(marker) - 2) + transcriptBlock;
+    } else {
+      S.research.voc_swipe_raw = existing + transcriptBlock;
+    }
+  }
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
@@ -1646,7 +1775,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initTranscriptBtn(); renderTranscriptsList(); }
   if (stage === 'snapshot') {
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
     if (S.snapshot) { renderSnapshot(); if (_snapClearBtn) _snapClearBtn.style.display = ''; }
