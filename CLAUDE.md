@@ -6,13 +6,13 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 
 **The 11-stage pipeline:**
 
-1. **Setup** — Client name, URL, primary market, metro/city targeting (for GKP geo data), industry, uploaded strategy docs (auto-extract to client goals), discovery notes, client goals (goal statement, measurable target, baseline, timeline, primary KPI), sales qualification, competitor URLs
-2. **Snapshot** — Automated domain authority pull (Ahrefs via DataForSEO), backlink count, top organic pages, competitor DA comparison, Sales Summary card, Brand SERP card (Knowledge Panel presence, owns #1 result, SERP features, People Also Search For, ratings — via `/api/snapshot-brand-serp`), Current Site Architecture (3 tabs: Insights — AI-generated plain-English description of information architecture/URL patterns/hierarchy depth, Tree — indented hierarchy with traffic badges, Diagram — Mermaid flowchart with grouped view for 60+ page sitemaps), Core Web Vitals, Tech Stack, Schema detection, redirect map. Clear All button to reset snapshot data.
-3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, unit economics inputs, and buyer psychology section (JTBD Force Map: push/pull/anxieties/habits with quotes + intensity, buyer sophistication 1-5, perceived categories, switching triggers, decision criteria with must-have/nice-to-have priority, coverage map with AI Generate Missing button)
-4. **Strategy** — The strategy engine: 10 AI diagnostics (D0–D9) with keyword pipeline auto-inserted between D3 and D4, scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, narrative & messaging synthesis (StoryBrand, messaging pillars, objection maps, content hooks, VoC swipe file), interactive Gantt timeline with cost labels, compiled 13-section strategy document with 6 data appendices + revenue projection model, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes). 10 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Narrative, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D9. Auto-compiles strategy doc + web brief after full runs. Strategy document download includes website strategy brief.
-5. **Sitemap** — Page architecture with keyword-to-page mapping. 5-step workflow strip (Import → Generate → Align → Enrich → Approve) with status dashboard. Strategy-aware build: D5 page injection (vertical/location/content pages), CTA landing page stubs, pages-to-cut annotation, tier page count enforcement, engagement scope awareness. Page triage system (Removed tab) flags parameter pages, utility bloat, team sub-pages, cannibalised keywords, off-strategy pages. Realign button for post-strategy updates without full rebuild. Issues panel with AI-powered Fix buttons (keyword assignment, zero-vol replacement, cannibalisation resolution). Full Build button chains all steps: build → priorities → personas → AI keyword fix → page goals (batched, 12/call) → content pillars → live volumes. Architecture diagram with grouped view for 60+ pages. Source badges (D5/CTA/CUT). Strategy alignment columns, content pillar tags, persona/voice/awareness assignment, positioning direction gap detection, CTA gap detection, persona coverage check, budget-tier priority suggestions, market overrides, active page import from Snapshot, Clear All button
-6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards, positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, and persona alignment scoring
-7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
+1. **Setup** — Client name, URL, primary market, metro/city targeting (for GKP geo data), industry, uploaded strategy docs (auto-extract to client goals), discovery notes, client goals (goal statement, measurable target, baseline, timeline, primary KPI), sales qualification, competitor URLs, Analytics Connection card (GSC property picker + GA4 property picker, auto-saves on change), call transcripts (multiple, with auto-extraction of pain points, objections, quotes, emotions, criteria, situation)
+2. **Snapshot** — Automated domain authority pull (exact Ahrefs DR via `/api/ahrefs-dr` when `AHREFS_API_KEY` set, falls back to DataForSEO approximation), backlink count, top organic pages (collapsible table), competitor DA comparison (auto-pulls competitor DR for all Research competitors), Sales Summary card, Brand SERP card (Knowledge Panel presence, owns #1 result, SERP features, People Also Search For, ratings — via `/api/snapshot-brand-serp`), Current Site Architecture (3 tabs: Insights — AI-generated plain-English description of information architecture/URL patterns/hierarchy depth, Tree — indented hierarchy with traffic badges, Diagram — Mermaid flowchart with grouped view for 60+ page sitemaps), Core Web Vitals, Tech Stack (HTML-based fallback detecting 70+ technologies across 15 categories when DataForSEO returns empty), Schema detection, redirect map (collapsible table), GSC search analytics pull (queries + pages, 90-day window), GA4 metrics pull (sessions, bounce rate, conversions by page + channel groupings). Clear All button to reset snapshot data.
+3. **Research** — AI-enriched factual data collection across 5 tabs (Business, Audience, Brand, Schema/Local, Competitors) with completeness scorecard, field-level source badges, unit economics inputs, buyer psychology section (JTBD Force Map: push/pull/anxieties/habits with quotes + intensity — auto-populated during enrichAll after client-pain tab, buyer sophistication 1-5, perceived categories, switching triggers, decision criteria with must-have/nice-to-have priority, coverage map with AI Generate Missing button), read-only Current Performance card at top of Business tab (GSC + GA4 data from Snapshot: Search Console, Analytics Overview, Traffic Channels, Top Converting Pages), source attribution banners per tab (Website Scrape, GMB, Documents, Discovery Notes, Brand Assets, Structured Scrape, GSC, GA4 with green/amber badges and refresh buttons). AI enrichment prompt explicitly clarifies extraction is about the CLIENT's services, not what Setsail would sell.
+4. **Strategy** — The strategy engine: 10 AI diagnostics (D0–D9) with keyword pipeline auto-inserted between D3 and D4, scoring engine with anti-inflation caps, positioning direction system, budget-tier channel allocation, audience intelligence, sensitivity analysis, demand validation, narrative & messaging synthesis (StoryBrand, messaging pillars, objection maps, content hooks, VoC swipe file), interactive Gantt timeline with cost labels, compiled 13-section strategy document with 6 data appendices + revenue projection model, Pricing Engine integration (live service costs, package tier matching, investment summary, internal margin analysis), Service Scope panel (product selection with Low/Mid/High scope, per-service ROI, dual suggested/realistic budget view, scope notes), industry benchmarks (30 verticals with sourced CVR/CPL/close rate/retention data, benchmark table viewer modal with CSV download in Economics tab). 10 tabs: Audience, Positioning, Economics, Subtraction, Channels (merged with Growth Plan — includes Gantt, budget allocation, scope panel), Website, Content & Authority, Risks, Narrative, Output. Keywords panel is persistent above tabs (collapsible). "From here forward" button re-runs current diagnostic through D9. Three distinct re-run buttons: Regenerate All (full), Re-run All (no enrichment, runs D0-D3 → keyword pipeline → D4-D9), Improve Weakest (surgical). Auto-compiles strategy doc + web brief after full runs. Strategy document download includes website strategy brief. Source attribution banners per tab (Research %, Snapshot DR, Competitors, Industry Benchmarks, Pricing Catalog, GKP Data, VoC, Tech Stack, diagnostic completion with refresh buttons). GSC/GA4 data flows into D1/D5/D6/D8 via `_snapshotCtxBlock`.
+5. **Sitemap** — Page architecture with keyword-to-page mapping. 5-step workflow strip (Import → Generate → Align → Enrich → Approve) with status dashboard. Strategy-aware build: D5 page injection (vertical/location/content pages), CTA landing page stubs, pages-to-cut annotation, tier page count enforcement, engagement scope awareness. GSC traffic badges on pages, cannibalisation detection from overlapping GSC queries. Page triage system (Removed tab) flags parameter pages, utility bloat, team sub-pages, cannibalised keywords, off-strategy pages. Realign button for post-strategy updates without full rebuild. Issues panel with AI-powered Fix buttons (keyword assignment, zero-vol replacement, cannibalisation resolution). Full Build button chains all steps: build → priorities → personas → AI keyword fix → page goals (batched, 12/call) → content pillars → live volumes. Architecture diagram with grouped view for 60+ pages. Source badges (D5/CTA/CUT). Strategy alignment columns, content pillar tags, persona/voice/awareness assignment, positioning direction gap detection, CTA gap detection, persona coverage check, budget-tier priority suggestions, market overrides, active page import from Snapshot, Clear All button
+6. **Briefs** — Per-page SEO briefs with SERP-calibrated targets, question injection, competitor context, version control (V1/V2), AI evaluation scorecards (including emotional_depth check), positioning direction injection, subtraction messaging angles, economics-calibrated CTAs, competitive counter context, persona alignment scoring, and per-page GSC/GA4 performance context (impressions, clicks, position, bounce rate)
+7. **Copy** — Full-page HTML generation from approved briefs with multi-pass audit (keyword density, intent match, Canadian spelling, AI fluff detection, persona alignment, positioning direction, emotional_depth, ranking preservation from GSC data, bounce rate audit from GA4 data), human QC checklists with persona/positioning verification, positioning-aware meta tag generation, persona-prioritised E-E-A-T injection, content pillar guidance for blogs, and full worker queue parity
 8. **Images** — AI image generation (Gemini) per page with prompt engineering and style controls
 9. **Layout** — Wireframe generation with section-level structure and responsive grid suggestions
 10. **Schema** — Structured data markup (JSON-LD) per page type with validation
@@ -30,7 +30,9 @@ SetSailOS is Setsail Marketing's internal AI-powered website build pipeline. It 
 | Auth | Cloudflare Access (Google SSO, `@setsail.ca`) + JWT validation |
 | AI | Anthropic Claude (`claude-sonnet-4-20250514`) via `/api/claude` proxy |
 | Keyword data | DataForSEO REST API |
-| Domain data | Ahrefs (via DataForSEO proxy) |
+| Domain data | Ahrefs API (direct DR lookup) + DataForSEO (fallback) |
+| Search Console | Google Search Console API (via OAuth, shared token with Google Ads) |
+| Analytics | Google Analytics 4 Data API (via OAuth, shared token with Google Ads) |
 | Images | Gemini API (via `/api/generate-image`) |
 | Frontend | Vanilla JS, Geist font, Tabler Icons |
 
@@ -64,8 +66,8 @@ All app state lives in a single mutable global `S` object (index.html:691). Ever
 **Key `S` properties:**
 - `S.projectId`, `S.stage` — current project and stage
 - `S._version` — optimistic locking counter (incremented on each save)
-- `S.setup` — client info, docs, voice, competitors, sales qualification, client goals (`goalStatement`, `goalTarget`, `goalBaseline`, `goalTimeline`, `goalKpi`), metro targeting (`metroTarget`)
-- `S.snapshot` — DataForSEO domain metrics, `topPages`, `techStack`, `vitals`, `schemas`, `_insights` (cached AI summary)
+- `S.setup` — client info, docs, voice, competitors, sales qualification, client goals (`goalStatement`, `goalTarget`, `goalBaseline`, `goalTimeline`, `goalKpi`), metro targeting (`metroTarget`), `gscProperty` (selected GSC property URL), `ga4Property` (selected GA4 property ID), `transcripts[]` (label, text, addedAt, charCount, extracted: pain_points, objections, quotes, emotions, criteria, situation)
+- `S.snapshot` — DataForSEO domain metrics, `topPages`, `techStack`, `vitals`, `schemas`, `_insights` (cached AI summary), `gsc` (`queries`, `pages`, `_pulledAt`), `ga4` (`pageMetrics`, `totals`, `channels`, `_pulledAt`)
 - `S.research` — AI-enriched research object (business, audience, brand, schema, competitors)
 - `S.strategy` — strategy engine output (audience, positioning, unit economics, channels, brand, risks, targets, demand validation)
 - `S.strategy.audience` — D0 output: segments, personas, buying motions, triggers, objections, parked segments
@@ -88,7 +90,9 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 - **AI proxy:** `/api/claude` (streaming), `/api/claude-sync` (non-streaming) — model-locked and token-capped
 - **DataForSEO:** `/api/kw-expand`, `/api/paa`, `/api/niche-expand`, `/api/competitor-gap`, `/api/organic-competitors`, `/api/gmb`, `/api/serp-intel`, `/api/kw-debug`
 - **Google Keyword Planner:** `/api/gkp-ideas` (keyword ideas + bid data from URL), `/api/gkp-forecast` (keyword enrichment: bid ranges, ad competition, monthly volumes), `/api/gkp-status` (credential check) — all gracefully hidden when Google Ads env vars not set. Both routes have 401 token-refresh retry logic.
-- **Ahrefs:** `/api/snapshot`, `/api/snapshot-brand-serp` (Knowledge Panel + SERP features), `/api/ahrefs`
+- **Ahrefs:** `/api/snapshot`, `/api/snapshot-brand-serp` (Knowledge Panel + SERP features), `/api/ahrefs`, `/api/ahrefs-dr` (batch DR lookup for multiple domains, 50 Ahrefs units per call)
+- **Google Search Console:** `/api/gsc-status` (credential check), `/api/gsc-sites` (list verified properties), `/api/gsc-performance` (search analytics: queries + pages, 90-day window)
+- **Google Analytics 4:** `/api/ga4-status` (credential check), `/api/ga4-properties` (list accessible properties), `/api/ga4-report` (sessions, bounce rate, conversions by page + channel groupings)
 - **Queue:** `/api/queue-submit`, `/api/queue-status`
 - **Image gen:** `/api/generate-image`
 - **Per-slug storage:** `/api/copy/:projectId/:slug`, `/api/images/:projectId/:slug`
@@ -109,7 +113,7 @@ The strategy engine is the most complex subsystem. It runs 9 AI diagnostics sequ
 - **D5 — Website & CRO:** Build type, CTAs, form strategy, page architecture, tracking requirements
 - **D6 — Content & Authority:** DR gap analysis, content pillars (vertical-aware), publishing cadence, E-E-A-T strategy
 - **D7 — Risk Assessment:** Risks with severity scores, mitigations, dependencies
-- **D8 — Narrative & Messaging:** StoryBrand arc (hero, 3 problems, guide empathy/authority, 3-step plan, CTAs, stakes, success), messaging pillars ranked by buyer importance with evidence + resonance quotes, objection map with proof-available tags, content hooks per awareness stage (5 stages), VoC swipe file organised by emotional register + usage labels, strategic recommendations (entry point, call shape). 3-tier degradation: transcript → research → web-only. Output: `S.strategy.narrative`
+- **D8 — Narrative & Messaging:** StoryBrand arc (hero, 3 problems, guide empathy/authority, 3-step plan, CTAs, stakes, success), messaging pillars ranked by buyer importance with evidence + resonance quotes, objection map with proof-available tags, content hooks per awareness stage (5 stages), VoC swipe file organised by emotional register + usage labels, strategic recommendations (entry point, call shape), emotional_journey (4-stage buyer arc), emotional_veins (3-5 deep emotional drivers), touchpoint_messaging (rational + emotional per touchpoint), vertical_resonance (per-vertical fear + language). 3-tier degradation: transcript → research → web-only. Call transcript quotes synced to `S.research.voc_swipe_raw` under `--- FROM CALL TRANSCRIPTS ---` marker, feed D8 with higher confidence tier. Output: `S.strategy.narrative`. Emotional fields feed into briefs and copy generation; `emotional_depth` audit check in both brief scoring and copy audit.
 - **D9 — Sales Intelligence:** Setsail's pitch framework for selling to this client (inverse of D8). Sales StoryBrand arc (Hero = client, Guide = Setsail, Plan = engagement), sales pillars ranked with when-to-use deal stage tags, sales objection map with data-backed rebuttals, pitch angle (one sentence), why-now urgency triggers, why-Setsail matched proof points, discovery gaps, deal stage hooks (cold outreach → discovery → proposal → follow-up → close). Auto-generates proposal document from strategy data. Output tab toggle: Strategy Document | Sales Intelligence. Output: `S.strategy.sales_intel`
 
 **D0 runs first** (separate call before the D1–D7 loop). This is because D0=0 is falsy in JavaScript — all `if (diagNum)` checks must use `diagNum !== undefined && diagNum !== null` instead.
@@ -120,6 +124,8 @@ The keyword pipeline has 10 steps: Generate Questions → AI Generate Seeds → 
 **5 keyword tabs:** Questions, Seeds, Opportunities, Clusters, Google Ads. The Google Ads tab shows credential status, enrichment summary (avg CPC, competition breakdown), and a sortable table of all keywords with bid ranges and ad competition data.
 
 **Mechanical seed generation** (`buildKwSeeds()`): Business-type-aware with 9 category templates (agency, ecommerce, saas, medical, trades, restaurant, legal, realestate, professional). Auto-detected via `_detectBusinessCategory()` from research fields. 10-layer seed generation: service × category modifiers, business type, universal questions, D0 audience segments, D0 perceived alternatives, D2 positioning keywords, snapshot slug mining, secondary geo expansion, research pain points, pinned seeds. Max 700 seeds.
+
+**Industry benchmarks (strategy.js):** 30 industry verticals with real sourced data (WordStream/LocaliQ 2025, Unbounce 2024, First Page Sage 2026, Focus Digital 2025). Each entry has low/mid/high ranges for CVR, CPL, close rate, retention multiplier. Expanded alias map for fuzzy industry matching. Benchmark table viewer modal with CSV download in Economics tab. Used in D1 unit economics for industry-specific baseline calibration.
 
 **Scoring engine:** Three dimensions per section:
 - Data Completeness (35%) — are all required inputs present?
@@ -191,6 +197,16 @@ Five additive data signals that feed into brief and copy prompts:
 
 - **D8 Narrative (D8):** `S.strategy.narrative` — StoryBrand arc, messaging pillars, objection map, content hooks per awareness stage, VoC swipe file. Messaging pillars filtered by page type and injected as copy guidance. Content hooks matched to page awareness stage. High-priority objection rebuttals injected for service/landing pages. StoryBrand flow (Problem→Guide→Plan→CTA→Success) structures service/landing page copy. VoC swipe file quotes used as headline/CTA seeds. StoryBrand role per page auto-inferred via `_inferStoryBrandRole(page)` in sitemap.js — renders as purple badge.
 
+### GSC/GA4 Data Flow (cross-stage)
+
+GSC and GA4 data pulled in Snapshot flows downstream into multiple stages:
+- **Research:** enrichment prompts include GSC/GA4 data for context
+- **Strategy:** D1 (unit economics baseline), D5 (CRO with real bounce rates), D6 (content with real traffic data), D8 (narrative with performance context) — injected via `_snapshotCtxBlock()`
+- **Sitemap:** traffic badges from GSC, cannibalisation detection from overlapping queries
+- **Briefs:** per-page performance context (impressions, clicks, position, bounce rate)
+- **Copy:** ranking preservation checks (don't lose existing rankings), bounce rate audit checks
+- **SetsailAI:** 7 new audit checks (see Audit Mode above)
+
 **`_buyerIntelBlock(page)`** (strategy.js) — consolidating helper that combines all 5 signals into one prompt section. Called by briefs.js and copy.js via `typeof _buyerIntelBlock === 'function'` guard. Awareness sets page structure, perception sets opening hook, alternatives set objection handling, VoC sets language texture, narrative adds messaging pillars + content hooks + objection rebuttals.
 
 ### SetsailAI Assistant (setsailai.js)
@@ -207,7 +223,7 @@ AI-powered sidepanel that persists across all 11 stages. Toggle button in the na
    - Conversation history: last 6 turns included for continuity
    - Grounding system prompt: must cite source tab/diagnostic or say data doesn't exist
 
-2. **Audit Mode** — 30+ pure-JS programmatic checks across all stages including pipeline staleness detection (research→strategy, strategy→sitemap, strategy→briefs, briefs→layout timestamp comparisons). `SAI_AUDIT_CHECKS[]` array. Severities: error (red), warning (orange), info (grey). Results grouped by stage with "Go →" navigation buttons that navigate to the correct stage AND tab (including strategy sub-tabs via `_sTab`). Guards against no-project-loaded state with clear empty states. Runs on: stage change, after generation completes, on demand. Badge on nav button (red for errors, orange for warnings).
+2. **Audit Mode** — 30+ pure-JS programmatic checks across all stages including pipeline staleness detection (research→strategy, strategy→sitemap, strategy→briefs, briefs→layout timestamp comparisons), 7 GSC/GA4 audit checks (missing analytics connection, stale data, cannibalisation from GSC queries, high bounce rate pages, low-converting pages, missing GA4 tracking, GSC coverage gaps). `SAI_AUDIT_CHECKS[]` array. Severities: error (red), warning (orange), info (grey). Results grouped by stage with "Go →" navigation buttons that navigate to the correct stage AND tab (including strategy sub-tabs via `_sTab`). Guards against no-project-loaded state with clear empty states. Runs on: stage change, after generation completes, on demand. Badge on nav button (red for errors, orange for warnings).
 
 3. **Explain Mode** — `data-sai-explain="type:identifier"` attributes on key UI elements (diagnostic sections, positioning direction, page rows, cluster cards, brief containers, copy audit results). Capture-phase click handler intercepts, assembles targeted context, auto-sends explanation request. `body.sai-explain` class enables dashed green outline on hover.
 
@@ -232,6 +248,22 @@ Current Site Architecture card has 3 tabs:
 - **Diagram** — Mermaid flowchart rendered lazily on first tab switch via `_renderSnapshotArchDiagram()`.
 
 Tab switching via `switchSnapArchTab(tab)`. Diagram and insights lazy-load on first view.
+
+### Session Expired Handling (index.html)
+
+401 responses from any `/api/*` route trigger a modal with "Log In Again" and "Refresh Page" buttons. All running AI operations are stopped on 401. Improved initial auth page with proper login screen instead of raw error.
+
+### Setup Stage — Analytics Connection (index.html)
+
+Analytics Connection card in Setup stage with two pickers:
+- **GSC Property Picker** — calls `/api/gsc-sites` to list verified Search Console properties. Selected property saved to `S.setup.gscProperty`. Auto-saves on change.
+- **GA4 Property Picker** — calls `/api/ga4-properties` to list accessible GA4 properties. Selected property saved to `S.setup.ga4Property`. Auto-saves on change.
+
+Both pickers are hidden when Google OAuth credentials are not configured (checks `/api/gsc-status` and `/api/ga4-status`).
+
+### Setup Stage — Call Transcripts (index.html)
+
+`S.setup.transcripts[]` stores multiple call transcripts. Each entry: `{ label, text, addedAt, charCount, extracted }`. On add, Claude auto-extracts `{ pain_points, objections, quotes, emotions, criteria, situation }`. Extracted quotes sync to `S.research.voc_swipe_raw` under `--- FROM CALL TRANSCRIPTS ---` marker. Feeds D8 Narrative with higher confidence tier.
 
 ### Setup Stage — Client Goals & Geo Targeting (index.html)
 
@@ -445,9 +477,10 @@ Note: Cloudflare Access auth headers are not present locally. The worker falls b
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API developer token | worker.js `/api/gkp-*` routes | No — GKP features hidden when absent |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth 2.0 client ID | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
 | `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth 2.0 client secret | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
-| `GOOGLE_ADS_REFRESH_TOKEN` | Google Ads OAuth 2.0 refresh token | worker.js `getGoogleAdsToken()` | No — paired with other GOOGLE_ADS vars |
+| `GOOGLE_ADS_REFRESH_TOKEN` | Google OAuth 2.0 refresh token (scopes: ads, webmasters, analytics.readonly) | worker.js `getGoogleAdsToken()` — serves GKP, GSC, and GA4 | No — paired with other GOOGLE_ADS vars |
 | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer ID (10-digit, no dashes) | worker.js `/api/gkp-*` routes | No — paired with other GOOGLE_ADS vars |
 | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Google Ads MCC manager ID (optional) | worker.js `gadsHeaders()` | No — only for manager accounts |
+| `AHREFS_API_KEY` | Ahrefs API token for domain rating lookups | worker.js `/api/ahrefs-dr` | No — falls back to DataForSEO DR approximation |
 | `ADMIN_EMAIL` | Owner email — bypasses role check, gets admin by default | worker.js auth + `/api/admin/users` | Recommended |
 | `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team name (e.g. `setsail`) | worker.js JWT validation | Production only — omit locally |
 
@@ -473,9 +506,12 @@ headers: { 'Authorization': 'Basic ' + getDFSCreds(env) }
 // Gemini — always via env.GEMINI_API_KEY in query string
 fetch(`https://generativelanguage.googleapis.com/...?key=${env.GEMINI_API_KEY}`)
 
-// Google Ads API — always via getGoogleAdsToken(env) + gadsHeaders(env, token)
-const token = await getGoogleAdsToken(env); // caches in KV for 55 min
+// Google Ads API / GSC / GA4 — always via getGoogleAdsToken(env) + gadsHeaders(env, token)
+const token = await getGoogleAdsToken(env); // caches in KV for 55 min, scopes: ads + webmasters + analytics.readonly
 headers: gadsHeaders(env, token) // Bearer token + developer-token + login-customer-id
+
+// Ahrefs — always via env.AHREFS_API_KEY in Authorization header
+headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
 
 // Auth — always via env.CF_ACCESS_TEAM_DOMAIN + env.ADMIN_EMAIL
 ```
@@ -512,7 +548,7 @@ All user data prefixed `u:{email}:`.
 | `u:{email}:img:{projectId}:{slug}` | Image data per page |
 | `admin:user:{email}` | User profile: `{ email, name, role, status, projects[], createdAt, updatedAt, approvedAt, approvedBy }`. Roles: `super_admin`, `admin`, `strategist`, `viewer`. Status: `pending`, `active`, `suspended`. Auto-created on first `/api/whoami` call. |
 | `rl:{email}:{group}` | Rate limit bucket (auto-expiring) |
-| `gads:access_token` | Google Ads OAuth access token (55 min TTL) |
+| `gads:access_token` | Google OAuth access token (55 min TTL) — serves Google Ads, GSC, and GA4 (scopes: ads, webmasters, analytics.readonly) |
 
 **External KV (read-only):**
 
