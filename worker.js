@@ -2628,9 +2628,33 @@ export default {
           .filter(p => p.traffic > 0 || p.referringDomains > 0)
           .map(p => ({ oldUrl: p.url, oldSlug: p.slug, newSlug: '', status: 'pending' }));
 
-        // Convert DataForSEO rank (0-1000) to 0-100 scale using their formula: sin(rank/636.62)*100
+        // Get DR from DataForSEO backlinks rank
+        // DataForSEO rank is 0-1000 — use log scale conversion: DR ≈ log(rank+1)/log(1001)*100
         const rawRank = backlinksResult?.rank ?? null;
-        const dr100 = rawRank != null ? Math.round(Math.sin(rawRank / 636.62) * 100) : null;
+        let dr100 = null;
+        if (rawRank != null && rawRank > 0) {
+          dr100 = Math.round(Math.log(rawRank + 1) / Math.log(1001) * 100);
+          if (dr100 > 100) dr100 = 100;
+          if (dr100 < 1) dr100 = 1;
+        }
+
+        // Try Ahrefs direct API as a more accurate fallback/override
+        try {
+          const ahrefsRes2 = await fetch('https://api.dataforseo.com/v3/backlinks/domain_pages_summary/live', {
+            method: 'POST',
+            headers: { Authorization: 'Basic ' + creds, 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ target: domain, include_subdomains: true, backlinks_status_type: 'live' }])
+          });
+          if (ahrefsRes2.ok) {
+            const ahrefsData2 = await ahrefsRes2.json();
+            const ahrefsDR = ahrefsData2?.tasks?.[0]?.result?.[0]?.main_domain_rank;
+            if (ahrefsDR != null && ahrefsDR > 0) {
+              const ahrefsDR100 = Math.round(Math.log(ahrefsDR + 1) / Math.log(1001) * 100);
+              if (ahrefsDR100 > (dr100 || 0)) dr100 = Math.min(ahrefsDR100, 100);
+            }
+          }
+        } catch(e2) { /* fallback failed, use original */ }
+
         console.log('[snapshot] backlinks rank raw:', rawRank, '→ DR (0-100):', dr100, 'refdomains:', backlinksResult?.referring_domains);
 
         const result = {
