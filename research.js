@@ -2119,6 +2119,33 @@ async function enrichRTab(tab, forceAll) {
   ctx += _brandAssetsCtx();
   // Inject structured scrape data (social links, FAQs, reviews, blog, team, services)
   ctx += _structuredScrapeCtx();
+  // Inject GSC search performance data
+  if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries && S.snapshot.gsc.queries.length) {
+    ctx += '\n\nSEARCH CONSOLE DATA (last 90 days, real Google data):\n';
+    ctx += 'Top queries by clicks: ' + S.snapshot.gsc.queries.slice(0, 15).map(function(q) {
+      return q.query + ' (' + q.clicks + ' clicks, pos ' + q.position.toFixed(1) + ')';
+    }).join('; ');
+    if (S.snapshot.gsc.pages && S.snapshot.gsc.pages.length) {
+      ctx += '\nTop pages by clicks: ' + S.snapshot.gsc.pages.slice(0, 10).map(function(p) {
+        return p.page.replace(/^https?:\/\/[^\/]+/, '') + ' (' + p.clicks + ' clicks)';
+      }).join('; ');
+    }
+  }
+  // Inject GA4 analytics data
+  if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.totals) {
+    var t = S.snapshot.ga4.totals;
+    ctx += '\n\nGOOGLE ANALYTICS DATA (last 90 days, real data):\n';
+    ctx += 'Total sessions: ' + t.sessions + ', Total conversions: ' + t.conversions;
+    ctx += ', Avg bounce rate: ' + (t.bounceRate * 100).toFixed(1) + '%';
+    if (S.snapshot.ga4.pageMetrics && S.snapshot.ga4.pageMetrics.length) {
+      var topConverting = S.snapshot.ga4.pageMetrics.filter(function(p) { return p.conversions > 0; }).slice(0, 5);
+      if (topConverting.length) {
+        ctx += '\nTop converting pages: ' + topConverting.map(function(p) {
+          return p.pagePath + ' (' + p.conversions + ' conversions, ' + p.sessions + ' sessions)';
+        }).join('; ');
+      }
+    }
+  }
 
   // Cross-tab context: pass already-enriched fields so later tabs can build on them
   var crossCtx = '';

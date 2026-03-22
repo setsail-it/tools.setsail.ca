@@ -1841,6 +1841,55 @@ async function generatePageBrief(pageIdx) {
     if (streamEl) streamEl.textContent = 'Writing brief…';
   }
 
+  // ── GSC CURRENT PERFORMANCE CONTEXT ──────────────────────────────
+  var _gscBriefCtx = '';
+  if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.pages) {
+    var _pageUrl = (S.setup && S.setup.url || '').replace(/\/+$/, '');
+    var _normSlug = '/' + (p.slug || '').replace(/^\/+/, '');
+    if (_normSlug === '/') _normSlug = '/';
+    var _gscMatch = S.snapshot.gsc.pages.find(function(gp) {
+      var gPath = gp.page.replace(/^https?:\/\/[^\/]+/, '').replace(/\/+$/, '') || '/';
+      return gPath === _normSlug || gPath === _normSlug + '/';
+    });
+    if (_gscMatch) {
+      _gscBriefCtx = '\n\nSEARCH CONSOLE — CURRENT PERFORMANCE (last 90 days, real Google data):\n'
+        + 'This page currently receives ' + _gscMatch.clicks + ' clicks and ' + _gscMatch.impressions + ' impressions per 90 days\n'
+        + 'Average CTR: ' + (_gscMatch.ctr * 100).toFixed(1) + '%, Average position: ' + _gscMatch.position.toFixed(1) + '\n'
+        + 'IMPORTANT: Preserve content that drives these existing rankings. Do not remove or significantly alter sections that target queries this page already ranks for.\n';
+
+      // Find queries this page ranks for
+      if (S.snapshot.gsc.queries) {
+        var _pageQueries = S.snapshot.gsc.queries.filter(function(q) {
+          return q.clicks > 0 && q.position < 20;
+        }).slice(0, 15);
+        if (_pageQueries.length) {
+          _gscBriefCtx += 'Queries currently driving traffic to this page: ' + _pageQueries.map(function(q) {
+            return q.query + ' (pos ' + q.position.toFixed(1) + ', ' + q.clicks + ' clicks)';
+          }).join('; ') + '\n';
+        }
+      }
+    }
+  }
+
+  // ── GA4 CURRENT PERFORMANCE CONTEXT ──────────────────────────────
+  var _ga4BriefCtx = '';
+  if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.pageMetrics) {
+    var _ga4Match = S.snapshot.ga4.pageMetrics.find(function(gp) {
+      var gPath = gp.pagePath.replace(/\/+$/, '') || '/';
+      var _ns = '/' + (p.slug || '').replace(/^\/+/, '');
+      if (_ns === '/') _ns = '/';
+      return gPath === _ns || gPath === _ns + '/';
+    });
+    if (_ga4Match && _ga4Match.sessions > 0) {
+      _ga4BriefCtx = '\nGOOGLE ANALYTICS — CURRENT PERFORMANCE (last 90 days):\n'
+        + 'Sessions: ' + _ga4Match.sessions + ', Bounce rate: ' + (_ga4Match.bounceRate * 100).toFixed(1) + '%'
+        + ', Conversions: ' + _ga4Match.conversions + '\n';
+      if (_ga4Match.bounceRate > 0.7) {
+        _ga4BriefCtx += 'WARNING: High bounce rate (' + (_ga4Match.bounceRate * 100).toFixed(1) + '%) — brief should ensure the opening hook immediately addresses the primary search intent and provides clear value above the fold.\n';
+      }
+    }
+  }
+
   // ── PAGE TYPE ROUTING ────────────────────────────────────────────
   var isService  = /^(service|location|industry)$/.test(pt);
   var isBlog     = /^(blog|faq|resource)$/.test(pt);
@@ -1874,6 +1923,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
       + '\n\n## COMPETITORS TO BEAT\n'+ctxCompetitors
       + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
+      + _gscBriefCtx + _ga4BriefCtx
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. READER PROFILE\n'
@@ -1932,6 +1982,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
       + '\n\n## INTERNAL LINK OPPORTUNITIES\n'+ctxInternalLinks
       + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
+      + _gscBriefCtx + _ga4BriefCtx
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. READER PROFILE + AWARENESS STAGE\n'
@@ -1992,6 +2043,7 @@ async function generatePageBrief(pageIdx) {
       + '\n\n## QUESTIONS THIS PAGE MUST ANSWER\n'+ctxQuestions
       + '\n\n## COMPETITORS\n'+ctxCompetitors
       + (serpBriefBlock ? '\n\n## SERP INTEL\n'+serpBriefBlock : '')
+      + _gscBriefCtx + _ga4BriefCtx
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
       + '### 1. PAGE PURPOSE + SEARCH INTENT\n'

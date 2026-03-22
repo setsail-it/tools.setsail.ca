@@ -2211,6 +2211,8 @@ var ANTI_INFLATION_CAPS = [
     test: function() { var r=S.research||{}; return !r.competitors || r.competitors.length < 3; } },
   { condition:'no_analytics', section:'execution', dimension:'data', cap:5,
     test: function() { var s=S.setup||{}; return !s.gscSiteUrl && !s.ga4PropertyId; } },
+  { condition:'gsc_no_data', section:'execution', dimension:'data', cap:6,
+    test: function() { return S.setup && S.setup.gscSiteUrl && (!S.snapshot || !S.snapshot.gsc || !S.snapshot.gsc.queries || S.snapshot.gsc.queries.length === 0); } },
   { condition:'website_only_voice', section:'brand', dimension:'confidence', cap:5,
     test: function() { var s=S.setup||{}; return !s.strategy && (!s.docs || !s.docs.length); } },
   { condition:'no_dr_data', section:'brand', dimension:'data', cap:5,
@@ -3499,6 +3501,35 @@ function _snapshotCtxBlock() {
     }
     if (bs.alsoSearchFor && bs.alsoSearchFor.length) lines.push('- People also search for: ' + bs.alsoSearchFor.slice(0, 8).join(', '));
     if (bs.alsoAsk && bs.alsoAsk.length) lines.push('- People also ask: ' + bs.alsoAsk.slice(0, 4).join(' | '));
+  }
+  // GSC search performance
+  if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries && S.snapshot.gsc.queries.length) {
+    lines.push('\n--- SEARCH CONSOLE (last 90 days, real Google data) ---');
+    lines.push('Top 20 queries by clicks:');
+    S.snapshot.gsc.queries.slice(0, 20).forEach(function(q) {
+      lines.push('  ' + q.query + ': ' + q.clicks + ' clicks, ' + q.impressions + ' impressions, CTR ' + (q.ctr * 100).toFixed(1) + '%, pos ' + q.position.toFixed(1));
+    });
+    if (S.snapshot.gsc.pages && S.snapshot.gsc.pages.length) {
+      lines.push('Top 10 pages by clicks:');
+      S.snapshot.gsc.pages.slice(0, 10).forEach(function(p) {
+        lines.push('  ' + p.page.replace(/^https?:\/\/[^\/]+/, '') + ': ' + p.clicks + ' clicks, CTR ' + (p.ctr * 100).toFixed(1) + '%, pos ' + p.position.toFixed(1));
+      });
+    }
+  }
+  // GA4 analytics
+  if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.totals) {
+    var ga4t = S.snapshot.ga4.totals;
+    lines.push('\n--- GOOGLE ANALYTICS (last 90 days, real data) ---');
+    lines.push('Sessions: ' + ga4t.sessions + ', Conversions: ' + ga4t.conversions + ', Bounce rate: ' + (ga4t.bounceRate * 100).toFixed(1) + '%');
+    if (S.snapshot.ga4.pageMetrics) {
+      var topGA4 = S.snapshot.ga4.pageMetrics.filter(function(p) { return p.sessions > 10; }).slice(0, 10);
+      if (topGA4.length) {
+        lines.push('Top pages by sessions:');
+        topGA4.forEach(function(p) {
+          lines.push('  ' + p.pagePath + ': ' + p.sessions + ' sessions, bounce ' + (p.bounceRate * 100).toFixed(1) + '%, ' + p.conversions + ' conversions');
+        });
+      }
+    }
   }
   return '\n' + lines.join('\n') + '\n';
 }

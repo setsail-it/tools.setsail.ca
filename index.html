@@ -514,6 +514,25 @@ textarea.inp{resize:vertical}
           </select>
         </div>
       </div>
+      <!-- Analytics Connection — GSC & GA4 property pickers -->
+      <div class="card" id="analytics-connection-card" style="display:none">
+        <div class="section-mark"><span class="section-mark-label">Analytics Connection</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Connect Google Search Console and Analytics to pull real performance data into Snapshot and downstream stages.</p>
+        <div class="grid-2" style="margin-bottom:10px">
+          <div>
+            <label style="font-size:12px;display:block;margin-bottom:5px">Google Search Console <span id="gsc-status-badge" style="font-size:10px;padding:1px 7px;border-radius:8px;margin-left:4px;background:var(--n1);color:var(--n2)">Not configured</span></label>
+            <select class="inp" id="f-gsc-site" style="width:100%" disabled>
+              <option value="">— Select property</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;display:block;margin-bottom:5px">Google Analytics 4 <span id="ga4-status-badge" style="font-size:10px;padding:1px 7px;border-radius:8px;margin-left:4px;background:var(--n1);color:var(--n2)">Not configured</span></label>
+            <select class="inp" id="f-ga4-property" style="width:100%" disabled>
+              <option value="">— Select property</option>
+            </select>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client Goals</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Capture what success looks like in the client's own words. This flows into strategy, proposals, briefs, and copy — so the entire pipeline is aligned to their goals.</p>
@@ -1391,6 +1410,9 @@ function prefillSetup() {
   var fdm = document.getElementById('f-decision-maker'); if(fdm) fdm.value = s.decision_maker_on_call || '';
   var fdt = document.getElementById('f-decision-timeline'); if(fdt) fdt.value = s.decision_timeline || '';
   var fsn = document.getElementById('f-sales-notes'); if(fsn) fsn.value = s.sales_notes || '';
+  // Analytics connections
+  var fgsc = document.getElementById('f-gsc-site'); if(fgsc && s.gscSiteUrl) fgsc.value = s.gscSiteUrl;
+  var fga4 = document.getElementById('f-ga4-property'); if(fga4 && s.ga4PropertyId) fga4.value = s.ga4PropertyId;
   // Update title for existing projects
   if (s.client) {
     var _st = document.getElementById('setup-title'); if(_st) _st.textContent = s.client;
@@ -1610,7 +1632,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); }
   if (stage === 'snapshot') {
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
     if (S.snapshot) { renderSnapshot(); if (_snapClearBtn) _snapClearBtn.style.display = ''; }
@@ -2788,6 +2810,9 @@ function setupNext() {
     decision_maker_on_call: (document.getElementById('f-decision-maker')?.value||''),
     decision_timeline: (document.getElementById('f-decision-timeline')?.value||''),
     sales_notes: (document.getElementById('f-sales-notes')?.value||'').trim(),
+    // Analytics connections
+    gscSiteUrl: (document.getElementById('f-gsc-site')?.value||''),
+    ga4PropertyId: (document.getElementById('f-ga4-property')?.value||''),
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-meta-wrap').style.display = '';
@@ -2798,6 +2823,357 @@ function setupNext() {
 
 function showSetupErr(msg){const e=document.getElementById('setup-error');document.getElementById('setup-error-msg').textContent=msg;e.style.display='flex';}
 function hideSetupErr(){document.getElementById('setup-error').style.display='none';}
+
+// ── ANALYTICS CONNECTION (Setup) ──────────────────────────────────
+async function _initAnalyticsConnection() {
+  var card = document.getElementById('analytics-connection-card');
+  if (!card) return;
+  var gscBadge = document.getElementById('gsc-status-badge');
+  var ga4Badge = document.getElementById('ga4-status-badge');
+  var gscSelect = document.getElementById('f-gsc-site');
+  var ga4Select = document.getElementById('f-ga4-property');
+  var anyConfigured = false;
+
+  // Check GSC status
+  try {
+    var gscStatusRes = await fetch('/api/gsc-status');
+    if (gscStatusRes.ok) {
+      var gscStatus = await gscStatusRes.json();
+      if (gscStatus.configured) {
+        anyConfigured = true;
+        gscBadge.textContent = 'Connected';
+        gscBadge.style.background = 'rgba(21,142,29,0.12)';
+        gscBadge.style.color = 'var(--green)';
+        gscSelect.disabled = false;
+        // Fetch sites
+        var sitesRes = await fetch('/api/gsc-sites');
+        if (sitesRes.ok) {
+          var sitesData = await sitesRes.json();
+          var sites = sitesData.sites || sitesData || [];
+          gscSelect.innerHTML = '<option value="">— Select property</option>';
+          sites.forEach(function(site) {
+            var url = typeof site === 'string' ? site : (site.siteUrl || site.url || '');
+            if (!url) return;
+            var opt = document.createElement('option');
+            opt.value = url;
+            opt.textContent = url;
+            gscSelect.appendChild(opt);
+          });
+          // Pre-select if saved
+          if (S.setup && S.setup.gscSiteUrl) gscSelect.value = S.setup.gscSiteUrl;
+        }
+      }
+    }
+  } catch(e) { console.warn('[setup] GSC status check failed:', e.message); }
+
+  // Check GA4 status
+  try {
+    var ga4StatusRes = await fetch('/api/ga4-status');
+    if (ga4StatusRes.ok) {
+      var ga4Status = await ga4StatusRes.json();
+      if (ga4Status.configured) {
+        anyConfigured = true;
+        ga4Badge.textContent = 'Connected';
+        ga4Badge.style.background = 'rgba(21,142,29,0.12)';
+        ga4Badge.style.color = 'var(--green)';
+        ga4Select.disabled = false;
+        // Fetch properties
+        var propsRes = await fetch('/api/ga4-properties');
+        if (propsRes.ok) {
+          var propsData = await propsRes.json();
+          ga4Select.innerHTML = '<option value="">— Select property</option>';
+          // GA4 returns account summaries with property summaries nested
+          var accounts = propsData.accountSummaries || propsData.accounts || propsData || [];
+          if (Array.isArray(accounts)) {
+            accounts.forEach(function(acct) {
+              var acctName = acct.displayName || acct.name || '';
+              var props = acct.propertySummaries || acct.properties || [];
+              if (Array.isArray(props) && props.length) {
+                var grp = document.createElement('optgroup');
+                grp.label = acctName || 'Account';
+                props.forEach(function(prop) {
+                  var propId = prop.property || prop.name || prop.id || '';
+                  var propName = prop.displayName || prop.name || propId;
+                  var opt = document.createElement('option');
+                  opt.value = propId;
+                  opt.textContent = propName + (propId && propId !== propName ? ' (' + propId + ')' : '');
+                  grp.appendChild(opt);
+                });
+                ga4Select.appendChild(grp);
+              } else if (acct.property || acct.id) {
+                // Flat list of properties
+                var opt2 = document.createElement('option');
+                opt2.value = acct.property || acct.id || '';
+                opt2.textContent = acct.displayName || acct.name || opt2.value;
+                ga4Select.appendChild(opt2);
+              }
+            });
+          }
+          // Pre-select if saved
+          if (S.setup && S.setup.ga4PropertyId) ga4Select.value = S.setup.ga4PropertyId;
+        }
+      }
+    }
+  } catch(e) { console.warn('[setup] GA4 status check failed:', e.message); }
+
+  // Only show the card if at least one service is configured
+  card.style.display = anyConfigured ? '' : 'none';
+}
+
+// ── GSC/GA4 SNAPSHOT HELPERS ──────────────────────────────────────
+
+function _fmtNum(n) { return n != null ? Number(n).toLocaleString() : '0'; }
+function _fmtPct(n) { return n != null ? (n * 100).toFixed(1) + '%' : '0.0%'; }
+function _fmtPos(n) { return n != null ? Number(n).toFixed(1) : '—'; }
+function _fmtDur(s) { var m = Math.floor(s / 60); var sec = Math.round(s % 60); return m + ':' + (sec < 10 ? '0' : '') + sec; }
+function _truncUrl(u, max) { if (!u) return ''; if (u.length <= (max || 50)) return u; return u.slice(0, max || 50) + '\u2026'; }
+
+async function _pullGSCData() {
+  if (!S.setup || !S.setup.gscSiteUrl) return;
+  aiBarStart('Pulling Search Console data');
+  try {
+    var now = new Date();
+    var end = now.toISOString().slice(0, 10);
+    var start = new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    var siteUrl = S.setup.gscSiteUrl;
+    var hdrs = { 'Content-Type': 'application/json' };
+
+    var results = await Promise.all([
+      fetch('/api/gsc-performance', {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ siteUrl: siteUrl, dimensions: ['query'], startDate: start, endDate: end, rowLimit: 500 })
+      }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+      fetch('/api/gsc-performance', {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ siteUrl: siteUrl, dimensions: ['page'], startDate: start, endDate: end, rowLimit: 500 })
+      }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+    ]);
+
+    var gscQueries = results[0];
+    var gscPages = results[1];
+
+    if (!S.snapshot) S.snapshot = {};
+    S.snapshot.gsc = {
+      queries: (gscQueries && gscQueries.rows || []).map(function(r) {
+        return { query: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position };
+      }),
+      pages: (gscPages && gscPages.rows || []).map(function(r) {
+        return { page: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position };
+      }),
+      _pulledAt: new Date().toISOString()
+    };
+    console.log('[snapshot] GSC: ' + S.snapshot.gsc.queries.length + ' queries, ' + S.snapshot.gsc.pages.length + ' pages');
+  } catch(e) {
+    console.warn('[snapshot] GSC pull failed:', e.message);
+  }
+}
+
+async function _pullGA4Data() {
+  if (!S.setup || !S.setup.ga4PropertyId) return;
+  aiBarStart('Pulling Google Analytics data');
+  try {
+    var now = new Date();
+    var end = now.toISOString().slice(0, 10);
+    var start = new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+
+    var ga4Res = await fetch('/api/ga4-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        propertyId: S.setup.ga4PropertyId,
+        startDate: start, endDate: end,
+        dimensions: ['pagePath'],
+        metrics: ['sessions', 'bounceRate', 'averageSessionDuration', 'conversions']
+      })
+    });
+
+    if (ga4Res.ok) {
+      var ga4Data = await ga4Res.json();
+      var pageMetrics = [];
+      var totalSessions = 0, totalConversions = 0, totalBounceSum = 0, pageCount = 0;
+
+      if (ga4Data.rows) {
+        ga4Data.rows.forEach(function(r) {
+          var dims = r.dimensionValues || [];
+          var mets = r.metricValues || [];
+          var sessions = parseInt(mets[0] && mets[0].value || 0);
+          var bounceRate = parseFloat(mets[1] && mets[1].value || 0);
+          var avgDuration = parseFloat(mets[2] && mets[2].value || 0);
+          var conversions = parseInt(mets[3] && mets[3].value || 0);
+
+          pageMetrics.push({
+            pagePath: dims[0] && dims[0].value || '',
+            sessions: sessions,
+            bounceRate: bounceRate,
+            avgDuration: avgDuration,
+            conversions: conversions
+          });
+
+          totalSessions += sessions;
+          totalConversions += conversions;
+          totalBounceSum += bounceRate * sessions;
+          pageCount++;
+        });
+      }
+
+      if (!S.snapshot) S.snapshot = {};
+      S.snapshot.ga4 = {
+        pageMetrics: pageMetrics.sort(function(a, b) { return b.sessions - a.sessions; }),
+        totals: {
+          sessions: totalSessions,
+          conversions: totalConversions,
+          bounceRate: totalSessions > 0 ? totalBounceSum / totalSessions : 0,
+          pageCount: pageCount
+        },
+        _pulledAt: new Date().toISOString()
+      };
+      console.log('[snapshot] GA4: ' + pageMetrics.length + ' pages, ' + totalSessions + ' sessions');
+    }
+  } catch(e) {
+    console.warn('[snapshot] GA4 pull failed:', e.message);
+  }
+}
+
+async function refreshGSCData() {
+  await _pullGSCData();
+  scheduleSave();
+  renderSnapshot();
+  aiBarEnd();
+  aiBarNotify('Search Console data refreshed', { duration: 2000 });
+}
+
+async function refreshGA4Data() {
+  await _pullGA4Data();
+  scheduleSave();
+  renderSnapshot();
+  aiBarEnd();
+  aiBarNotify('Analytics data refreshed', { duration: 2000 });
+}
+
+function _renderGSCCard(snap) {
+  if (!snap.gsc || (!snap.gsc.queries.length && !snap.gsc.pages.length)) return '';
+  var gsc = snap.gsc;
+  var h = '';
+
+  // Compute totals
+  var totalClicks = 0, totalImpressions = 0, totalCtrSum = 0, totalPosSum = 0, qCount = gsc.queries.length;
+  gsc.queries.forEach(function(q) { totalClicks += q.clicks; totalImpressions += q.impressions; totalCtrSum += q.ctr; totalPosSum += q.position; });
+  var avgCtr = qCount > 0 ? totalCtrSum / qCount : 0;
+  var avgPos = qCount > 0 ? totalPosSum / qCount : 0;
+
+  h += '<div class="card" style="padding:16px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  h += '<div style="font-size:13px;font-weight:600"><i class="ti ti-brand-google" style="margin-right:4px"></i> Search Console Performance <span style="font-size:11px;font-weight:400;color:var(--n2)">(last 90 days)</span></div>';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  if (gsc._pulledAt) h += '<span style="font-size:10px;color:var(--n2)">' + new Date(gsc._pulledAt).toLocaleDateString() + '</span>';
+  h += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="refreshGSCData()"><i class="ti ti-refresh"></i> Refresh</button>';
+  h += '</div></div>';
+
+  // Metrics bar
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtNum(totalClicks) + '</div><div style="font-size:10px;color:var(--n2)">Total Clicks</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtNum(totalImpressions) + '</div><div style="font-size:10px;color:var(--n2)">Total Impressions</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtPct(avgCtr) + '</div><div style="font-size:10px;color:var(--n2)">Avg CTR</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtPos(avgPos) + '</div><div style="font-size:10px;color:var(--n2)">Avg Position</div></div>';
+  h += '</div>';
+
+  // Top Queries table
+  if (gsc.queries.length) {
+    h += '<div style="font-size:12px;font-weight:500;margin-bottom:6px">Top Queries</div>';
+    h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel);border-bottom:1px solid var(--border)">';
+    h += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Query</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Clicks</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Impressions</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">CTR</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Avg Pos</th>';
+    h += '</tr></thead><tbody>';
+    gsc.queries.slice(0, 20).forEach(function(q, i) {
+      h += '<tr style="border-bottom:1px solid var(--border);' + (i % 2 === 0 ? 'background:var(--bg)' : '') + '">';
+      h += '<td style="padding:6px 10px">' + esc(q.query) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right;font-weight:500">' + _fmtNum(q.clicks) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtNum(q.impressions) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtPct(q.ctr) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtPos(q.position) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  // Top Pages table
+  if (gsc.pages.length) {
+    h += '<div style="font-size:12px;font-weight:500;margin-bottom:6px">Top Pages</div>';
+    h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel);border-bottom:1px solid var(--border)">';
+    h += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Page URL</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Clicks</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Impressions</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">CTR</th>';
+    h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Avg Pos</th>';
+    h += '</tr></thead><tbody>';
+    gsc.pages.slice(0, 10).forEach(function(p, i) {
+      h += '<tr style="border-bottom:1px solid var(--border);' + (i % 2 === 0 ? 'background:var(--bg)' : '') + '">';
+      h += '<td style="padding:6px 10px;font-family:monospace;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.page) + '">' + esc(_truncUrl(p.page, 50)) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right;font-weight:500">' + _fmtNum(p.clicks) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtNum(p.impressions) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtPct(p.ctr) + '</td>';
+      h += '<td style="padding:6px 10px;text-align:right">' + _fmtPos(p.position) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function _renderGA4Card(snap) {
+  if (!snap.ga4 || !snap.ga4.pageMetrics.length) return '';
+  var ga4 = snap.ga4;
+  var t = ga4.totals || {};
+  var h = '';
+
+  h += '<div class="card" style="padding:16px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  h += '<div style="font-size:13px;font-weight:600"><i class="ti ti-chart-line" style="margin-right:4px"></i> Analytics Performance <span style="font-size:11px;font-weight:400;color:var(--n2)">(last 90 days)</span></div>';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  if (ga4._pulledAt) h += '<span style="font-size:10px;color:var(--n2)">' + new Date(ga4._pulledAt).toLocaleDateString() + '</span>';
+  h += '<button class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px" onclick="refreshGA4Data()"><i class="ti ti-refresh"></i> Refresh</button>';
+  h += '</div></div>';
+
+  // Metrics bar
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtNum(t.sessions) + '</div><div style="font-size:10px;color:var(--n2)">Total Sessions</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtPct(t.bounceRate) + '</div><div style="font-size:10px;color:var(--n2)">Bounce Rate</div></div>';
+  var avgDur = t.sessions > 0 && ga4.pageMetrics.length > 0 ? ga4.pageMetrics.reduce(function(s, p) { return s + p.avgDuration * p.sessions; }, 0) / t.sessions : 0;
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtDur(avgDur) + '</div><div style="font-size:10px;color:var(--n2)">Avg Duration</div></div>';
+  h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px"><div style="font-size:18px;font-weight:600">' + _fmtNum(t.conversions) + '</div><div style="font-size:10px;color:var(--n2)">Conversions</div></div>';
+  h += '</div>';
+
+  // Top Pages table
+  h += '<div style="font-size:12px;font-weight:500;margin-bottom:6px">Top Pages by Sessions</div>';
+  h += '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  h += '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel);border-bottom:1px solid var(--border)">';
+  h += '<th style="padding:6px 10px;text-align:left;font-weight:500;color:var(--n3)">Page Path</th>';
+  h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Sessions</th>';
+  h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Bounce Rate</th>';
+  h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Avg Duration</th>';
+  h += '<th style="padding:6px 10px;text-align:right;font-weight:500;color:var(--n3)">Conversions</th>';
+  h += '</tr></thead><tbody>';
+  ga4.pageMetrics.slice(0, 20).forEach(function(p, i) {
+    h += '<tr style="border-bottom:1px solid var(--border);' + (i % 2 === 0 ? 'background:var(--bg)' : '') + '">';
+    h += '<td style="padding:6px 10px;font-family:monospace;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.pagePath) + '">' + esc(_truncUrl(p.pagePath, 50)) + '</td>';
+    h += '<td style="padding:6px 10px;text-align:right;font-weight:500">' + _fmtNum(p.sessions) + '</td>';
+    h += '<td style="padding:6px 10px;text-align:right">' + _fmtPct(p.bounceRate) + '</td>';
+    h += '<td style="padding:6px 10px;text-align:right">' + _fmtDur(p.avgDuration) + '</td>';
+    h += '<td style="padding:6px 10px;text-align:right">' + _fmtNum(p.conversions) + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  h += '</div>';
+  return h;
+}
 
 // ── SNAPSHOT ───────────────────────────────────────────────────────
 async function runSnapshot() {
@@ -2856,9 +3232,22 @@ async function runSnapshot() {
       try { data.brandSerp = await brandSerpRes.json(); } catch(e) { data.brandSerp = null; }
     }
     S.snapshot = data;
+
+    // Pull GSC data if configured
+    if (S.setup && S.setup.gscSiteUrl) {
+      await _pullGSCData();
+    }
+    // Pull GA4 data if configured
+    if (S.setup && S.setup.ga4PropertyId) {
+      await _pullGA4Data();
+    }
+
     scheduleSave();
     renderSnapshot();
-    status.textContent = 'Snapshot complete — ' + data.topPages.length + ' pages, ' + (data.rankings || []).length + ' rankings, ' + (data.techStack || []).length + ' technologies detected.';
+    var statusParts = [data.topPages.length + ' pages', (data.rankings || []).length + ' rankings', (data.techStack || []).length + ' technologies detected'];
+    if (S.snapshot.gsc) statusParts.push(S.snapshot.gsc.queries.length + ' GSC queries');
+    if (S.snapshot.ga4) statusParts.push(S.snapshot.ga4.totals.sessions.toLocaleString() + ' GA4 sessions');
+    status.textContent = 'Snapshot complete — ' + statusParts.join(', ') + '.';
   } catch(e) {
     document.getElementById('snapshot-error-msg').textContent = e.message;
     document.getElementById('snapshot-error').style.display = 'flex';
@@ -3177,6 +3566,12 @@ function renderSnapshot() {
     });
     extraHtml += '</tbody></table></div>';
   }
+
+  // ── GSC Card ──
+  extraHtml += _renderGSCCard(snap);
+
+  // ── GA4 Card ──
+  extraHtml += _renderGA4Card(snap);
 
   extraWrap.innerHTML = extraHtml;
 

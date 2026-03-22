@@ -868,7 +868,62 @@ var SAI_AUDIT_CHECKS = [
     fix_action: { stage: 'schema' } },
   { id: 'im-none', stage: 'images', severity: 'info', message: 'Image generation has not been started',
     test: function() { return !(S && S.images && Object.keys(S.images).length); },
-    fix_action: { stage: 'images' } }
+    fix_action: { stage: 'images' } },
+
+  // Analytics connection checks
+  { id: 'setup-no-gsc', stage: 'setup', severity: 'info',
+    message: 'Google Search Console not connected — connect in Setup for real ranking and click data across all stages',
+    test: function() { return S && S.setup && S.setup.url && !S.setup.gscSiteUrl; },
+    fix_action: { stage: 'setup' } },
+
+  { id: 'setup-no-ga4', stage: 'setup', severity: 'info',
+    message: 'Google Analytics 4 not connected — connect in Setup for traffic, bounce rate, and conversion data',
+    test: function() { return S && S.setup && S.setup.url && !S.setup.ga4PropertyId; },
+    fix_action: { stage: 'setup' } },
+
+  // Snapshot data staleness
+  { id: 'snap-gsc-stale', stage: 'snapshot', severity: 'warning',
+    message: 'GSC data is more than 14 days old — refresh in Snapshot for current rankings',
+    test: function() {
+      if (!(S && S.snapshot && S.snapshot.gsc && S.snapshot.gsc._pulledAt)) return false;
+      return Date.now() - new Date(S.snapshot.gsc._pulledAt).getTime() > 14 * 86400000;
+    },
+    fix_action: { stage: 'snapshot' } },
+
+  { id: 'snap-ga4-stale', stage: 'snapshot', severity: 'warning',
+    message: 'GA4 data is more than 14 days old — refresh in Snapshot for current traffic data',
+    test: function() {
+      if (!(S && S.snapshot && S.snapshot.ga4 && S.snapshot.ga4._pulledAt)) return false;
+      return Date.now() - new Date(S.snapshot.ga4._pulledAt).getTime() > 14 * 86400000;
+    },
+    fix_action: { stage: 'snapshot' } },
+
+  // GSC connected but no data pulled
+  { id: 'snap-gsc-no-data', stage: 'snapshot', severity: 'warning',
+    message: 'GSC property connected but no search data has been pulled yet — run Snapshot to pull data',
+    test: function() {
+      return S && S.setup && S.setup.gscSiteUrl && (!S.snapshot || !S.snapshot.gsc || !S.snapshot.gsc._pulledAt);
+    },
+    fix_action: { stage: 'snapshot' } },
+
+  { id: 'snap-ga4-no-data', stage: 'snapshot', severity: 'warning',
+    message: 'GA4 property connected but no analytics data has been pulled yet — run Snapshot to pull data',
+    test: function() {
+      return S && S.setup && S.setup.ga4PropertyId && (!S.snapshot || !S.snapshot.ga4 || !S.snapshot.ga4._pulledAt);
+    },
+    fix_action: { stage: 'snapshot' } },
+
+  // High bounce rate pages not addressed
+  { id: 'strategy-high-bounce', stage: 'strategy', severity: 'warning',
+    message: 'GA4 shows pages with >70% bounce rate — review D5 Website & CRO recommendations',
+    test: function() {
+      if (!(S && S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.pageMetrics)) return false;
+      var highBounce = S.snapshot.ga4.pageMetrics.filter(function(p) {
+        return p.sessions > 20 && p.bounceRate > 0.7;
+      });
+      return highBounce.length >= 3;
+    },
+    fix_action: { stage: 'strategy', tab: 'execution' } }
 ];
 
 function runSaiAudit() {

@@ -104,6 +104,28 @@ function _isPersonaParked(persona) {
   return false;
 }
 
+// ── GSC / GA4 PAGE DATA HELPERS ──────────────────────────────────────
+
+function _gscPageData(slug) {
+  if (!S.snapshot || !S.snapshot.gsc || !S.snapshot.gsc.pages) return null;
+  return S.snapshot.gsc.pages.find(function(p) {
+    var pagePath = p.page.replace(/^https?:\/\/[^\/]+/, '').replace(/\/+$/, '') || '/';
+    var normSlug = '/' + slug.replace(/^\/+/, '');
+    if (normSlug === '/') normSlug = '/';
+    return pagePath === normSlug || pagePath === normSlug + '/';
+  }) || null;
+}
+
+function _ga4PageData(slug) {
+  if (!S.snapshot || !S.snapshot.ga4 || !S.snapshot.ga4.pageMetrics) return null;
+  var normSlug = '/' + slug.replace(/^\/+/, '');
+  if (normSlug === '/') normSlug = '/';
+  return S.snapshot.ga4.pageMetrics.find(function(p) {
+    var pp = p.pagePath.replace(/\/+$/, '') || '/';
+    return pp === normSlug || pp === normSlug + '/';
+  }) || null;
+}
+
 // Get active personas from strategy audience data (excludes parked segment personas)
 function _getActivePersonas() {
   var a = S.strategy && S.strategy.audience;
@@ -1102,6 +1124,34 @@ function _runSitemapHealthCheck() {
         }
       }
     }
+  }
+
+  // 9. GSC cannibalisation: same primary keyword ranking on multiple pages with clicks
+  if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.pages) {
+    var gscKwPageMap = {};
+    (S.pages || []).forEach(function(p) {
+      if (!p.primary_keyword) return;
+      var kw = p.primary_keyword.toLowerCase();
+      if (!gscKwPageMap[kw]) gscKwPageMap[kw] = [];
+      var gsc = _gscPageData(p.slug);
+      if (gsc && gsc.clicks > 0) {
+        gscKwPageMap[kw].push({ slug: p.slug, clicks: gsc.clicks, position: gsc.position });
+      }
+    });
+
+    Object.keys(gscKwPageMap).forEach(function(kw) {
+      if (gscKwPageMap[kw].length > 1) {
+        warnings.push({
+          id: 'gsc-cannibal-' + kw,
+          category: 'keywords',
+          severity: 'warning',
+          slug: gscKwPageMap[kw][0].slug,
+          description: 'GSC shows \u201c' + kw + '\u201d ranking on ' + gscKwPageMap[kw].length + ' pages: ' + gscKwPageMap[kw].map(function(p) { return '/' + p.slug + ' (pos ' + p.position.toFixed(1) + ')'; }).join(', '),
+          suggestion: 'Consolidate ranking signals — merge content or differentiate keywords',
+          fixType: 'none'
+        });
+      }
+    });
   }
 
   _sitemapWorkflowIssues = { errors: errors, warnings: warnings, info: info };
@@ -3095,6 +3145,15 @@ function _renderSitemapResultsInner(approved) {
       ? '<span style="color:var(--green);font-size:11px;font-weight:500">'+(_traffic>=1000?((_traffic/1000).toFixed(1)+'k'):_traffic)+'</span>'
       : '<span style="color:var(--n1);font-size:10px">–</span>';
     html += _trafficHtml;
+    // GSC / GA4 badges
+    var _gsc = _gscPageData(p.slug);
+    var _ga4 = _ga4PageData(p.slug);
+    if (_gsc && _gsc.clicks > 0) {
+      html += '<span style="font-size:9px;background:rgba(59,130,246,0.1);color:#3b82f6;padding:1px 5px;border-radius:3px;margin-left:4px" title="GSC: ' + _gsc.clicks + ' clicks, CTR ' + (_gsc.ctr * 100).toFixed(1) + '%, pos ' + _gsc.position.toFixed(1) + '">' + _gsc.clicks + ' clicks</span>';
+    }
+    if (_ga4 && _ga4.conversions > 0) {
+      html += '<span style="font-size:9px;background:rgba(34,197,94,0.1);color:#22c55e;padding:1px 5px;border-radius:3px;margin-left:4px" title="GA4: ' + _ga4.sessions + ' sessions, ' + _ga4.conversions + ' conversions">' + _ga4.conversions + ' conv</span>';
+    }
     html += '</div>'; // end main row
 
     // ── Inline result panels ──

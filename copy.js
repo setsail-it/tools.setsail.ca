@@ -1287,6 +1287,47 @@ async function runCopyAudit(slug) {
     });
   }
 
+  // GSC ranking preservation check
+  if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.pages) {
+    var _copySlugNorm = '/' + (slug || '').replace(/^\/+/, '');
+    if (_copySlugNorm === '/') _copySlugNorm = '/';
+    var _gscCopyMatch = S.snapshot.gsc.pages.find(function(gp) {
+      var gPath = gp.page.replace(/^https?:\/\/[^\/]+/, '').replace(/\/+$/, '') || '/';
+      return gPath === _copySlugNorm || gPath === _copySlugNorm + '/';
+    });
+    if (_gscCopyMatch && _gscCopyMatch.clicks > 5) {
+      // Find top queries for this page
+      var _topRankingQueries = S.snapshot.gsc.queries ? S.snapshot.gsc.queries.filter(function(q) {
+        return q.clicks > 0 && q.position < 15;
+      }).slice(0, 5).map(function(q) { return q.query; }) : [];
+
+      if (_topRankingQueries.length) {
+        checks.push({
+          id: 'gsc_ranking_preservation',
+          label: 'GSC ranking preservation: This page currently receives ' + _gscCopyMatch.clicks + ' clicks from Google. Top ranking queries: ' + _topRankingQueries.join(', ') + '. Copy must naturally include these terms to preserve existing rankings. FAIL if the copy completely drops terms the page currently ranks for.',
+          display: 'GSC — preserves existing ranking queries'
+        });
+      }
+    }
+  }
+
+  // GA4 high bounce rate check
+  if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.pageMetrics) {
+    var _ga4CopyNorm = '/' + (slug || '').replace(/^\/+/, '');
+    if (_ga4CopyNorm === '/') _ga4CopyNorm = '/';
+    var _ga4CopyMatch = S.snapshot.ga4.pageMetrics.find(function(gp) {
+      var gPath = gp.pagePath.replace(/\/+$/, '') || '/';
+      return gPath === _ga4CopyNorm || gPath === _ga4CopyNorm + '/';
+    });
+    if (_ga4CopyMatch && _ga4CopyMatch.bounceRate > 0.7 && _ga4CopyMatch.sessions > 20) {
+      checks.push({
+        id: 'ga4_bounce_rate',
+        label: 'GA4 bounce rate alert: This page has a ' + (_ga4CopyMatch.bounceRate * 100).toFixed(0) + '% bounce rate with ' + _ga4CopyMatch.sessions + ' sessions. The opening content must immediately validate the visitor\'s search intent and provide clear value. FAIL if the first 2 paragraphs are generic or don\'t address a specific pain/need.',
+        display: 'GA4 — opening hook addresses high bounce rate'
+      });
+    }
+  }
+
   // Page goal alignment check
   if (p.page_goal) {
     checks.push({
