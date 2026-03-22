@@ -6070,8 +6070,12 @@ function _renderStratSourceBanner(tabName) {
         break;
       case 'ga4':
         label = 'GA4';
-        if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.sessions) {
-          value = S.snapshot.ga4.sessions.toLocaleString() + ' sessions';
+        var _ga4t = S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.totals;
+        if (_ga4t && _ga4t.sessions > 0) {
+          value = _ga4t.sessions.toLocaleString() + ' sessions';
+          has = true;
+        } else if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.pageMetrics && S.snapshot.ga4.pageMetrics.length) {
+          value = S.snapshot.ga4.pageMetrics.length + ' pages';
           has = true;
         } else { value = '0'; }
         break;
@@ -6137,15 +6141,17 @@ function _renderStratSourceBanner(tabName) {
         break;
       case 'snapshot_dr':
         label = 'Snapshot DR';
-        if (S.snapshot && S.snapshot.domainRating) {
-          value = 'DR ' + S.snapshot.domainRating;
+        var _snapDR = S.snapshot && S.snapshot.domainMetrics && S.snapshot.domainMetrics.dr;
+        if (_snapDR) {
+          value = 'DR ' + _snapDR;
           has = true;
         } else { value = 'Missing'; }
         break;
       case 'competitor_dr':
         label = 'Competitor DR';
-        if (S.snapshot && S.snapshot.competitorDA && S.snapshot.competitorDA.length) {
-          value = S.snapshot.competitorDA.length + ' tracked';
+        var _compDRs = (S.research && S.research.competitors) ? S.research.competitors.filter(function(c) { return c.domain_rating || c.dr; }) : [];
+        if (_compDRs.length) {
+          value = _compDRs.length + ' with DR';
           has = true;
         } else { value = '0'; }
         break;
@@ -6189,8 +6195,16 @@ function _renderStratSourceBanner(tabName) {
     }
     var bg = has ? '#dcfce7' : '#fef3c7';
     var colour = has ? '#166534' : '#92400e';
+    // Refresh buttons for sources that can be re-pulled
+    var refreshFn = {
+      gsc: 'typeof _refreshSourceGSC===\"function\"&&_refreshSourceGSC()',
+      ga4: 'typeof _refreshSourceGA4===\"function\"&&_refreshSourceGA4()',
+      ga4_channels: 'typeof _refreshSourceGA4===\"function\"&&_refreshSourceGA4()',
+      tech_stack: 'navToStage(\"snapshot\")'
+    }[src] || '';
+    var refreshBtn = refreshFn ? '<i class="ti ti-refresh" style="font-size:10px;cursor:pointer;opacity:0.6" onclick="event.stopPropagation();' + refreshFn + '" title="Re-pull this source"></i>' : '';
     badges += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:4px;background:' + bg + ';color:' + colour + '">'
-      + '<span style="font-weight:600">' + label + '</span> ' + value + '</span>';
+      + '<span style="font-weight:600">' + label + '</span> ' + value + ' ' + refreshBtn + '</span>';
   });
   return '<div style="padding:8px 12px;background:var(--panel);border-radius:8px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
     + '<span style="font-size:10px;color:var(--n2);margin-right:4px;font-weight:500">SOURCES:</span>'
