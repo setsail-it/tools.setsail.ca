@@ -2192,7 +2192,13 @@ var STRATEGY_REQUIRED_INPUTS = {
 // Anti-inflation score caps
 var ANTI_INFLATION_CAPS = [
   { condition:'no_validated_differentiators', section:'positioning', dimension:'confidence', cap:6,
-    test: function() { return !S.strategy || !S.strategy.positioning || !S.strategy.positioning.validated_differentiators || !S.strategy.positioning.validated_differentiators.length; } },
+    test: function() {
+      if (!S.strategy || !S.strategy.positioning) return true;
+      var p = S.strategy.positioning;
+      var hasValidated = p.validated_differentiators && p.validated_differentiators.length > 0;
+      var hasClaimable = p.contested_differentiators && p.contested_differentiators.some(function(cd) { return cd.claimable; });
+      return !hasValidated && !hasClaimable;
+    } },
   { condition:'estimated_close_rate', section:'economics', dimension:'data', cap:7,
     test: function() { var r=S.research||{}; return !r.close_rate_estimate || r.close_rate_estimate.indexOf('estimate')>=0 || r.close_rate_estimate.indexOf('~')>=0; } },
   { condition:'no_cpc_data_econ', section:'economics', dimension:'confidence', cap:6,
@@ -3829,13 +3835,24 @@ function buildDiagnosticPrompt(num) {
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
       + hypCtx
-      + 'TASK: Validate differentiators using COMPETITIVE INTENSITY analysis — not binary accept/reject. For each potential differentiator, evaluate HOW DEEPLY competitors actually execute on it (not just whether they mention it). A competitor claiming "AI-powered" on their website is very different from a competitor whose entire product is built on AI.\n\n'
-      + 'COMPETITIVE INTENSITY LEVELS:\n'
-      + '- "uncontested" = No competitor claims this territory. Strong differentiator, lead with it.\n'
-      + '- "weakly_contested" = A competitor mentions it but lacks depth, proof, or genuine execution. CLAIMABLE if the client can prove deeper expertise. Suggest specific proof points.\n'
-      + '- "strongly_contested" = A competitor is genuinely known for this and has real proof (case studies, proprietary tech, certifications). Risky unless the client can demonstrably out-execute.\n'
-      + '- "category_owned" = A competitor IS this in the market\'s mind. Fighting their brand equity is not viable.\n\n'
-      + 'CRITICAL: Do NOT reject a differentiator just because a competitor mentions it. Evaluate the DEPTH of their execution. A competitor listing "AI-powered solutions" as a bullet point on their services page is weakly_contested at best — the client may do it 10x deeper. Only mark as strongly_contested or category_owned when the competitor has genuine proof and market recognition.\n\n'
+      + 'TASK: Validate differentiators using COMPETITIVE INTENSITY analysis. This is NOT binary accept/reject. For each potential differentiator, you MUST evaluate the DEPTH of competitor execution — not just whether they mention similar words.\n\n'
+      + 'THE KEY QUESTION FOR EACH DIFFERENTIATOR:\n'
+      + '"Does the competitor actually DO this at the same depth as the client, or do they just SAY it?"\n'
+      + '- A competitor listing "AI-powered solutions" as a bullet = surface claim, NOT deep execution\n'
+      + '- A competitor with a branded tool, proprietary tech, case studies proving it = deep execution\n'
+      + '- A competitor mentioning "transparency" in their copy vs a client who shows actual math to clients = completely different depth\n'
+      + '- Most competitor "claims" are marketing copy, not genuine operational capabilities. Evaluate accordingly.\n\n'
+      + 'COMPETITIVE INTENSITY LEVELS (4 tiers — you MUST assign one per differentiator):\n'
+      + '- "uncontested" = No competitor claims this territory at all. Strong differentiator — lead with it. Put these in validated_differentiators array.\n'
+      + '- "weakly_contested" = A competitor MENTIONS it in marketing copy but lacks genuine depth, proof, or operational commitment. The client can credibly out-claim this WITH specific proof. This is the MOST COMMON correct classification — most competitors make surface-level claims they cannot substantiate. Default to this unless the competitor has REAL proof.\n'
+      + '- "strongly_contested" = A competitor is genuinely KNOWN for this AND has real proof: proprietary technology they built, published case studies, industry awards specifically for this capability, or it is central to their brand identity. This is RARE — most competitor claims are weakly_contested at best.\n'
+      + '- "category_owned" = A competitor IS this in the market\'s mind — buyers immediately associate this capability with that competitor\'s brand name. Extremely rare. Example: "HubSpot" owns "inbound marketing." Do not use this unless the competitor is synonymous with the concept.\n\n'
+      + 'CLASSIFICATION RULES:\n'
+      + '1. DEFAULT TO weakly_contested unless you have clear evidence of deep competitor execution. Most agency/business claims are marketing copy, not substantive capabilities.\n'
+      + '2. For weakly_contested items, claimable MUST be true and you MUST provide specific proof_needed that would let the client credibly own this territory.\n'
+      + '3. competitor_depth MUST distinguish between "they say this on their website" vs "they have built their business around this." Be specific — cite what you actually found on the competitor\'s site.\n'
+      + '4. NEVER put a differentiator in validated_differentiators AND contested_differentiators — it goes in one or the other.\n'
+      + '5. A differentiator should ONLY be strongly_contested if the competitor has AT LEAST 2 of: (a) proprietary technology/methodology, (b) published case studies proving the claim, (c) industry recognition/awards for this specific capability, (d) it is central to their brand tagline/positioning.\n\n'
       + 'Also analyse the gap between what the buyer thinks they are buying and what the company actually sells. Most buyers enter with a commodity mental model (e.g. "I need a website" or "I need SEO"). Identify the buyer\'s starting category frame, the company\'s actual value frame, the severity of the gap, and generate reframing language that bridges it.'
       + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
