@@ -944,6 +944,22 @@ async function generateAISeeds() {
   ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
   var _kwKd = getStrategyField('positioning.key_differentiators', 'key_differentiators') || [];
   if (_kwKd.length) ctx += 'DIFFERENTIATORS: ' + _kwKd.join(', ') + '\n';
+  // Positioning direction and angle
+  var _kwPosDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  if (_kwPosDir) ctx += 'POSITIONING DIRECTION: ' + (_kwPosDir.direction || '') + ((_kwPosDir.headline) ? ' — "' + _kwPosDir.headline + '"' : '') + '\n';
+  var _kwPosAngle = getStrategyField('positioning.recommended_positioning_angle', '') || '';
+  if (_kwPosAngle) ctx += 'POSITIONING ANGLE: ' + _kwPosAngle + '\n';
+  var _kwPosPrimary = S.strategy && S.strategy.positioning && S.strategy.positioning.messaging_hierarchy && S.strategy.positioning.messaging_hierarchy.primary_message;
+  if (_kwPosPrimary) ctx += 'PRIMARY MESSAGE: ' + _kwPosPrimary + '\n';
+  // Positioning gaps = unclaimed territories to target
+  var _kwPosGaps = getStrategyField('positioning.positioning_gaps', '') || [];
+  if (_kwPosGaps.length) ctx += 'POSITIONING GAPS (unclaimed territories): ' + _kwPosGaps.join(', ') + '\n';
+  // Claimable differentiators from competitive intensity
+  var _kwContested = S.strategy && S.strategy.positioning && S.strategy.positioning.contested_differentiators;
+  if (_kwContested && _kwContested.length) {
+    var _claimable = _kwContested.filter(function(cd) { return cd.claimable; });
+    if (_claimable.length) ctx += 'CLAIMABLE DIFFERENTIATORS: ' + _claimable.map(function(cd) { return cd.claim; }).join(', ') + '\n';
+  }
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'AUDIENCE PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
   var _kwTa = r.current_customer_profile || r.target_audience || [];
   if (_kwTa.length) ctx += 'TARGET AUDIENCE: ' + (Array.isArray(_kwTa) ? _kwTa.map(function(t){ return typeof t === 'object' ? (t.persona||'') : t; }).join(', ') : _kwTa) + '\n';
