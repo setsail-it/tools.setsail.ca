@@ -3479,8 +3479,18 @@ async function _pipelineGenerateQuestions() {
   // Enrich with strategy context if available
   var _qStrat = '';
   if (S.strategy && S.strategy.positioning) {
-    if (S.strategy.positioning.selected_direction) _qStrat += '\nPositioning: ' + S.strategy.positioning.selected_direction;
-    if (S.strategy.positioning.core_value_proposition) _qStrat += '\nValue Prop: ' + S.strategy.positioning.core_value_proposition;
+    var _qPos = S.strategy.positioning;
+    if (_qPos.selected_direction) {
+      var _qDir = _qPos.selected_direction;
+      _qStrat += '\nPositioning Direction: ' + (_qDir.direction || '') + ((_qDir.headline) ? ' — "' + _qDir.headline + '"' : '');
+    }
+    if (_qPos.core_value_proposition) _qStrat += '\nValue Prop: ' + _qPos.core_value_proposition;
+    if (_qPos.recommended_positioning_angle) _qStrat += '\nPositioning Angle: ' + _qPos.recommended_positioning_angle;
+    if (_qPos.messaging_hierarchy && _qPos.messaging_hierarchy.primary_message) _qStrat += '\nPrimary Message: ' + _qPos.messaging_hierarchy.primary_message;
+    if (_qPos.positioning_gaps && _qPos.positioning_gaps.length) _qStrat += '\nPositioning Gaps (unclaimed territories): ' + _qPos.positioning_gaps.join(', ');
+    if (_qPos.validated_differentiators && _qPos.validated_differentiators.length) _qStrat += '\nValidated Differentiators: ' + _qPos.validated_differentiators.join(', ');
+    var _qClaimable = (_qPos.contested_differentiators || []).filter(function(cd) { return cd.claimable; });
+    if (_qClaimable.length) _qStrat += '\nClaimable Differentiators: ' + _qClaimable.map(function(cd) { return cd.claim; }).join(', ');
   }
   if (r.pain_points_top5 && r.pain_points_top5.length) _qStrat += '\nPain Points: ' + r.pain_points_top5.join('; ');
   if (r.objections_top5 && r.objections_top5.length) _qStrat += '\nCommon Objections: ' + (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5);
@@ -3522,6 +3532,20 @@ async function _pipelineAISeeds() {
   ctx += 'GEO: ' + geo + '\n';
   ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
   if (r.pain_points_top5 && r.pain_points_top5.length) ctx += 'PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  // Positioning context for strategically-aligned seeds
+  if (S.strategy && S.strategy.positioning) {
+    var _psPos = S.strategy.positioning;
+    if (_psPos.selected_direction) {
+      var _psDir = _psPos.selected_direction;
+      ctx += 'POSITIONING: ' + (_psDir.direction || '') + ((_psDir.headline) ? ' — "' + _psDir.headline + '"' : '') + '\n';
+    }
+    if (_psPos.recommended_positioning_angle) ctx += 'POSITIONING ANGLE: ' + _psPos.recommended_positioning_angle + '\n';
+    if (_psPos.messaging_hierarchy && _psPos.messaging_hierarchy.primary_message) ctx += 'PRIMARY MESSAGE: ' + _psPos.messaging_hierarchy.primary_message + '\n';
+    if (_psPos.positioning_gaps && _psPos.positioning_gaps.length) ctx += 'POSITIONING GAPS: ' + _psPos.positioning_gaps.join(', ') + '\n';
+    if (_psPos.validated_differentiators && _psPos.validated_differentiators.length) ctx += 'VALIDATED DIFFERENTIATORS: ' + _psPos.validated_differentiators.join(', ') + '\n';
+    var _psClaimable = (_psPos.contested_differentiators || []).filter(function(cd) { return cd.claimable; });
+    if (_psClaimable.length) ctx += 'CLAIMABLE DIFFERENTIATORS: ' + _psClaimable.map(function(cd) { return cd.claim; }).join(', ') + '\n';
+  }
 
   var paaQs = _getQuestionsArray();
   if (paaQs.length) ctx += '\nPEOPLE ALSO ASK:\n' + paaQs.slice(0, 15).map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n';
