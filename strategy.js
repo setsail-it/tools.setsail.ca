@@ -5104,7 +5104,7 @@ async function runAllDiagnostics() {
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
-  aiBarStart('Running all diagnostics (D0-D8)');
+  aiBarStart('Running all diagnostics (D0-D3 → Keywords → D4-D9)');
   try {
     // D0 first
     await runDiagnostic(0);
@@ -5117,17 +5117,42 @@ async function runAllDiagnostics() {
       };
       return;
     }
-    for (var d = 1; d <= 7; d++) {
+    // D1-D3 first (these inform keyword generation)
+    for (var d = 1; d <= 3; d++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/9)',
+          label: 'Diagnostics paused (D' + d + '/9)',
           fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
           args: { startFrom: d }
         };
         return;
       }
       await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+      await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // Keyword pipeline between D3 and D4 (uses D0-D3 context for seed generation)
+    if (!window._aiStopAll && typeof runFullKeywordPipeline === 'function') {
+      aiBarStart('Running keyword research pipeline');
+      try {
+        await runFullKeywordPipeline();
+      } catch(kwErr) {
+        console.warn('[runAllDiagnostics] keyword pipeline error:', kwErr.message);
+        aiBarNotify('Keyword pipeline: ' + kwErr.message, { duration: 4000 });
+      }
+      await new Promise(function(res) { setTimeout(res, 2000); });
+    }
+    // D4-D7 (informed by keyword data)
+    for (var d2 = 4; d2 <= 7; d2++) {
+      if (window._aiStopAll) {
+        window._aiStopResumeCtx = {
+          label: 'Diagnostics paused (D' + d2 + '/9)',
+          fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
+          args: { startFrom: d2 }
+        };
+        return;
+      }
+      await runDiagnostic(d2);
+      if (d2 < 7) await new Promise(function(res) { setTimeout(res, 2000); });
     }
     // Run D8 Narrative after D1-D7
     if (!window._aiStopAll) {
@@ -5669,7 +5694,7 @@ function renderStrategyScorecard() {
   } else {
     html += '<button class="btn btn-ghost" data-tip="Re-runs all enrichment and all diagnostics (D0-D7) from scratch" onclick="generateStrategy()"><i class="ti ti-refresh"></i> Regenerate All</button>';
     html += '<button class="btn btn-primary" data-tip="Re-runs the 3 weakest sections plus keyword demand validation" onclick="improveStrategy()"><i class="ti ti-sparkles"></i> Improve Weakest</button>';
-    html += '<button class="btn btn-ghost" data-tip="Re-runs all diagnostics (D0-D8) including Narrative without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-runs D0-D3, then keyword pipeline, then D4-D9 including Narrative. Does not re-scrape competitors or refresh enrichment data." onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Re-run All Diagnostics</button>';
   }
   if (meta.current_version > 0 && !meta.approved) {
     html += '<button class="btn btn-dark" onclick="approveStrategy()"><i class="ti ti-check"></i> Approve</button>';
