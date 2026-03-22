@@ -2922,6 +2922,20 @@ async function _initAnalyticsConnection() {
 
   // Only show the card if at least one service is configured
   card.style.display = anyConfigured ? '' : 'none';
+
+  // Auto-save on change
+  if (gscSelect) gscSelect.onchange = function() {
+    if (!S.setup) S.setup = {};
+    S.setup.gscSiteUrl = gscSelect.value;
+    scheduleSave();
+    aiBarNotify(gscSelect.value ? 'GSC property saved: ' + gscSelect.value : 'GSC property cleared', { duration: 2000 });
+  };
+  if (ga4Select) ga4Select.onchange = function() {
+    if (!S.setup) S.setup = {};
+    S.setup.ga4PropertyId = ga4Select.value;
+    scheduleSave();
+    aiBarNotify(ga4Select.value ? 'GA4 property saved' : 'GA4 property cleared', { duration: 2000 });
+  };
 }
 
 // ── GSC/GA4 SNAPSHOT HELPERS ──────────────────────────────────────
