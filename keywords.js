@@ -2013,7 +2013,7 @@ function _renderKwQuestionsTab() {
     html += '<i class="ti ti-help-circle" style="font-size:32px;display:block;margin-bottom:8px"></i>';
     html += '<div style="font-size:13px;margin-bottom:8px">No questions fetched yet.</div>';
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:16px">AI-generates bottom-of-funnel questions real buyers ask when evaluating your services.</div>';
-    html += '<button class="btn btn-primary" data-tip="Fetch Questions generates 20 bottom-of-funnel questions — the things a business owner types when they have decided they need help and are now comparing agencies. Think pricing, ROI proof, red flags, comparisons. These feed FAQ schema and copy briefs. Run after Research enrichment so AI has full context." onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
+    html += '<button class="btn btn-primary" data-tip="Generates 40 AI buyer-intent questions across 8 categories (cost, comparison, trust, process, red flags, positioning-specific, service-specific) PLUS real Google PAA data from DataForSEO. Uses positioning, differentiators, objections, and audience segments for deeper relevance. Run after Research and Strategy enrichment for full context." onclick="fetchPAAFromKeywords()"><i class="ti ti-download"></i> Fetch Questions Now</button>';
     html += '</div>';
   } else {
     html += '<div style="font-size:12px;color:var(--n2);margin-bottom:10px">Buyer-intent questions real prospects ask when evaluating your agency. Validate to get search volumes and page assignments — these flow into copy briefs and FAQ schema.</div>';
@@ -2022,7 +2022,7 @@ function _renderKwQuestionsTab() {
     // Action bar
     html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
     html += '<button class="btn btn-primary" data-tip="Validate & Assign runs each question through AI to assign it a content type: service page FAQ (shown on the page), new blog post, or sitewide FAQ. It also checks DataForSEO volume as a signal. Required before Briefs — the assignment determines where each question appears in copy." onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
-    html += '<button class="btn btn-ghost" data-tip="Re-fetch discards all current questions and generates a fresh set of 20. Use if the first batch missed key buying intent angles. Pin any questions to keep before running — pinned questions survive the re-fetch." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
+    html += '<button class="btn btn-ghost" data-tip="Re-fetch discards all current questions and generates a fresh set of 40 AI questions + Google PAA data. Use if the first batch missed key buying intent angles. Pin any questions to keep before running — pinned questions survive the re-fetch." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
     html += '<button class="btn btn-ghost" data-tip="More Questions generates a second batch of 20 BOF questions in the same intent categories (pricing, ROI, risk, comparison) and appends them to the list. Existing questions are passed to the AI so duplicates are skipped. Use when you need more question coverage before Validate & Assign." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
     html += '<button class="btn btn-ghost" data-tip="Blog Seeds takes informational questions (how-to, what-is intent) and extracts their keyword phrase to use as blog content seeds. These go into the Seeds tab Questions bucket so they get volumes in the next Fetch Volumes run — giving you blog topics with real search demand." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
     html += '<button class="btn btn-ghost sm" data-tip="Add All to Seeds extracts the intent keyword from every question and adds them to the Seeds tab. Same as Pull from Questions in the Seeds toolbar — use this shortcut when already on the Questions tab." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
@@ -2363,7 +2363,7 @@ async function fetchPAAFromKeywords() {
     + 'These should be bottom-of-funnel and mid-funnel — evaluation, comparison, cost, trust, and process questions that someone ready to buy would ask.\n'
     + 'NEVER include questions about movies, TV shows, celebrities, or anything unrelated to this specific industry.\n'
     + 'NEVER include generic educational questions (e.g. "What is a contractor?"). Focus on hiring/buying intent.\n'
-    + 'Return ONLY a JSON array of 20 question strings, no markdown, no explanation.';
+    + 'Return ONLY a JSON array of 40 question strings, no markdown, no explanation.';
 
   // Build enriched context for deeper AEO question generation
   var _qCtx = 'Business: ' + businessName + '\n' +
@@ -2394,9 +2394,48 @@ async function fetchPAAFromKeywords() {
   if (r.pricing_model) _qCtx += 'Pricing model: ' + r.pricing_model + '\n';
   if ((r.awards_certifications || []).length) _qCtx += 'Certifications: ' + r.awards_certifications.slice(0, 4).join(', ') + '\n';
 
+  // Positioning context — drives questions about differentiators, objections, and buyer psychology
+  var st = S.strategy || {};
+  if (st.positioning) {
+    var _posDir = st.positioning.selected_direction;
+    if (_posDir) _qCtx += '\nPOSITIONING DIRECTION: ' + (typeof _posDir === 'string' ? _posDir : JSON.stringify(_posDir).slice(0, 200)) + '\n';
+    var _valDiffs = st.positioning.validated_differentiators || [];
+    if (_valDiffs.length) _qCtx += 'DIFFERENTIATORS: ' + _valDiffs.slice(0, 5).join(', ') + '\n';
+    if (st.positioning.messaging_hierarchy) {
+      var _mh = st.positioning.messaging_hierarchy;
+      if (_mh.primary) _qCtx += 'PRIMARY MESSAGE: ' + _mh.primary + '\n';
+    }
+  }
+  // Objection map — generates questions around buyer objections
+  if (st.narrative && st.narrative.objection_map && st.narrative.objection_map.length) {
+    _qCtx += 'BUYER OBJECTIONS: ' + st.narrative.objection_map.slice(0, 5).map(function(o) { return o.objection; }).join('; ') + '\n';
+  }
+  // Audience segments — generates questions per persona
+  if (st.audience && st.audience.segments && st.audience.segments.length) {
+    _qCtx += 'AUDIENCE SEGMENTS: ' + st.audience.segments.slice(0, 4).map(function(seg) { return seg.segment_name; }).join(', ') + '\n';
+  }
+  // Pain points from research
+  if ((r.pain_points_top5 || []).length) {
+    _qCtx += 'TOP PAIN POINTS: ' + r.pain_points_top5.join('; ') + '\n';
+  }
+  // JTBD switching triggers
+  if ((r.switching_triggers || []).length) {
+    _qCtx += 'SWITCHING TRIGGERS: ' + r.switching_triggers.join('; ') + '\n';
+  }
+
   var _manualQNotes = _getStrategistNotesCtx();
   var userPrompt = _qCtx + _manualQNotes +
-    '\nGenerate 20 questions a potential customer would Google when deciding whether to hire ' + businessName + ' or evaluating their options in the ' + (businessType || 'professional services') + ' industry. Mix: cost questions, how-to-choose questions, what-to-expect questions, comparison questions, results/quality questions, red flag questions. Make them specific to the services and location where relevant. Include at least 3 questions specific to individual services listed above.';
+    '\nGenerate 40 questions a potential customer would Google when deciding whether to hire ' + businessName + ' or evaluating their options in the ' + (businessType || 'professional services') + ' industry.\n\n'
+    + 'QUESTION CATEGORIES (aim for 5-8 per category):\n'
+    + '1. COST & PRICING — "how much does X cost", "X pricing", "is X worth it"\n'
+    + '2. HOW TO CHOOSE — "how to choose a X", "what to look for in X", "questions to ask X"\n'
+    + '3. COMPARISON — "X vs Y", "X vs doing it myself", "X vs freelancer"\n'
+    + '4. TRUST & PROOF — "how to verify X results", "X reviews", "X case studies"\n'
+    + '5. PROCESS & EXPECTATIONS — "what to expect from X", "how long does X take", "what does X include"\n'
+    + '6. RED FLAGS — "signs of bad X", "X scams to avoid", "when to fire your X"\n'
+    + '7. POSITIONING-SPECIFIC — questions that probe the differentiators and objections listed above\n'
+    + '8. SERVICE-SPECIFIC — at least 2 questions per service listed above\n\n'
+    + 'Make them specific to the services and location where relevant. All questions should be lowercase and conversational.';
 
   try {
     var res = await fetch('/api/claude', {
@@ -2404,7 +2443,7 @@ async function fetchPAAFromKeywords() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
       })
@@ -2416,12 +2455,40 @@ async function fetchPAAFromKeywords() {
     if (!Array.isArray(questions) || !questions.length) throw new Error('Invalid response from AI');
 
     if (!S.contentIntel) S.contentIntel = { paa: null, gap: null, blogTopics: [] };
-    S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q }; }), fetchedAt: Date.now(), source: 'ai' };
+    S.contentIntel.paa = { questions: questions.map(function(q) { return { question: q, source: 'ai' }; }), fetchedAt: Date.now(), source: 'ai' };
     scheduleSave();
+
+    // Step 2: Fetch real PAA from DataForSEO to supplement AI questions
+    if (statusEl) statusEl.innerHTML = '<span class="spinner" style="width:10px;height:10px;display:inline-block;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.6s linear infinite"></span> Fetching Google PAA data...';
+    var paaCount = 0;
+    try {
+      var _paaSeeds = (r.primary_services || []).slice(0, 4).map(function(s) { return s + (geo ? ' ' + geo : ''); });
+      if (!_paaSeeds.length) _paaSeeds = [businessType + (geo ? ' ' + geo : '')];
+      var paaRes = await fetch('/api/paa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: _paaSeeds, country: typeof detectCountryLower === 'function' ? detectCountryLower(geo) : 'ca' })
+      });
+      if (paaRes.ok) {
+        var paaData = await paaRes.json();
+        var paaQs = (paaData.questions || []).filter(function(q) { return typeof q === 'string' && q.length > 10; });
+        // Dedupe against existing AI questions
+        var existingSet = {};
+        S.contentIntel.paa.questions.forEach(function(q) { existingSet[(q.question || '').toLowerCase()] = true; });
+        var freshPaa = paaQs.filter(function(q) { return !existingSet[q.toLowerCase()]; });
+        freshPaa.forEach(function(q) {
+          S.contentIntel.paa.questions.push({ question: q, source: 'paa' });
+        });
+        paaCount = freshPaa.length;
+        if (paaCount) scheduleSave();
+      }
+    } catch(e) { console.warn('[fetchPAA] DataForSEO PAA failed:', e.message); }
+
     // Auto-extract intent keywords into Seeds so the AEO pipeline is connected
     var _autoExtracted = _autoExtractQuestionSeeds();
     var _seedMsg = _autoExtracted > 0 ? ' · ' + _autoExtracted + ' intent keywords added to Seeds' : '';
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + questions.length + ' buyer-intent questions generated' + _seedMsg + '</span>';
+    var _paaMsg = paaCount > 0 ? ' · ' + paaCount + ' Google PAA questions added' : '';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + questions.length + ' AI questions + ' + paaCount + ' PAA questions generated' + _seedMsg + '</span>';
     renderKwTabContent();
   } catch(e) {
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--error)">Error: ' + esc(e.message) + '</span>';
@@ -2464,7 +2531,7 @@ async function generateMoreQuestions() {
   }
   var userPrompt = _mqCtx +
     '\nExisting questions (DO NOT duplicate these):\n' + existingQs.slice(0, 40).map(function(q,i){return (i+1)+'. '+q;}).join('\n') +
-    '\n\nGenerate 20 NEW bottom-of-funnel questions not yet covered above. These must be purchase-evaluation questions only — someone who has already decided they need marketing help and is now vetting agencies.\n\n' +
+    '\n\nGenerate 20 NEW bottom-of-funnel questions not yet covered above. These must be purchase-evaluation questions only — someone who has already decided they need help and is now vetting providers.\n\n' +
     'BOF question types to generate more of:\n' +
     '- Specific service pricing: "how much does seo cost for small business vancouver", "google ads management fees canada"\n' +
     '- ROI and proof: "what roi should i expect from seo", "how long before seo pays off"\n' +
