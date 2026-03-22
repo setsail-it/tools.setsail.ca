@@ -6198,10 +6198,16 @@ function _renderStratSourceBanner(tabName) {
     var colour = has ? '#166534' : '#92400e';
     // Refresh buttons for sources that can be re-pulled
     var refreshFn = {
-      gsc: 'typeof _refreshSourceGSC===\"function\"&&_refreshSourceGSC()',
-      ga4: 'typeof _refreshSourceGA4===\"function\"&&_refreshSourceGA4()',
-      ga4_channels: 'typeof _refreshSourceGA4===\"function\"&&_refreshSourceGA4()',
-      tech_stack: 'navToStage(\"snapshot\")'
+      gsc: 'typeof refreshGSCData===\"function\"?refreshGSCData():navToStage(\"snapshot\")',
+      ga4: 'typeof refreshGA4Data===\"function\"?refreshGA4Data():navToStage(\"snapshot\")',
+      ga4_channels: 'typeof refreshGA4Data===\"function\"?refreshGA4Data():navToStage(\"snapshot\")',
+      tech_stack: 'navToStage(\"snapshot\")',
+      snapshot_dr: 'navToStage(\"snapshot\")',
+      competitor_dr: 'navToStage(\"snapshot\")',
+      pricing: 'fetchPricingCatalog(true).then(function(){renderStrategyTabContent();aiBarNotify(\"Pricing refreshed\",{duration:2000})})',
+      research: 'navToStage(\"research\")',
+      voc: 'navToStage(\"research\")',
+      gkp: 'navToStage(\"strategy\")'
     }[src] || '';
     var refreshBtn = refreshFn ? '<i class="ti ti-refresh" style="font-size:10px;cursor:pointer;opacity:0.6" onclick="event.stopPropagation();' + refreshFn + '" title="Re-pull this source"></i>' : '';
     badges += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:4px;background:' + bg + ';color:' + colour + '">'
