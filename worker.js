@@ -2628,34 +2628,39 @@ export default {
           .filter(p => p.traffic > 0 || p.referringDomains > 0)
           .map(p => ({ oldUrl: p.url, oldSlug: p.slug, newSlug: '', status: 'pending' }));
 
-        // Get DR from DataForSEO backlinks rank
-        // DataForSEO rank is 0-1000 — use log scale conversion: DR ≈ log(rank+1)/log(1001)*100
-        const rawRank = backlinksResult?.rank ?? null;
+        // Get DR — prefer Ahrefs direct API (exact), fall back to DataForSEO approximation
         let dr100 = null;
-        if (rawRank != null && rawRank > 0) {
-          dr100 = Math.round(Math.log(rawRank + 1) / Math.log(1001) * 100);
-          if (dr100 > 100) dr100 = 100;
-          if (dr100 < 1) dr100 = 1;
+        let drSource = 'none';
+
+        // Try Ahrefs API first (exact DR, 50 units per call)
+        if (env.AHREFS_API_KEY) {
+          try {
+            const ahrefsDRRes = await fetch('https://api.ahrefs.com/v3/site-explorer/domain-rating?target=' + encodeURIComponent(domain) + '&date=' + new Date().toISOString().slice(0, 10), {
+              headers: { 'Authorization': 'Bearer ' + env.AHREFS_API_KEY }
+            });
+            if (ahrefsDRRes.ok) {
+              const ahrefsDRData = await ahrefsDRRes.json();
+              const exactDR = ahrefsDRData?.domain_rating?.domain_rating;
+              if (exactDR != null && exactDR > 0) {
+                dr100 = Math.round(exactDR);
+                drSource = 'ahrefs';
+              }
+            }
+          } catch(e2) { console.warn('[snapshot] Ahrefs DR lookup failed:', e2.message); }
         }
 
-        // Try Ahrefs direct API as a more accurate fallback/override
-        try {
-          const ahrefsRes2 = await fetch('https://api.dataforseo.com/v3/backlinks/domain_pages_summary/live', {
-            method: 'POST',
-            headers: { Authorization: 'Basic ' + creds, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ target: domain, include_subdomains: true, backlinks_status_type: 'live' }])
-          });
-          if (ahrefsRes2.ok) {
-            const ahrefsData2 = await ahrefsRes2.json();
-            const ahrefsDR = ahrefsData2?.tasks?.[0]?.result?.[0]?.main_domain_rank;
-            if (ahrefsDR != null && ahrefsDR > 0) {
-              const ahrefsDR100 = Math.round(Math.log(ahrefsDR + 1) / Math.log(1001) * 100);
-              if (ahrefsDR100 > (dr100 || 0)) dr100 = Math.min(ahrefsDR100, 100);
-            }
+        // Fall back to DataForSEO backlinks rank (approximate)
+        if (dr100 === null) {
+          const rawRank = backlinksResult?.rank ?? null;
+          if (rawRank != null && rawRank > 0) {
+            dr100 = Math.round(Math.log(rawRank + 1) / Math.log(1001) * 100);
+            if (dr100 > 100) dr100 = 100;
+            if (dr100 < 1) dr100 = 1;
+            drSource = 'dataforseo';
           }
-        } catch(e2) { /* fallback failed, use original */ }
+        }
 
-        console.log('[snapshot] backlinks rank raw:', rawRank, '→ DR (0-100):', dr100, 'refdomains:', backlinksResult?.referring_domains);
+        console.log('[snapshot] DR:', dr100, '(source:', drSource + ')', 'refdomains:', backlinksResult?.referring_domains);
 
         const result = {
           capturedAt: Date.now(),
