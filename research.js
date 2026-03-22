@@ -1185,12 +1185,133 @@ function _renderSourceBanner(tabName) {
     }
     var bg = has ? '#dcfce7' : '#fef3c7';
     var colour = has ? '#166534' : '#92400e';
+    // Map source to refresh function
+    var refreshFn = {
+      website: '_refreshSourceWebsite()',
+      gmb: '_refreshSourceGMB()',
+      brand_assets: '_refreshSourceBrandAssets()',
+      structured: '_refreshSourceStructured()',
+      gsc: '_refreshSourceGSC()',
+      ga4: '_refreshSourceGA4()'
+    }[src] || '';
+    var refreshBtn = refreshFn ? '<i class="ti ti-refresh" style="font-size:10px;cursor:pointer;opacity:0.6" onclick="event.stopPropagation();' + refreshFn + '" title="Re-pull this source"></i>' : '';
     badges += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:4px;background:' + bg + ';color:' + colour + '">'
-      + '<span style="font-weight:600">' + label + '</span> ' + value + '</span>';
+      + '<span style="font-weight:600">' + label + '</span> ' + value + ' ' + refreshBtn + '</span>';
   });
   return '<div style="padding:8px 12px;background:var(--panel);border-radius:8px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
     + '<span style="font-size:10px;color:var(--n2);margin-right:4px;font-weight:500">SOURCES:</span>'
     + badges + '</div>';
+}
+
+// ── Source Refresh Functions ──────────────────────────────────────
+async function _refreshSourceWebsite() {
+  aiBarStart('Re-scraping website');
+  try {
+    _cachedWebsiteText = null;
+    await _fetchWebsiteText();
+    if (_cachedWebsiteText) {
+      if (!S.research) S.research = researchDefaults();
+      S.research._websiteScraped = true;
+      scheduleSave();
+      aiBarNotify('Website re-scraped: ' + _cachedWebsiteText.split(/\s+/).length + ' words', { duration: 3000 });
+    } else {
+      aiBarNotify('No website content found', { duration: 3000 });
+    }
+  } catch(e) { aiBarNotify('Website scrape failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
+}
+
+async function _refreshSourceGMB() {
+  aiBarStart('Pulling Google Business Profile');
+  try {
+    _cachedGMBData = null;
+    await _autoGMB();
+    if (_cachedGMBData) {
+      aiBarNotify('Google Business Profile updated', { duration: 3000 });
+      scheduleSave();
+    } else {
+      aiBarNotify('No Google Business Profile found', { duration: 3000 });
+    }
+  } catch(e) { aiBarNotify('GMB pull failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
+}
+
+async function _refreshSourceBrandAssets() {
+  aiBarStart('Extracting brand assets');
+  try {
+    _cachedBrandAssets = null;
+    await _fetchBrandAssets();
+    if (_cachedBrandAssets) {
+      aiBarNotify('Brand assets extracted', { duration: 3000 });
+    } else {
+      aiBarNotify('No brand assets found', { duration: 3000 });
+    }
+  } catch(e) { aiBarNotify('Brand assets extraction failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
+}
+
+async function _refreshSourceStructured() {
+  aiBarStart('Running structured scrape');
+  try {
+    _cachedStructuredScrape = null;
+    var result = await _fetchStructuredScrape(true);
+    if (result) {
+      var parts = [];
+      if (result.social_profiles && result.social_profiles.length) parts.push(result.social_profiles.length + ' social profiles');
+      if (result.faqs && result.faqs.length) parts.push(result.faqs.length + ' FAQs');
+      if (result.reviews && result.reviews.length) parts.push(result.reviews.length + ' reviews');
+      aiBarNotify('Structured scrape: ' + (parts.length ? parts.join(', ') : 'no data found'), { duration: 3000 });
+      scheduleSave();
+    } else {
+      aiBarNotify('No structured data found', { duration: 3000 });
+    }
+  } catch(e) { aiBarNotify('Structured scrape failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
+}
+
+async function _refreshSourceGSC() {
+  if (!S.setup || !S.setup.gscSiteUrl) { aiBarNotify('Connect GSC in Setup first', { duration: 3000 }); return; }
+  aiBarStart('Re-pulling GSC data');
+  try {
+    if (typeof _pullGSCData === 'function') await _pullGSCData();
+    else if (typeof refreshGSCData === 'function') await refreshGSCData();
+    else {
+      // Inline pull
+      var now = new Date();
+      var end = now.toISOString().slice(0, 10);
+      var start = new Date(now.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+      var qRes = await fetch('/api/gsc-performance', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ siteUrl: S.setup.gscSiteUrl, dimensions: ['query'], startDate: start, endDate: end, rowLimit: 500 }) });
+      if (qRes.ok) {
+        var qData = await qRes.json();
+        if (!S.snapshot) S.snapshot = {};
+        if (!S.snapshot.gsc) S.snapshot.gsc = {};
+        S.snapshot.gsc.queries = (qData.rows || []).map(function(r) { return { query: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, position: r.position }; });
+        S.snapshot.gsc._pulledAt = new Date().toISOString();
+        scheduleSave();
+      }
+    }
+    var qc = S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries ? S.snapshot.gsc.queries.length : 0;
+    aiBarNotify('GSC refreshed: ' + qc + ' queries', { duration: 3000 });
+  } catch(e) { aiBarNotify('GSC refresh failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
+}
+
+async function _refreshSourceGA4() {
+  if (!S.setup || !S.setup.ga4PropertyId) { aiBarNotify('Connect GA4 in Setup first', { duration: 3000 }); return; }
+  aiBarStart('Re-pulling GA4 data');
+  try {
+    if (typeof _pullGA4Data === 'function') await _pullGA4Data();
+    else if (typeof refreshGA4Data === 'function') await refreshGA4Data();
+    var sc = S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.totals ? S.snapshot.ga4.totals.sessions : 0;
+    aiBarNotify('GA4 refreshed: ' + sc + ' sessions', { duration: 3000 });
+  } catch(e) { aiBarNotify('GA4 refresh failed: ' + e.message, { isError: true, duration: 4000 }); }
+  aiBarEnd();
+  renderResearchTabContent();
 }
 
 // ── Tab renderers ─────────────────────────────────────────────────
