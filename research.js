@@ -1102,17 +1102,29 @@ function _renderSourceBanner(tabName) {
     switch (src) {
       case 'website':
         label = 'Website Scrape';
+        // Check cache first, then check if research has fields that indicate a scrape ran
         if (_cachedWebsiteText) {
           var wc = _cachedWebsiteText.split(/\s+/).length;
           value = wc.toLocaleString() + ' words';
           has = true;
-        } else { value = 'Missing'; }
+        } else {
+          var r = S.research || {};
+          // If services_detail or team_size were populated, website was likely scraped
+          var hadScrape = (r.services_detail && r.services_detail.length > 0) || (r.team_size && r.team_size !== '') || (r._websiteScraped);
+          if (hadScrape) { value = 'Previously scraped'; has = true; }
+          else { value = 'Not yet run'; }
+        }
         break;
       case 'gmb':
         label = 'Google Business';
         var g = _cachedGMBData;
         if (g && (g.title || g.address_parts)) { value = 'Found'; has = true; }
-        else { value = 'Not found'; }
+        else {
+          // Check if research has GMB-sourced fields
+          var rg = S.research || {};
+          if (rg.schema_phone || rg.schema_street_address || rg.schema_city) { value = 'Previously pulled'; has = true; }
+          else { value = 'Not found'; }
+        }
         break;
       case 'documents':
         label = 'Documents';
@@ -1129,7 +1141,11 @@ function _renderSourceBanner(tabName) {
       case 'brand_assets':
         label = 'Brand Assets';
         if (_cachedBrandAssets) { value = 'Extracted'; has = true; }
-        else { value = 'Not found'; }
+        else {
+          var rb = S.research || {};
+          if ((rb.brand_colours && rb.brand_colours.length > 3) || (rb.brand_fonts && rb.brand_fonts.length > 3)) { value = 'Previously extracted'; has = true; }
+          else { value = 'Not found'; }
+        }
         break;
       case 'structured':
         label = 'Structured Scrape';
@@ -1140,7 +1156,16 @@ function _renderSourceBanner(tabName) {
           if (_cachedStructuredScrape.reviews) parts.push(_cachedStructuredScrape.reviews.length + ' reviews');
           value = parts.length ? parts.join(', ') : 'Found';
           has = true;
-        } else { value = 'Missing'; }
+        } else {
+          // Check if research has fields from structured scrape
+          var rs = S.research || {};
+          var sp = [];
+          if (rs.social_profiles && rs.social_profiles.length) sp.push(rs.social_profiles.length + ' social');
+          if (rs.current_faqs && rs.current_faqs.length) sp.push(rs.current_faqs.length + ' FAQs');
+          if (rs.reviews && rs.reviews.length) sp.push(rs.reviews.length + ' reviews');
+          if (sp.length) { value = sp.join(', '); has = true; }
+          else { value = 'No data'; }
+        }
         break;
       case 'gsc':
         label = 'GSC Data';
@@ -1747,6 +1772,8 @@ async function enrichAll(forceAll, startFrom) {
         if (_cachedWebsiteText) {
           _enrichDone.add('website');
           if (msgEl) msgEl.textContent = 'Website content scraped ✓';
+          if (!S.research) S.research = researchDefaults();
+          S.research._websiteScraped = true;
         } else {
           if (msgEl) msgEl.textContent = 'No website content found — continuing';
         }
