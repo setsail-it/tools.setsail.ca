@@ -6007,6 +6007,196 @@ async function _resumeDiagnosticsFrom(startFrom) {
   }
 }
 
+// ── Data Source Banner (Strategy) ──────────────────────────────────────
+
+var _SOURCE_MAP_STRATEGY = {
+  audience:    ['research','documents','discovery','gsc','ga4'],
+  positioning: ['research','competitors','gsc'],
+  economics:   ['research','benchmarks','gsc','ga4','gkp'],
+  subtraction: ['research','ga4_channels'],
+  channels:    ['research','economics','benchmarks','pricing'],
+  execution:   ['research','gsc','ga4','tech_stack'],
+  brand:       ['research','gsc','snapshot_dr','competitor_dr'],
+  risks:       ['research','d1_d6'],
+  narrative:   ['research','d0_d7','voc']
+};
+
+function _renderStratSourceBanner(tabName) {
+  var sources = _SOURCE_MAP_STRATEGY[tabName] || [];
+  if (!sources.length) return '';
+  var badges = '';
+  sources.forEach(function(src) {
+    var label = '';
+    var value = '';
+    var has = false;
+    switch (src) {
+      case 'research':
+        label = 'Research';
+        if (S.research) {
+          var total = 0, filled = 0;
+          Object.keys(RESEARCH_FIELD_META).forEach(function(k) {
+            total++;
+            var v = S.research[k];
+            if (k.indexOf('.') >= 0) {
+              var parts = k.split('.');
+              v = S.research[parts[0]] ? S.research[parts[0]][parts[1]] : null;
+            }
+            if (Array.isArray(v) ? v.length : (typeof v === 'string' ? v.trim() : v)) filled++;
+          });
+          var pct = total ? Math.round((filled / total) * 100) : 0;
+          value = pct + '% complete';
+          has = pct > 0;
+        } else { value = 'Empty'; }
+        break;
+      case 'documents':
+        label = 'Documents';
+        var docs = (S.setup && S.setup.docs) ? S.setup.docs : [];
+        if (docs.length) { value = docs.length + ' doc' + (docs.length > 1 ? 's' : ''); has = true; }
+        else { value = '0'; }
+        break;
+      case 'discovery':
+        label = 'Discovery Notes';
+        var dn = (S.setup && S.setup.discoveryNotes) ? S.setup.discoveryNotes.trim() : '';
+        if (dn) { value = 'Provided'; has = true; }
+        else { value = 'Empty'; }
+        break;
+      case 'gsc':
+        label = 'GSC';
+        if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries) {
+          var qc = Array.isArray(S.snapshot.gsc.queries) ? S.snapshot.gsc.queries.length : 0;
+          value = qc + ' queries';
+          has = qc > 0;
+        } else { value = '0'; }
+        break;
+      case 'ga4':
+        label = 'GA4';
+        if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.sessions) {
+          value = S.snapshot.ga4.sessions.toLocaleString() + ' sessions';
+          has = true;
+        } else { value = '0'; }
+        break;
+      case 'ga4_channels':
+        label = 'GA4 Channels';
+        if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.channels) {
+          var cc = Array.isArray(S.snapshot.ga4.channels) ? S.snapshot.ga4.channels.length : 0;
+          value = cc + ' channels';
+          has = cc > 0;
+        } else { value = '0'; }
+        break;
+      case 'competitors':
+        label = 'Competitors';
+        var comps = (S.research && S.research.competitors) ? S.research.competitors : [];
+        if (comps.length) { value = comps.length + ' tracked'; has = true; }
+        else { value = '0'; }
+        break;
+      case 'benchmarks':
+        label = 'Industry Benchmarks';
+        var ind = (S.research || {}).industry;
+        if (ind) {
+          var bm = _matchIndustryBenchmark(ind);
+          var bmKey = '';
+          if (bm) {
+            var bKeys = Object.keys(INDUSTRY_BENCHMARKS);
+            for (var bi = 0; bi < bKeys.length; bi++) {
+              if (INDUSTRY_BENCHMARKS[bKeys[bi]] === bm && bKeys[bi] !== '_default') { bmKey = bKeys[bi]; break; }
+            }
+          }
+          value = bmKey ? bmKey.replace(/_/g, ' ') : 'Default';
+          has = !!bmKey;
+        } else { value = 'No industry'; }
+        break;
+      case 'pricing':
+        label = 'Pricing Catalog';
+        if (_pricingCatalog && _pricingCatalog.services) {
+          value = _pricingCatalog.services.length + ' services';
+          has = true;
+        } else { value = 'Missing'; }
+        break;
+      case 'gkp':
+        label = 'GKP Data';
+        var kwHasBids = false;
+        if (S.kwResearch && S.kwResearch.keywords) {
+          var bidCount = 0;
+          S.kwResearch.keywords.forEach(function(kw) { if (kw.low_bid || kw.high_bid) bidCount++; });
+          if (bidCount > 0) { value = bidCount + ' with bids'; has = true; kwHasBids = true; }
+        }
+        if (!kwHasBids) { value = 'None'; }
+        break;
+      case 'economics':
+        label = 'D1 Economics';
+        if (S.strategy && S.strategy.unit_economics && S.strategy.unit_economics.max_allowable_cpl) {
+          value = 'Computed'; has = true;
+        } else { value = 'Not run'; }
+        break;
+      case 'tech_stack':
+        label = 'Tech Stack';
+        if (S.snapshot && S.snapshot.techStack && S.snapshot.techStack.length) {
+          value = S.snapshot.techStack.length + ' techs';
+          has = true;
+        } else { value = 'Missing'; }
+        break;
+      case 'snapshot_dr':
+        label = 'Snapshot DR';
+        if (S.snapshot && S.snapshot.domainRating) {
+          value = 'DR ' + S.snapshot.domainRating;
+          has = true;
+        } else { value = 'Missing'; }
+        break;
+      case 'competitor_dr':
+        label = 'Competitor DR';
+        if (S.snapshot && S.snapshot.competitorDA && S.snapshot.competitorDA.length) {
+          value = S.snapshot.competitorDA.length + ' tracked';
+          has = true;
+        } else { value = '0'; }
+        break;
+      case 'voc':
+        label = 'VoC / Transcripts';
+        var hasVoc = (S.research && S.research.voc_swipe_raw && S.research.voc_swipe_raw.trim());
+        var hasEnr = (S.strategy && S.strategy._enrichment && S.strategy._enrichment.voc_swipe_file && S.strategy._enrichment.voc_swipe_file.length);
+        if (hasVoc || hasEnr) { value = 'Available'; has = true; }
+        else { value = 'None'; }
+        break;
+      case 'd1_d6':
+        label = 'D1\u2013D6 Outputs';
+        var dCount = 0;
+        if (S.strategy) {
+          if (S.strategy.unit_economics && S.strategy.unit_economics.max_allowable_cpl) dCount++;
+          if (S.strategy.positioning && S.strategy.positioning.core_value_proposition) dCount++;
+          if (S.strategy.subtraction) dCount++;
+          if (S.strategy.channel_strategy && S.strategy.channel_strategy.levers) dCount++;
+          if (S.strategy.execution_plan) dCount++;
+          if (S.strategy.brand_strategy) dCount++;
+        }
+        value = dCount + '/6 complete';
+        has = dCount > 0;
+        break;
+      case 'd0_d7':
+        label = 'D0\u2013D7 Outputs';
+        var d2Count = 0;
+        if (S.strategy) {
+          if (S.strategy.audience && S.strategy.audience.segments) d2Count++;
+          if (S.strategy.unit_economics && S.strategy.unit_economics.max_allowable_cpl) d2Count++;
+          if (S.strategy.positioning && S.strategy.positioning.core_value_proposition) d2Count++;
+          if (S.strategy.subtraction) d2Count++;
+          if (S.strategy.channel_strategy && S.strategy.channel_strategy.levers) d2Count++;
+          if (S.strategy.execution_plan) d2Count++;
+          if (S.strategy.brand_strategy) d2Count++;
+          if (S.strategy.risks && S.strategy.risks.risks) d2Count++;
+        }
+        value = d2Count + '/8 complete';
+        has = d2Count > 0;
+        break;
+    }
+    var bg = has ? '#dcfce7' : '#fef3c7';
+    var colour = has ? '#166534' : '#92400e';
+    badges += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:4px;background:' + bg + ';color:' + colour + '">'
+      + '<span style="font-weight:600">' + label + '</span> ' + value + '</span>';
+  });
+  return '<div style="padding:8px 12px;background:var(--panel);border-radius:8px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
+    + '<span style="font-size:10px;color:var(--n2);margin-right:4px;font-weight:500">SOURCES:</span>'
+    + badges + '</div>';
+}
+
 // ── UI: Tab Content ───────────────────────────────────────────────────
 
 function renderStrategyTabContent() {
@@ -6103,6 +6293,11 @@ function renderStrategyTabContent() {
   // Audit panel (show quality checks for the relevant diagnostic)
   if (diagNum !== undefined && diagNum !== null) {
     html += _renderStrategyAuditPanel(diagNum);
+  }
+
+  // Data source attribution banner
+  if (_SOURCE_MAP_STRATEGY[_sTab]) {
+    html += _renderStratSourceBanner(_sTab);
   }
 
   // Section content

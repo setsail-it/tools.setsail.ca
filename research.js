@@ -1081,6 +1081,93 @@ async function generateMissingBuyerPsych() {
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles" style="font-size:10px"></i> AI Generate Missing'; }
 }
 
+// ── Data Source Banner ─────────────────────────────────────────────
+
+var _SOURCE_MAP_RESEARCH = {
+  business:    ['website','gmb','documents','discovery','structured','gsc','ga4'],
+  audience:    ['website','documents','discovery','gsc','ga4'],
+  brand:       ['website','brand_assets','structured','gmb'],
+  schema:      ['website','gmb','structured'],
+  competitors: ['website','gsc']
+};
+
+function _renderSourceBanner(tabName) {
+  var sources = _SOURCE_MAP_RESEARCH[tabName] || [];
+  if (!sources.length) return '';
+  var badges = '';
+  sources.forEach(function(src) {
+    var label = '';
+    var value = '';
+    var has = false;
+    switch (src) {
+      case 'website':
+        label = 'Website Scrape';
+        if (_cachedWebsiteText) {
+          var wc = _cachedWebsiteText.split(/\s+/).length;
+          value = wc.toLocaleString() + ' words';
+          has = true;
+        } else { value = 'Missing'; }
+        break;
+      case 'gmb':
+        label = 'Google Business';
+        var g = _cachedGMBData;
+        if (g && (g.title || g.address_parts)) { value = 'Found'; has = true; }
+        else { value = 'Not found'; }
+        break;
+      case 'documents':
+        label = 'Documents';
+        var docs = (S.setup && S.setup.docs) ? S.setup.docs : [];
+        if (docs.length) { value = docs.length + ' doc' + (docs.length > 1 ? 's' : ''); has = true; }
+        else { value = '0'; }
+        break;
+      case 'discovery':
+        label = 'Discovery Notes';
+        var dn = (S.setup && S.setup.discoveryNotes) ? S.setup.discoveryNotes.trim() : '';
+        if (dn) { value = 'Provided'; has = true; }
+        else { value = 'Empty'; }
+        break;
+      case 'brand_assets':
+        label = 'Brand Assets';
+        if (_cachedBrandAssets) { value = 'Extracted'; has = true; }
+        else { value = 'Not found'; }
+        break;
+      case 'structured':
+        label = 'Structured Scrape';
+        if (_cachedStructuredScrape) {
+          var parts = [];
+          if (_cachedStructuredScrape.social_profiles) parts.push(_cachedStructuredScrape.social_profiles.length + ' social');
+          if (_cachedStructuredScrape.faqs) parts.push(_cachedStructuredScrape.faqs.length + ' FAQs');
+          if (_cachedStructuredScrape.reviews) parts.push(_cachedStructuredScrape.reviews.length + ' reviews');
+          value = parts.length ? parts.join(', ') : 'Found';
+          has = true;
+        } else { value = 'Missing'; }
+        break;
+      case 'gsc':
+        label = 'GSC Data';
+        if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries) {
+          var qc = Array.isArray(S.snapshot.gsc.queries) ? S.snapshot.gsc.queries.length : 0;
+          value = qc + ' queries';
+          has = qc > 0;
+        } else { value = '0'; }
+        break;
+      case 'ga4':
+        label = 'GA4 Data';
+        if (S.snapshot && S.snapshot.ga4 && S.snapshot.ga4.sessions) {
+          value = S.snapshot.ga4.sessions.toLocaleString() + ' sessions';
+          has = true;
+        } else { value = '0'; }
+        break;
+    }
+    var bg = has ? '#dcfce7' : '#fef3c7';
+    var colour = has ? '#166534' : '#92400e';
+    badges += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;font-size:10px;margin-right:4px;margin-bottom:4px;background:' + bg + ';color:' + colour + '">'
+      + '<span style="font-weight:600">' + label + '</span> ' + value + '</span>';
+  });
+  return '<div style="padding:8px 12px;background:var(--panel);border-radius:8px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
+    + '<span style="font-size:10px;color:var(--n2);margin-right:4px;font-weight:500">SOURCES:</span>'
+    + badges + '</div>';
+}
+
 // ── Tab renderers ─────────────────────────────────────────────────
 
 function rTabActions(tab) {
@@ -1094,6 +1181,7 @@ function rTabActions(tab) {
 function renderRBusiness(r) {
   let html = renderCurrentPerformance();
   html += rTabActions('business');
+  html += _renderSourceBanner('business');
   html += rSec('Core Identity',
     rField('business_overview','Business Overview', r.business_overview, 'textarea', {rows:3}) +
     rField('industry','Industry', r.industry) +
@@ -1316,6 +1404,7 @@ async function extractClientPain() {
 
 function renderRAudience(r) {
   let html = rTabActions('audience');
+  html += _renderSourceBanner('audience');
   html += rSec('Buyer Profile',
     rField('primary_audience_description','Audience Description', r.primary_audience_description, 'textarea', {rows:3}) +
     rField('buyer_roles_titles','Buyer Roles / Titles (comma-separated)', r.buyer_roles_titles, 'text-csv') +
@@ -1382,6 +1471,7 @@ function renderRAudience(r) {
 
 function renderRBrand(r) {
   let html = rTabActions('brand');
+  html += _renderSourceBanner('brand');
   html += rSec('Brand Identity',
     rField('brand_name','Brand Name', r.brand_name) +
     rField('current_slogan','Current Slogan / Tagline', r.current_slogan) +
@@ -1506,6 +1596,7 @@ async function scrapeWebsiteStructured() {
 
 function renderRSchema(r) {
   let html = rTabActions('schema');
+  html += _renderSourceBanner('schema');
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">'
     + '<button class="btn btn-ghost" onclick="pullGMB()" id="gmb-pull-btn"><i class="ti ti-brand-google"></i> Pull from Google Business Profile</button>'
     + '<span id="gmb-pull-status" style="font-size:12px;color:var(--n2)"></span>'
@@ -1551,6 +1642,7 @@ function renderRSchema(r) {
 
 function renderRCompetitors(r) {
   let html = rTabActions('competitors');
+  html += _renderSourceBanner('competitors');
   html += rRepGroup('competitors','Competitor Analysis',
     [{key:'name',label:'Competitor',width:'130px'},{key:'url',label:'URL',width:'160px'},{key:'why_they_win',label:'Strengths'},{key:'weaknesses',label:'Weaknesses'},{key:'what_we_do_better',label:'What We Do Better'}],
     '+ Add Competitor'
