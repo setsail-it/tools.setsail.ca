@@ -6150,9 +6150,18 @@ function _renderStratSourceBanner(tabName) {
         break;
       case 'competitor_dr':
         label = 'Competitor DR';
-        var _compDRs = (S.research && S.research.competitors) ? S.research.competitors.filter(function(c) { return c.domain_rating || c.dr; }) : [];
-        if (_compDRs.length) {
-          value = _compDRs.length + ' with DR';
+        // Check D6 output first (most reliable), then research, then snapshot
+        var _d6DRs = (S.strategy && S.strategy.content_authority && S.strategy.content_authority.dr_gap_analysis && S.strategy.content_authority.dr_gap_analysis.competitor_drs) || [];
+        var _resDRs = (S.research && S.research.competitors) ? S.research.competitors.filter(function(c) { return c.domain_rating || c.dr; }) : [];
+        var _snapDRs = (S.snapshot && S.snapshot.competitorDR) ? Object.keys(S.snapshot.competitorDR).filter(function(d) { return S.snapshot.competitorDR[d] > 0; }) : [];
+        if (_d6DRs.length) {
+          value = _d6DRs.length + ' competitors';
+          has = true;
+        } else if (_resDRs.length) {
+          value = _resDRs.length + ' with DR';
+          has = true;
+        } else if (_snapDRs.length) {
+          value = _snapDRs.length + ' with DR';
           has = true;
         } else { value = '0'; }
         break;
@@ -6203,7 +6212,7 @@ function _renderStratSourceBanner(tabName) {
       ga4_channels: "typeof refreshGA4Data==='function'?refreshGA4Data():navToStage('snapshot')",
       tech_stack: "navToStage('snapshot')",
       snapshot_dr: "navToStage('snapshot')",
-      competitor_dr: "navToStage('snapshot')",
+      competitor_dr: "runDiagnostic(6).then(function(){renderStrategyTabContent();aiBarNotify('Content & Authority refreshed',{duration:2000})})",
       pricing: "fetchPricingCatalog(true).then(function(){renderStrategyTabContent();aiBarNotify('Pricing refreshed',{duration:2000})})",
       research: "navToStage('research')",
       voc: "navToStage('research')",
