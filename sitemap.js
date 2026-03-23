@@ -1407,9 +1407,11 @@ function _parseAiJson(raw) {
 
 // AI-powered issue fixing
 async function _aiFixIssue(fixId) {
+  console.log('[_aiFixIssue] called with fixId:', fixId);
   var pages = S.pages || [];
   var kwPool = (S.kwResearch && S.kwResearch.keywords) || [];
   var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
+  console.log('[_aiFixIssue] pages:', pages.length, '| kwPool:', kwPool.length, '| clusters:', clusters.length);
 
   if (fixId === 'no-kw') {
     // Assign best keywords to pages missing them — batched, auto-loops
@@ -1421,8 +1423,11 @@ async function _aiFixIssue(fixId) {
     });
     if (!allNeedKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
 
+    console.log('[no-kw fix] Found', allNeedKw.length, 'pages needing keywords');
+    console.log('[no-kw fix] Keyword pool size:', kwPool.length);
     var usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
     var availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    console.log('[no-kw fix] Used keywords:', usedKws.size, '| Available from pool:', availKws.length);
     var geo = ((S.research || {}).geography || {}).primary || (S.setup || {}).geo || '';
     var industry = (S.research || {}).industry || '';
 
@@ -1431,11 +1436,15 @@ async function _aiFixIssue(fixId) {
     for (var batchStart = 0; batchStart < allNeedKw.length; batchStart += batchSize) {
       if (window._aiStopAll) break;
       var batch = allNeedKw.slice(batchStart, batchStart + batchSize);
-      aiBarStart('AI assigning keywords: batch ' + (Math.floor(batchStart / batchSize) + 1) + '/' + Math.ceil(allNeedKw.length / batchSize) + ' (' + totalAssigned + ' assigned so far)');
+      var batchNum = Math.floor(batchStart / batchSize) + 1;
+      var totalBatches = Math.ceil(allNeedKw.length / batchSize);
+      console.log('[no-kw fix] Starting batch', batchNum, '/', totalBatches, '| pages:', batch.length);
+      aiBarStart('AI assigning keywords: batch ' + batchNum + '/' + totalBatches + ' (' + totalAssigned + ' assigned so far)');
 
       // Rebuild available list each batch (exclude newly assigned)
       usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
       availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+      console.log('[no-kw fix] Batch', batchNum, '| available from pool:', availKws.length);
 
       var kwSection = availKws.length > 0
         ? '\n\nAVAILABLE KEYWORDS FROM RESEARCH (prefer these, sorted by volume):\n' + availKws.slice(0, 60).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
