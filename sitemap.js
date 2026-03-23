@@ -821,7 +821,7 @@ function _triagePages(pages) {
 
   pages.forEach(function(p, i) {
     // NEVER remove: structural, D5-recommended, CTA stubs, or pages with traffic
-    if (p.is_structural || p._d5_source || p._cta_source) { keep.push(p); return; }
+    if (p.is_structural || p._d5_source || p._cta_source || p._d6_source) { keep.push(p); return; }
     if ((p.existing_traffic || 0) > 0) { keep.push(p); return; }
 
     var slug = (p.slug || '').toLowerCase();
@@ -1570,6 +1570,120 @@ function realignSitemap() {
     changes.ctaAdded++;
   });
 
+  // 4.5 Inject D6 Content & Authority pages
+  if (S.strategy && S.strategy.content_authority) {
+    var ca = S.strategy.content_authority;
+    var d6Added = 0;
+
+    // Quick win pages
+    if (ca.quick_wins && ca.quick_wins.length) {
+      ca.quick_wins.forEach(function(qw) {
+        var title = qw.title || '';
+        var isNewPage = /create|publish|launch|build|write/i.test(title) && !/optimis|optimiz|update|fix|improve/i.test(title);
+        if (!isNewPage) return;
+        var slug = title.toLowerCase()
+          .replace(/['"\u2018\u2019\u201C\u201D]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 60);
+        var pageType = 'blog';
+        if (/case.stud/i.test(title)) pageType = 'case-study';
+        else if (/director/i.test(title)) pageType = 'resource';
+        else if (/guide|report|survey|whitepaper/i.test(title)) pageType = 'resource';
+        else if (/landing/i.test(title)) pageType = 'landing';
+        var fullSlug = (pageType === 'case-study' ? 'case-studies/' : pageType === 'blog' ? 'blog/' : '') + slug;
+        if (existingSlugs.has(fullSlug)) return;
+        var priority = 'P2';
+        if (qw.effort === 'Low' && /week\s*1/i.test(qw.timeline || '')) priority = 'P1';
+        else if (qw.effort === 'High') priority = 'P3';
+        // Apply authority timeline priority
+        if (qw.timeline && ca.authority_timeline) {
+          var tl = (qw.timeline || '').toLowerCase();
+          if (/week\s*1|month\s*1|month\s*2|month\s*3/i.test(tl)) priority = 'P1';
+          else if (/month\s*[4-8]/i.test(tl)) priority = 'P2';
+          else if (/month\s*(9|10|11|12)/i.test(tl)) priority = 'P3';
+        }
+        S.pages.push({
+          page_name: title.slice(0, 80),
+          slug: fullSlug,
+          page_type: pageType,
+          is_structural: false,
+          priority: priority,
+          action: 'build_new',
+          primary_keyword: '',
+          primary_vol: 0, primary_kd: 0, score: 0,
+          supporting_keywords: [],
+          search_intent: pageType === 'blog' ? 'informational' : 'commercial',
+          existing_traffic: 0,
+          existing_ranking_kws: [],
+          _d6_source: true,
+          _source: 'd6-quick-win',
+          _d6_effort: qw.effort,
+          _d6_timeline: qw.timeline,
+          _d6_impact: qw.impact,
+          notes: 'D6: quick win content page'
+        });
+        existingSlugs.add(fullSlug);
+        d6Added++;
+      });
+    }
+
+    // Content pillar pages
+    if (ca.content_pillars && ca.content_pillars.length) {
+      ca.content_pillars.forEach(function(pillar) {
+        if (!pillar.topics || !pillar.topics.length) return;
+        var pillarSlug = 'blog/' + (pillar.pillar || '').toLowerCase()
+          .replace(/['"\u2018\u2019\u201C\u201D]/g, '')
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 50);
+        if (existingSlugs.has(pillarSlug) || d6Added >= 20) return;
+        S.pages.push({
+          page_name: (pillar.pillar || 'Content Pillar') + ' \u2014 Pillar Page',
+          slug: pillarSlug,
+          page_type: 'blog',
+          is_structural: false,
+          priority: 'P2',
+          action: 'build_new',
+          primary_keyword: '',
+          primary_vol: 0, primary_kd: 0, score: 0,
+          supporting_keywords: [],
+          search_intent: 'informational',
+          existing_traffic: 0,
+          existing_ranking_kws: [],
+          _d6_source: true,
+          _source: 'd6-pillar',
+          _content_pillar: pillar.pillar,
+          notes: 'D6: content pillar page'
+        });
+        existingSlugs.add(pillarSlug);
+        d6Added++;
+      });
+    }
+
+    // Flag existing pages with quick win optimisation targets
+    if (ca.quick_wins) {
+      var optimiseWins = ca.quick_wins.filter(function(qw) {
+        return /optimis|optimiz|update|improve|fix/i.test(qw.title || '');
+      });
+      if (optimiseWins.length) {
+        S.pages.forEach(function(p) {
+          optimiseWins.forEach(function(qw) {
+            var titleLower = (qw.title || '').toLowerCase();
+            var pageKw = (p.primary_keyword || '').toLowerCase();
+            if (pageKw && titleLower.indexOf(pageKw.split(' ')[0]) >= 0) {
+              p._d6_quick_win = qw.title;
+              p._d6_effort = qw.effort;
+              p._d6_timeline = qw.timeline;
+            }
+          });
+        });
+      }
+    }
+
+    if (d6Added) changes.d6Added = d6Added;
+  }
+
   // 5. Re-run pages-to-cut
   var cutSlugs = _getD5PagesToCut();
   if (cutSlugs.size) {
@@ -1604,7 +1718,7 @@ function realignSitemap() {
   if (_tierInfo && _tierInfo.range) {
     var activePages = S.pages.filter(function(p) { return p.priority !== 'P3'; });
     if (activePages.length > _tierInfo.range.max) {
-      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source; });
+      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source && !p._d6_source; });
       demotable.sort(function(a, b) { return (a.score || 0) - (b.score || 0); });
       var excess = activePages.length - _tierInfo.range.max;
       for (var di = 0; di < Math.min(excess, demotable.length); di++) {
@@ -1630,6 +1744,7 @@ function realignSitemap() {
   if (changes.d5Added) parts.push(changes.d5Added + ' D5 pages added');
   if (changes.d5Removed) parts.push(changes.d5Removed + ' D5 pages flagged stale');
   if (changes.ctaAdded) parts.push(changes.ctaAdded + ' CTA pages added');
+  if (changes.d6Added) parts.push(changes.d6Added + ' D6 content pages added');
   if (changes.cutsMarked) parts.push(changes.cutsMarked + ' pages marked to cut');
   if (changes.personasSet) parts.push(changes.personasSet + ' personas reassigned');
   var msg = parts.length ? 'Realigned: ' + parts.join(', ') : 'Sitemap is already aligned with strategy';
@@ -1769,6 +1884,150 @@ function buildSitemapFromClusters() {
     covered.add(cp.slug);
   });
 
+  // 2.8 D6 Content & Authority — inject content pages from quick wins and content pillars
+  if (S.strategy && S.strategy.content_authority) {
+    var ca = S.strategy.content_authority;
+    var d6Pages = [];
+
+    // Extract page-creating quick wins
+    if (ca.quick_wins && ca.quick_wins.length) {
+      ca.quick_wins.forEach(function(qw) {
+        var title = qw.title || '';
+        // Detect quick wins that imply new pages
+        var isNewPage = /create|publish|launch|build|write/i.test(title) && !/optimis|optimiz|update|fix|improve/i.test(title);
+        if (isNewPage) {
+          var slug = title.toLowerCase()
+            .replace(/['"\u2018\u2019\u201C\u201D]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 60);
+
+          // Determine page type from context
+          var pageType = 'blog';
+          if (/case.stud/i.test(title)) pageType = 'case-study';
+          else if (/director/i.test(title)) pageType = 'resource';
+          else if (/guide|report|survey|whitepaper/i.test(title)) pageType = 'resource';
+          else if (/landing/i.test(title)) pageType = 'landing';
+
+          // Determine priority from effort/timeline
+          var priority = 'P2';
+          if (qw.effort === 'Low' && /week\s*1/i.test(qw.timeline || '')) priority = 'P1';
+          else if (qw.effort === 'High') priority = 'P3';
+
+          // Check if a similar page already exists
+          var exists = pages.some(function(p) {
+            return p.slug === slug || p.slug.indexOf(slug.split('-').slice(0, 3).join('-')) >= 0;
+          });
+
+          if (!exists && !covered.has(slug)) {
+            d6Pages.push({
+              page_name: title.slice(0, 80),
+              slug: (pageType === 'case-study' ? 'case-studies/' : pageType === 'blog' ? 'blog/' : '') + slug,
+              page_type: pageType,
+              is_structural: false,
+              priority: priority,
+              action: 'build_new',
+              primary_keyword: '',
+              primary_vol: 0, primary_kd: 0, score: 0,
+              supporting_keywords: [],
+              search_intent: pageType === 'blog' ? 'informational' : 'commercial',
+              existing_traffic: 0,
+              existing_ranking_kws: [],
+              _d6_source: true,
+              _source: 'd6-quick-win',
+              _d6_effort: qw.effort,
+              _d6_timeline: qw.timeline,
+              _d6_impact: qw.impact,
+              notes: 'D6: quick win content page'
+            });
+          }
+        }
+      });
+    }
+
+    // Extract pages from content pillars
+    if (ca.content_pillars && ca.content_pillars.length) {
+      ca.content_pillars.forEach(function(pillar) {
+        if (pillar.topics && pillar.topics.length) {
+          var pillarSlug = 'blog/' + (pillar.pillar || '').toLowerCase()
+            .replace(/['"\u2018\u2019\u201C\u201D]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 50);
+
+          var pillarExists = pages.some(function(p) { return p.slug === pillarSlug; });
+          if (!pillarExists && !covered.has(pillarSlug) && d6Pages.length < 20) {
+            d6Pages.push({
+              page_name: (pillar.pillar || 'Content Pillar') + ' \u2014 Pillar Page',
+              slug: pillarSlug,
+              page_type: 'blog',
+              is_structural: false,
+              priority: 'P2',
+              action: 'build_new',
+              primary_keyword: '',
+              primary_vol: 0, primary_kd: 0, score: 0,
+              supporting_keywords: [],
+              search_intent: 'informational',
+              existing_traffic: 0,
+              existing_ranking_kws: [],
+              _d6_source: true,
+              _source: 'd6-pillar',
+              _content_pillar: pillar.pillar,
+              notes: 'D6: content pillar page'
+            });
+          }
+        }
+      });
+    }
+
+    // Set priority from authority timeline phases
+    if (ca.authority_timeline) {
+      d6Pages.forEach(function(dp) {
+        if (!dp._d6_timeline) return;
+        var tl = dp._d6_timeline.toLowerCase();
+        if (/week\s*1|month\s*1|month\s*2|month\s*3/i.test(tl)) dp.priority = 'P1';
+        else if (/month\s*[4-8]/i.test(tl)) dp.priority = 'P2';
+        else if (/month\s*(9|10|11|12)/i.test(tl)) dp.priority = 'P3';
+      });
+    }
+
+    // Add D6 pages, deduplicating against existing
+    d6Pages.forEach(function(dp) {
+      if (!covered.has(dp.slug)) {
+        dp.existing_traffic = existingTraffic(dp.slug);
+        dp.existing_ranking_kws = existingRankKws(dp.slug);
+        if (allExisting.has(dp.slug)) dp.action = 'improve_existing';
+        pages.push(dp);
+        covered.add(dp.slug);
+      }
+    });
+
+    if (d6Pages.length) console.log('[sitemap] D6 injected', d6Pages.length, 'content pages');
+  }
+
+  // Flag existing pages that match D6 quick win optimisation targets
+  if (S.strategy && S.strategy.content_authority && S.strategy.content_authority.quick_wins) {
+    var optimiseWins = S.strategy.content_authority.quick_wins.filter(function(qw) {
+      return /optimis|optimiz|update|improve|fix/i.test(qw.title || '');
+    });
+
+    if (optimiseWins.length) {
+      pages.forEach(function(p) {
+        optimiseWins.forEach(function(qw) {
+          var titleLower = (qw.title || '').toLowerCase();
+          var pageKw = (p.primary_keyword || '').toLowerCase();
+
+          // Match if quick win mentions the page's keyword
+          if (pageKw && titleLower.indexOf(pageKw.split(' ')[0]) >= 0) {
+            p._d6_quick_win = qw.title;
+            p._d6_effort = qw.effort;
+            p._d6_timeline = qw.timeline;
+          }
+        });
+      });
+    }
+  }
+
   // 3. Existing pages not matched by any cluster
   allExisting.forEach(function(slug) {
     if (covered.has(slug)) return;
@@ -1841,7 +2100,7 @@ function buildSitemapFromClusters() {
   if (_tierInfo && _tierInfo.range) {
     var activePages = S.pages.filter(function(p) { return p.priority !== 'P3'; });
     if (activePages.length > _tierInfo.range.max) {
-      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source; });
+      var demotable = activePages.filter(function(p) { return !p.is_structural && !p._d5_source && !p._cta_source && !p._d6_source; });
       demotable.sort(function(a, b) { return (a.score || 0) - (b.score || 0); });
       var excess = activePages.length - _tierInfo.range.max;
       for (var di = 0; di < Math.min(excess, demotable.length); di++) {
@@ -3043,6 +3302,9 @@ function _renderSitemapResultsInner(approved) {
       if (p._d5_source) html += '<span style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:#3b82f6;margin-left:4px;vertical-align:middle;font-weight:600">D5</span>';
       if (p._cta_source) html += '<span style="background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:var(--green);margin-left:4px;vertical-align:middle;font-weight:600">CTA</span>';
       if (p._d5_cut) html += '<span style="background:rgba(220,50,47,0.08);border:1px solid rgba(220,50,47,0.25);border-radius:3px;font-size:8px;padding:1px 4px;color:var(--error);margin-left:4px;vertical-align:middle;font-weight:600">CUT</span>';
+      if (p._source === 'd6-quick-win') html += '<span style="font-size:9px;background:rgba(234,179,8,0.15);color:#a16207;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle" title="' + esc(p._d6_impact || '') + '">D6 Quick Win</span>';
+      if (p._source === 'd6-pillar') html += '<span style="font-size:9px;background:rgba(168,85,247,0.15);color:#7c3aed;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle">D6 Pillar</span>';
+      if (p._d6_quick_win && p._source !== 'd6-quick-win') html += '<span style="font-size:9px;background:rgba(234,179,8,0.1);color:#a16207;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle" title="' + esc(p._d6_quick_win) + ' \u2014 ' + esc(p._d6_timeline || '') + '">\u26A1 Quick Win</span>';
       html += '<div style="color:var(--n2);font-size:10.5px">/'+(p.slug||'')+'</div>';
       if (p.rationale) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-top:1px">'+esc(p.rationale)+'</div>';
       if (p.page_goal) html += '<div style="font-size:10px;color:#6b21a8;margin-top:2px" title="Page goal: '+esc(p.page_goal)+'"><i class="ti ti-target" style="font-size:10px;margin-right:2px"></i>'+esc(p.page_goal.length>80?p.page_goal.slice(0,80)+'…':p.page_goal)+'</div>';
