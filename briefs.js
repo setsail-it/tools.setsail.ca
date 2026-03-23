@@ -1679,9 +1679,9 @@ async function generatePageBrief(pageIdx) {
       _narParts.push('EMOTIONAL VEINS: ' + _nar.emotional_veins.slice(0, 2).map(function(ev) { return ev.vein + ' (' + (ev.messaging || '').slice(0, 50) + ')'; }).join('; '));
     }
     // Emotional journey stage matched to page awareness
-    if (_nar.emotional_journey && _nar.emotional_journey.length && page.awareness_stage) {
+    if (_nar.emotional_journey && _nar.emotional_journey.length && p.awareness_stage) {
       var _brJMap = { problem_aware: 'scar', solution_aware: 'search', product_aware: 'moment', most_aware: 'relief' };
-      var _brJStage = _brJMap[page.awareness_stage];
+      var _brJStage = _brJMap[p.awareness_stage];
       if (_brJStage) {
         var _brJMatch = _nar.emotional_journey.find(function(ej) { return ej.stage === _brJStage; });
         if (_brJMatch) _narParts.push('EMOTIONAL STAGE: ' + _brJStage + ' (' + (_brJMatch.emotion_from || '') + ' \u2192 ' + (_brJMatch.emotion_to || '') + ') — ' + (_brJMatch.language_direction || ''));
