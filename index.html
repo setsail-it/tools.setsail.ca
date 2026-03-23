@@ -364,6 +364,7 @@ textarea.inp{resize:vertical}
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
+    <button id="ai-queue-nav-toggle" style="position:relative;display:none;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)" title="Operation Queue"><i class="ti ti-list-check" style="font-size:13px"></i> Queue<span id="ai-queue-nav-badge" style="display:none;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px"></span></button>
     <button onclick="toggleSai()" id="sai-toggle" title="SetsailAI" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> SetsailAI<span id="sai-badge"></span></button>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
     <div id="user-pill" onclick="toggleUserDropdown(event)" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3)" title="Account">
@@ -2427,22 +2428,45 @@ function aiQueuePauseAll() {
 }
 
 function _renderAiQueueBadge() {
+  // Update both the AI bar badge and the nav bar button
   var badge = document.getElementById('ai-queue-badge');
-  if (!badge) return;
+  var navBtn = document.getElementById('ai-queue-nav-toggle');
+  var navBadge = document.getElementById('ai-queue-nav-badge');
   var pending = _aiQueue.filter(function(i) { return i.status === 'queued' || i.status === 'running'; }).length;
   var total = _aiQueue.length;
-  if (pending > 0) {
-    badge.style.display = 'inline-flex';
-    badge.textContent = pending;
-    badge.style.background = 'var(--accent)';
-    badge.title = pending + ' operations pending, ' + total + ' total';
-  } else if (total > 0) {
-    badge.style.display = 'inline-flex';
-    badge.textContent = '\u2713';
-    badge.style.background = 'var(--green)';
-    badge.title = 'Queue complete \u2014 ' + total + ' operations finished';
-  } else {
-    badge.style.display = 'none';
+  // Show/hide the nav button based on queue activity
+  if (navBtn) {
+    navBtn.style.display = total > 0 ? 'inline-flex' : 'none';
+  }
+  // Update nav badge
+  if (navBadge) {
+    if (pending > 0) {
+      navBadge.style.display = 'inline-flex';
+      navBadge.textContent = pending;
+      navBadge.style.background = 'var(--accent)';
+    } else if (total > 0) {
+      navBadge.style.display = 'inline-flex';
+      navBadge.textContent = '\u2713';
+      navBadge.style.background = 'var(--green)';
+    } else {
+      navBadge.style.display = 'none';
+    }
+  }
+  // Update AI bar badge
+  if (badge) {
+    if (pending > 0) {
+      badge.style.display = 'inline-flex';
+      badge.textContent = pending;
+      badge.style.background = 'var(--accent)';
+      badge.title = pending + ' operations pending, ' + total + ' total';
+    } else if (total > 0) {
+      badge.style.display = 'inline-flex';
+      badge.textContent = '\u2713';
+      badge.style.background = 'var(--green)';
+      badge.title = 'Queue complete \u2014 ' + total + ' operations finished';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 }
 
@@ -2554,15 +2578,17 @@ function _renderAiQueuePanel() {
   });
 }
 
-// Wire queue toggle button (no inline onclick)
+// Wire queue toggle buttons (no inline onclick)
 document.addEventListener('DOMContentLoaded', function() {
   var toggleBtn = document.getElementById('ai-queue-toggle');
   if (toggleBtn) toggleBtn.onclick = function() { toggleAiQueuePanel(); };
+  var navToggleBtn = document.getElementById('ai-queue-nav-toggle');
+  if (navToggleBtn) navToggleBtn.onclick = function() { toggleAiQueuePanel(); };
 });
 
 // Close queue panel when clicking outside
 document.addEventListener('click', function(e) {
-  if (_aiQueuePanelOpen && !e.target.closest('#ai-queue-panel') && !e.target.closest('#ai-queue-toggle')) {
+  if (_aiQueuePanelOpen && !e.target.closest('#ai-queue-panel') && !e.target.closest('#ai-queue-toggle') && !e.target.closest('#ai-queue-nav-toggle')) {
     _aiQueuePanelOpen = false;
     _renderAiQueuePanel();
   }
