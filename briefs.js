@@ -721,6 +721,17 @@ async function scoreBrief(pageIdx) {
     checks.push({ id: 'emotional_depth', label: 'Emotional depth — brief includes emotional direction or buyer psychology guidance' });
   }
 
+  // H1 positioning check
+  if (S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction) {
+    checks.push({ id: 'h1_positioning', label: 'H1 reflects positioning direction, not just primary keyword' });
+  }
+
+  // Proof verification check
+  checks.push({ id: 'proof_verified', label: 'Proof points are verified (AVAILABLE vs MISSING listed), no fabricated stats' });
+
+  // CTA specificity check
+  checks.push({ id: 'cta_specific', label: 'CTA architecture is specific — exact button labels, placement map, friction microcopy' });
+
   // Add SERP-aware checks if serpIntel data exists
   var serpContext = '';
   if (p.serpIntel && p.serpIntel.directives) {
@@ -1926,6 +1937,9 @@ async function generatePageBrief(pageIdx) {
     // CRO-first. Conversion architecture is the spine.
     sysPrompt = 'You are a senior CRO + SEO strategist. You write conversion-optimised page briefs for service businesses. '
       + 'CRO and SEO are equally important. Every section must serve both search intent AND move the reader toward the primary CTA. '
+      + 'CRO PRINCIPLES: Proof stacking follows credential → result → testimonial → guarantee. '
+      + 'Objections addressed in order: relevance → effectiveness → cost → risk → alternatives. '
+      + 'Every section must earn the scroll to the next. Minimum 3 CTA placements per page. '
       + 'Be specific, direct, no generic advice. Canadian spelling.';
 
     prompt = '## PAGE\n'
@@ -1957,13 +1971,15 @@ async function generatePageBrief(pageIdx) {
       + 'What does this page say that the top 3 SERP results do NOT say? '
       + 'What proof, claim, or POV makes this worth clicking over the rest? (1-2 sentences, specific)\n\n'
       + '### 3. H1 + TITLE TAG\n'
-      + 'Recommended H1 (primary keyword in first 3 words). '
-      + 'Title tag variation under 60 chars (optimised for CTR).\n\n'
+      + 'H1 PRIORITY: (1) If a POSITIONING DIRECTION exists, lead with that angle. (2) Weave primary keyword in naturally — it does NOT need to be in the first 3 words if positioning demands otherwise. '
+      + 'Example: "Marketing You Can Verify | SEO Services Vancouver" not "SEO Services Vancouver — We Show You The Math." '
+      + 'Title tag variation under 60 chars (optimised for CTR, positioning angle first).\n\n'
       + '### 4. CONVERSION ARCHITECTURE\n'
-      + 'Primary CTA (exact label + placement: hero / post-intro / sticky / end). '
-      + 'Secondary CTA if needed. '
-      + 'Primary objection this page must overcome. '
-      + 'Trust signals required (e.g. testimonial, case study, guarantee, logo bar) and where each appears.\n\n'
+      + '- **CTA placement map:** Primary CTA appears minimum 3 times (hero, mid-page after proof, end). Secondary CTA placement. Exact button labels for each.\n'
+      + '- **Proof stacking sequence:** credential badges → specific metric/result → client testimonial → risk reversal. Note which proof appears in which section.\n'
+      + '- **Objection sequence:** Address in order: relevance ("is this for businesses like mine?") → effectiveness ("does this actually work?") → cost ("is this worth the investment?") → risk ("what if it doesn\'t work?")\n'
+      + '- **Friction microcopy:** What appears near CTAs to reduce friction (e.g. "No commitment", "Free consultation", "$750 credited").\n'
+      + '- **Trust signals:** Exactly which trust signals appear where (logo bar, testimonial block, guarantee section, stats callout).\n\n'
       + '### 5. PAGE STRUCTURE (H2 SKELETON)\n'
       + 'List 5-10 H2 sections in order. Each H2 should serve both a search intent signal AND a conversion micro-step. '
       + 'Note the purpose of each section in brackets (e.g. [builds trust], [removes objection], [CTA]).\n\n'
@@ -1978,10 +1994,11 @@ async function generatePageBrief(pageIdx) {
       + '### 9. WORD COUNT + FORMAT TARGET\n'
       + 'Target word count (justify from intent + page type). '
       + 'Recommended content format (e.g. service landing page with proof blocks, not a listicle).\n\n'
-      + '### 10. E-E-A-T INPUTS REQUIRED\n'
-      + 'What proof must appear on this page to be credible? '
-      + '(e.g. specific case study result, stat, team credential, guarantee). '
-      + 'Flag if any of this is missing from what you know about the client.\n';
+      + '### 10. E-E-A-T + PROOF VERIFICATION\n'
+      + 'List all proof in two categories:\n'
+      + '- **AVAILABLE (verified):** List specific proof from the PROOF & E-E-A-T SIGNALS section above — only these can be used in copy.\n'
+      + '- **MISSING (needed):** What proof this page needs but the client hasn\'t provided. Use bracketed placeholders: [Client to provide: X].\n'
+      + '- **FABRICATION RULE:** Copy must NEVER invent statistics, percentages, case study results, or testimonial quotes. Only AVAILABLE proof can appear as claims.\n';
 
   } else if (isBlog) {
     // ── TEMPLATE 2: BLOG / FAQ / RESOURCE ────────────────────────
@@ -2017,7 +2034,7 @@ async function generatePageBrief(pageIdx) {
       + 'Is there a contrarian position, proprietary framework, or insider take this business can credibly make? '
       + '(Specific — not "bring a fresh perspective")\n\n'
       + '### 3. HEADLINE OPTIONS\n'
-      + 'H1 option (primary keyword in first 3 words, promise-led). '
+      + 'H1 option (primary keyword prominent, promise-led — keyword does NOT need to be first 3 words if a stronger hook exists). '
       + 'Title tag variation under 60 chars. '
       + 'One curiosity-gap alternative headline.\n\n'
       + '### 4. ARTICLE STRUCTURE (H2 SKELETON)\n'
@@ -2046,11 +2063,13 @@ async function generatePageBrief(pageIdx) {
 
   } else {
     // ── TEMPLATE 3: HOME / ABOUT / UTILITY ───────────────────────
-    // Intent match + trust signals + brand voice priority.
-    sysPrompt = 'You are a senior brand strategist and conversion copywriter. '
-      + 'You write briefs for homepage, about, and utility pages where brand voice and trust signals drive performance. '
-      + 'Search intent must be matched but these pages are also heavy brand touchpoints. '
-      + 'Canadian spelling.';
+    // CRO-first. Homepage is the most important page — most detailed template.
+    sysPrompt = 'You are a senior CRO strategist, brand architect, and conversion copywriter. '
+      + 'You write comprehensive briefs for homepage and core brand pages — the most important pages on any website. '
+      + 'These pages must simultaneously: (1) establish brand positioning, (2) build instant trust, (3) convert visitors across all awareness stages, and (4) satisfy navigational + branded search intent. '
+      + 'CRO PRINCIPLES: Hero section must pass the 5-second test (visitor understands who, what, why). Proof stacking follows the sequence: credential → result → testimonial → guarantee. '
+      + 'Objections are addressed in order: relevance → effectiveness → cost → risk → alternatives. '
+      + 'Every section must earn the scroll to the next section. Canadian spelling.';
 
     prompt = '## PAGE\n'
       + 'Name: '+p.page_name+'\n'
@@ -2070,30 +2089,74 @@ async function generatePageBrief(pageIdx) {
       + _gscBriefCtx + _ga4BriefCtx
       + '\n\n---\n'
       + '## BRIEF OUTPUT — write each section:\n\n'
-      + '### 1. PAGE PURPOSE + SEARCH INTENT\n'
-      + 'What is this page\'s primary job? Who lands here and from where (organic, direct, referral)? '
-      + 'What do they need to feel/know/do within 5 seconds of landing?\n\n'
+      + '### 1. PAGE PURPOSE + 5-SECOND TEST\n'
+      + 'What is this page\'s primary job? Who lands here (organic, direct, referral, paid)? '
+      + 'What must the visitor understand within 5 seconds of landing? Write the exact statement a visitor should be able to repeat after 5 seconds on this page.\n\n'
       + '### 2. BRAND VOICE DIRECTION\n'
-      + 'Specific tone instructions for this page (e.g. "warm and direct, not corporate"). '
-      + 'Words/phrases to use. Words to avoid. One sentence that captures the voice this page should feel like.\n\n'
+      + 'Specific tone for this page. Words to use. Words to avoid. '
+      + 'One sentence that captures the voice: "This page should sound like ___." '
+      + 'If a POSITIONING DIRECTION is provided, the voice must reinforce that direction.\n\n'
       + '### 3. H1 + ABOVE-FOLD CONTENT\n'
-      + 'Recommended H1. What goes above the fold: headline, subheadline, CTA, visual direction.\n\n'
-      + '### 4. PAGE STRUCTURE (H2 SKELETON)\n'
-      + 'Section list in order. For home/about pages this is lighter (4-7 sections). '
-      + 'Each section note: what trust signal or brand story moment lives here.\n\n'
-      + '### 5. TRUST SIGNAL REQUIREMENTS\n'
-      + 'Exactly which trust signals must appear and where: '
-      + 'testimonials, case study callouts, awards, team credentials, client logos, guarantees, stats. '
-      + 'Flag any that are missing from what you know about the client.\n\n'
-      + '### 6. CTA ARCHITECTURE\n'
-      + 'Primary CTA (what, where, what copy). Secondary CTA if needed. '
-      + 'What objection must be removed before a visitor will take action?\n\n'
-      + '### 7. KEYWORD + INTENT INTEGRATION\n'
-      + 'How to work the primary keyword in naturally without making it feel like an SEO page. '
-      + 'For about/team pages: how to integrate expertise signals for E-E-A-T without sounding like a CV.\n\n'
-      + '### 8. WORD COUNT + FORMAT\n'
-      + 'Target word count (home/about pages are shorter — justify). '
-      + 'Format: landing page blocks, narrative, hybrid?\n';
+      + 'H1 PRIORITY: (1) Positioning direction angle FIRST, (2) primary keyword woven in naturally. '
+      + 'Example: "Marketing You Can Verify — Vancouver Digital Marketing Agency" NOT "Vancouver Digital Marketing Agency That Shows You The Math." '
+      + 'Subheadline (1 sentence, expands on the H1 promise). Primary CTA button (exact label). '
+      + 'Trust signal strip (what appears directly under the CTA — e.g. "B Corp Certified • 200+ Government Clients • Google Partners").\n\n'
+      + '### 4. EMOTIONAL ARC + PAGE FLOW\n'
+      + 'Map the page structure to the D8 emotional journey if available:\n'
+      + '- Sections 1-2 (Hero + Social Proof): Relief/Confidence — "finally, someone who shows the math"\n'
+      + '- Section 3 (Problem): Scar — connect with the reader\'s past pain\n'
+      + '- Section 4 (Solution Bridge): Moment — "wait, they\'re showing me MY data?"\n'
+      + '- Sections 5-8 (Services, Process, Proof, Objections): Trust building\n'
+      + '- Section 9-10 (FAQ, Final CTA): Confidence/Action\n'
+      + 'For each emotional transition, note the specific emotion and language direction.\n\n'
+      + '### 5. CRO CONVERSION ARCHITECTURE (most critical section)\n'
+      + 'This section defines the conversion strategy for the entire page:\n'
+      + '- **CTA placement map:** Where each CTA appears (hero, mid-page after proof, sticky bar, end). Minimum 3 CTA placements.\n'
+      + '- **Proof stacking sequence:** Order of trust signals: credential badges → specific results → client testimonials → risk reversal/guarantee.\n'
+      + '- **Objection sequence:** Address objections in this order: relevance ("is this for me?") → effectiveness ("does it work?") → cost ("can I afford it?") → risk ("what if it doesn\'t work?") → alternatives ("why not someone else?")\n'
+      + '- **Friction reduction:** What microcopy appears near CTAs to reduce friction (e.g. "No commitment required", "$750 credited toward partnership")\n'
+      + '- **Social proof placement:** Logo bar location, testimonial placement, stats placement\n'
+      + '- **Scroll incentive:** What makes the visitor keep scrolling past each section?\n\n'
+      + '### 6. PAGE STRUCTURE (H2 SKELETON) — 8-12 sections\n'
+      + 'List sections in CRO-optimised order. Each H2 must serve both search intent AND a conversion micro-step:\n'
+      + '1. Hero (H1 + subhead + CTA + trust strip)\n'
+      + '2. Social proof bar (logos, stats, ratings)\n'
+      + '3. Problem/Agitation (speak TO the reader, not about them)\n'
+      + '4. Solution bridge (introduce the approach, not just the company)\n'
+      + '5. Services overview (what you offer, briefly)\n'
+      + '6. Process/How it works (3-5 steps)\n'
+      + '7. Proof section (case studies, results, testimonials)\n'
+      + '8. Objection handling (address top 3-5 objections)\n'
+      + '9. FAQ section (8-10 questions for schema + PAA capture)\n'
+      + '10. Final CTA (restate the offer, add urgency or risk reversal)\n'
+      + 'For each section, note: [purpose], [emotional register], [proof signal if any].\n\n'
+      + '### 7. PROOF VERIFICATION\n'
+      + 'List all proof points in two categories:\n'
+      + '- **AVAILABLE (verified):** {list from research proof points, case studies, awards, certifications}\n'
+      + '- **MISSING (needed but not provided):** {list what the page needs but client hasn\'t provided}\n'
+      + '- **DO NOT FABRICATE:** Never invent statistics, case study results, percentages, or testimonial quotes. Use only what appears in the AVAILABLE list. For MISSING items, use bracketed placeholders: [Client to provide: specific conversion rate improvement].\n\n'
+      + '### 8. KEYWORD + INTENT INTEGRATION\n'
+      + 'How to work the primary keyword in naturally — homepage is a brand page, not an SEO landing page. '
+      + 'Primary keyword in H1 (naturally), title tag, and 2-3 body mentions. '
+      + 'Supporting keywords distributed across H2s. Entity terms for topical authority.\n\n'
+      + '### 9. FAQ SECTION (H3s)\n'
+      + 'Use assigned questions verbatim as H3s. If fewer than 6 questions assigned, suggest additional questions matched to search intent. '
+      + 'Note the answer angle for each (1 line — not the answer, the direction). Target 8-10 FAQs for schema markup.\n\n'
+      + '### 10. TRUST SIGNALS + E-E-A-T REQUIREMENTS\n'
+      + 'Exactly which trust signals must appear and where:\n'
+      + '- Credential strip (above fold): certifications, partnerships, ratings\n'
+      + '- Case study callouts (after problem section): specific results with numbers\n'
+      + '- Testimonials (after services section): real client quotes with names\n'
+      + '- Team credentials (about section or footer): expertise signals\n'
+      + '- Guarantee/risk reversal (near final CTA): what reduces buyer risk\n'
+      + 'Flag any trust signals that are missing from client data.\n\n'
+      + '### 11. INTERNAL LINKS\n'
+      + 'Which 5-8 pages should the homepage link to (service pages, key blog posts, about)? '
+      + 'Anchor text recommendations. Navigation vs in-content link strategy.\n\n'
+      + '### 12. WORD COUNT + FORMAT TARGET\n'
+      + 'Target: 2,000-2,500 words for homepage. Justify if different. '
+      + 'Format: landing page with distinct visual blocks, not a wall of text. '
+      + 'Each section should be a visually distinct card/block with clear heading, body, and optional CTA or proof element.\n';
   }
 
   // ── INPUT SIZE ESTIMATION ─────────────────────────────────────────
