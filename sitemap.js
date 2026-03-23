@@ -1183,20 +1183,29 @@ function _runSitemapHealthCheck() {
 function _computeEnrichmentPct() {
   var pages = (S.pages || []).filter(function(p) { return !p.is_structural; });
   if (!pages.length) return 0;
-  var enriched = 0;
+  var totalPoints = 0;
+  var earnedPoints = 0;
   pages.forEach(function(p) {
-    var has = 0; var need = 4;
-    if (p.target_persona) has++;
-    if (p.page_goal) has++;
-    if (p.awareness_stage) has++;
-    if (p.primary_keyword) has++;
-    if (['blog', 'article', 'recipe', 'event', 'portfolio'].indexOf((p.page_type || '').toLowerCase()) >= 0) {
-      need++;
-      if (p.content_pillar) has++;
+    var type = (p.page_type || '').toLowerCase();
+    // Pages that don't need persona (they serve all visitors)
+    var noPersonaNeeded = ['home', 'about', 'contact', 'utility', 'faq', 'team', 'terms', 'privacy'].indexOf(type) >= 0;
+    // Pages that don't need a primary keyword (structural/utility)
+    var noKwNeeded = ['home', 'about', 'contact', 'utility', 'terms', 'privacy', 'team'].indexOf(type) >= 0;
+
+    // Page goal — required for all
+    totalPoints++; if (p.page_goal) earnedPoints++;
+    // Awareness stage — required for all
+    totalPoints++; if (p.awareness_stage) earnedPoints++;
+    // Primary keyword — required for content pages, not for utility/structural
+    if (!noKwNeeded) { totalPoints++; if (p.primary_keyword) earnedPoints++; }
+    // Persona — required for service/blog/location pages, not for utility/home
+    if (!noPersonaNeeded) { totalPoints++; if (p.target_persona) earnedPoints++; }
+    // Content pillar — required only for blog/article pages
+    if (['blog', 'article', 'recipe', 'event', 'portfolio'].indexOf(type) >= 0) {
+      totalPoints++; if (p.content_pillar) earnedPoints++;
     }
-    if (has >= need) enriched++;
   });
-  return Math.round(enriched / pages.length * 100);
+  return totalPoints > 0 ? Math.round(earnedPoints / totalPoints * 100) : 0;
 }
 
 function _computeWorkflowSteps() {
