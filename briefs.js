@@ -1521,12 +1521,24 @@ function renderBriefs() {
 async function generatePageBrief(pageIdx) {
   var p = S.pages[pageIdx];
   if (!p) return;
-  // If another AI operation is running AND queue is available, add to queue instead of blocking
+  // If queue available AND something running, queue it
   if (_aiBarActive && typeof aiQueueAdd === 'function') {
-    aiQueueAdd('brief', 'Brief: ' + (p.page_name || p.slug), function() { return generatePageBrief(pageIdx); }, p.slug);
+    aiQueueAdd('brief', 'Brief: ' + (p.page_name || p.slug), function() { return _executePageBrief(pageIdx); }, p.slug);
     aiBarNotify('Queued brief for ' + (p.page_name || p.slug), { duration: 2000 });
     return;
   }
+  // If queue available and nothing running, still register for visibility
+  if (typeof aiQueueAdd === 'function') {
+    aiQueueAdd('brief', 'Brief: ' + (p.page_name || p.slug), function() { return _executePageBrief(pageIdx); }, p.slug);
+    return;
+  }
+  // Fallback: no queue
+  return _executePageBrief(pageIdx);
+}
+
+async function _executePageBrief(pageIdx) {
+  var p = S.pages[pageIdx];
+  if (!p) return;
   var btn = document.getElementById('brief-btn-'+pageIdx);
   var streamEl = document.getElementById('brief-stream-'+pageIdx);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>'; }
