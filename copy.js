@@ -875,7 +875,8 @@ async function runCopyPage(slug) {
 }
 
 function toggleCopyExpand(slug) {
-  if (S.copyRunning) return;
+  // Allow expanding other rows while copy is running — only block the actively-writing slug
+  if (S.copyRunning && S.copyCurrentSlug === slug) return;
   S.copyExpandedSlug = S.copyExpandedSlug === slug ? null : slug;
   renderCopyQueue();
 }
