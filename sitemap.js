@@ -591,10 +591,21 @@ async function assignContentPillars() {
       var batch = blogPages.slice(bi, bi + BATCH_SIZE);
       aiBarStart('Assigning pillars (' + bi + '/' + blogPages.length + ')...');
       var user = pillarList + '\n\nBLOG PAGES:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | kw: ' + (p.primary_keyword || 'none'); }).join('\n');
-      var result = await callClaude(sys, user, null, 3000);
+      var result = null;
+      try {
+        result = await callClaude(sys, user, null, 3000, 'pillars-batch');
+      } catch(ce) {
+        console.warn('[pillars] batch', bi, 'failed:', ce.message);
+        aiBarNotify('Pillars batch failed: ' + ce.message.slice(0, 50) + ' — retrying...', { duration: 3000 });
+        await new Promise(function(res) { setTimeout(res, 4000); });
+        try { result = await callClaude(sys, user, null, 3000, 'pillars-retry'); } catch(ce2) {
+          console.error('[pillars] batch', bi, 'retry failed:', ce2.message);
+          aiBarNotify('Pillars batch ' + Math.floor(bi/BATCH_SIZE + 1) + ' failed after retry', { duration: 4000 });
+        }
+      }
       if (!result) continue;
       var jsonMatch = result.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) { console.warn('[pillars] batch', bi, 'no JSON array — skipping'); continue; }
+      if (!jsonMatch) { console.warn('[pillars] batch', bi, 'no JSON array in response — skipping'); aiBarNotify('Pillar assignment failed: No JSON array in response', { duration: 4000 }); continue; }
       try {
         var assignments = JSON.parse(jsonMatch[0]);
         assignments.forEach(function(a) {
@@ -605,7 +616,8 @@ async function assignContentPillars() {
           if (page && a.pillar) { page.content_pillar = a.pillar; totalCount++; }
         });
       } catch(pe) { console.warn('[pillars] batch', bi, 'parse error:', pe.message); }
-      if (bi + BATCH_SIZE < blogPages.length) await new Promise(function(res) { setTimeout(res, 1500); });
+      // Delay between batches to avoid rate limits
+      if (bi + BATCH_SIZE < blogPages.length) await new Promise(function(res) { setTimeout(res, 2000); });
     }
     scheduleSave();
     renderSitemapResults(S.sitemapApproved);
