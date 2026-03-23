@@ -741,6 +741,11 @@ async function fullBuildSitemap() {
       enrichSitemapWithLiveData();
     }
 
+    // Step 8: Structure Review — AI checks for misclassifications and hierarchy issues
+    if (!window._aiStopAll) {
+      await runStructureReview();
+    }
+
     aiBarEnd();
     renderSitemapResults(S.sitemapApproved);
     scheduleSave();
@@ -3164,6 +3169,7 @@ function _renderSitemapResultsInner(approved) {
     }
   }
   html += '<button class="btn btn-ghost sm" data-tip="Opens a visual site architecture diagram showing page hierarchy and relationships. Includes rendered preview, SVG download, and Mermaid code for FigJam." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Architecture</button>';
+  html += '<button class="btn btn-ghost sm" data-tip="AI reviews the full page list for misclassifications, missing categories, hierarchy issues, and duplicate intent." style="font-size:11px;padding:2px 8px" onclick="runStructureReview()"><i class="ti ti-git-branch"></i> Structure Review</button>';
   html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
   html += '</div></div>';
   html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
@@ -3541,6 +3547,9 @@ function _renderSitemapResultsInner(approved) {
   // Wire workflow strip + issues panel click handlers
   _mountWorkflowStrip();
   if (_sitemapIssuesExpanded) _mountIssuesPanel();
+
+  // Render structure review panel if results exist
+  renderStructureReview();
 
   // Restore cached Content Intelligence panels if data exists
   if (S.contentIntel?.paa?.questions?.length) renderPAAPanel();
@@ -4707,5 +4716,225 @@ async function runGapAnalysis() {
   btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> Analyse Gaps';
 }
 
+
+// ── STRUCTURE REVIEW ───────────────────────────────────────────────
+
+var _structureReviewCollapsed = false;
+
+async function runStructureReview() {
+  if (!S.pages || !S.pages.length) { aiBarNotify('No pages to review — generate the sitemap first', { isError: true, duration: 3000 }); return; }
+
+  aiBarStart('Running structure review\u2026');
+
+  // Build page summary grouped by type
+  var pageSummary = {};
+  S.pages.forEach(function(p) {
+    var type = p.page_type || 'other';
+    if (!pageSummary[type]) pageSummary[type] = [];
+    pageSummary[type].push({ slug: p.slug, name: p.page_name, primary_keyword: p.primary_keyword || '' });
+  });
+
+  // Gather context from Research and Strategy
+  var industry = '';
+  var services = '';
+  if (S.research) {
+    industry = S.research.industry || S.research.business_type || '';
+    services = (S.research.primary_services || []).join(', ');
+  }
+  var positioning = '';
+  if (S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction) {
+    positioning = S.strategy.positioning.selected_direction.direction || S.strategy.positioning.selected_direction.label || '';
+  }
+
+  var sys = 'You are a senior SEO architect reviewing a website sitemap for structural issues. Analyse the page list and identify misclassifications, missing categories, and hierarchy problems. Output ONLY valid JSON.';
+
+  var user = 'PAGE SUMMARY BY TYPE:\n' + JSON.stringify(pageSummary, null, 2)
+    + '\n\nCLIENT: ' + (S.setup && S.setup.client || '')
+    + '\nINDUSTRY: ' + esc(industry)
+    + '\nSERVICES: ' + esc(services)
+    + '\nPOSITIONING DIRECTION: ' + esc(positioning)
+    + '\n\nReview this sitemap structure and identify:\n'
+    + '1. Pages in the wrong category (e.g. case studies labelled as locations, about/contact in "other")\n'
+    + '2. Missing categories that should exist based on page content (e.g. no case-studies category when portfolio pages exist)\n'
+    + '3. Pages that should be nested under a parent (e.g. /our-work/client-name should be under a /our-work/ hub)\n'
+    + '4. Category bloat (too many pages in one type, suggesting it should be split — e.g. "services" containing both service pages AND industry vertical pages)\n'
+    + '5. Duplicate intent (two pages targeting the same keyword or serving the same purpose)\n'
+    + '\nReturn JSON matching this schema exactly:\n'
+    + '{\n'
+    + '  "issues": [\n'
+    + '    {\n'
+    + '      "type": "reclassify" | "missing_category" | "category_split" | "duplicate_intent" | "hierarchy",\n'
+    + '      "severity": "warning" | "info",\n'
+    + '      "description": "string",\n'
+    + '      "affected_slugs": ["slug1", "slug2"],\n'
+    + '      "current_type": "string (optional)",\n'
+    + '      "suggested_type": "string (optional)",\n'
+    + '      "suggested_category": "string (optional)",\n'
+    + '      "reason": "string"\n'
+    + '    }\n'
+    + '  ],\n'
+    + '  "summary": "string"\n'
+    + '}\n'
+    + '\nOnly report genuine issues. If the structure is sound, return {"issues":[],"summary":"No structural issues found"}.';
+
+  try {
+    var result = '';
+    await callClaude(sys, user, function(chunk) { result = chunk; }, 3000, 'structure-review');
+    var parsed = _parseAiJson(result);
+    if (!parsed || !parsed.issues) {
+      aiBarEnd();
+      aiBarNotify('Structure review returned invalid data — try again', { isError: true, duration: 4000 });
+      return;
+    }
+    S._sitemapStructureReview = { issues: parsed.issues, summary: parsed.summary || '', reviewedAt: Date.now() };
+    _structureReviewCollapsed = false;
+    aiBarEnd();
+    renderStructureReview();
+    renderSitemapResults(S.sitemapApproved);
+    var issueCount = parsed.issues.length;
+    aiBarNotify('Structure review complete \u2014 ' + issueCount + ' issue' + (issueCount !== 1 ? 's' : '') + ' found', { duration: 4000 });
+  } catch (err) {
+    aiBarEnd();
+    aiBarNotify('Structure review error: ' + err.message, { isError: true, duration: 5000 });
+    console.error('[runStructureReview]', err);
+  }
+}
+
+function renderStructureReview() {
+  var existing = document.getElementById('structure-review-panel');
+  if (existing) existing.remove();
+
+  var review = S._sitemapStructureReview;
+  if (!review || !review.issues || !review.issues.length) return;
+
+  var container = document.createElement('div');
+  container.id = 'structure-review-panel';
+  container.style.cssText = 'margin-bottom:14px';
+
+  var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+    + '<span style="font-size:12px;font-weight:600;color:var(--n3)"><i class="ti ti-git-branch" style="font-size:13px;margin-right:2px"></i> Structure Review</span>'
+    + '<span style="font-size:10px;background:rgba(245,166,35,0.1);color:#92400e;padding:2px 8px;border-radius:10px">' + review.issues.length + ' issue' + (review.issues.length !== 1 ? 's' : '') + '</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;align-items:center">'
+    + '<button class="btn btn-ghost sm structure-review-toggle" style="font-size:10px;padding:2px 8px">' + (_structureReviewCollapsed ? 'Expand' : 'Collapse') + '</button>'
+    + '<button class="btn btn-ghost sm structure-review-dismiss-all" style="font-size:10px;padding:2px 8px;color:var(--n2)">Dismiss All</button>'
+    + '</div></div>';
+
+  var bodyHtml = '';
+  if (!_structureReviewCollapsed) {
+    if (review.summary) {
+      bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-bottom:8px;font-style:italic">' + esc(review.summary) + '</div>';
+    }
+    review.issues.forEach(function(issue, i) {
+      var icon = issue.severity === 'warning' ? '\u26A0\uFE0F' : '\u2139\uFE0F';
+      var slugList = (issue.affected_slugs || []).map(function(s) { return esc(s); });
+      var slugDisplay = slugList.length > 5 ? slugList.slice(0, 5).join(', ') + ' +' + (slugList.length - 5) + ' more' : slugList.join(', ');
+
+      bodyHtml += '<div style="padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)">'
+        + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">'
+        + '<div style="min-width:0">'
+        + '<div style="font-size:13px;font-weight:500">' + icon + ' ' + esc(issue.description) + '</div>';
+      if (slugDisplay) {
+        bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-top:4px;word-break:break-all">' + slugDisplay + '</div>';
+      }
+      if (issue.reason) {
+        bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-top:2px;font-style:italic">' + esc(issue.reason) + '</div>';
+      }
+      bodyHtml += '</div>'
+        + '<div style="display:flex;gap:6px;flex-shrink:0">';
+      if (issue.type !== 'duplicate_intent') {
+        bodyHtml += '<button class="btn btn-primary sm structure-review-btn" data-action="apply" data-idx="' + i + '" style="font-size:11px;padding:4px 10px">Apply</button>';
+      }
+      bodyHtml += '<button class="btn btn-ghost sm structure-review-btn" data-action="dismiss" data-idx="' + i + '" style="font-size:11px;padding:4px 10px">Dismiss</button>'
+        + '</div></div></div>';
+    });
+  }
+
+  container.innerHTML = headerHtml + bodyHtml;
+
+  // Insert above the page list, after the workflow strip / issues panel
+  var resultsEl = document.getElementById('sitemap-results');
+  if (resultsEl) {
+    // Find a good insertion point — after category tabs or at the top of results
+    var firstChild = resultsEl.firstChild;
+    if (firstChild) resultsEl.insertBefore(container, firstChild);
+    else resultsEl.appendChild(container);
+  }
+
+  // Wire event handlers (no inline onclick)
+  container.querySelectorAll('.structure-review-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      var idx = parseInt(btn.getAttribute('data-idx'));
+      if (btn.getAttribute('data-action') === 'apply') applyStructureReviewFix(idx);
+      else dismissStructureReviewIssue(idx);
+    };
+  });
+
+  var toggleBtn = container.querySelector('.structure-review-toggle');
+  if (toggleBtn) {
+    toggleBtn.onclick = function() {
+      _structureReviewCollapsed = !_structureReviewCollapsed;
+      renderStructureReview();
+    };
+  }
+
+  var dismissAllBtn = container.querySelector('.structure-review-dismiss-all');
+  if (dismissAllBtn) {
+    dismissAllBtn.onclick = function() {
+      S._sitemapStructureReview = null;
+      renderStructureReview();
+      aiBarNotify('Structure review dismissed', { duration: 2000 });
+    };
+  }
+}
+
+function applyStructureReviewFix(issueIdx) {
+  var review = S._sitemapStructureReview;
+  if (!review || !review.issues || !review.issues[issueIdx]) return;
+
+  var issue = review.issues[issueIdx];
+  var changeCount = 0;
+
+  if (issue.type === 'reclassify' || issue.type === 'category_split' || issue.type === 'missing_category') {
+    var targetType = issue.suggested_type || issue.suggested_category || '';
+    if (!targetType) { aiBarNotify('No suggested type to apply', { isError: true, duration: 3000 }); return; }
+    (issue.affected_slugs || []).forEach(function(slug) {
+      var page = S.pages.find(function(p) { return p.slug === slug; });
+      if (page) {
+        page.page_type = targetType;
+        changeCount++;
+      }
+    });
+  } else if (issue.type === 'duplicate_intent') {
+    // Don't auto-fix duplicates — mark with warning
+    if (issue.affected_slugs && issue.affected_slugs.length >= 2) {
+      for (var di = 1; di < issue.affected_slugs.length; di++) {
+        var dupPage = S.pages.find(function(p) { return p.slug === issue.affected_slugs[di]; });
+        if (dupPage) {
+          dupPage._duplicate_of = issue.affected_slugs[0];
+          changeCount++;
+        }
+      }
+    }
+  }
+
+  // Remove the applied issue
+  review.issues.splice(issueIdx, 1);
+  if (!review.issues.length) S._sitemapStructureReview = null;
+
+  scheduleSave();
+  renderSitemapResults(S.sitemapApproved);
+  renderStructureReview();
+  aiBarNotify('Applied fix: ' + changeCount + ' page' + (changeCount !== 1 ? 's' : '') + ' updated', { duration: 3000 });
+}
+
+function dismissStructureReviewIssue(issueIdx) {
+  var review = S._sitemapStructureReview;
+  if (!review || !review.issues) return;
+  review.issues.splice(issueIdx, 1);
+  if (!review.issues.length) S._sitemapStructureReview = null;
+  renderStructureReview();
+}
 
 // ── COPY ───────────────────────────────────────────────────────────
