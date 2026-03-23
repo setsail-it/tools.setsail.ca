@@ -1501,7 +1501,56 @@ async function _aiFixIssue(fixId) {
       }
     }
     aiBarEnd();
-    aiBarNotify('Assigned keywords to ' + totalAssigned + ' pages', { duration: 4000 });
+    aiBarNotify('Assigned keywords to ' + totalAssigned + ' pages', { duration: 3000 });
+
+    // Auto-fetch volumes for generated keywords that have no volume data
+    if (totalAssigned > 0 && !window._aiStopAll) {
+      var genKwPages = pages.filter(function(p) { return p._kwGenerated && p.primary_keyword && (!p.primary_vol || p.primary_vol === 0); });
+      if (genKwPages.length) {
+        aiBarStart('Fetching volumes for ' + genKwPages.length + ' generated keywords\u2026');
+        var country = (typeof detectCountry === 'function') ? detectCountry((S.setup || {}).geo || '') : 'CA';
+        var volBatchSize = 100;
+        var volFetched = 0;
+        for (var vb = 0; vb < genKwPages.length; vb += volBatchSize) {
+          if (window._aiStopAll) break;
+          var volBatch = genKwPages.slice(vb, vb + volBatchSize);
+          var kwList = volBatch.map(function(p) { return p.primary_keyword; });
+          try {
+            var volRes = await fetch('/api/kw-expand', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ keywords: kwList, country: country, limit: kwList.length })
+            });
+            if (volRes.ok) {
+              var volData = await volRes.json();
+              var volItems = volData.items || volData.tasks && volData.tasks[0] && volData.tasks[0].result || [];
+              volBatch.forEach(function(p) {
+                var match = volItems.find(function(v) { return (v.keyword || v.kw || '').toLowerCase() === p.primary_keyword.toLowerCase(); });
+                if (match) {
+                  p.primary_vol = match.search_volume || match.vol || 0;
+                  p.primary_kd = match.keyword_difficulty || match.kd || 0;
+                  if (p.primary_vol > 0) {
+                    p.score = Math.round((Math.log(p.primary_vol + 1) * 100 / Math.max(p.primary_kd || 5, 5)) * 10) / 10;
+                    delete p._kwGenerated;
+                    volFetched++;
+                  }
+                }
+              });
+            }
+          } catch(ve) {
+            console.warn('[no-kw fix] volume fetch error:', ve.message);
+          }
+          if (vb + volBatchSize < genKwPages.length) {
+            await new Promise(function(res) { setTimeout(res, 1500); });
+          }
+        }
+        aiBarEnd();
+        if (volFetched > 0) {
+          aiBarNotify('Found volumes for ' + volFetched + '/' + genKwPages.length + ' generated keywords', { duration: 4000 });
+        }
+        scheduleSave();
+      }
+    }
   }
 
   else if (fixId === 'zero-vol') {
