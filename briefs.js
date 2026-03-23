@@ -1616,6 +1616,29 @@ async function generatePageBrief(pageIdx) {
     _clientPainCtx = _cpParts.join('\n');
   }
 
+  // D6 Content & Authority context — quick wins, pillar alignment, timeline priority
+  var _d6Ctx = '';
+  if (p._source === 'd6-quick-win' || p._source === 'd6-pillar' || p._d6_quick_win) {
+    var _d6Parts = ['\n## CONTENT STRATEGY CONTEXT (from D6 Content & Authority)'];
+    if (p._source === 'd6-quick-win') {
+      _d6Parts.push('This page was created as a D6 QUICK WIN: ' + (p.page_name || ''));
+      if (p._d6_impact) _d6Parts.push('Expected impact: ' + p._d6_impact);
+      if (p._d6_timeline) _d6Parts.push('Timeline: ' + p._d6_timeline);
+      if (p._d6_effort) _d6Parts.push('Effort level: ' + p._d6_effort);
+      _d6Parts.push('IMPORTANT: This page exists specifically to capture a quick-win opportunity. The brief should be focused and action-oriented — optimised for fast production and immediate ranking impact.');
+    }
+    if (p._source === 'd6-pillar') {
+      _d6Parts.push('This is a D6 CONTENT PILLAR page for: ' + (p._content_pillar || ''));
+      _d6Parts.push('IMPORTANT: This page anchors a content cluster. It should be comprehensive, link-worthy, and serve as the authoritative hub for this topic. Design the brief for depth, not just keywords.');
+    }
+    if (p._d6_quick_win && p._source !== 'd6-quick-win') {
+      _d6Parts.push('D6 QUICK WIN OPTIMISATION TARGET: ' + p._d6_quick_win);
+      if (p._d6_timeline) _d6Parts.push('Timeline: ' + p._d6_timeline);
+      _d6Parts.push('IMPORTANT: This existing page has been flagged for optimisation. The brief should preserve what works while addressing the specific improvement opportunity identified above.');
+    }
+    _d6Ctx = _d6Parts.join('\n');
+  }
+
   // Positioning direction: the strategic narrative spine
   var _directionCtx = '';
   if (S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction) {
@@ -1662,6 +1685,7 @@ async function generatePageBrief(pageIdx) {
     'Value proposition: '+_vp,
     _directionCtx,
     _narrativeCtx,
+    _d6Ctx,
     'Key differentiators: '+(_kd.length ? _kd.join('; ') : 'none provided'),
     'Proof points: '+(_ep.length ? _ep.join('; ') : 'none provided'),
     'Brand voice: '+(_bv||_tv||'professional') + _voiceRules,
