@@ -999,7 +999,8 @@ async function generateMetaTags(slug, page, copyHtml) {
     + (_metaSlogan ? '\nTagline: ' + _metaSlogan : '')
     + (_metaPosDir && _metaPosDir.headline ? '\nPositioning: ' + _metaPosDir.headline : '')
     + '\nCopy excerpt:\n' + stripped
-    + '\n\nRules:\n- Title: 50-60 chars, primary keyword in first 3 words, brand name at end with |'
+    + '\n\nRules:\n- Title: 50-60 chars, brand name at end with |'
+    + (p.page_type === 'home' ? '\n- HOMEPAGE TITLE: Lead with the positioning direction or value proposition, NOT the primary keyword. The keyword should appear naturally but not be the first words. Example: "Marketing You Can Verify | Setsail Marketing" NOT "Digital Marketing Agency Vancouver | Setsail"' : '\n- Primary keyword in first 3 words for non-homepage pages')
     + '\n- Title should reflect the positioning direction if provided'
     + '\n- Description: 150-160 chars, action-oriented, include primary keyword naturally'
     + (_metaWordsAvoid.length ? '\n- Do NOT use these words: ' + _metaWordsAvoid.join(', ') : '')
