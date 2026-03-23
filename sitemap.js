@@ -1464,12 +1464,17 @@ async function _aiFixIssue(fixId) {
         + '\n\nReturn a JSON array: [{"slug":"page-slug","keyword":"assigned or generated keyword","source":"pool|generated"}]\nOnly return the JSON array, nothing else.';
 
       try {
-        var result = '';
-        await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result = chunk; }, 4096, 'kw-fix');
+        var result = await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, null, 4096, 'kw-fix');
+        console.log('[no-kw fix] Batch', batchNum, 'response length:', result.length, 'first 200:', result.slice(0, 200));
         var parsed = _parseAiJson(result);
+        console.log('[no-kw fix] Batch', batchNum, 'parsed items:', Array.isArray(parsed) ? parsed.length : 'NOT ARRAY', parsed && parsed[0] ? JSON.stringify(parsed[0]) : 'empty');
         if (Array.isArray(parsed)) {
           parsed.forEach(function(item) {
             var page = pages.find(function(p) { return p.slug === item.slug; });
+            if (!page && item.slug) {
+              // Try matching without leading slash
+              page = pages.find(function(p) { return p.slug === item.slug.replace(/^\/+/, ''); });
+            }
             if (page && item.keyword) {
               page.primary_keyword = item.keyword;
               var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
