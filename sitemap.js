@@ -2615,16 +2615,23 @@ async function generateAllPageGoals(mode, startBatch) {
     try {
       var count = await _generateGoalBatch(batchIndices);
       generated += count;
+      if (count < batchIndices.length) {
+        console.warn('[goals batch ' + (b+1) + '] only ' + count + '/' + batchIndices.length + ' goals parsed — some slugs may not have matched');
+      }
       scheduleSave();
     } catch(e) {
-      console.warn('[goals batch] failed:', e.message);
-      // Retry once after 2s delay
-      await new Promise(function(r) { setTimeout(r, 2000); });
+      console.warn('[goals batch ' + (b+1) + '] failed:', e.message);
+      if (_meta) _meta.textContent = 'Batch ' + (b+1) + ' failed: ' + e.message.slice(0, 40) + ' — retrying...';
+      // Retry once after 4s delay (rate limit recovery)
+      await new Promise(function(r) { setTimeout(r, 4000); });
       try {
         var count2 = await _generateGoalBatch(batchIndices);
         generated += count2;
         scheduleSave();
-      } catch(e2) { console.warn('[goals batch retry] failed:', e2.message); }
+      } catch(e2) {
+        console.error('[goals batch ' + (b+1) + ' retry] failed:', e2.message);
+        aiBarNotify('Goals batch ' + (b+1) + ' failed after retry: ' + e2.message.slice(0, 60), { duration: 5000 });
+      }
     }
 
     // In 'batch' mode, stop after one batch
@@ -2643,8 +2650,8 @@ async function generateAllPageGoals(mode, startBatch) {
       return;
     }
 
-    // Small delay between batches to avoid rate limits
-    if (b < totalBatches - 1) await new Promise(function(r) { setTimeout(r, 500); });
+    // Delay between batches to avoid rate limits (2s gives breathing room for 60 calls/5min)
+    if (b < totalBatches - 1) await new Promise(function(r) { setTimeout(r, 2000); });
   }
 
   window._aiStopResumeCtx = null;
