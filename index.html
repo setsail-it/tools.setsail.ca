@@ -364,7 +364,7 @@ textarea.inp{resize:vertical}
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
-    <button id="ai-queue-nav-toggle" style="position:relative;display:none;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)" title="Operation Queue"><i class="ti ti-list-check" style="font-size:13px"></i> Queue<span id="ai-queue-nav-badge" style="display:none;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px"></span></button>
+    <button id="ai-queue-nav-toggle" style="position:relative;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)" title="Operation Queue"><i class="ti ti-list-check" style="font-size:13px"></i> Queue<span id="ai-queue-nav-badge" style="display:none;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px"></span></button>
     <button onclick="toggleSai()" id="sai-toggle" title="SetsailAI" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> SetsailAI<span id="sai-badge"></span></button>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
     <div id="user-pill" onclick="toggleUserDropdown(event)" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3)" title="Account">
@@ -2434,9 +2434,9 @@ function _renderAiQueueBadge() {
   var navBadge = document.getElementById('ai-queue-nav-badge');
   var pending = _aiQueue.filter(function(i) { return i.status === 'queued' || i.status === 'running'; }).length;
   var total = _aiQueue.length;
-  // Show/hide the nav button based on queue activity
+  // Nav button always visible — badge shows queue state
   if (navBtn) {
-    navBtn.style.display = total > 0 ? 'inline-flex' : 'none';
+    navBtn.style.display = 'flex';
   }
   // Update nav badge
   if (navBadge) {
