@@ -816,7 +816,14 @@ function buildCopyPrompt(page) {
 
 async function runCopyPage(slug) {
   const page = orderedPages().find(p => p.slug === slug);
-  if (!page || S.copyRunning) return;
+  if (!page) return;
+  // If another AI operation is running AND queue is available, add to queue
+  if ((S.copyRunning || _aiBarActive) && typeof aiQueueAdd === 'function') {
+    aiQueueAdd('copy', 'Copy: ' + (page.page_name || slug), function() { return runCopyPage(slug); }, slug);
+    aiBarNotify('Queued copy for ' + (page.page_name || slug), { duration: 2000 });
+    return;
+  }
+  if (S.copyRunning) return;
   S.copyRunning = true; copyStopFlag = false;
   S.copyCurrentSlug = slug;
   S.copyExpandedSlug = slug;

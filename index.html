@@ -354,6 +354,7 @@ textarea.inp{resize:vertical}
       <span id="ai-bar-label" style="cursor:default"></span>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <button id="ai-bar-stop" onclick="aiStopAll()" style="display:none;background:none;border:1px solid var(--border);border-radius:4px;padding:1px 8px;font-size:10px;font-family:var(--font);color:var(--n2);cursor:pointer;white-space:nowrap;line-height:1.4" onmouseenter="this.style.borderColor='#e5534b';this.style.color='#e5534b'" onmouseleave="this.style.borderColor='var(--border)';this.style.color='var(--n2)'">Stop</button>
+        <button id="ai-queue-toggle" style="border:none;background:none;cursor:pointer;padding:2px 6px;position:relative;display:flex;align-items:center" title="Operation Queue"><i class="ti ti-list-check" style="font-size:14px;color:var(--n2)"></i><span id="ai-queue-badge" style="display:none;position:absolute;top:-2px;right:0;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px">0</span></button>
         <span id="ai-bar-meta"></span>
       </div>
     </div>
@@ -2147,6 +2148,12 @@ window._aiAbortCtrl = null;
 window._aiStopAll = false;
 window._aiStopResumeCtx = null;
 
+// ── AI Operation Queue ──────────────────────────────────────
+var _aiQueue = [];
+var _aiQueueProcessing = false;
+var _aiQueueIdCounter = 0;
+var _aiQueuePanelOpen = false;
+
 function aiStopAll() {
   window._aiStopAll = true;
   // Abort current streaming fetch
@@ -2320,6 +2327,257 @@ function aiBarQueue(done, total, avgSeconds) {
   } else if (meta) {
     meta.textContent = '';
   }
+}
+
+// ── AI Operation Queue Functions ─────────────────────────────────
+
+function aiQueueAdd(type, label, fn, pageSlug) {
+  var item = {
+    id: ++_aiQueueIdCounter,
+    type: type,
+    label: label,
+    pageSlug: pageSlug || null,
+    fn: fn,
+    status: 'queued',
+    addedAt: Date.now(),
+    startedAt: null,
+    completedAt: null,
+    result: null,
+    error: null
+  };
+  _aiQueue.push(item);
+  _renderAiQueueBadge();
+  _renderAiQueuePanel();
+  if (!_aiQueueProcessing) _aiQueueProcess();
+  return item.id;
+}
+
+async function _aiQueueProcess() {
+  if (_aiQueueProcessing) return;
+  _aiQueueProcessing = true;
+
+  while (true) {
+    var next = _aiQueue.find(function(item) { return item.status === 'queued'; });
+    if (!next || window._aiStopAll) {
+      _aiQueueProcessing = false;
+      _renderAiQueueBadge();
+      _renderAiQueuePanel();
+      if (!next) aiBarEnd('Queue complete');
+      return;
+    }
+
+    next.status = 'running';
+    next.startedAt = Date.now();
+    _renderAiQueueBadge();
+    _renderAiQueuePanel();
+
+    try {
+      var result = await next.fn();
+      next.status = 'done';
+      next.completedAt = Date.now();
+      next.result = result || { time: Math.round((Date.now() - next.startedAt) / 1000) };
+    } catch (e) {
+      if (e.name === 'AbortError' || window._aiStopAll) {
+        next.status = 'cancelled';
+        _aiQueue.forEach(function(item) {
+          if (item.status === 'queued') item.status = 'cancelled';
+        });
+        _aiQueueProcessing = false;
+        _renderAiQueueBadge();
+        _renderAiQueuePanel();
+        return;
+      }
+      next.status = 'error';
+      next.error = e.message;
+      next.completedAt = Date.now();
+    }
+
+    _renderAiQueueBadge();
+    _renderAiQueuePanel();
+
+    // Pause between items to avoid rate limits
+    await new Promise(function(res) { setTimeout(res, 2000); });
+  }
+}
+
+function aiQueueRemove(id) {
+  var idx = _aiQueue.findIndex(function(item) { return item.id === id; });
+  if (idx < 0) return;
+  var item = _aiQueue[idx];
+  if (item.status !== 'running') {
+    _aiQueue.splice(idx, 1);
+  }
+  _renderAiQueueBadge();
+  _renderAiQueuePanel();
+}
+
+function aiQueueClear() {
+  _aiQueue = _aiQueue.filter(function(item) {
+    return item.status === 'running' || item.status === 'queued';
+  });
+  _renderAiQueueBadge();
+  _renderAiQueuePanel();
+}
+
+function aiQueuePauseAll() {
+  window._aiStopAll = true;
+  if (window._aiAbortCtrl) {
+    try { window._aiAbortCtrl.abort(); } catch(e) {}
+  }
+}
+
+function _renderAiQueueBadge() {
+  var badge = document.getElementById('ai-queue-badge');
+  if (!badge) return;
+  var pending = _aiQueue.filter(function(i) { return i.status === 'queued' || i.status === 'running'; }).length;
+  var total = _aiQueue.length;
+  if (pending > 0) {
+    badge.style.display = 'inline-flex';
+    badge.textContent = pending;
+    badge.style.background = 'var(--accent)';
+    badge.title = pending + ' operations pending, ' + total + ' total';
+  } else if (total > 0) {
+    badge.style.display = 'inline-flex';
+    badge.textContent = '\u2713';
+    badge.style.background = 'var(--green)';
+    badge.title = 'Queue complete \u2014 ' + total + ' operations finished';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function toggleAiQueuePanel() {
+  _aiQueuePanelOpen = !_aiQueuePanelOpen;
+  _renderAiQueuePanel();
+}
+
+function _renderAiQueuePanel() {
+  var panel = document.getElementById('ai-queue-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'ai-queue-panel';
+    panel.style.cssText = 'position:fixed;top:44px;right:16px;width:380px;max-height:400px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:500;display:none;font-family:var(--font)';
+    document.body.appendChild(panel);
+  }
+
+  if (!_aiQueuePanelOpen) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+
+  if (_aiQueue.length === 0) {
+    panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--n2);font-size:12px">No operations in queue</div>';
+    return;
+  }
+
+  var html = '<div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">'
+    + '<span style="font-size:12px;font-weight:600">Operation Queue</span>'
+    + '<div style="display:flex;gap:6px">';
+
+  var hasCompleted = _aiQueue.some(function(i) { return i.status === 'done' || i.status === 'error' || i.status === 'cancelled'; });
+  if (hasCompleted) {
+    html += '<button id="ai-queue-clear-btn" style="border:none;background:none;color:var(--n2);font-size:10px;cursor:pointer;text-decoration:underline">Clear Finished</button>';
+  }
+  var hasQueued = _aiQueue.some(function(i) { return i.status === 'queued' || i.status === 'running'; });
+  if (hasQueued) {
+    html += '<button id="ai-queue-pause-btn" style="border:none;background:none;color:var(--error);font-size:10px;cursor:pointer;text-decoration:underline">Stop All</button>';
+  }
+  html += '</div></div>';
+
+  var sorted = _aiQueue.slice().sort(function(a, b) {
+    var order = { running: 0, queued: 1, error: 2, done: 3, cancelled: 4 };
+    return (order[a.status] || 5) - (order[b.status] || 5);
+  });
+
+  html += '<div style="padding:6px">';
+  sorted.forEach(function(item) {
+    var icon = '\u23F8';
+    var statusColour = 'var(--n2)';
+    var statusText = 'Queued';
+    var bg = 'transparent';
+
+    if (item.status === 'running') {
+      icon = '<span class="spinner" style="width:10px;height:10px;border-top-color:var(--accent)"></span>';
+      statusColour = 'var(--accent)';
+      statusText = 'Running';
+      var elapsed = Math.round((Date.now() - item.startedAt) / 1000);
+      statusText += ' (' + elapsed + 's)';
+      bg = 'rgba(59,130,246,0.05)';
+    } else if (item.status === 'done') {
+      icon = '\u2713';
+      statusColour = 'var(--green)';
+      var secs = item.result && item.result.time ? item.result.time : Math.round((item.completedAt - item.startedAt) / 1000);
+      statusText = 'Done (' + secs + 's)';
+    } else if (item.status === 'error') {
+      icon = '\u2717';
+      statusColour = 'var(--error)';
+      statusText = 'Error';
+    } else if (item.status === 'cancelled') {
+      icon = '\u2014';
+      statusColour = 'var(--n2)';
+      statusText = 'Cancelled';
+    }
+
+    var typeLabels = { brief: '\uD83D\uDCCB', copy: '\u270F\uFE0F', audit: '\uD83D\uDD0D', diagnostic: '\u26A1', other: '\u2699\uFE0F' };
+    var typeIcon = typeLabels[item.type] || '\u2699\uFE0F';
+
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;margin-bottom:2px;background:' + bg + '">'
+      + '<span style="font-size:12px;flex-shrink:0">' + typeIcon + '</span>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(item.label) + '</div>'
+      + '<div style="font-size:9px;color:' + statusColour + '">' + icon + ' ' + statusText
+      + (item.error ? ' \u2014 ' + esc(item.error.slice(0, 40)) : '')
+      + '</div>'
+      + '</div>';
+
+    if (item.status !== 'running') {
+      html += '<button class="ai-queue-remove-btn" data-queue-id="' + item.id + '" style="border:none;background:none;color:var(--n2);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0;opacity:0.5" title="Remove">\u00D7</button>';
+    }
+
+    html += '</div>';
+  });
+  html += '</div>';
+
+  panel.innerHTML = html;
+
+  // Wire buttons via onclick (no inline onclick concat)
+  var clearBtn = document.getElementById('ai-queue-clear-btn');
+  if (clearBtn) clearBtn.onclick = function() { aiQueueClear(); };
+  var pauseBtn = document.getElementById('ai-queue-pause-btn');
+  if (pauseBtn) pauseBtn.onclick = function() { aiQueuePauseAll(); };
+  panel.querySelectorAll('.ai-queue-remove-btn').forEach(function(btn) {
+    btn.onclick = function() {
+      var qid = parseInt(btn.getAttribute('data-queue-id'));
+      aiQueueRemove(qid);
+    };
+  });
+}
+
+// Wire queue toggle button (no inline onclick)
+document.addEventListener('DOMContentLoaded', function() {
+  var toggleBtn = document.getElementById('ai-queue-toggle');
+  if (toggleBtn) toggleBtn.onclick = function() { toggleAiQueuePanel(); };
+});
+
+// Close queue panel when clicking outside
+document.addEventListener('click', function(e) {
+  if (_aiQueuePanelOpen && !e.target.closest('#ai-queue-panel') && !e.target.closest('#ai-queue-toggle')) {
+    _aiQueuePanelOpen = false;
+    _renderAiQueuePanel();
+  }
+});
+
+// Update running item timer display every second
+setInterval(function() {
+  if (_aiQueuePanelOpen && _aiQueue.some(function(i) { return i.status === 'running'; })) {
+    _renderAiQueuePanel();
+  }
+}, 1000);
+
+// Helper for other files to check if queue is available
+function isAiQueueAvailable() {
+  return typeof aiQueueAdd === 'function';
 }
 
 // ── Session Expired Handler ──────────────────────────────────────
