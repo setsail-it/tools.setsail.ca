@@ -25,7 +25,10 @@ var LEVER_SERVICE_MAP = {
   video:             'video-production',
   content_marketing: 'seo',
   branding:          'branding',
-  local_seo:         'seo'
+  local_seo:         'seo',
+  hosting:           'hosting',
+  tracking:          'tracking',
+  strategy:          'strategy'
 };
 
 async function fetchPricingCatalog() {
@@ -1158,18 +1161,18 @@ function _buildScopeIncludes(svc) {
 function _getTierNames(svc) {
   // v2 preset-based tier names
   if (svc && svc.presets && svc.presets.length) {
-    var pricedPresets = svc.presets.filter(function(pr) { return pr.price && !pr.autoPrice; });
+    var pricedPresets = svc.presets.filter(function(pr) { return pr.price; });
     if (pricedPresets.length) {
       var sorted = pricedPresets.slice().sort(function(a, b) { return (a.price || 0) - (b.price || 0); });
       return sorted.map(function(pr) {
         return { id: pr.key, name: pr.name, price: pr.price, setupFee: pr.setupFee || 0, isPreset: true };
       });
     }
-    // Auto-priced presets (website, video) — return with autoPrice flag
-    var autoPresets = svc.presets.filter(function(pr) { return pr.autoPrice; });
+    // Auto-priced presets (website, video) — no price field means scope-dependent
+    var autoPresets = svc.presets.filter(function(pr) { return !pr.price; });
     if (autoPresets.length) {
       return autoPresets.map(function(pr) {
-        return { id: pr.key, name: pr.name, price: 0, autoPrice: true, isPreset: true };
+        return { id: pr.key, name: pr.name, price: 0, autoPrice: true, isPreset: true, desc: pr.desc || '' };
       });
     }
   }
