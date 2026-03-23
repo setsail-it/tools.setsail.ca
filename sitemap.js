@@ -1412,50 +1412,82 @@ async function _aiFixIssue(fixId) {
   var clusters = (S.kwResearch && S.kwResearch.clusters) || [];
 
   if (fixId === 'no-kw') {
-    // Assign best keywords to pages missing them
-    var needKw = pages.filter(function(p) {
+    // Assign best keywords to pages missing them — batched, auto-loops
+    var allNeedKw = pages.filter(function(p) {
       if (p.is_structural) return false;
       var t = (p.page_type || '').toLowerCase();
       if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
       return !p.primary_keyword;
-    }).slice(0, 40); // batch limit
-    if (!needKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
+    });
+    if (!allNeedKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
 
     var usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
     var availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    var geo = ((S.research || {}).geography || {}).primary || (S.setup || {}).geo || '';
+    var industry = (S.research || {}).industry || '';
 
-    var prompt = 'Assign the best primary keyword to each page. Pick from the available keywords list. Match by relevance to the page name, slug, and type. Each keyword can only be used once.\n\n'
-      + 'PAGES NEEDING KEYWORDS:\n' + needKw.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
-      + '\n\nAVAILABLE KEYWORDS (pick from these, sorted by volume):\n' + availKws.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
-      + '\n\nReturn a JSON array: [{"slug":"...","keyword":"..."}]\nOnly return the JSON array, nothing else.';
+    var totalAssigned = 0;
+    var batchSize = 25;
+    for (var batchStart = 0; batchStart < allNeedKw.length; batchStart += batchSize) {
+      if (window._aiStopAll) break;
+      var batch = allNeedKw.slice(batchStart, batchStart + batchSize);
+      aiBarStart('AI assigning keywords: batch ' + (Math.floor(batchStart / batchSize) + 1) + '/' + Math.ceil(allNeedKw.length / batchSize) + ' (' + totalAssigned + ' assigned so far)');
 
-    aiBarStart('AI assigning keywords to ' + needKw.length + ' pages\u2026');
-    try {
-      var result = '';
-      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result = chunk; }, 4096, 'kw-fix');
-      var parsed = _parseAiJson(result);
-      var assigned = 0;
-      if (Array.isArray(parsed)) {
-        parsed.forEach(function(item) {
-          var page = pages.find(function(p) { return p.slug === item.slug; });
-          if (page && item.keyword) {
-            page.primary_keyword = item.keyword;
-            var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
-            if (kwData) {
-              page.primary_vol = kwData.vol || 0;
-              page.primary_kd = kwData.kd || 0;
-              page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+      // Rebuild available list each batch (exclude newly assigned)
+      usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
+      availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+
+      var kwSection = availKws.length > 0
+        ? '\n\nAVAILABLE KEYWORDS FROM RESEARCH (prefer these, sorted by volume):\n' + availKws.slice(0, 60).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+        : '';
+
+      var prompt = 'Assign the best primary keyword to each page.\n\n'
+        + 'RULES:\n'
+        + '- First, try to match from the AVAILABLE KEYWORDS list below (these have real search volume data)\n'
+        + '- If no good match exists in the list, GENERATE a relevant keyword that someone would search to find this page\n'
+        + '- Generated keywords should be specific, searchable phrases (2-5 words), not generic terms\n'
+        + '- Consider the page type, industry (' + (industry || 'general') + '), and location (' + (geo || 'general') + ')\n'
+        + '- Each keyword can only be used once across all pages\n'
+        + '- For blog posts, use informational/question-based keywords\n'
+        + '- For service pages, use commercial-intent keywords with geo modifiers\n\n'
+        + 'PAGES NEEDING KEYWORDS:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
+        + kwSection
+        + '\n\nReturn a JSON array: [{"slug":"page-slug","keyword":"assigned or generated keyword","source":"pool|generated"}]\nOnly return the JSON array, nothing else.';
+
+      try {
+        var result = '';
+        await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, function(chunk) { result = chunk; }, 4096, 'kw-fix');
+        var parsed = _parseAiJson(result);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(function(item) {
+            var page = pages.find(function(p) { return p.slug === item.slug; });
+            if (page && item.keyword) {
+              page.primary_keyword = item.keyword;
+              var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+              if (kwData) {
+                page.primary_vol = kwData.vol || 0;
+                page.primary_kd = kwData.kd || 0;
+                page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+              } else {
+                // Generated keyword — mark for volume lookup later
+                page.primary_vol = 0;
+                page.primary_kd = 0;
+                page._kwGenerated = true;
+              }
+              totalAssigned++;
             }
-            assigned++;
-          }
-        });
+          });
+        }
+      } catch (e) {
+        console.warn('[no-kw fix] batch error:', e.message);
       }
-      aiBarEnd();
-      aiBarNotify('Assigned keywords to ' + assigned + ' pages', { duration: 4000 });
-    } catch (e) {
-      aiBarEnd();
-      aiBarNotify('AI keyword assignment failed: ' + e.message, { isError: true, duration: 4000 });
+      // Pause between batches to avoid rate limits
+      if (batchStart + batchSize < allNeedKw.length) {
+        await new Promise(function(res) { setTimeout(res, 2000); });
+      }
     }
+    aiBarEnd();
+    aiBarNotify('Assigned keywords to ' + totalAssigned + ' pages', { duration: 4000 });
   }
 
   else if (fixId === 'zero-vol') {
