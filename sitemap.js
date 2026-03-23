@@ -578,34 +578,39 @@ async function assignContentPillars() {
   // Build pillar list (handle both string and object formats)
   var pillarNames = pillars.map(function(p) { return typeof p === 'string' ? p : (p.name || p.pillar || p.topic || String(p)); });
 
-  var sys = 'You are a content strategist. Given a list of blog pages and a list of content pillars, assign each blog page to the single best-fit pillar. Every page MUST be assigned to a pillar — always pick the closest match, never leave any unassigned. Output ONLY a JSON array of objects: [{"slug":"...","pillar":"..."}]. No explanation.';
-  var user = 'CONTENT PILLARS:\n' + pillarNames.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n')
-    + '\n\nBLOG PAGES:\n' + blogPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | kw: ' + (p.primary_keyword || 'none'); }).join('\n');
+  var sys = 'You are a content strategist. Given blog pages and content pillars, assign each page to the single best-fit pillar. Every page MUST be assigned — always pick the closest match. Output ONLY a JSON array: [{"slug":"...","pillar":"..."}]. No explanation, no markdown.';
+  var pillarList = 'CONTENT PILLARS:\n' + pillarNames.map(function(n, i) { return (i + 1) + '. ' + n; }).join('\n');
 
-  aiBarStart('Assigning content pillars...');
+  // Batch pages (40 per call) to avoid truncation on large sitemaps
+  var BATCH_SIZE = 40;
+  var totalCount = 0;
+  aiBarStart('Assigning content pillars (0/' + blogPages.length + ')...');
   try {
-    var result = await callClaude(sys, user, null, 2000);
-    if (!result) throw new Error('Empty response from AI');
-    // Parse JSON from response
-    var jsonMatch = result.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No JSON array in response');
-    var assignments = JSON.parse(jsonMatch[0]);
-    var count = 0;
-    assignments.forEach(function(a) {
-      var rawSlug = (a.slug || '').replace(/^\//, '');
-      var page = S.pages.find(function(p) { return p.slug === rawSlug; });
-      // Fallback: try matching without blog/ prefix or with it added
-      if (!page) page = S.pages.find(function(p) { return p.slug === 'blog/' + rawSlug; });
-      if (!page) page = S.pages.find(function(p) { return p.slug === rawSlug.replace(/^blog\//, ''); });
-      if (page && a.pillar) {
-        page.content_pillar = a.pillar;
-        count++;
-      }
-    });
+    for (var bi = 0; bi < blogPages.length; bi += BATCH_SIZE) {
+      if (window._aiStopAll) break;
+      var batch = blogPages.slice(bi, bi + BATCH_SIZE);
+      aiBarStart('Assigning pillars (' + bi + '/' + blogPages.length + ')...');
+      var user = pillarList + '\n\nBLOG PAGES:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | kw: ' + (p.primary_keyword || 'none'); }).join('\n');
+      var result = await callClaude(sys, user, null, 3000);
+      if (!result) continue;
+      var jsonMatch = result.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) { console.warn('[pillars] batch', bi, 'no JSON array — skipping'); continue; }
+      try {
+        var assignments = JSON.parse(jsonMatch[0]);
+        assignments.forEach(function(a) {
+          var rawSlug = (a.slug || '').replace(/^\//, '');
+          var page = S.pages.find(function(p) { return p.slug === rawSlug; });
+          if (!page) page = S.pages.find(function(p) { return p.slug === 'blog/' + rawSlug; });
+          if (!page) page = S.pages.find(function(p) { return p.slug === rawSlug.replace(/^blog\//, ''); });
+          if (page && a.pillar) { page.content_pillar = a.pillar; totalCount++; }
+        });
+      } catch(pe) { console.warn('[pillars] batch', bi, 'parse error:', pe.message); }
+      if (bi + BATCH_SIZE < blogPages.length) await new Promise(function(res) { setTimeout(res, 1500); });
+    }
     scheduleSave();
     renderSitemapResults(S.sitemapApproved);
     if (typeof _updateContextBar === 'function') _updateContextBar();
-    aiBarNotify('Assigned pillars to ' + count + ' blog pages', { duration: 4000 });
+    aiBarNotify('Assigned pillars to ' + totalCount + ' blog pages', { duration: 4000 });
   } catch (e) {
     aiBarNotify('Pillar assignment failed: ' + e.message, { isError: true, duration: 4000 });
   }
