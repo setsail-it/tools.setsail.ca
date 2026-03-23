@@ -2846,4 +2846,15 @@ function _perfStat(label, value) {
     '</div>';
 }
 
+// ── Breadcrumb completeness accessor ─────────────────────────────
+
+function getResearchCompleteness() {
+  try {
+    var c = calcResearchCompleteness();
+    return c.total.pct || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
 // ── KEYWORD RESEARCH (DataForSEO — runs after Research stage) ──────

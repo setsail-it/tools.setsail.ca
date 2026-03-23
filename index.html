@@ -563,6 +563,13 @@ textarea.inp{resize:vertical}
           </div>
         </div>
       </div>
+      <div class="card" style="padding:20px;margin-bottom:16px">
+        <div class="section-mark"><span class="section-mark-label">Proof Bank</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px">Store verified testimonials, case study results, and stats. Brief and copy prompts pull ONLY from this bank — preventing fabrication.</p>
+        <div id="proof-bank-testimonials"></div>
+        <div id="proof-bank-cases"></div>
+        <div id="proof-bank-stats"></div>
+      </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Discovery &amp; Pain Context</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Paste any notes from discovery calls, intake forms, emails, or conversations that describe the client's situation and problems. This feeds Research and Strategy stages.</p>
@@ -1437,6 +1444,7 @@ function prefillSetup() {
   }
   renderDocsList();
   renderTranscriptsList();
+  renderProofBank();
 }
 
 // ── CALL TRANSCRIPTS ────────────────────────────────────────────────
@@ -1564,6 +1572,281 @@ function _syncTranscriptVoC() {
       S.research.voc_swipe_raw = existing + transcriptBlock;
     }
   }
+}
+
+// ── PROOF BANK ─────────────────────────────────────────────────────
+
+function getProofBank() {
+  if (!S.setup || !S.setup.proofBank) return { testimonials: [], caseStudies: [], stats: [] };
+  return S.setup.proofBank;
+}
+
+function getProofBankContext() {
+  var pb = getProofBank();
+  var parts = [];
+  if (pb.testimonials.length) {
+    parts.push('VERIFIED TESTIMONIALS:');
+    pb.testimonials.forEach(function(t) {
+      parts.push('  "' + t.quote + '" \u2014 ' + t.author + ', ' + t.title + ' at ' + t.company);
+    });
+  }
+  if (pb.caseStudies.length) {
+    parts.push('VERIFIED CASE STUDIES:');
+    pb.caseStudies.forEach(function(cs) {
+      parts.push('  ' + cs.client + ': ' + cs.result + ' (' + cs.timeframe + ')' + (cs.ongoing ? ' [ongoing]' : ''));
+    });
+  }
+  if (pb.stats.length) {
+    parts.push('VERIFIED STATS:');
+    pb.stats.forEach(function(s) {
+      parts.push('  ' + s.claim + ' (source: ' + s.source + ')');
+    });
+  }
+  if (!parts.length) return '';
+  return '\n\n## PROOF BANK (use ONLY these verified proof points)\n' + parts.join('\n');
+}
+
+function _ensureProofBank() {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.proofBank) S.setup.proofBank = { testimonials: [], caseStudies: [], stats: [] };
+  return S.setup.proofBank;
+}
+
+function addProofTestimonial() {
+  var quoteEl = document.getElementById('pb-t-quote');
+  var authorEl = document.getElementById('pb-t-author');
+  var titleEl = document.getElementById('pb-t-title');
+  var companyEl = document.getElementById('pb-t-company');
+  var dateEl = document.getElementById('pb-t-date');
+  if (!quoteEl || !authorEl) return;
+  var quote = quoteEl.value.trim();
+  var author = authorEl.value.trim();
+  if (!quote) { aiBarNotify('Quote text is required', { duration: 3000 }); return; }
+  if (!author) { aiBarNotify('Author name is required', { duration: 3000 }); return; }
+  var pb = _ensureProofBank();
+  pb.testimonials.push({
+    quote: quote,
+    author: author,
+    title: (titleEl ? titleEl.value.trim() : ''),
+    company: (companyEl ? companyEl.value.trim() : ''),
+    date: (dateEl ? dateEl.value.trim() : ''),
+    verified: true
+  });
+  quoteEl.value = ''; authorEl.value = '';
+  if (titleEl) titleEl.value = '';
+  if (companyEl) companyEl.value = '';
+  if (dateEl) dateEl.value = '';
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Testimonial added to Proof Bank', { duration: 2500 });
+}
+
+function removeProofTestimonial(idx) {
+  var pb = _ensureProofBank();
+  pb.testimonials.splice(idx, 1);
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Testimonial removed', { duration: 2000 });
+}
+
+function addProofCaseStudy() {
+  var clientEl = document.getElementById('pb-cs-client');
+  var challengeEl = document.getElementById('pb-cs-challenge');
+  var resultEl = document.getElementById('pb-cs-result');
+  var metricEl = document.getElementById('pb-cs-metric');
+  var metricTypeEl = document.getElementById('pb-cs-metric-type');
+  var timeframeEl = document.getElementById('pb-cs-timeframe');
+  var ongoingEl = document.getElementById('pb-cs-ongoing');
+  if (!clientEl || !resultEl) return;
+  var client = clientEl.value.trim();
+  var result = resultEl.value.trim();
+  if (!client) { aiBarNotify('Client name is required', { duration: 3000 }); return; }
+  if (!result) { aiBarNotify('Result description is required', { duration: 3000 }); return; }
+  var pb = _ensureProofBank();
+  pb.caseStudies.push({
+    client: client,
+    challenge: (challengeEl ? challengeEl.value.trim() : ''),
+    result: result,
+    metric: (metricEl ? metricEl.value.trim() : ''),
+    metricType: (metricTypeEl ? metricTypeEl.value : ''),
+    timeframe: (timeframeEl ? timeframeEl.value.trim() : ''),
+    ongoing: (ongoingEl ? ongoingEl.checked : false),
+    verified: true
+  });
+  clientEl.value = '';
+  if (challengeEl) challengeEl.value = '';
+  resultEl.value = '';
+  if (metricEl) metricEl.value = '';
+  if (metricTypeEl) metricTypeEl.value = '';
+  if (timeframeEl) timeframeEl.value = '';
+  if (ongoingEl) ongoingEl.checked = false;
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Case study added to Proof Bank', { duration: 2500 });
+}
+
+function removeProofCaseStudy(idx) {
+  var pb = _ensureProofBank();
+  pb.caseStudies.splice(idx, 1);
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Case study removed', { duration: 2000 });
+}
+
+function addProofStat() {
+  var claimEl = document.getElementById('pb-s-claim');
+  var sourceEl = document.getElementById('pb-s-source');
+  var dateEl = document.getElementById('pb-s-date');
+  if (!claimEl) return;
+  var claim = claimEl.value.trim();
+  if (!claim) { aiBarNotify('Claim text is required', { duration: 3000 }); return; }
+  var pb = _ensureProofBank();
+  pb.stats.push({
+    claim: claim,
+    source: (sourceEl ? sourceEl.value.trim() : ''),
+    date: (dateEl ? dateEl.value.trim() : ''),
+    verified: true
+  });
+  claimEl.value = '';
+  if (sourceEl) sourceEl.value = '';
+  if (dateEl) dateEl.value = '';
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Stat added to Proof Bank', { duration: 2500 });
+}
+
+function removeProofStat(idx) {
+  var pb = _ensureProofBank();
+  pb.stats.splice(idx, 1);
+  scheduleSave();
+  renderProofBank();
+  aiBarNotify('Stat removed', { duration: 2000 });
+}
+
+function renderProofBank() {
+  var tContainer = document.getElementById('proof-bank-testimonials');
+  var csContainer = document.getElementById('proof-bank-cases');
+  var sContainer = document.getElementById('proof-bank-stats');
+  if (!tContainer || !csContainer || !sContainer) return;
+  var pb = getProofBank();
+
+  // ── Testimonials ──
+  var tHtml = '<div style="margin-bottom:14px">';
+  tHtml += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="ti ti-quote" style="font-size:14px;color:var(--lime)"></i> Testimonials <span style="font-size:11px;font-weight:400;color:var(--n2)">(' + pb.testimonials.length + ')</span></div>';
+  if (pb.testimonials.length) {
+    pb.testimonials.forEach(function(t, i) {
+      tHtml += '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--white)">';
+      tHtml += '<div style="flex:1;min-width:0">';
+      tHtml += '<div style="font-size:12px;font-style:italic;color:var(--dark);margin-bottom:4px">\u201c' + esc(t.quote) + '\u201d</div>';
+      tHtml += '<div style="font-size:11px;color:var(--n2)">' + esc(t.author);
+      if (t.title) tHtml += ', ' + esc(t.title);
+      if (t.company) tHtml += ' at ' + esc(t.company);
+      if (t.date) tHtml += ' \u00b7 ' + esc(t.date);
+      tHtml += '</div></div>';
+      if (t.verified) tHtml += '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(205,232,0,.15);color:var(--lime);white-space:nowrap">Verified</span>';
+      tHtml += '<button class="btn btn-ghost sm pb-t-remove" data-idx="' + i + '" title="Remove" style="padding:4px 6px;font-size:12px;min-width:auto;color:var(--red,#e53e3e)">\u00d7</button>';
+      tHtml += '</div>';
+    });
+  } else {
+    tHtml += '<p style="font-size:11px;color:var(--n2);margin:0 0 6px">No testimonials yet.</p>';
+  }
+  tHtml += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+  tHtml += '<textarea id="pb-t-quote" placeholder="Exact quote text..." style="width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font);background:var(--bg);color:var(--dark);resize:vertical"></textarea>';
+  tHtml += '<div class="grid-2" style="gap:6px">';
+  tHtml += '<input id="pb-t-author" class="inp" placeholder="Author name" style="font-size:12px">';
+  tHtml += '<input id="pb-t-title" class="inp" placeholder="Title / role" style="font-size:12px">';
+  tHtml += '</div>';
+  tHtml += '<div class="grid-2" style="gap:6px">';
+  tHtml += '<input id="pb-t-company" class="inp" placeholder="Company" style="font-size:12px">';
+  tHtml += '<input id="pb-t-date" class="inp" placeholder="Date (e.g. 2024-01)" style="font-size:12px">';
+  tHtml += '</div>';
+  tHtml += '<div><button class="btn btn-primary sm" id="pb-t-add-btn"><i class="ti ti-plus"></i> Add Testimonial</button></div>';
+  tHtml += '</div></div>';
+  tContainer.innerHTML = tHtml;
+  // Bind testimonial buttons
+  var tAddBtn = document.getElementById('pb-t-add-btn');
+  if (tAddBtn) tAddBtn.onclick = addProofTestimonial;
+  tContainer.querySelectorAll('.pb-t-remove').forEach(function(btn) {
+    btn.onclick = function() { removeProofTestimonial(parseInt(btn.getAttribute('data-idx'), 10)); };
+  });
+
+  // ── Case Studies ──
+  var csHtml = '<div style="margin-bottom:14px">';
+  csHtml += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="ti ti-chart-bar" style="font-size:14px;color:var(--lime)"></i> Case Studies <span style="font-size:11px;font-weight:400;color:var(--n2)">(' + pb.caseStudies.length + ')</span></div>';
+  if (pb.caseStudies.length) {
+    pb.caseStudies.forEach(function(cs, i) {
+      var challengeSnip = (cs.challenge || '').length > 80 ? cs.challenge.substring(0, 80) + '\u2026' : (cs.challenge || '');
+      csHtml += '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--white)">';
+      csHtml += '<div style="flex:1;min-width:0">';
+      csHtml += '<div style="font-size:12px;font-weight:500;color:var(--dark)">' + esc(cs.client) + '</div>';
+      if (challengeSnip) csHtml += '<div style="font-size:11px;color:var(--n2);margin-top:2px">' + esc(challengeSnip) + '</div>';
+      csHtml += '<div style="font-size:11px;color:var(--dark);margin-top:3px;font-weight:500">' + esc(cs.result);
+      if (cs.timeframe) csHtml += ' <span style="color:var(--n2);font-weight:400">in ' + esc(cs.timeframe) + '</span>';
+      csHtml += '</div></div>';
+      if (cs.ongoing) csHtml += '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,0.1);color:#3b82f6;white-space:nowrap">Ongoing</span>';
+      csHtml += '<button class="btn btn-ghost sm pb-cs-remove" data-idx="' + i + '" title="Remove" style="padding:4px 6px;font-size:12px;min-width:auto;color:var(--red,#e53e3e)">\u00d7</button>';
+      csHtml += '</div>';
+    });
+  } else {
+    csHtml += '<p style="font-size:11px;color:var(--n2);margin:0 0 6px">No case studies yet.</p>';
+  }
+  csHtml += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+  csHtml += '<div class="grid-2" style="gap:6px">';
+  csHtml += '<input id="pb-cs-client" class="inp" placeholder="Client / company name" style="font-size:12px">';
+  csHtml += '<input id="pb-cs-result" class="inp" placeholder="Result (e.g. 140% conversion increase)" style="font-size:12px">';
+  csHtml += '</div>';
+  csHtml += '<textarea id="pb-cs-challenge" placeholder="Challenge description..." style="width:100%;min-height:50px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:var(--font);background:var(--bg);color:var(--dark);resize:vertical"></textarea>';
+  csHtml += '<div class="grid-2" style="gap:6px">';
+  csHtml += '<input id="pb-cs-metric" class="inp" placeholder="Metric value (e.g. 140%)" style="font-size:12px">';
+  csHtml += '<select id="pb-cs-metric-type" class="inp" style="font-size:12px"><option value="">Metric type...</option><option value="conversion_rate">Conversion Rate</option><option value="cost_reduction">Cost Reduction</option><option value="revenue_growth">Revenue Growth</option><option value="lead_increase">Lead Increase</option><option value="other">Other</option></select>';
+  csHtml += '</div>';
+  csHtml += '<div class="grid-2" style="gap:6px">';
+  csHtml += '<input id="pb-cs-timeframe" class="inp" placeholder="Timeframe (e.g. 90 days)" style="font-size:12px">';
+  csHtml += '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 0"><input type="checkbox" id="pb-cs-ongoing" style="accent-color:var(--lime)"> Ongoing engagement</label>';
+  csHtml += '</div>';
+  csHtml += '<div><button class="btn btn-primary sm" id="pb-cs-add-btn"><i class="ti ti-plus"></i> Add Case Study</button></div>';
+  csHtml += '</div></div>';
+  csContainer.innerHTML = csHtml;
+  var csAddBtn = document.getElementById('pb-cs-add-btn');
+  if (csAddBtn) csAddBtn.onclick = addProofCaseStudy;
+  csContainer.querySelectorAll('.pb-cs-remove').forEach(function(btn) {
+    btn.onclick = function() { removeProofCaseStudy(parseInt(btn.getAttribute('data-idx'), 10)); };
+  });
+
+  // ── Stats ──
+  var sHtml = '<div>';
+  sHtml += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px;display:flex;align-items:center;gap:6px"><i class="ti ti-hash" style="font-size:14px;color:var(--lime)"></i> Stats &amp; Claims <span style="font-size:11px;font-weight:400;color:var(--n2)">(' + pb.stats.length + ')</span></div>';
+  if (pb.stats.length) {
+    pb.stats.forEach(function(s, i) {
+      sHtml += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--white)">';
+      sHtml += '<div style="flex:1;min-width:0">';
+      sHtml += '<div style="font-size:12px;color:var(--dark)">' + esc(s.claim) + '</div>';
+      var meta = [];
+      if (s.source) meta.push('Source: ' + esc(s.source));
+      if (s.date) meta.push(esc(s.date));
+      if (meta.length) sHtml += '<div style="font-size:11px;color:var(--n2);margin-top:2px">' + meta.join(' \u00b7 ') + '</div>';
+      sHtml += '</div>';
+      if (s.verified) sHtml += '<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(205,232,0,.15);color:var(--lime);white-space:nowrap">Verified</span>';
+      sHtml += '<button class="btn btn-ghost sm pb-s-remove" data-idx="' + i + '" title="Remove" style="padding:4px 6px;font-size:12px;min-width:auto;color:var(--red,#e53e3e)">\u00d7</button>';
+      sHtml += '</div>';
+    });
+  } else {
+    sHtml += '<p style="font-size:11px;color:var(--n2);margin:0 0 6px">No stats yet.</p>';
+  }
+  sHtml += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+  sHtml += '<input id="pb-s-claim" class="inp" placeholder="Claim (e.g. 73% faster campaign deployment)" style="font-size:12px">';
+  sHtml += '<div class="grid-2" style="gap:6px">';
+  sHtml += '<input id="pb-s-source" class="inp" placeholder="Source (e.g. internal measurement)" style="font-size:12px">';
+  sHtml += '<input id="pb-s-date" class="inp" placeholder="Date (e.g. 2024-06)" style="font-size:12px">';
+  sHtml += '</div>';
+  sHtml += '<div><button class="btn btn-primary sm" id="pb-s-add-btn"><i class="ti ti-plus"></i> Add Stat</button></div>';
+  sHtml += '</div></div>';
+  sContainer.innerHTML = sHtml;
+  var sAddBtn = document.getElementById('pb-s-add-btn');
+  if (sAddBtn) sAddBtn.onclick = addProofStat;
+  sContainer.querySelectorAll('.pb-s-remove').forEach(function(btn) {
+    btn.onclick = function() { removeProofStat(parseInt(btn.getAttribute('data-idx'), 10)); };
+  });
 }
 
 // ── NAVIGATION ─────────────────────────────────────────────────────
@@ -1777,7 +2060,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initTranscriptBtn(); renderTranscriptsList(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
   if (stage === 'snapshot') {
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
     if (S.snapshot) { renderSnapshot(); if (_snapClearBtn) _snapClearBtn.style.display = ''; }
@@ -3240,6 +3523,9 @@ function setupNext() {
     // Analytics connections
     gscSiteUrl: (document.getElementById('f-gsc-site')?.value||''),
     ga4PropertyId: (document.getElementById('f-ga4-property')?.value||''),
+    // Proof Bank + transcripts (preserved from live state)
+    proofBank: prev.proofBank || { testimonials: [], caseStudies: [], stats: [] },
+    transcripts: prev.transcripts || [],
   };
   document.getElementById('client-name-nav').textContent = client;
   document.getElementById('nav-meta-wrap').style.display = '';

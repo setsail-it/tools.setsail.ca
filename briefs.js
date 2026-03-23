@@ -1521,9 +1521,9 @@ function renderBriefs() {
 async function generatePageBrief(pageIdx) {
   var p = S.pages[pageIdx];
   if (!p) return;
-  // If queue available AND something running, queue it
-  if (_aiBarActive && typeof aiQueueAdd === 'function') {
-    aiQueueAdd('brief', 'Brief: ' + (p.page_name || p.slug), function() { return _executePageBrief(pageIdx); }, p.slug);
+  // If AI is already busy, queue this brief instead of blocking
+  if ((window._aiBarActive || S.copyRunning) && typeof aiQueueAdd === 'function') {
+    aiQueueAdd('brief', 'Brief: ' + (p.page_name || p.slug), function() { return generatePageBrief(pageIdx); }, p.slug);
     aiBarNotify('Queued brief for ' + (p.page_name || p.slug), { duration: 2000 });
     return;
   }
