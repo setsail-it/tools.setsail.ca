@@ -38,6 +38,9 @@ async function fetchPricingCatalog() {
     if (cat && cat.services && cat.services.length) {
       _pricingCatalog = cat;
       _pricingStatus = 'live';
+      if (cat._schema && cat._schema.indexOf('v2') >= 0) {
+        console.log('[pricing] v2 catalog detected — presets + guardrails available');
+      }
       console.log('[pricing] Catalog loaded: ' + cat.services.length + ' services');
       return _pricingCatalog;
     }
@@ -64,6 +67,17 @@ function lookupServicePricing(leverKey) {
 function getServiceMonthlyCost(service) {
   if (!service || !service.pricing) return null;
   var p = service.pricing;
+  // v2 preset-based pricing — extract range from priced presets
+  if (service.presets && service.presets.length) {
+    var pricedPresets = service.presets.filter(function(pr) { return pr.price && !pr.autoPrice; });
+    if (pricedPresets.length) {
+      var sorted = pricedPresets.slice().sort(function(a, b) { return (a.price || 0) - (b.price || 0); });
+      var pMin = sorted[0].price;
+      var pMax = sorted[sorted.length - 1].price;
+      var pMid = sorted.length >= 2 ? sorted[Math.floor(sorted.length / 2)].price : Math.round((pMin + pMax) / 2);
+      return { min: pMin, max: pMax, mid: pMid, presets: sorted };
+    }
+  }
   // Nested monthly object (pricing.monthly.min / pricing.monthly.max)
   if (p.monthly && typeof p.monthly === 'object' && p.monthly.min) {
     return { min: p.monthly.min, max: p.monthly.max || p.monthly.min, mid: Math.round(((p.monthly.min || 0) + (p.monthly.max || p.monthly.min || 0)) / 2) };
@@ -549,7 +563,8 @@ function buildInvestmentText() {
         var _rS = Object.assign({}, s, { scope: rScope });
         var realTxt = rEnabled ? '$' + _scopeEffectiveCost(_rS).toLocaleString() + '/mo' : '\u2014 (cut)';
         var roiTxt = s.roi && s.roi.multiplier > 0 ? s.roi.multiplier + 'x (' + s.roi.timeline + ')' : '\u2014';
-        txt += '| ' + s.name + ' | $' + sugCost.toLocaleString() + '/mo (' + s.scope + ') | ' + realTxt + ' | ' + roiTxt + ' |\n';
+        var _scopeLbl = s.presetName ? s.presetName : s.scope;
+        txt += '| ' + s.name + (s.presetName ? ' \u2014 ' + s.presetName : '') + ' | $' + sugCost.toLocaleString() + '/mo (' + _scopeLbl + ') | ' + realTxt + ' | ' + roiTxt + ' |\n';
       });
       txt += '\n**Suggested Monthly: $' + t.suggested_monthly.toLocaleString() + '/mo** | **Realistic: $' + t.realistic_monthly.toLocaleString() + '/mo**\n\n';
     }
@@ -832,8 +847,9 @@ function _renderInvestmentSummary() {
         var roiColour = (s.roi && s.roi.multiplier >= 3) ? 'var(--green)' : (s.roi && s.roi.multiplier >= 1.5) ? 'var(--warn)' : 'var(--error)';
         var roiTxt = s.roi && s.roi.multiplier > 0 ? '<span style="color:' + roiColour + ';font-weight:600">' + s.roi.multiplier + 'x</span>' : '\u2014';
         html += '<tr style="border-bottom:1px solid var(--border)">';
-        html += '<td style="padding:4px 8px">' + esc(s.name) + (s.scope_note ? '<div style="font-size:9px;color:var(--n3)">' + esc(s.scope_note) + '</div>' : '') + '</td>';
-        html += '<td style="padding:4px 8px;text-align:right;white-space:nowrap">$' + sugCost.toLocaleString() + '/mo<div style="font-size:9px;color:var(--n3)">' + s.scope + ' scope</div></td>';
+        var _scopeLabel = s.presetName ? esc(s.presetName) : s.scope;
+        html += '<td style="padding:4px 8px">' + esc(s.name) + (s.presetName ? ' \u2014 ' + esc(s.presetName) : '') + (s.scope_note ? '<div style="font-size:9px;color:var(--n3)">' + esc(s.scope_note) + '</div>' : '') + '</td>';
+        html += '<td style="padding:4px 8px;text-align:right;white-space:nowrap">$' + sugCost.toLocaleString() + '/mo<div style="font-size:9px;color:var(--n3)">' + _scopeLabel + '</div></td>';
         html += '<td style="padding:4px 8px;text-align:right;white-space:nowrap">' + (rEnabled ? '$' + realCost.toLocaleString() + '/mo' : '<span style="color:var(--n3);text-decoration:line-through">cut</span>') + '</td>';
         html += '<td style="padding:4px 8px;text-align:center">' + roiTxt + '</td></tr>';
       });
@@ -948,10 +964,44 @@ function _scopeCostForTier(cost, scope) {
     var match = cost.tiers.find(function(t) { return t.id === scope; });
     if (match) return match.monthly || match.price || 0;
   }
+  // Preset-based lookup by preset key
+  if (cost.presets && cost.presets.length) {
+    var presetMatch = cost.presets.find(function(pr) { return pr.key === scope; });
+    if (presetMatch) return presetMatch.price || 0;
+  }
   // Fallback to low/mid/high positional
   if (scope === 'low') return cost.min || 0;
   if (scope === 'high') return cost.max || 0;
   return cost.mid || 0;
+}
+
+// Get preset price for a given scope level from a catalog service
+function _getPresetPrice(svcCatalog, scope) {
+  if (!svcCatalog || !svcCatalog.presets) return null;
+  var presets = svcCatalog.presets.filter(function(p) { return p.price && !p.autoPrice; });
+  if (!presets.length) return null;
+  // Direct preset key match
+  var directMatch = presets.find(function(p) { return p.key === scope; });
+  if (directMatch) return directMatch.price;
+  // Positional fallback for low/mid/high
+  if (scope === 'low') return presets[0].price;
+  if (scope === 'high') return presets[presets.length - 1].price;
+  // mid = middle preset
+  return presets[Math.floor(presets.length / 2)].price;
+}
+
+// Get preset metadata (key, name, price) for a given scope level
+function _getPresetForScope(svcCatalog, scope) {
+  if (!svcCatalog || !svcCatalog.presets) return null;
+  var presets = svcCatalog.presets.filter(function(p) { return p.price && !p.autoPrice; });
+  if (!presets.length) return null;
+  // Direct preset key match
+  var directMatch = presets.find(function(p) { return p.key === scope; });
+  if (directMatch) return directMatch;
+  // Positional fallback for low/mid/high
+  if (scope === 'low') return presets[0];
+  if (scope === 'high') return presets[presets.length - 1];
+  return presets[Math.floor(presets.length / 2)];
 }
 
 // Auto-build engagement scope if D4 data exists but scope doesn't yet,
@@ -1033,10 +1083,23 @@ function _refreshScopePricing() {
       var curScope = entry.svc.scope;
       var validScope = newTierNames.some(function(t) { return t.id === curScope; });
       if (!validScope) {
-        if (curScope === 'low') entry.svc.scope = newTierNames[0].id;
-        else if (curScope === 'high') entry.svc.scope = newTierNames[newTierNames.length - 1].id;
-        else if (curScope === 'mid') entry.svc.scope = newTierNames[Math.floor(newTierNames.length / 2)].id;
-        else entry.svc.scope = newTierNames[0].id;
+        var _migratedTier;
+        if (curScope === 'low') { entry.svc.scope = newTierNames[0].id; _migratedTier = newTierNames[0]; }
+        else if (curScope === 'high') { entry.svc.scope = newTierNames[newTierNames.length - 1].id; _migratedTier = newTierNames[newTierNames.length - 1]; }
+        else if (curScope === 'mid') { entry.svc.scope = newTierNames[Math.floor(newTierNames.length / 2)].id; _migratedTier = newTierNames[Math.floor(newTierNames.length / 2)]; }
+        else { entry.svc.scope = newTierNames[0].id; _migratedTier = newTierNames[0]; }
+        // Store preset key/name on migration
+        if (_migratedTier && _migratedTier.isPreset) {
+          entry.svc.presetKey = _migratedTier.id;
+          entry.svc.presetName = _migratedTier.name;
+        }
+      } else {
+        // Scope is valid — ensure preset metadata is current
+        var _curTier = newTierNames.find(function(t) { return t.id === curScope; });
+        if (_curTier && _curTier.isPreset) {
+          entry.svc.presetKey = _curTier.id;
+          entry.svc.presetName = _curTier.name;
+        }
       }
       changed = true;
     }
@@ -1052,6 +1115,22 @@ function _refreshScopePricing() {
 // Returns { low: [...], mid: [...], high: [...] } with what each tier includes
 function _buildScopeIncludes(svc) {
   if (!svc) return null;
+  // v2 preset-based includes
+  if (svc.presets && svc.presets.length) {
+    var pricedPresets = svc.presets.filter(function(pr) { return pr.price && !pr.autoPrice; });
+    if (pricedPresets.length) {
+      var sorted = pricedPresets.slice().sort(function(a, b) { return (a.price || 0) - (b.price || 0); });
+      var result = {};
+      sorted.forEach(function(pr) {
+        result[pr.key] = pr.features || [];
+      });
+      // low/mid/high fallback mapping
+      if (sorted[0]) result.low = sorted[0].features || [];
+      if (sorted.length >= 2) result.mid = sorted[Math.floor(sorted.length / 2)].features || [];
+      if (sorted[sorted.length - 1]) result.high = sorted[sorted.length - 1].features || [];
+      return result;
+    }
+  }
   var p = svc.pricing || {};
   // Tier-based — key by tier ID (e.g. "growth", "authority", "visible")
   if (p.tiers && p.tiers.length) {
@@ -1077,6 +1156,23 @@ function _buildScopeIncludes(svc) {
 // Get tier labels from catalog. Returns array of { id, name, price } sorted by price ascending.
 // Falls back to low/mid/high when no named tiers exist.
 function _getTierNames(svc) {
+  // v2 preset-based tier names
+  if (svc && svc.presets && svc.presets.length) {
+    var pricedPresets = svc.presets.filter(function(pr) { return pr.price && !pr.autoPrice; });
+    if (pricedPresets.length) {
+      var sorted = pricedPresets.slice().sort(function(a, b) { return (a.price || 0) - (b.price || 0); });
+      return sorted.map(function(pr) {
+        return { id: pr.key, name: pr.name, price: pr.price, setupFee: pr.setupFee || 0, isPreset: true };
+      });
+    }
+    // Auto-priced presets (website, video) — return with autoPrice flag
+    var autoPresets = svc.presets.filter(function(pr) { return pr.autoPrice; });
+    if (autoPresets.length) {
+      return autoPresets.map(function(pr) {
+        return { id: pr.key, name: pr.name, price: 0, autoPrice: true, isPreset: true };
+      });
+    }
+  }
   if (!svc || !svc.pricing || !svc.pricing.tiers || !svc.pricing.tiers.length) return null;
   var sorted = svc.pricing.tiers.slice().sort(function(a, b) { return (a.monthly || a.price || 0) - (b.monthly || b.price || 0); });
   return sorted.map(function(t) {
@@ -1132,19 +1228,34 @@ function _buildEngagementScope() {
       var validTier = tierNames.some(function(t) { return t.id === existingScope; });
       if (!validTier) existingScope = null;
     }
+    // Resolve preset key/name for the selected scope
+    var _resolvedScope = existingScope || defaultScope;
+    var _presetKey = null, _presetName = null;
+    if (tierNames && tierNames.length) {
+      var _matchedPreset = tierNames.find(function(t) { return t.id === _resolvedScope; });
+      if (_matchedPreset && _matchedPreset.isPreset) {
+        _presetKey = _matchedPreset.id;
+        _presetName = _matchedPreset.name;
+      }
+    }
+    // Preserve existing preset data if available
+    if (existing && existing.presetKey) { _presetKey = existing.presetKey; }
+    if (existing && existing.presetName) { _presetName = existing.presetName; }
     services[slug] = {
       slug: slug,
       name: svcName,
       description: svc ? (svc.description || '') : '',
       enabled: existing ? existing.enabled : (avgPriority >= 5.0),
-      scope: existingScope || defaultScope,
+      scope: _resolvedScope,
+      presetKey: _presetKey,
+      presetName: _presetName,
       scope_note: existing ? (existing.scope_note || '') : (svc ? (svc.description || '') : ''),
       scope_includes: scopeIncludes,
       tier_names: tierNames,
       source_levers: leverKeys.filter(function(k) { return matchedLevers.some(function(l) { return l.lever === k; }); }),
       avg_priority: Math.round(avgPriority * 10) / 10,
       funnel_stages: funnelStages,
-      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject, tiers: cost.tiers || null } : null,
+      cost: cost ? { min: cost.min, max: cost.max, mid: cost.mid, isProject: !!cost.isProject, tiers: cost.tiers || null, presets: cost.presets || null } : null,
       roi: null,
       realistic_override: null
     };
@@ -1506,27 +1617,69 @@ function _renderScopeRow(svc, section) {
     });
     html += '</div>';
   } else {
-    // Standard tier/scope buttons
+    // Standard tier/scope buttons — use preset names + prices when available
     var _tierButtons = (svc.tier_names && Array.isArray(svc.tier_names) && svc.tier_names.length)
-      ? svc.tier_names.map(function(t) { return { id: t.id, label: t.name }; })
-      : [{ id: 'low', label: 'Low' }, { id: 'mid', label: 'Mid' }, { id: 'high', label: 'High' }];
-    _tierButtons.forEach(function(tier) {
-      var isActive = svc.scope === tier.id;
-      var tip = '';
-      if (svc.scope_includes && svc.scope_includes[tier.id]) {
-        tip = svc.scope_includes[tier.id].slice(0, 4).join(', ');
-        if (svc.scope_includes[tier.id].length > 4) tip += ' +' + (svc.scope_includes[tier.id].length - 4) + ' more';
-      }
-      html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(section) + '" data-scope-level="' + tier.id + '" '
-        + (tip ? 'data-tip="' + esc(tip) + '" ' : '')
-        + 'style="font-size:9px;padding:2px 6px;border:1px solid ' + (isActive ? 'var(--green)' : 'var(--border)') + ';background:' + (isActive ? 'var(--green)' : 'transparent') + ';color:' + (isActive ? 'white' : 'var(--n2)') + ';border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
-        + esc(tier.label) + '</button>';
-    });
+      ? svc.tier_names.map(function(t) { return { id: t.id, label: t.name, price: t.price || 0, autoPrice: !!t.autoPrice, isPreset: !!t.isPreset }; })
+      : [{ id: 'low', label: 'Low', price: 0, autoPrice: false, isPreset: false }, { id: 'mid', label: 'Mid', price: 0, autoPrice: false, isPreset: false }, { id: 'high', label: 'High', price: 0, autoPrice: false, isPreset: false }];
+
+    // For auto-priced services (website, video) with no priced presets, show "Custom"
+    var allAutoPrice = _tierButtons.every(function(t) { return t.autoPrice; });
+    if (allAutoPrice && _tierButtons.length) {
+      html += '<span style="font-size:9px;color:var(--n3);font-style:italic">Custom / Scope-dependent</span>';
+    } else if (_tierButtons.length === 1 && !_tierButtons[0].autoPrice) {
+      // Single preset — show name and price
+      var single = _tierButtons[0];
+      var singlePriceTxt = single.price > 0 ? ' $' + single.price.toLocaleString() : '';
+      html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(section) + '" data-scope-level="' + single.id + '" '
+        + 'style="font-size:9px;padding:2px 6px;border:1px solid var(--green);background:var(--green);color:white;border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
+        + esc(single.label) + singlePriceTxt + '</button>';
+    } else {
+      _tierButtons.forEach(function(tier) {
+        if (tier.autoPrice) return; // skip auto-priced presets in button row
+        var isActive = svc.scope === tier.id;
+        var tip = '';
+        if (svc.scope_includes && svc.scope_includes[tier.id]) {
+          var tipItems = svc.scope_includes[tier.id].slice(0, 4).join(', ');
+          if (svc.scope_includes[tier.id].length > 4) tipItems += ' +' + (svc.scope_includes[tier.id].length - 4) + ' more';
+          tip = tipItems;
+        }
+        // Show preset name with price when it is a preset
+        var btnLabel = esc(tier.label);
+        if (tier.isPreset && tier.price > 0) {
+          btnLabel += ' $' + tier.price.toLocaleString();
+          if (!tip) tip = esc(tier.label) + ' \u2014 $' + tier.price.toLocaleString() + '/mo';
+        }
+        html += '<button class="scope-level-btn" data-scope-slug="' + esc(svc.slug) + '" data-scope-section="' + esc(section) + '" data-scope-level="' + tier.id + '" '
+          + (tip ? 'data-tip="' + esc(tip) + '" ' : '')
+          + 'style="font-size:9px;padding:2px 6px;border:1px solid ' + (isActive ? 'var(--green)' : 'var(--border)') + ';background:' + (isActive ? 'var(--green)' : 'transparent') + ';color:' + (isActive ? 'white' : 'var(--n2)') + ';border-radius:3px;cursor:pointer;font-family:var(--font);margin:0 1px">'
+          + btnLabel + '</button>';
+      });
+    }
   }
   html += '</td>';
   html += '<td style="padding:4px 6px;text-align:center">' + roiHtml + '</td>';
   html += '<td style="padding:4px 6px"><input type="text" data-scope-note="' + esc(svc.slug) + '" data-scope-note-section="' + esc(section) + '" value="' + esc(svc.scope_note || '') + '" placeholder="What is included at this scope" style="width:100%;font-size:10px;border:1px solid var(--border);border-radius:4px;padding:3px 6px;font-family:var(--font);color:var(--dark);background:var(--white)"></td>';
   html += '</tr>';
+
+  // Guardrails info line (v2)
+  var _svcCatalog = lookupServicePricing(svc.source_levers && svc.source_levers[0] ? svc.source_levers[0] : svc.slug);
+  if (!_svcCatalog && svc.slug) {
+    _svcCatalog = (_pricingCatalog && _pricingCatalog.services || []).find(function(s) {
+      return (s.id || '').toLowerCase().replace(/[^a-z0-9]+/g, '-') === svc.slug;
+    }) || null;
+  }
+  if (_svcCatalog && _svcCatalog.guardrails) {
+    var g = _svcCatalog.guardrails;
+    var minPrices = g.minimumPrice ? Object.values(g.minimumPrice) : [];
+    var floorPrice = minPrices.length ? Math.min.apply(null, minPrices) : 0;
+    html += '<tr style="border:none;opacity:' + rowOpacity + '"><td colspan="6" style="padding:0 6px 4px">'
+      + '<div style="font-size:9px;color:var(--n2);margin-top:2px">'
+      + 'Min: $' + floorPrice.toLocaleString() + ' | Margin target: ' + Math.round((g.targetMargin || 0) * 100) + '%'
+      + ' | Max discount: ' + Math.round((g.maxDiscount || 0) * 100) + '%'
+      + (g.note ? ' | ' + esc(g.note) : '')
+      + '</div></td></tr>';
+  }
+
   return html;
 }
 
@@ -1584,6 +1737,17 @@ function _mountScopePanel() {
       var svc = (scope.services && scope.services[slug]) || (scope.additional_services && scope.additional_services[slug]);
       if (svc) {
         svc.scope = level;
+        // Store preset key and name for v2 presets
+        if (svc.tier_names && svc.tier_names.length) {
+          var matchedTier = svc.tier_names.find(function(t) { return t.id === level; });
+          if (matchedTier && matchedTier.isPreset) {
+            svc.presetKey = matchedTier.id;
+            svc.presetName = matchedTier.name;
+          } else {
+            svc.presetKey = null;
+            svc.presetName = null;
+          }
+        }
         _computeServiceROI(svc);
         _computeRealisticOverrides();
         _recalcScopeTotals();
