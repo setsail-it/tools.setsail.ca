@@ -3715,7 +3715,7 @@ async function _initWebflowConnection() {
       var res = await fetch('/api/webflow/sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: S._id })
+        body: JSON.stringify({ projectId: S.projectId })
       });
       var data = await res.json();
       if (data.sites && data.sites.length) {
@@ -3744,7 +3744,7 @@ async function connectWebflow() {
   var btn = document.getElementById('webflow-connect-btn');
   var token = tokenInput ? tokenInput.value.trim() : '';
   if (!token) { errEl.textContent = 'Please paste your Webflow API token'; errEl.style.display = ''; return; }
-  if (!S._id) { errEl.textContent = 'Save the project first'; errEl.style.display = ''; return; }
+  if (!S.projectId) { errEl.textContent = 'Save the project first'; errEl.style.display = ''; return; }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Connecting…';
@@ -3754,7 +3754,7 @@ async function connectWebflow() {
     var res = await fetch('/api/webflow/save-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: S._id, token: token })
+      body: JSON.stringify({ projectId: S.projectId, token: token })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -3805,12 +3805,12 @@ function _showWebflowSiteInfo(site) {
 }
 
 async function disconnectWebflow() {
-  if (!S._id) return;
+  if (!S.projectId) return;
   try {
     await fetch('/api/webflow/disconnect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: S._id })
+      body: JSON.stringify({ projectId: S.projectId })
     });
   } catch (e) { /* ignore */ }
   if (S.setup) {
@@ -4517,7 +4517,7 @@ function updateLeadStatus(idx, status) {
 }
 
 async function pullWebflowSubmissions() {
-  if (!S.setup || !S.setup.webflowSiteId || !S._id) {
+  if (!S.setup || !S.setup.webflowSiteId || !S.projectId) {
     aiBarNotify('Connect Webflow and select a site in Setup first', { type: 'warn' });
     return;
   }
@@ -4528,7 +4528,7 @@ async function pullWebflowSubmissions() {
     var res = await fetch('/api/webflow/form-submissions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId: S._id, siteId: S.setup.webflowSiteId })
+      body: JSON.stringify({ projectId: S.projectId, siteId: S.setup.webflowSiteId })
     });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -4602,9 +4602,9 @@ async function pullWebflowSubmissions() {
 }
 
 async function generateWebhookUrl() {
-  if (!S._id) { aiBarNotify('Save the project first', { type: 'warn' }); return; }
+  if (!S.projectId) { aiBarNotify('Save the project first', { type: 'warn' }); return; }
   try {
-    var res = await fetch('/api/webhook/token/' + S._id, { method: 'POST' });
+    var res = await fetch('/api/webhook/token/' + S.projectId, { method: 'POST' });
     var data = await res.json();
     if (data.error) throw new Error(data.error);
     if (!S.snapshot) S.snapshot = {};
