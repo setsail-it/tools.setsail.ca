@@ -3306,10 +3306,26 @@ export default {
         if (!projectId || !token || !locationId) return new Response(JSON.stringify({ error: 'projectId, token, and locationId required' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        // Verify token works by fetching location info
-        const verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
-          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+        // Verify token works — try both auth formats (with and without Bearer)
+        const ghlHeaders = (authVal) => ({ 'Authorization': authVal, 'Version': '2021-07-28', 'Accept': 'application/json' });
+        let verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
+          headers: ghlHeaders(token)
         });
+        let authToken = token;
+        if (verifyRes.status === 401 && !token.startsWith('Bearer ')) {
+          // Retry with Bearer prefix
+          verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
+            headers: ghlHeaders('Bearer ' + token)
+          });
+          if (verifyRes.ok) authToken = 'Bearer ' + token;
+        } else if (verifyRes.status === 401 && token.startsWith('Bearer ')) {
+          // Retry without Bearer prefix
+          const rawToken = token.replace(/^Bearer\s+/, '');
+          verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
+            headers: ghlHeaders(rawToken)
+          });
+          if (verifyRes.ok) authToken = rawToken;
+        }
         if (!verifyRes.ok) {
           const errText = await verifyRes.text();
           return new Response(JSON.stringify({ error: 'Invalid GHL token or location ID: ' + verifyRes.status, detail: errText }), {
@@ -3317,8 +3333,8 @@ export default {
           });
         }
         const locationData = await verifyRes.json();
-        // Store token + locationId securely
-        await env.SETSAIL_OS.put('ghl_token:' + projectId, JSON.stringify({ token, locationId }));
+        // Store the working auth token format + locationId securely
+        await env.SETSAIL_OS.put('ghl_token:' + projectId, JSON.stringify({ token: authToken, locationId }));
         return new Response(JSON.stringify({ ok: true, location: locationData.location || locationData }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
