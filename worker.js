@@ -3300,42 +3300,43 @@ export default {
     // ── GoHighLevel Integration ─────────────────────────────────────────────
 
     // POST /api/ghl/save-token — store GHL token + locationId securely in KV
+    // Supports both legacy API keys (v1) and private integration tokens (v2)
     if (url.pathname === '/api/ghl/save-token' && request.method === 'POST') {
       try {
         const { projectId, token, locationId } = await request.json();
         if (!projectId || !token || !locationId) return new Response(JSON.stringify({ error: 'projectId, token, and locationId required' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        // Verify token works — try both auth formats (with and without Bearer)
-        const ghlHeaders = (authVal) => ({ 'Authorization': authVal, 'Version': '2021-07-28', 'Accept': 'application/json' });
+
+        // Try v2 API first (private integration token)
+        let apiVersion = 'v2';
         let verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
-          headers: ghlHeaders(token)
+          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
         });
-        let authToken = token;
-        if (verifyRes.status === 401 && !token.startsWith('Bearer ')) {
-          // Retry with Bearer prefix
+        if (verifyRes.status === 401) {
+          // Try v2 with Bearer
           verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
-            headers: ghlHeaders('Bearer ' + token)
+            headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
           });
-          if (verifyRes.ok) authToken = 'Bearer ' + token;
-        } else if (verifyRes.status === 401 && token.startsWith('Bearer ')) {
-          // Retry without Bearer prefix
-          const rawToken = token.replace(/^Bearer\s+/, '');
-          verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
-            headers: ghlHeaders(rawToken)
-          });
-          if (verifyRes.ok) authToken = rawToken;
         }
+        if (verifyRes.status === 401) {
+          // Try legacy v1 API (API key from Business Profile)
+          verifyRes = await fetch('https://rest.gohighlevel.com/v1/contacts/?limit=1', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (verifyRes.ok) apiVersion = 'v1';
+        }
+
         if (!verifyRes.ok) {
           const errText = await verifyRes.text();
-          return new Response(JSON.stringify({ error: 'Invalid GHL token or location ID: ' + verifyRes.status, detail: errText }), {
+          return new Response(JSON.stringify({ error: 'Invalid GHL token: ' + verifyRes.status, detail: errText }), {
             status: 400, headers: { 'Content-Type': 'application/json', ...cors }
           });
         }
-        const locationData = await verifyRes.json();
-        // Store the working auth token format + locationId securely
-        await env.SETSAIL_OS.put('ghl_token:' + projectId, JSON.stringify({ token: authToken, locationId }));
-        return new Response(JSON.stringify({ ok: true, location: locationData.location || locationData }), {
+
+        // Store token + locationId + detected API version
+        await env.SETSAIL_OS.put('ghl_token:' + projectId, JSON.stringify({ token, locationId, apiVersion }));
+        return new Response(JSON.stringify({ ok: true, apiVersion }), {
           headers: { 'Content-Type': 'application/json', ...cors }
         });
       } catch (err) {
@@ -3345,20 +3346,27 @@ export default {
       }
     }
 
-    // POST /api/ghl/contacts — pull contacts from GHL
+    // POST /api/ghl/contacts — pull contacts from GHL (supports v1 + v2)
     if (url.pathname === '/api/ghl/contacts' && request.method === 'POST') {
       try {
-        const { projectId, limit, startAfterId } = await request.json();
+        const { projectId, limit } = await request.json();
         const stored = await env.SETSAIL_OS.get('ghl_token:' + projectId);
         if (!stored) return new Response(JSON.stringify({ error: 'No GHL token stored. Connect GHL first.' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        const { token, locationId } = JSON.parse(stored);
-        let apiUrl = 'https://services.leadconnectorhq.com/contacts/?locationId=' + locationId + '&limit=' + (limit || 100);
-        if (startAfterId) apiUrl += '&startAfterId=' + startAfterId;
-        const res = await fetch(apiUrl, {
-          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
-        });
+        const { token, locationId, apiVersion } = JSON.parse(stored);
+        let res;
+        if (apiVersion === 'v1') {
+          // Legacy API
+          res = await fetch('https://rest.gohighlevel.com/v1/contacts/?limit=' + (limit || 100), {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+        } else {
+          // V2 API
+          res = await fetch('https://services.leadconnectorhq.com/contacts/?locationId=' + locationId + '&limit=' + (limit || 100), {
+            headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+          });
+        }
         if (!res.ok) {
           const errText = await res.text();
           return new Response(JSON.stringify({ error: 'GHL API error: ' + res.status, detail: errText }), {
@@ -3384,11 +3392,17 @@ export default {
         if (!stored) return new Response(JSON.stringify({ error: 'No GHL token stored' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        const { token, locationId } = JSON.parse(stored);
-        const res = await fetch('https://services.leadconnectorhq.com/opportunities/search?location_id=' + locationId + '&limit=100', {
-          method: 'GET',
-          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
-        });
+        const { token, locationId, apiVersion } = JSON.parse(stored);
+        let res;
+        if (apiVersion === 'v1') {
+          res = await fetch('https://rest.gohighlevel.com/v1/pipelines/', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+        } else {
+          res = await fetch('https://services.leadconnectorhq.com/opportunities/search?location_id=' + locationId + '&limit=100', {
+            headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+          });
+        }
         if (!res.ok) {
           const errText = await res.text();
           return new Response(JSON.stringify({ error: 'GHL API error: ' + res.status, detail: errText }), {
