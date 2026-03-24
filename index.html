@@ -4648,7 +4648,7 @@ function _buildLeadsTableHtml(allLeads) {
     h += '<tr>';
     h += '<td style="' + tdStyle + ';font-family:monospace;font-size:10px;color:var(--n2)">' + dateStr + '</td>';
     h += '<td style="' + tdStyle + '">' + esc(l.contact_name || '\u2014') + (l.contact_company ? '<div style="font-size:9px;color:var(--dark);font-weight:500">' + esc(l.contact_company) + '</div>' : '') + (l.contact_email ? '<div style="font-size:9px;color:var(--n2)">' + esc(l.contact_email) + '</div>' : '') + '</td>';
-    h += '<td style="' + tdStyle + '"><span style="font-size:10px;color:' + sourceColor + ';font-weight:500">' + esc(l.source_type || 'manual') + '</span></td>';
+    h += '<td style="' + tdStyle + '"><span style="font-size:10px;color:' + sourceColor + ';font-weight:500">' + esc(l.source_type || 'manual') + '</span>' + (l.source_detail ? '<div style="font-size:9px;color:var(--n2)">' + esc(l.source_detail) + '</div>' : '') + (l.source_page ? '<div style="font-size:9px;color:var(--n2);font-family:monospace">' + esc(l.source_page) + '</div>' : '') + '</td>';
     h += '<td style="' + tdStyle + ';font-size:10px;color:var(--n2)">' + esc(l.source_channel || '\u2014') + '</td>';
     h += '<td style="' + tdStyle + ';font-family:monospace">' + (l.deal_value ? '$' + parseFloat(l.deal_value).toLocaleString() : '') + '</td>';
     h += '<td style="' + tdStyle + '">';
