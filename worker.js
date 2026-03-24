@@ -3260,33 +3260,17 @@ export default {
         if (!token) return new Response(JSON.stringify({ error: 'No Webflow token' }), {
           status: 400, headers: { 'Content-Type': 'application/json', ...cors }
         });
-        // If formId provided, get submissions for that form; otherwise get all for site
-        let apiUrl;
-        if (formId) {
-          apiUrl = 'https://api.webflow.com/v2/forms/' + formId + '/submissions?limit=' + (limit || 100) + '&offset=' + (offset || 0);
-        } else {
-          // Get all forms, then pull submissions from each
-          const formsRes = await fetch('https://api.webflow.com/v2/sites/' + siteId + '/forms', {
-            headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
-          });
-          const formsData = await formsRes.json();
-          const forms = formsData.forms || [];
-          let allSubmissions = [];
-          for (const form of forms) {
-            const subRes = await fetch('https://api.webflow.com/v2/forms/' + form.id + '/submissions?limit=' + (limit || 100), {
-              headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
-            });
-            const subData = await subRes.json();
-            const subs = (subData.formSubmissions || []).map(s => ({ ...s, _formName: form.displayName || form.name || 'Form' }));
-            allSubmissions = allSubmissions.concat(subs);
-          }
-          return new Response(JSON.stringify({ submissions: allSubmissions }), {
-            headers: { 'Content-Type': 'application/json', ...cors }
-          });
-        }
+        // Use site-level form_submissions endpoint (Webflow v2)
+        const apiUrl = 'https://api.webflow.com/v2/sites/' + siteId + '/form_submissions?limit=' + (limit || 100) + '&offset=' + (offset || 0);
         const res = await fetch(apiUrl, {
           headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          return new Response(JSON.stringify({ error: 'Webflow API error: ' + res.status, detail: errText }), {
+            status: res.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
         const data = await res.json();
         return new Response(JSON.stringify({ submissions: data.formSubmissions || [] }), {
           headers: { 'Content-Type': 'application/json', ...cors }

@@ -3729,6 +3729,10 @@ async function _initWebflowConnection() {
         if (S.setup.webflowSiteId) {
           siteSelect.value = S.setup.webflowSiteId;
           _showWebflowSiteInfo(data.sites.find(function(s) { return s.id === S.setup.webflowSiteId; }));
+        } else if (data.sites.length === 1) {
+          siteSelect.value = data.sites[0].id;
+          selectWebflowSite(data.sites[0].id);
+          _showWebflowSiteInfo(data.sites[0]);
         }
       }
     } catch (e) { console.warn('[webflow] Failed to load sites:', e.message); }
@@ -3774,10 +3778,18 @@ async function connectWebflow() {
       siteSelect.appendChild(opt);
     });
 
+    // Auto-select if only one site
+    var sites = data.sites || [];
+    if (sites.length === 1) {
+      siteSelect.value = sites[0].id;
+      selectWebflowSite(sites[0].id);
+      _showWebflowSiteInfo(sites[0]);
+    }
+
     // Switch to connected state
     document.getElementById('webflow-not-connected').style.display = 'none';
     document.getElementById('webflow-connected').style.display = '';
-    aiBarNotify('Webflow connected! Select your site.', { duration: 3000 });
+    aiBarNotify('Webflow connected!' + (sites.length === 1 ? ' Site auto-selected.' : ' Select your site.'), { duration: 3000 });
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = '';
@@ -4457,7 +4469,7 @@ function _buildLeadsTableHtml(allLeads) {
     var dateStr = l.lead_date ? new Date(l.lead_date).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) : '\u2014';
     h += '<tr>';
     h += '<td style="' + tdStyle + ';font-family:monospace;font-size:10px;color:var(--n2)">' + dateStr + '</td>';
-    h += '<td style="' + tdStyle + '">' + esc(l.contact_name || '\u2014') + (l.contact_email ? '<div style="font-size:9px;color:var(--n2)">' + esc(l.contact_email) + '</div>' : '') + '</td>';
+    h += '<td style="' + tdStyle + '">' + esc(l.contact_name || '\u2014') + (l.contact_company ? '<div style="font-size:9px;color:var(--dark);font-weight:500">' + esc(l.contact_company) + '</div>' : '') + (l.contact_email ? '<div style="font-size:9px;color:var(--n2)">' + esc(l.contact_email) + '</div>' : '') + '</td>';
     h += '<td style="' + tdStyle + '"><span style="font-size:10px;color:' + sourceColor + ';font-weight:500">' + esc(l.source_type || 'manual') + '</span></td>';
     h += '<td style="' + tdStyle + ';font-size:10px;color:var(--n2)">' + esc(l.source_channel || '\u2014') + '</td>';
     h += '<td style="' + tdStyle + ';font-family:monospace">' + (l.deal_value ? '$' + parseFloat(l.deal_value).toLocaleString() : '') + '</td>';
@@ -4547,27 +4559,20 @@ async function pullWebflowSubmissions() {
     var newCount = 0;
     submissions.forEach(function(sub) {
       if (existingIds[sub.id]) return; // skip duplicates
-      var fields = sub.formSubmissionData || sub.data || {};
+      // Webflow v2 uses formResponse (object with field names as keys)
+      var fields = sub.formResponse || sub.formSubmissionData || sub.data || {};
 
-      // Flexible field extraction from Webflow form data
-      var nameVal = null, emailVal = null, phoneVal = null;
-      if (Array.isArray(fields)) {
-        fields.forEach(function(f) {
-          var n = (f.name || f.displayName || '').toLowerCase();
-          var v = f.value || f.textValue || '';
-          if (!v) return;
-          if (n.includes('name') && !nameVal) nameVal = v;
-          if (n.includes('email') && !emailVal) emailVal = v;
-          if ((n.includes('phone') || n.includes('tel')) && !phoneVal) phoneVal = v;
-        });
-      } else if (typeof fields === 'object') {
+      // Flexible field extraction — handles named keys like "Name Form 2", "Email - Form", etc.
+      var nameVal = null, emailVal = null, phoneVal = null, companyVal = null;
+      if (typeof fields === 'object' && !Array.isArray(fields)) {
         Object.keys(fields).forEach(function(k) {
           var n = k.toLowerCase();
-          var v = fields[k];
+          var v = (fields[k] || '').toString().trim();
           if (!v) return;
-          if (n.includes('name') && !nameVal) nameVal = v;
+          if ((n.includes('name') && !n.includes('company')) && !nameVal) nameVal = v;
           if (n.includes('email') && !emailVal) emailVal = v;
           if ((n.includes('phone') || n.includes('tel')) && !phoneVal) phoneVal = v;
+          if (n.includes('company') && !companyVal) companyVal = v;
         });
       }
 
@@ -4577,12 +4582,14 @@ async function pullWebflowSubmissions() {
         contact_name: nameVal || null,
         contact_email: emailVal || null,
         contact_phone: phoneVal || null,
+        contact_company: companyVal || null,
         source_type: 'webflow',
         source_channel: 'organic',
-        source_detail: sub._formName || 'Webflow Form',
+        source_detail: sub.displayName || 'Webflow Form',
+        source_page: sub.publishedPath || null,
         deal_value: null,
         status: 'new',
-        lead_date: sub.submittedAt || sub.dateSubmitted || sub.createdOn || new Date().toISOString(),
+        lead_date: sub.dateSubmitted || sub.submittedAt || sub.createdOn || new Date().toISOString(),
         created_at: new Date().toISOString()
       });
       newCount++;
