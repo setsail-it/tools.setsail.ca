@@ -3308,7 +3308,7 @@ export default {
         });
         // Verify token works by fetching location info
         const verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
-          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
         });
         if (!verifyRes.ok) {
           const errText = await verifyRes.text();
@@ -3341,7 +3341,7 @@ export default {
         let apiUrl = 'https://services.leadconnectorhq.com/contacts/?locationId=' + locationId + '&limit=' + (limit || 100);
         if (startAfterId) apiUrl += '&startAfterId=' + startAfterId;
         const res = await fetch(apiUrl, {
-          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
         });
         if (!res.ok) {
           const errText = await res.text();
@@ -3371,7 +3371,7 @@ export default {
         const { token, locationId } = JSON.parse(stored);
         const res = await fetch('https://services.leadconnectorhq.com/opportunities/search?location_id=' + locationId + '&limit=100', {
           method: 'GET',
-          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+          headers: { 'Authorization': token, 'Version': '2021-07-28', 'Accept': 'application/json' }
         });
         if (!res.ok) {
           const errText = await res.text();
