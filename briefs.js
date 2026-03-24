@@ -507,6 +507,20 @@ function getBriefKwPool(pageIdx) {
       }
     }
   });
+  // From selected keywords (AI-selected top keywords)
+  ((S.kwResearch&&S.kwResearch.selected)||[]).forEach(function(s){
+    var kw = typeof s==='object'?(s.kw||s.keyword||''):String(s);
+    if (kw && !assigned.has(kw.toLowerCase()) && !seen.has(kw.toLowerCase())) {
+      seen.add(kw.toLowerCase()); pool.push(kw);
+    }
+  });
+  // From full keyword list (volume-checked keywords from Fetch Volumes)
+  ((S.kwResearch&&S.kwResearch.keywords)||[]).forEach(function(k){
+    var kw = typeof k==='object'?(k.kw||k.keyword||''):String(k);
+    if (kw && !assigned.has(kw.toLowerCase()) && !seen.has(kw.toLowerCase())) {
+      seen.add(kw.toLowerCase()); pool.push(kw);
+    }
+  });
   // From seeds
   ((S.kwResearch&&S.kwResearch.seeds)||[]).forEach(function(s){
     var kw = typeof s==='object'?(s.kw||s.keyword||''):String(s);
@@ -1739,6 +1753,11 @@ async function _executePageBrief(pageIdx) {
   if (R.founder_bio) _proofLines.push('Founder: '+R.founder_bio);
   if ((R.publications_media||[]).length) _proofLines.push('Media: '+R.publications_media.slice(0,3).join(', '));
   var ctxProof = _proofLines.length ? '\n\n## PROOF & E-E-A-T SIGNALS\n'+_proofLines.join('\n') : '';
+  // Proof Bank: verified testimonials, case studies, stats from Setup
+  if (typeof getProofBankContext === 'function') {
+    var _pbCtx = getProofBankContext();
+    if (_pbCtx) ctxProof += _pbCtx;
+  }
 
   // Client goals context
   var _goalLines = [];

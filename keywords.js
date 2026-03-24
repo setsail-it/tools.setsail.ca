@@ -715,7 +715,7 @@ function _renderKwSeedsTab() {
   // Set selected value after render via a deferred call
   setTimeout(function(){var s=document.getElementById('kw-country-sel');if(s)s.value=(S.kwResearch&&S.kwResearch.country)||_autoDetectKwCountry();},0);
   html += '<button class="btn btn-primary" data-tip="Fetch Volumes sends every seed through Google Suggest to expand it into 400-600 real search phrases, then gets monthly volume + KD for each via DataForSEO. Run this after adding seeds from any source. The top 300 by score land in the Opportunities tab." onclick="fetchKwVolumes()"><i class="ti ti-chart-bar"></i> Fetch Volumes <span style="font-size:10px;opacity:0.7">(' + seeds.length + ' seeds)</span></button>';
-  html += '<button class="btn btn-ghost" data-tip="AI Generate Seeds produces 20-30 commercial head terms (2-4 words) built from client services, location, and audience data. These are volume-lookup terms, not long-tail guesses. They go into the AI bucket — run Fetch Volumes after to expand them into real phrases." onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
+  html += '<button class="btn btn-ghost" data-tip="AI Generate Seeds produces 50-75 commercial head terms (2-4 words) built from client services, location, and audience data. These are volume-lookup terms, not long-tail guesses. They go into the AI bucket — run Fetch Volumes after to expand them into real phrases." onclick="generateAISeeds()" id="ai-seeds-btn"><i class="ti ti-sparkles"></i> AI Generate Seeds</button>';
   html += '<button class="btn btn-ghost" data-tip="Competitor Keywords takes competitor URLs you paste in and pulls their top organic non-brand search terms from DataForSEO. Results go into the Competitor bucket. Run after AI Generate Seeds to fill gaps the AI missed. Then run Fetch Volumes." onclick="openCompetitorSeeds()" id="comp-seeds-btn"><i class="ti ti-building-store"></i> Competitor Keywords</button>';
   html += '<button class="btn btn-ghost" data-tip="Mechanical Seeds are auto-built from the client name, services list, and location in Setup — combining them into [service] + [city] + [modifier] patterns. This button rebuilds that bucket and merges it back in. Run after changing anything in Setup. AI and Competitor seeds are untouched." onclick="_resetToMechanicalSeeds()"><i class="ti ti-settings-2"></i> Mechanical Seeds</button>';
   var _hasQs = (S.contentIntel && S.contentIntel.paa && S.contentIntel.paa.questions && S.contentIntel.paa.questions.length > 0);
@@ -992,9 +992,10 @@ async function generateAISeeds() {
     ctx += '\nEXISTING TOP PAGES: ' + topPages.map(function(p) { return p.slug; }).join(', ') + '\n';
   }
 
-  var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate the 20-30 most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
+  var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate 50-75 of the most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- If strategist notes are provided, pay close attention to which services or topics to include or exclude\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
 
-  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. These will be expanded by Google Autocomplete — so output BROAD category terms, not specific long-tail phrases. Output ONLY a JSON array.\n\n' + ctx;
+  var _seedNotes = _getStrategistNotesCtx();
+  var userPrompt = 'Generate 50-75 SHORT HEAD TERMS (2-4 words max) for this client. These will be expanded by Google Autocomplete — so output BROAD category terms, not specific long-tail phrases. Output ONLY a JSON array.\n\n' + ctx + _seedNotes;
 
   try {
     var result = await callClaude(systemPrompt, userPrompt, null, 8000);
@@ -2471,7 +2472,22 @@ async function fetchPAAFromKeywords() {
       });
       if (paaRes.ok) {
         var paaData = await paaRes.json();
-        var paaQs = (paaData.questions || []).filter(function(q) { return typeof q === 'string' && q.length > 10; });
+        // Relevance filter: build keyword set from services + industry + business type
+        var _relTerms = [];
+        (r.primary_services || []).forEach(function(s) { s.toLowerCase().split(/\s+/).forEach(function(w) { if (w.length > 3) _relTerms.push(w); }); });
+        if (r.industry) r.industry.toLowerCase().split(/\s+/).forEach(function(w) { if (w.length > 3) _relTerms.push(w); });
+        if (businessType) businessType.toLowerCase().split(/\s+/).forEach(function(w) { if (w.length > 3) _relTerms.push(w); });
+        if (geo) geo.toLowerCase().split(/[\s,]+/).forEach(function(w) { if (w.length > 3) _relTerms.push(w); });
+        var _relSet = new Set(_relTerms);
+        var paaQs = (paaData.questions || []).filter(function(q) {
+          if (typeof q !== 'string' || q.length < 10) return false;
+          // Must contain at least one relevance term from services/industry/geo
+          if (!_relSet.size) return true;
+          var ql = q.toLowerCase();
+          var found = false;
+          _relSet.forEach(function(t) { if (ql.indexOf(t) >= 0) found = true; });
+          return found;
+        });
         // Dedupe against existing AI questions
         var existingSet = {};
         S.contentIntel.paa.questions.forEach(function(q) { existingSet[(q.question || '').toLowerCase()] = true; });
@@ -3619,7 +3635,7 @@ async function _pipelineAISeeds() {
 
   var _seedNotes = _getStrategistNotesCtx();
   var systemPrompt = 'You are an expert SEO strategist. Generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations.' + (_seedNotes ? ' Pay close attention to any strategist notes about which services or topics to include or exclude.' : '') + ' Output ONLY a JSON array of strings. No markdown.';
-  var userPrompt = 'Generate 20-30 SHORT HEAD TERMS (2-4 words max) for this client. Output ONLY a JSON array.\n\n' + ctx + _seedNotes;
+  var userPrompt = 'Generate 50-75 SHORT HEAD TERMS (2-4 words max) for this client. Output ONLY a JSON array.\n\n' + ctx + _seedNotes;
 
   var result = await callClaude(systemPrompt, userPrompt, null, 8000);
   var repaired = result.trim().replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();

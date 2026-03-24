@@ -477,6 +477,11 @@ function buildCopyPrompt(page) {
   if (r.team_credentials) _cpProof.push('Team credentials: '+r.team_credentials);
   if (r.founder_bio) _cpProof.push('Founder: '+r.founder_bio);
   var cpProofBlock = _cpProof.length ? '\n\n## PROOF & E-E-A-T SIGNALS (use these as real data in copy — never invent)\n'+_cpProof.join('\n') : '';
+  // Proof Bank: verified testimonials, case studies, stats from Setup
+  if (typeof getProofBankContext === 'function') {
+    var _cpPbCtx = getProofBankContext();
+    if (_cpPbCtx) cpProofBlock += _cpPbCtx;
+  }
   // Client goals context
   var _cpGoalLines = [];
   if (r.goal_statement) _cpGoalLines.push('Client says: "' + r.goal_statement + '"');
@@ -870,8 +875,8 @@ async function _executeCopyPage(slug) {
       scheduleSave();
       // Auto-generate meta tags in background
       generateMetaTags(slug, page, copy);
-      // Stay on the page just written so user can review
-      S.copyExpandedSlug = slug;
+      // Stay on the page just written ONLY if user hasn't navigated away
+      if (S.copyExpandedSlug === slug || !S.copyExpandedSlug) S.copyExpandedSlug = slug;
     }
   } catch(e) {
     S.copy[slug] = {error: e.message, page};

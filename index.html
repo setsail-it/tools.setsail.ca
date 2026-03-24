@@ -535,6 +535,32 @@ textarea.inp{resize:vertical}
           </div>
         </div>
       </div>
+      <!-- Webflow Connection -->
+      <div class="card" id="webflow-connection-card">
+        <div class="section-mark"><span class="section-mark-label">Webflow Connection</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Connect Webflow to pull form submissions into Lead Tracking, push schema markup, update alt text, and build layouts directly.</p>
+        <div id="webflow-connection-body">
+          <div id="webflow-not-connected">
+            <label style="font-size:12px;display:block;margin-bottom:5px">Webflow API Token <span style="color:var(--n2);font-weight:400">— <a href="https://webflow.com/dashboard/workspace/integrations" target="_blank" style="color:var(--green)">Get from Webflow → Workspace Settings → Integrations → API Access</a></span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="inp" id="f-webflow-token" type="password" placeholder="Paste your Webflow API token" style="flex:1;font-family:monospace;font-size:11px">
+              <button class="btn btn-primary sm" id="webflow-connect-btn" onclick="connectWebflow()"><i class="ti ti-plug"></i> Connect</button>
+            </div>
+            <div id="webflow-connect-error" style="display:none;font-size:11px;color:var(--error);margin-top:6px"></div>
+          </div>
+          <div id="webflow-connected" style="display:none">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(21,142,29,0.12);color:var(--green);font-weight:500"><i class="ti ti-check" style="font-size:9px"></i> Connected</span>
+              <button class="btn btn-ghost sm" style="color:var(--error);font-size:11px" onclick="disconnectWebflow()"><i class="ti ti-unlink"></i> Disconnect</button>
+            </div>
+            <label style="font-size:12px;display:block;margin-bottom:5px">Webflow Site</label>
+            <select class="inp" id="f-webflow-site" style="width:100%" onchange="selectWebflowSite(this.value)">
+              <option value="">— Select site</option>
+            </select>
+            <div id="webflow-site-info" style="display:none;margin-top:8px;font-size:11px;color:var(--n2)"></div>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client Goals</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Capture what success looks like in the client's own words. This flows into strategy, proposals, briefs, and copy — so the entire pipeline is aligned to their goals.</p>
@@ -640,6 +666,12 @@ textarea.inp{resize:vertical}
       <h2 class="ph">Site Snapshot</h2>
       <p class="psub">Ahrefs audit of the existing site — captures what's ranking, what has backlinks, and builds the 301 redirect map before we touch anything.</p>
 
+      <!-- Snapshot tab nav -->
+      <div id="snapshot-tab-nav" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px"></div>
+
+      <!-- AUDIT TAB -->
+      <div id="snapshot-tab-audit">
+
       <!-- Domain metrics bar — JS rendered -->
       <div id="snapshot-metrics-bar" style="display:none;margin-bottom:20px"></div>
 
@@ -711,6 +743,14 @@ textarea.inp{resize:vertical}
       <div id="snapshot-next-wrap" style="display:none">
         <button class="btn btn-primary" onclick="goTo('research');runResearch && document.getElementById('research-run-btn')"><i class="ti ti-arrow-right"></i> Continue to Research</button>
       </div>
+
+      </div><!-- /snapshot-tab-audit -->
+
+      <!-- LEADS TAB -->
+      <div id="snapshot-tab-leads" style="display:none">
+        <div id="snapshot-leads-content"></div>
+      </div>
+
     </div>
   </div>
 
@@ -1231,12 +1271,17 @@ async function loadAllCopyHtml(projectId) {
         const res = await fetch('/api/copy/' + projectId + '/' + fetchSlug);
         if (!res.ok) { console.warn('[loadAllCopyHtml] fetch failed for', slug, 'HTTP', res.status); return; }
         const data = await res.json();
-        if (data && S.copy[slug]) {
+        if (data) {
+          if (!S.copy[slug]) {
+            // KV has copy but project metadata is missing — recover it
+            S.copy[slug] = { writtenAt: null, approved: false, audit: null, humanQC: null, activeDraft: 0, page: null, error: null };
+            console.warn('[loadAllCopyHtml] recovered orphaned copy for', slug);
+          }
           S.copy[slug].copy = data.copy || '';
           S.copy[slug].drafts = data.drafts || [];
           console.log('[loadAllCopyHtml] restored', slug, 'copy length:', (data.copy||'').length);
         } else {
-          console.warn('[loadAllCopyHtml] skip', slug, '— data:', !!data, 'S.copy[slug]:', !!S.copy[slug]);
+          console.warn('[loadAllCopyHtml] skip', slug, '— no data from KV');
         }
       } catch(e) { console.warn('[loadAllCopyHtml] error for', rawSlug, e.message); }
     }));
@@ -1381,7 +1426,7 @@ async function resumeProject(id) {
   goTo(S.stage);
 
   // Re-render stage content
-  if (S.stage === 'snapshot') { if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
+  if (S.stage === 'snapshot') { renderSnapshotNav(); if (S.snapshot) renderSnapshot(); else _clearSnapshotUI(); }
   if (S.stage === 'research') { initResearch(); }
   if (S.stage === 'strategy') { strategyInit(); }
   if (S.stage === 'sitemap') {
@@ -2060,8 +2105,9 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initWebflowConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
   if (stage === 'snapshot') {
+    renderSnapshotNav();
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
     if (S.snapshot) { renderSnapshot(); if (_snapClearBtn) _snapClearBtn.style.display = ''; }
     else { _clearSnapshotUI(); if (_snapClearBtn) _snapClearBtn.style.display = 'none'; }
@@ -2394,6 +2440,7 @@ function navToStage(stage) {
 
 function renderStageContent(stage) {
   if (stage === 'snapshot') {
+    renderSnapshotNav();
     if (S.snapshot) { renderSnapshot(); }
     else { _clearSnapshotUI(); }
   }
@@ -3651,6 +3698,131 @@ async function _initAnalyticsConnection() {
   };
 }
 
+// ── WEBFLOW CONNECTION ────────────────────────────────────────────
+
+async function _initWebflowConnection() {
+  var notConnected = document.getElementById('webflow-not-connected');
+  var connected = document.getElementById('webflow-connected');
+  var siteSelect = document.getElementById('f-webflow-site');
+  if (!notConnected || !connected) return;
+
+  // Check if Webflow is connected for this project
+  if (S.setup && S.setup.webflowConnected) {
+    notConnected.style.display = 'none';
+    connected.style.display = '';
+    // Load sites
+    try {
+      var res = await fetch('/api/webflow/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: S._id })
+      });
+      var data = await res.json();
+      if (data.sites && data.sites.length) {
+        siteSelect.innerHTML = '<option value="">— Select site</option>';
+        data.sites.forEach(function(site) {
+          var opt = document.createElement('option');
+          opt.value = site.id;
+          opt.textContent = site.displayName || site.shortName || site.id;
+          siteSelect.appendChild(opt);
+        });
+        if (S.setup.webflowSiteId) {
+          siteSelect.value = S.setup.webflowSiteId;
+          _showWebflowSiteInfo(data.sites.find(function(s) { return s.id === S.setup.webflowSiteId; }));
+        }
+      }
+    } catch (e) { console.warn('[webflow] Failed to load sites:', e.message); }
+  } else {
+    notConnected.style.display = '';
+    connected.style.display = 'none';
+  }
+}
+
+async function connectWebflow() {
+  var tokenInput = document.getElementById('f-webflow-token');
+  var errEl = document.getElementById('webflow-connect-error');
+  var btn = document.getElementById('webflow-connect-btn');
+  var token = tokenInput ? tokenInput.value.trim() : '';
+  if (!token) { errEl.textContent = 'Please paste your Webflow API token'; errEl.style.display = ''; return; }
+  if (!S._id) { errEl.textContent = 'Save the project first'; errEl.style.display = ''; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Connecting…';
+  errEl.style.display = 'none';
+
+  try {
+    var res = await fetch('/api/webflow/save-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S._id, token: token })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Mark as connected
+    if (!S.setup) S.setup = {};
+    S.setup.webflowConnected = true;
+    scheduleSave();
+
+    // Populate site selector
+    var siteSelect = document.getElementById('f-webflow-site');
+    siteSelect.innerHTML = '<option value="">— Select site</option>';
+    (data.sites || []).forEach(function(site) {
+      var opt = document.createElement('option');
+      opt.value = site.id;
+      opt.textContent = site.displayName || site.shortName || site.id;
+      siteSelect.appendChild(opt);
+    });
+
+    // Switch to connected state
+    document.getElementById('webflow-not-connected').style.display = 'none';
+    document.getElementById('webflow-connected').style.display = '';
+    aiBarNotify('Webflow connected! Select your site.', { duration: 3000 });
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-plug"></i> Connect';
+  }
+}
+
+function selectWebflowSite(siteId) {
+  if (!S.setup) S.setup = {};
+  S.setup.webflowSiteId = siteId || null;
+  scheduleSave();
+  if (siteId) {
+    aiBarNotify('Webflow site selected. Leads tab can now pull form submissions.', { duration: 3000 });
+  }
+}
+
+function _showWebflowSiteInfo(site) {
+  var el = document.getElementById('webflow-site-info');
+  if (!el || !site) { if (el) el.style.display = 'none'; return; }
+  el.style.display = '';
+  var domain = site.customDomains && site.customDomains.length ? site.customDomains[0].url : (site.shortName + '.webflow.io');
+  el.innerHTML = '<span style="font-weight:500;color:var(--dark)">' + esc(site.displayName || site.shortName || '') + '</span> — ' + esc(domain);
+}
+
+async function disconnectWebflow() {
+  if (!S._id) return;
+  try {
+    await fetch('/api/webflow/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S._id })
+    });
+  } catch (e) { /* ignore */ }
+  if (S.setup) {
+    S.setup.webflowConnected = false;
+    S.setup.webflowSiteId = null;
+  }
+  scheduleSave();
+  document.getElementById('webflow-not-connected').style.display = '';
+  document.getElementById('webflow-connected').style.display = 'none';
+  aiBarNotify('Webflow disconnected', { duration: 2000 });
+}
+
 // ── GSC/GA4 SNAPSHOT HELPERS ──────────────────────────────────────
 
 function _fmtNum(n) { return n != null ? Number(n).toLocaleString() : '0'; }
@@ -4079,6 +4251,384 @@ async function runSnapshot() {
   }
 }
 
+// ── SNAPSHOT TABS ───────────────────────────────────────────────────────────
+
+var _snapTab = 'audit';
+
+function renderSnapshotNav() {
+  var nav = document.getElementById('snapshot-tab-nav');
+  if (!nav) return;
+  var leads = (S.snapshot && S.snapshot.leads) || [];
+  var leadsBadge = leads.length ? ' <span style="font-size:10px;font-weight:500;background:var(--green);color:#fff;border-radius:8px;padding:1px 6px;margin-left:4px">' + leads.length + '</span>' : '';
+  var tabs = [
+    { id: 'audit', icon: 'ti-radar', label: 'Site Audit' },
+    { id: 'leads', icon: 'ti-users', label: 'Leads' + leadsBadge }
+  ];
+  nav.innerHTML = tabs.map(function(t) {
+    var active = _snapTab === t.id;
+    return '<button onclick="switchSnapTab(\'' + t.id + '\')" style="padding:9px 16px;border:none;border-bottom:2px solid ' + (active ? 'var(--green)' : 'transparent') + ';background:none;font-family:var(--font);font-size:13px;color:' + (active ? 'var(--dark)' : 'var(--n2)') + ';cursor:pointer;white-space:nowrap;font-weight:' + (active ? 500 : 400) + ';transition:color .15s;margin-bottom:-2px"><i class="ti ' + t.icon + '" style="margin-right:5px;font-size:12px"></i>' + t.label + '</button>';
+  }).join('');
+}
+
+function switchSnapTab(id) {
+  _snapTab = id;
+  renderSnapshotNav();
+  var auditEl = document.getElementById('snapshot-tab-audit');
+  var leadsEl = document.getElementById('snapshot-tab-leads');
+  if (auditEl) auditEl.style.display = id === 'audit' ? '' : 'none';
+  if (leadsEl) {
+    leadsEl.style.display = id === 'leads' ? '' : 'none';
+    if (id === 'leads') {
+      var content = document.getElementById('snapshot-leads-content');
+      if (content) content.innerHTML = _renderLeadsCard();
+    }
+  }
+}
+
+// ── LEADS CARD ──────────────────────────────────────────────────────────────
+
+var _leadsMonth = null; // null = all months
+
+function _ensureLeads() {
+  if (!S.snapshot) S.snapshot = {};
+  if (!S.snapshot.leads) S.snapshot.leads = [];
+  return S.snapshot.leads;
+}
+
+function _renderLeadsCard() {
+  var leads = _ensureLeads();
+  var h = '<div style="margin-bottom:20px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+  h += '<div><div style="font-size:13px;font-weight:600;color:var(--dark)"><i class="ti ti-users" style="font-size:13px;margin-right:4px"></i>Lead Tracking</div>';
+  h += '<div style="font-size:11px;color:var(--n2);margin-top:2px">Leads and sales from connected sources. Sort by month to compare against strategy predictions.</div></div>';
+  h += '<div style="display:flex;gap:6px;align-items:center">';
+
+  // Month filter
+  var months = {};
+  leads.forEach(function(l) {
+    var d = l.lead_date ? l.lead_date.slice(0, 7) : '';
+    if (d) months[d] = (months[d] || 0) + 1;
+  });
+  var sortedMonths = Object.keys(months).sort().reverse();
+  h += '<select id="leads-month-filter" onchange="_leadsMonth=this.value===\'all\'?null:this.value;_rerenderLeadsTable()" style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<option value="all"' + (!_leadsMonth ? ' selected' : '') + '>All months (' + leads.length + ')</option>';
+  sortedMonths.forEach(function(m) {
+    var label = new Date(m + '-15').toLocaleDateString('en-CA', { year: 'numeric', month: 'short' });
+    h += '<option value="' + m + '"' + (_leadsMonth === m ? ' selected' : '') + '>' + esc(label) + ' (' + months[m] + ')</option>';
+  });
+  h += '</select>';
+  h += '</div></div>';
+
+  // Sources badge row
+  var sources = {};
+  leads.forEach(function(l) { sources[l.source_type || 'manual'] = true; });
+  var allSources = ['webflow', 'ghl', 'shopify', 'manual'];
+  h += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">';
+  allSources.forEach(function(s) {
+    var connected = sources[s];
+    var icon = s === 'webflow' ? 'ti-brand-webflow' : s === 'ghl' ? 'ti-phone' : s === 'shopify' ? 'ti-shopping-cart' : 'ti-pencil';
+    var label = s === 'ghl' ? 'GHL' : s.charAt(0).toUpperCase() + s.slice(1);
+    h += '<span style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid ' + (connected ? 'rgba(21,142,29,0.3)' : 'var(--border)') + ';color:' + (connected ? 'var(--green)' : 'var(--n2)') + ';background:' + (connected ? 'rgba(21,142,29,0.05)' : 'transparent') + '">';
+    h += '<i class="ti ' + icon + '" style="font-size:10px;margin-right:3px"></i>' + label + (connected ? ' \u2713' : '');
+    h += '</span>';
+  });
+  h += '</div>';
+
+  // Leads table
+  h += '<div id="leads-table-wrap">';
+  h += _buildLeadsTableHtml(leads);
+  h += '</div>';
+
+  // Add lead form
+  h += '<div style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+  h += '<input id="lead-name" type="text" placeholder="Name" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:120px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<input id="lead-email" type="text" placeholder="Email" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:150px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<select id="lead-source" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<option value="manual">Manual</option><option value="webflow">Webflow</option><option value="ghl">GHL</option><option value="shopify">Shopify</option><option value="referral">Referral</option><option value="phone">Phone</option><option value="other">Other</option>';
+  h += '</select>';
+  h += '<select id="lead-channel" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<option value="organic">Organic</option><option value="paid_search">Paid Search</option><option value="paid_social">Paid Social</option><option value="referral">Referral</option><option value="direct">Direct</option><option value="phone">Phone</option><option value="email">Email</option><option value="other">Other</option>';
+  h += '</select>';
+  h += '<input id="lead-value" type="text" placeholder="$ Value" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:80px;background:var(--bg);color:var(--dark);font-family:var(--font)">';
+  h += '<button class="btn btn-primary sm" onclick="addSnapshotLead()"><i class="ti ti-plus"></i> Add Lead</button>';
+  h += '</div>';
+
+  // Integration section
+  var wfConnected = S.setup && S.setup.webflowConnected && S.setup.webflowSiteId;
+  var webhookUrl = S.snapshot && S.snapshot._webhookUrl || null;
+
+  h += '<div style="margin-top:20px;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:8px">';
+  h += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-plug" style="margin-right:4px"></i>Lead Sources</div>';
+
+  // Webflow integration
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">';
+  h += '<div style="display:flex;align-items:center;gap:8px"><span style="color:#4353FF;font-weight:600;font-size:12px">Webflow</span>';
+  if (wfConnected) {
+    h += '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(21,142,29,0.12);color:var(--green)">Connected</span>';
+  } else {
+    h += '<span style="font-size:10px;color:var(--n2)">Not connected — set up in Setup stage</span>';
+  }
+  h += '</div>';
+  if (wfConnected) {
+    h += '<button class="btn btn-primary sm" id="webflow-pull-btn" onclick="pullWebflowSubmissions()"><i class="ti ti-download"></i> Pull Form Submissions</button>';
+  } else {
+    h += '<button class="btn btn-ghost sm" onclick="goTo(\'setup\')"><i class="ti ti-settings"></i> Connect</button>';
+  }
+  h += '</div>';
+
+  // GHL / Shopify webhook section
+  h += '<div style="padding:8px 0">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
+  h += '<div style="display:flex;align-items:center;gap:8px">';
+  h += '<span style="color:#F97316;font-weight:600;font-size:12px">GHL</span>';
+  h += '<span style="color:var(--n2);font-size:10px">·</span>';
+  h += '<span style="color:#96BF48;font-weight:600;font-size:12px">Shopify</span>';
+  h += '<span style="color:var(--n2);font-size:10px">·</span>';
+  h += '<span style="color:var(--n2);font-weight:500;font-size:12px">Other</span>';
+  h += '</div>';
+  if (!webhookUrl) {
+    h += '<button class="btn btn-ghost sm" onclick="generateWebhookUrl()"><i class="ti ti-webhook"></i> Generate Webhook URL</button>';
+  }
+  h += '</div>';
+  if (webhookUrl) {
+    h += '<div style="font-size:11px;color:var(--n2);margin-bottom:6px">Paste this URL into your CRM or ecommerce webhook settings.</div>';
+    h += '<div style="display:flex;gap:6px;align-items:center">';
+    h += '<input id="webhook-url-display" type="text" readonly value="' + esc(webhookUrl) + '" style="flex:1;font-size:10px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:monospace" onclick="this.select()">';
+    h += '<button class="btn btn-ghost sm" onclick="navigator.clipboard.writeText(document.getElementById(\'webhook-url-display\').value);aiBarNotify(\'Copied!\',{duration:1200})"><i class="ti ti-copy"></i></button>';
+    h += '</div>';
+    h += '<div style="margin-top:8px;font-size:10px;color:var(--n2)">';
+    h += '<strong>GHL:</strong> Settings → Webhooks → Contact Created · ';
+    h += '<strong>Shopify:</strong> Settings → Notifications → Webhooks → Order creation';
+    h += '</div>';
+  } else {
+    h += '<div style="font-size:11px;color:var(--n2)">Use webhooks for platforms that don\'t have a direct API integration.</div>';
+  }
+  h += '</div>';
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+function _buildLeadsTableHtml(allLeads) {
+  var leads = allLeads;
+  if (_leadsMonth) {
+    leads = allLeads.filter(function(l) { return l.lead_date && l.lead_date.slice(0, 7) === _leadsMonth; });
+  }
+  // Sort newest first
+  leads = leads.slice().sort(function(a, b) { return (b.lead_date || '').localeCompare(a.lead_date || ''); });
+
+  if (!leads.length) {
+    return '<div style="font-size:12px;color:var(--n2);padding:16px 0;text-align:center">No leads yet' + (_leadsMonth ? ' for this month' : '') + '. Add manually or connect a webhook source.</div>';
+  }
+
+  // Summary row
+  var totalValue = 0;
+  var statuses = {};
+  leads.forEach(function(l) {
+    totalValue += parseFloat(l.deal_value) || 0;
+    statuses[l.status || 'new'] = (statuses[l.status || 'new'] || 0) + 1;
+  });
+  var h = '<div style="display:flex;gap:16px;margin-bottom:8px;font-size:11px;color:var(--n2)">';
+  h += '<span><strong style="color:var(--dark)">' + leads.length + '</strong> leads</span>';
+  if (totalValue > 0) h += '<span><strong style="color:var(--dark)">$' + totalValue.toLocaleString() + '</strong> value</span>';
+  if (statuses.closed_won) h += '<span style="color:var(--green)"><strong>' + statuses.closed_won + '</strong> won</span>';
+  if (statuses.qualified) h += '<span><strong>' + statuses.qualified + '</strong> qualified</span>';
+  h += '</div>';
+
+  var thStyle = 'padding:5px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--n2);text-align:left;border-bottom:1px solid var(--border)';
+  var tdStyle = 'padding:5px 8px;font-size:11px;color:var(--dark);border-bottom:1px solid rgba(0,0,0,0.04)';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">';
+  h += '<thead><tr>';
+  h += '<th style="' + thStyle + '">Date</th>';
+  h += '<th style="' + thStyle + '">Name</th>';
+  h += '<th style="' + thStyle + '">Source</th>';
+  h += '<th style="' + thStyle + '">Channel</th>';
+  h += '<th style="' + thStyle + '">Value</th>';
+  h += '<th style="' + thStyle + '">Status</th>';
+  h += '<th style="' + thStyle + ';width:30px"></th>';
+  h += '</tr></thead><tbody>';
+
+  leads.forEach(function(l, i) {
+    var idx = _ensureLeads().indexOf(l);
+    var sourceColor = l.source_type === 'webflow' ? '#4353FF' : l.source_type === 'ghl' ? '#F97316' : l.source_type === 'shopify' ? '#96BF48' : 'var(--n2)';
+    var statusColors = { new: 'var(--n2)', contacted: '#3B82F6', qualified: '#F59E0B', proposal: '#8B5CF6', closed_won: 'var(--green)', closed_lost: 'var(--error)', disqualified: 'var(--n2)' };
+    var sc = statusColors[l.status] || 'var(--n2)';
+    var dateStr = l.lead_date ? new Date(l.lead_date).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) : '\u2014';
+    h += '<tr>';
+    h += '<td style="' + tdStyle + ';font-family:monospace;font-size:10px;color:var(--n2)">' + dateStr + '</td>';
+    h += '<td style="' + tdStyle + '">' + esc(l.contact_name || '\u2014') + (l.contact_email ? '<div style="font-size:9px;color:var(--n2)">' + esc(l.contact_email) + '</div>' : '') + '</td>';
+    h += '<td style="' + tdStyle + '"><span style="font-size:10px;color:' + sourceColor + ';font-weight:500">' + esc(l.source_type || 'manual') + '</span></td>';
+    h += '<td style="' + tdStyle + ';font-size:10px;color:var(--n2)">' + esc(l.source_channel || '\u2014') + '</td>';
+    h += '<td style="' + tdStyle + ';font-family:monospace">' + (l.deal_value ? '$' + parseFloat(l.deal_value).toLocaleString() : '') + '</td>';
+    h += '<td style="' + tdStyle + '">';
+    h += '<select onchange="updateLeadStatus(' + idx + ',this.value)" style="font-size:10px;padding:2px 4px;border:1px solid ' + sc + ';border-radius:3px;color:' + sc + ';background:transparent;font-family:var(--font)">';
+    ['new', 'contacted', 'qualified', 'proposal', 'closed_won', 'closed_lost', 'disqualified'].forEach(function(st) {
+      h += '<option value="' + st + '"' + (l.status === st ? ' selected' : '') + '>' + st.replace('_', ' ') + '</option>';
+    });
+    h += '</select></td>';
+    h += '<td style="' + tdStyle + '"><button onclick="removeSnapshotLead(' + idx + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:11px;padding:2px" data-tip="Remove lead"><i class="ti ti-x"></i></button></td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+function _rerenderLeadsTable() {
+  var wrap = document.getElementById('leads-table-wrap');
+  if (wrap) wrap.innerHTML = _buildLeadsTableHtml(_ensureLeads());
+  renderSnapshotNav(); // update lead count badge
+}
+
+function addSnapshotLead() {
+  var nameEl = document.getElementById('lead-name');
+  var emailEl = document.getElementById('lead-email');
+  var sourceEl = document.getElementById('lead-source');
+  var channelEl = document.getElementById('lead-channel');
+  var valueEl = document.getElementById('lead-value');
+  var lead = {
+    id: 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    contact_name: (nameEl && nameEl.value.trim()) || null,
+    contact_email: (emailEl && emailEl.value.trim()) || null,
+    source_type: sourceEl ? sourceEl.value : 'manual',
+    source_channel: channelEl ? channelEl.value : 'other',
+    deal_value: valueEl && valueEl.value.trim() ? parseFloat(valueEl.value.replace(/[^0-9.]/g, '')) : null,
+    status: 'new',
+    lead_date: new Date().toISOString(),
+    created_at: new Date().toISOString()
+  };
+  _ensureLeads().push(lead);
+  scheduleSave();
+  _rerenderLeadsTable();
+  // Clear inputs
+  if (nameEl) nameEl.value = '';
+  if (emailEl) emailEl.value = '';
+  if (valueEl) valueEl.value = '';
+  if (typeof aiBarNotify === 'function') aiBarNotify('Lead added', { duration: 1500 });
+}
+
+function updateLeadStatus(idx, status) {
+  var leads = _ensureLeads();
+  if (leads[idx]) {
+    leads[idx].status = status;
+    leads[idx].updated_at = new Date().toISOString();
+    scheduleSave();
+  }
+}
+
+async function pullWebflowSubmissions() {
+  if (!S.setup || !S.setup.webflowSiteId || !S._id) {
+    aiBarNotify('Connect Webflow and select a site in Setup first', { type: 'warn' });
+    return;
+  }
+  var btn = document.getElementById('webflow-pull-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Pulling…'; }
+
+  try {
+    var res = await fetch('/api/webflow/form-submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S._id, siteId: S.setup.webflowSiteId })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    var submissions = data.submissions || [];
+    if (!submissions.length) {
+      aiBarNotify('No form submissions found in Webflow', { duration: 3000 });
+      return;
+    }
+
+    // Convert submissions to leads, dedup by submission ID
+    var leads = _ensureLeads();
+    var existingIds = {};
+    leads.forEach(function(l) { if (l.webflow_id) existingIds[l.webflow_id] = true; });
+
+    var newCount = 0;
+    submissions.forEach(function(sub) {
+      if (existingIds[sub.id]) return; // skip duplicates
+      var fields = sub.formSubmissionData || sub.data || {};
+
+      // Flexible field extraction from Webflow form data
+      var nameVal = null, emailVal = null, phoneVal = null;
+      if (Array.isArray(fields)) {
+        fields.forEach(function(f) {
+          var n = (f.name || f.displayName || '').toLowerCase();
+          var v = f.value || f.textValue || '';
+          if (!v) return;
+          if (n.includes('name') && !nameVal) nameVal = v;
+          if (n.includes('email') && !emailVal) emailVal = v;
+          if ((n.includes('phone') || n.includes('tel')) && !phoneVal) phoneVal = v;
+        });
+      } else if (typeof fields === 'object') {
+        Object.keys(fields).forEach(function(k) {
+          var n = k.toLowerCase();
+          var v = fields[k];
+          if (!v) return;
+          if (n.includes('name') && !nameVal) nameVal = v;
+          if (n.includes('email') && !emailVal) emailVal = v;
+          if ((n.includes('phone') || n.includes('tel')) && !phoneVal) phoneVal = v;
+        });
+      }
+
+      leads.push({
+        id: 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        webflow_id: sub.id,
+        contact_name: nameVal || null,
+        contact_email: emailVal || null,
+        contact_phone: phoneVal || null,
+        source_type: 'webflow',
+        source_channel: 'organic',
+        source_detail: sub._formName || 'Webflow Form',
+        deal_value: null,
+        status: 'new',
+        lead_date: sub.submittedAt || sub.dateSubmitted || sub.createdOn || new Date().toISOString(),
+        created_at: new Date().toISOString()
+      });
+      newCount++;
+    });
+
+    scheduleSave();
+    _rerenderLeadsTable();
+    // Also re-render the full card to update the month filter
+    var content = document.getElementById('snapshot-leads-content');
+    if (content) content.innerHTML = _renderLeadsCard();
+    aiBarNotify(newCount + ' new lead' + (newCount !== 1 ? 's' : '') + ' pulled from Webflow (' + submissions.length + ' total submissions)', { duration: 4000 });
+  } catch (e) {
+    aiBarNotify('Webflow pull failed: ' + e.message, { type: 'error' });
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Form Submissions'; }
+  }
+}
+
+async function generateWebhookUrl() {
+  if (!S._id) { aiBarNotify('Save the project first', { type: 'warn' }); return; }
+  try {
+    var res = await fetch('/api/webhook/token/' + S._id, { method: 'POST' });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!S.snapshot) S.snapshot = {};
+    S.snapshot._webhookUrl = data.webhook_url;
+    S.snapshot._webhookToken = data.token;
+    scheduleSave();
+    // Re-render leads tab
+    var content = document.getElementById('snapshot-leads-content');
+    if (content) content.innerHTML = _renderLeadsCard();
+    aiBarNotify('Webhook URL generated — copy it and paste into your form/CRM settings', { duration: 4000 });
+  } catch (e) {
+    aiBarNotify('Error generating webhook: ' + e.message, { type: 'error' });
+  }
+}
+
+function removeSnapshotLead(idx) {
+  var leads = _ensureLeads();
+  if (leads[idx]) {
+    leads.splice(idx, 1);
+    scheduleSave();
+    _rerenderLeadsTable();
+  }
+}
+
 function addSnapshotPage(slug) {
   if (!slug) return;
   if (!slug.startsWith('/')) slug = '/' + slug;
@@ -4132,6 +4682,7 @@ function _clearSnapshotUI() {
 }
 
 function renderSnapshot() {
+  renderSnapshotNav();
   const snap = S.snapshot;
   if (!snap) return;
   const m = snap.domainMetrics || {};

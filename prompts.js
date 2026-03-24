@@ -142,7 +142,7 @@ The emotional progression matters as much as the CRO structure.
 ## QUALITY RULES
 - NEVER fabricate. Only PROOF section data. Placeholder brackets for missing data.
 - NEVER stuff keywords. Every keyword in a sentence that reads naturally without it.
-- Brand/product/tool name: maximum 5 mentions per page.
+- Brand/product/tool name: maximum 3-4 mentions per page. Internal tools or proprietary systems: maximum 3 mentions — the tool is the mechanism, not the message.
 - Target 2,000–2,500 words total. Briefs may specify different targets.
 - Canadian spelling throughout (optimise, colour, centre, analyse).
 

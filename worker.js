@@ -3176,6 +3176,235 @@ export default {
       }
     }
 
+    // ── Webflow Integration ──────────────────────────────────────────────────
+
+    // POST /api/webflow/save-token — store Webflow API token securely in KV (not in project JSON)
+    if (url.pathname === '/api/webflow/save-token' && request.method === 'POST') {
+      try {
+        const { projectId, token } = await request.json();
+        if (!projectId || !token) return new Response(JSON.stringify({ error: 'projectId and token required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        // Verify token works by listing sites
+        const verifyRes = await fetch('https://api.webflow.com/v2/sites', {
+          headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+        });
+        if (!verifyRes.ok) {
+          const errText = await verifyRes.text();
+          return new Response(JSON.stringify({ error: 'Invalid Webflow token: ' + verifyRes.status, detail: errText }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const sitesData = await verifyRes.json();
+        // Store token securely
+        await env.SETSAIL_OS.put('webflow_token:' + projectId, token);
+        return new Response(JSON.stringify({ ok: true, sites: sitesData.sites || [] }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webflow/sites — list sites using stored token
+    if (url.pathname === '/api/webflow/sites' && request.method === 'POST') {
+      try {
+        const { projectId } = await request.json();
+        const token = await env.SETSAIL_OS.get('webflow_token:' + projectId);
+        if (!token) return new Response(JSON.stringify({ error: 'No Webflow token stored. Connect Webflow first.' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const res = await fetch('https://api.webflow.com/v2/sites', {
+          headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+        });
+        const data = await res.json();
+        return new Response(JSON.stringify({ sites: data.sites || [] }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webflow/forms — list forms for a site
+    if (url.pathname === '/api/webflow/forms' && request.method === 'POST') {
+      try {
+        const { projectId, siteId } = await request.json();
+        const token = await env.SETSAIL_OS.get('webflow_token:' + projectId);
+        if (!token) return new Response(JSON.stringify({ error: 'No Webflow token' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const res = await fetch('https://api.webflow.com/v2/sites/' + siteId + '/forms', {
+          headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+        });
+        const data = await res.json();
+        return new Response(JSON.stringify({ forms: data.forms || [] }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webflow/form-submissions — pull form submissions (leads)
+    if (url.pathname === '/api/webflow/form-submissions' && request.method === 'POST') {
+      try {
+        const { projectId, siteId, formId, limit, offset } = await request.json();
+        const token = await env.SETSAIL_OS.get('webflow_token:' + projectId);
+        if (!token) return new Response(JSON.stringify({ error: 'No Webflow token' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        // If formId provided, get submissions for that form; otherwise get all for site
+        let apiUrl;
+        if (formId) {
+          apiUrl = 'https://api.webflow.com/v2/forms/' + formId + '/submissions?limit=' + (limit || 100) + '&offset=' + (offset || 0);
+        } else {
+          // Get all forms, then pull submissions from each
+          const formsRes = await fetch('https://api.webflow.com/v2/sites/' + siteId + '/forms', {
+            headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+          });
+          const formsData = await formsRes.json();
+          const forms = formsData.forms || [];
+          let allSubmissions = [];
+          for (const form of forms) {
+            const subRes = await fetch('https://api.webflow.com/v2/forms/' + form.id + '/submissions?limit=' + (limit || 100), {
+              headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+            });
+            const subData = await subRes.json();
+            const subs = (subData.formSubmissions || []).map(s => ({ ...s, _formName: form.displayName || form.name || 'Form' }));
+            allSubmissions = allSubmissions.concat(subs);
+          }
+          return new Response(JSON.stringify({ submissions: allSubmissions }), {
+            headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const res = await fetch(apiUrl, {
+          headers: { 'Authorization': 'Bearer ' + token, 'accept': 'application/json' }
+        });
+        const data = await res.json();
+        return new Response(JSON.stringify({ submissions: data.formSubmissions || [] }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webflow/disconnect — remove stored token
+    if (url.pathname === '/api/webflow/disconnect' && request.method === 'POST') {
+      try {
+        const { projectId } = await request.json();
+        await env.SETSAIL_OS.delete('webflow_token:' + projectId);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webhook/lead/:projectId — receive lead from external source (Webflow, GHL, Shopify)
+    // Auth: uses a simple token stored per project in KV
+    const webhookLeadMatch = url.pathname.match(/^\/api\/webhook\/lead\/([^/]+)$/);
+    if (webhookLeadMatch && request.method === 'POST') {
+      const [, projectId] = webhookLeadMatch;
+      try {
+        // Verify webhook token (query param ?token=xxx)
+        const token = url.searchParams.get('token');
+        const expectedToken = await env.SETSAIL_OS.get('webhook_token:' + projectId);
+        if (!expectedToken || token !== expectedToken) {
+          return new Response(JSON.stringify({ error: 'Invalid webhook token' }), {
+            status: 401, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const body = await request.json();
+        const source = (body.source || body._source || 'webhook').toLowerCase();
+
+        // Extract contact info — flexible field mapping
+        const nameFields = ['name', 'full_name', 'fullname', 'first_name', 'Name', 'Full Name', 'contact_name'];
+        const emailFields = ['email', 'Email', 'email_address', 'contact_email'];
+        const phoneFields = ['phone', 'Phone', 'phone_number', 'telephone', 'contact_phone'];
+        const valueFields = ['value', 'deal_value', 'amount', 'total_price', 'order_total'];
+
+        function _findField(data, keys) {
+          for (const k of keys) { if (data[k] && String(data[k]).trim()) return String(data[k]).trim(); }
+          // Try lowercase
+          const lower = {};
+          for (const [k, v] of Object.entries(data)) { lower[k.toLowerCase()] = v; }
+          for (const k of keys) { if (lower[k.toLowerCase()] && String(lower[k.toLowerCase()]).trim()) return String(lower[k.toLowerCase()]).trim(); }
+          return null;
+        }
+
+        const lead = {
+          id: 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          contact_name: body.contact_name || _findField(body, nameFields),
+          contact_email: body.contact_email || _findField(body, emailFields),
+          contact_phone: body.contact_phone || _findField(body, phoneFields),
+          source_type: source,
+          source_channel: body.source_channel || body.channel || 'other',
+          source_detail: body.source_detail || body.form_name || body.campaign || null,
+          deal_value: body.deal_value || _findField(body, valueFields) || null,
+          status: 'new',
+          lead_date: body.lead_date || new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          raw: body
+        };
+
+        // Load project, append lead to S.snapshot.leads, save
+        // Find the project — try all user prefixes (webhook is unauthenticated)
+        const allKeys = await env.SETSAIL_OS.list({ prefix: '' });
+        let projectKey = null;
+        for (const k of allKeys.keys) {
+          if (k.name.endsWith(':' + projectId)) {
+            projectKey = k.name;
+            break;
+          }
+        }
+        if (!projectKey) {
+          return new Response(JSON.stringify({ error: 'Project not found' }), {
+            status: 404, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+
+        const projectData = JSON.parse(await env.SETSAIL_OS.get(projectKey));
+        if (!projectData.snapshot) projectData.snapshot = {};
+        if (!projectData.snapshot.leads) projectData.snapshot.leads = [];
+        projectData.snapshot.leads.push(lead);
+        projectData._version = (projectData._version || 0) + 1;
+        await env.SETSAIL_OS.put(projectKey, JSON.stringify(projectData));
+
+        return new Response(JSON.stringify({ ok: true, lead_id: lead.id }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/webhook/token/:projectId — generate a webhook token for a project
+    const webhookTokenMatch = url.pathname.match(/^\/api\/webhook\/token\/([^/]+)$/);
+    if (webhookTokenMatch && request.method === 'POST') {
+      const [, projectId] = webhookTokenMatch;
+      const token = crypto.randomUUID().replace(/-/g, '');
+      await env.SETSAIL_OS.put('webhook_token:' + projectId, token);
+      return new Response(JSON.stringify({ token, webhook_url: url.origin + '/api/webhook/lead/' + projectId + '?token=' + token }), {
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
+
     if (url.pathname === '/api/serp-intel' && request.method === 'POST') {
       try {
         if (!env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD) {
