@@ -1395,6 +1395,8 @@ async function showProjects() {
 }
 
 function startNewProject() {
+  clearTimeout(saveTimer);
+  window._aiStopAll = false;
   S.projectId = 'proj-' + Date.now();
   S.stage = 'setup'; S.setup = null; S.snapshot = null; S.research = null;
   S.strategy = null; S.kwResearch = null; S.kwMetrics = {};
@@ -1414,6 +1416,7 @@ async function resumeProject(id) {
   if (!data) { showProjects(); return; }
 
   S.projectId = id;
+  window._aiStopAll = false; // Reset — new project is now active
   S._version = data._version || 0;
   S.stage = data.stage || 'setup';
   S.setup = data.setup || null;
