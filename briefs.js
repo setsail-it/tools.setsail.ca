@@ -1553,6 +1553,7 @@ async function generatePageBrief(pageIdx) {
 async function _executePageBrief(pageIdx) {
   var p = S.pages[pageIdx];
   if (!p) return;
+  var guard = projectGuard();
   var btn = document.getElementById('brief-btn-'+pageIdx);
   var streamEl = document.getElementById('brief-stream-'+pageIdx);
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span>'; }
@@ -2239,6 +2240,7 @@ async function _executePageBrief(pageIdx) {
     window._aiBarLabel = 'Brief: ' + (p.page_name || p.slug);
     if(typeof storePrompt==='function') storePrompt('brief-'+pageIdx, sysPrompt, prompt, 'Brief: '+p.page_name, p.slug+' · '+p.page_type+(p.primary_keyword?' · '+p.primary_keyword:''));
     var briefText = await callClaude(sysPrompt, prompt, function(t){ if(streamEl) { streamEl.style.display = 'block'; streamEl.textContent = t; streamEl.scrollTop = streamEl.scrollHeight; } }, 8000);
+    if (guard.changed()) { console.warn('[brief] project changed, discarding result'); aiBarEnd(); return; }
     if (!p.brief) p.brief = {};
     p.brief.generated = true;
     p.brief.summary = briefText;

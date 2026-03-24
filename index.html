@@ -1133,6 +1133,13 @@ let _sitemapCatTab = 'all'; // 'all' | 'service' | 'location' | 'blog' | 'core'
 let _sitemapIssuesExpanded = false;
 let _sitemapWorkflowIssues = null;
 
+// Guard: capture project ID before async work, check after
+// Usage: var guard = projectGuard(); ... await something ... if (guard.changed()) return;
+function projectGuard() {
+  var pid = S.projectId;
+  return { changed: function() { return S.projectId !== pid; }, id: pid };
+}
+
 var _ctxUpdateTimer = null;
 function scheduleSave() {
   if (!S.projectId) return;
@@ -1399,6 +1406,9 @@ function startNewProject() {
 }
 
 async function resumeProject(id) {
+  // Cancel any pending saves from previous project to prevent cross-contamination
+  clearTimeout(saveTimer);
+  window._aiStopAll = true; // Signal any running async ops to stop
   document.getElementById('projects-list').innerHTML = '<div style="color:var(--n2);font-size:13px;display:flex;align-items:center;gap:8px;padding:20px 0"><span class="spinner" style="width:12px;height:12px"></span> Loading project...</div>';
   const data = await loadProject(id);
   if (!data) { showProjects(); return; }
@@ -4327,6 +4337,7 @@ async function runSnapshot() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Running full site audit…';
   status.textContent = 'Pulling domain metrics, tech stack, vitals, rankings and backlink data…';
+  var guard = projectGuard();
 
   try {
     const geo = (S.setup?.geo || '').toUpperCase();
@@ -4369,6 +4380,7 @@ async function runSnapshot() {
     if (brandSerpRes && brandSerpRes.ok) {
       try { data.brandSerp = await brandSerpRes.json(); } catch(e) { data.brandSerp = null; }
     }
+    if (guard.changed()) { console.warn('[snapshot] project changed, discarding'); return; }
     S.snapshot = data;
 
     // Pull GSC data if configured
