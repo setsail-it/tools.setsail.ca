@@ -3297,6 +3297,114 @@ export default {
       }
     }
 
+    // ── GoHighLevel Integration ─────────────────────────────────────────────
+
+    // POST /api/ghl/save-token — store GHL token + locationId securely in KV
+    if (url.pathname === '/api/ghl/save-token' && request.method === 'POST') {
+      try {
+        const { projectId, token, locationId } = await request.json();
+        if (!projectId || !token || !locationId) return new Response(JSON.stringify({ error: 'projectId, token, and locationId required' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        // Verify token works by fetching location info
+        const verifyRes = await fetch('https://services.leadconnectorhq.com/locations/' + locationId, {
+          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+        });
+        if (!verifyRes.ok) {
+          const errText = await verifyRes.text();
+          return new Response(JSON.stringify({ error: 'Invalid GHL token or location ID: ' + verifyRes.status, detail: errText }), {
+            status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const locationData = await verifyRes.json();
+        // Store token + locationId securely
+        await env.SETSAIL_OS.put('ghl_token:' + projectId, JSON.stringify({ token, locationId }));
+        return new Response(JSON.stringify({ ok: true, location: locationData.location || locationData }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/ghl/contacts — pull contacts from GHL
+    if (url.pathname === '/api/ghl/contacts' && request.method === 'POST') {
+      try {
+        const { projectId, limit, startAfterId } = await request.json();
+        const stored = await env.SETSAIL_OS.get('ghl_token:' + projectId);
+        if (!stored) return new Response(JSON.stringify({ error: 'No GHL token stored. Connect GHL first.' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const { token, locationId } = JSON.parse(stored);
+        let apiUrl = 'https://services.leadconnectorhq.com/contacts/?locationId=' + locationId + '&limit=' + (limit || 100);
+        if (startAfterId) apiUrl += '&startAfterId=' + startAfterId;
+        const res = await fetch(apiUrl, {
+          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          return new Response(JSON.stringify({ error: 'GHL API error: ' + res.status, detail: errText }), {
+            status: res.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const data = await res.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/ghl/opportunities — pull opportunities from GHL
+    if (url.pathname === '/api/ghl/opportunities' && request.method === 'POST') {
+      try {
+        const { projectId } = await request.json();
+        const stored = await env.SETSAIL_OS.get('ghl_token:' + projectId);
+        if (!stored) return new Response(JSON.stringify({ error: 'No GHL token stored' }), {
+          status: 400, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+        const { token, locationId } = JSON.parse(stored);
+        const res = await fetch('https://services.leadconnectorhq.com/opportunities/search?location_id=' + locationId + '&limit=100', {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + token, 'Version': '2021-07-28', 'Accept': 'application/json' }
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          return new Response(JSON.stringify({ error: 'GHL API error: ' + res.status, detail: errText }), {
+            status: res.status, headers: { 'Content-Type': 'application/json', ...cors }
+          });
+        }
+        const data = await res.json();
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
+    // POST /api/ghl/disconnect — remove stored token
+    if (url.pathname === '/api/ghl/disconnect' && request.method === 'POST') {
+      try {
+        const { projectId } = await request.json();
+        await env.SETSAIL_OS.delete('ghl_token:' + projectId);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json', ...cors }
+        });
+      }
+    }
+
     // POST /api/webhook/lead/:projectId — receive lead from external source (Webflow, GHL, Shopify)
     // Auth: uses a simple token stored per project in KV
     const webhookLeadMatch = url.pathname.match(/^\/api\/webhook\/lead\/([^/]+)$/);

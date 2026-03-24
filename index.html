@@ -561,6 +561,30 @@ textarea.inp{resize:vertical}
           </div>
         </div>
       </div>
+      <!-- GHL Connection -->
+      <div class="card" id="ghl-connection-card">
+        <div class="section-mark"><span class="section-mark-label">GoHighLevel Connection</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Connect GoHighLevel to pull contacts and opportunities into Lead Tracking.</p>
+        <div id="ghl-connection-body">
+          <div id="ghl-not-connected">
+            <label style="font-size:12px;display:block;margin-bottom:5px">GHL Private Integration Token <span style="color:var(--n2);font-weight:400">— <a href="https://app.gohighlevel.com/settings" target="_blank" style="color:var(--green)">Settings → Integrations → Private Integrations → Create</a></span></label>
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <input class="inp" id="f-ghl-token" type="password" placeholder="Paste your GHL private integration token" style="flex:1;font-family:monospace;font-size:11px">
+              <button class="btn btn-primary sm" id="ghl-connect-btn" onclick="connectGHL()"><i class="ti ti-plug"></i> Connect</button>
+            </div>
+            <label style="font-size:12px;display:block;margin-bottom:5px">Location ID <span style="color:var(--n2);font-weight:400">— found in GHL → Settings → Business Profile → scroll to bottom</span></label>
+            <input class="inp" id="f-ghl-location" type="text" placeholder="e.g. abc123DEF456" style="width:100%;font-family:monospace;font-size:11px">
+            <div id="ghl-connect-error" style="display:none;font-size:11px;color:var(--error);margin-top:6px"></div>
+          </div>
+          <div id="ghl-connected" style="display:none">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(21,142,29,0.12);color:var(--green);font-weight:500"><i class="ti ti-check" style="font-size:9px"></i> Connected</span>
+              <span id="ghl-location-label" style="font-size:11px;color:var(--n2);font-family:monospace"></span>
+              <button class="btn btn-ghost sm" style="color:var(--error);font-size:11px" onclick="disconnectGHL()"><i class="ti ti-unlink"></i> Disconnect</button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client Goals</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Capture what success looks like in the client's own words. This flows into strategy, proposals, briefs, and copy — so the entire pipeline is aligned to their goals.</p>
@@ -2105,7 +2129,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initWebflowConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initWebflowConnection(); _initGHLConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
   if (stage === 'snapshot') {
     renderSnapshotNav();
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
@@ -3835,6 +3859,146 @@ async function disconnectWebflow() {
   aiBarNotify('Webflow disconnected', { duration: 2000 });
 }
 
+// ── GHL CONNECTION ────────────────────────────────────────────────
+
+async function _initGHLConnection() {
+  var notConnected = document.getElementById('ghl-not-connected');
+  var connected = document.getElementById('ghl-connected');
+  if (!notConnected || !connected) return;
+  if (S.setup && S.setup.ghlConnected) {
+    notConnected.style.display = 'none';
+    connected.style.display = '';
+    var label = document.getElementById('ghl-location-label');
+    if (label && S.setup.ghlLocationId) label.textContent = 'Location: ' + S.setup.ghlLocationId;
+  } else {
+    notConnected.style.display = '';
+    connected.style.display = 'none';
+  }
+}
+
+async function connectGHL() {
+  var tokenInput = document.getElementById('f-ghl-token');
+  var locationInput = document.getElementById('f-ghl-location');
+  var errEl = document.getElementById('ghl-connect-error');
+  var btn = document.getElementById('ghl-connect-btn');
+  var token = tokenInput ? tokenInput.value.trim() : '';
+  var locationId = locationInput ? locationInput.value.trim() : '';
+  if (!token) { errEl.textContent = 'Paste your GHL private integration token'; errEl.style.display = ''; return; }
+  if (!locationId) { errEl.textContent = 'Enter your GHL Location ID'; errEl.style.display = ''; return; }
+  if (!S.projectId) { errEl.textContent = 'Save the project first'; errEl.style.display = ''; return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Connecting…';
+  errEl.style.display = 'none';
+
+  try {
+    var res = await fetch('/api/ghl/save-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S.projectId, token: token, locationId: locationId })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (!S.setup) S.setup = {};
+    S.setup.ghlConnected = true;
+    S.setup.ghlLocationId = locationId;
+    S.setup.ghlLocationName = (data.location && data.location.name) || locationId;
+    scheduleSave();
+
+    document.getElementById('ghl-not-connected').style.display = 'none';
+    document.getElementById('ghl-connected').style.display = '';
+    var label = document.getElementById('ghl-location-label');
+    if (label) label.textContent = S.setup.ghlLocationName;
+    aiBarNotify('GoHighLevel connected!', { duration: 3000 });
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-plug"></i> Connect';
+  }
+}
+
+async function disconnectGHL() {
+  if (!S.projectId) return;
+  try {
+    await fetch('/api/ghl/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S.projectId })
+    });
+  } catch (e) { /* ignore */ }
+  if (S.setup) {
+    S.setup.ghlConnected = false;
+    S.setup.ghlLocationId = null;
+    S.setup.ghlLocationName = null;
+  }
+  scheduleSave();
+  document.getElementById('ghl-not-connected').style.display = '';
+  document.getElementById('ghl-connected').style.display = 'none';
+  aiBarNotify('GHL disconnected', { duration: 2000 });
+}
+
+async function pullGHLContacts() {
+  if (!S.setup || !S.setup.ghlConnected || !S.projectId) {
+    aiBarNotify('Connect GoHighLevel in Setup first', { type: 'warn' });
+    return;
+  }
+  var btn = document.getElementById('ghl-pull-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:12px;height:12px"></span> Pulling…'; }
+
+  try {
+    var res = await fetch('/api/ghl/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: S.projectId, limit: 100 })
+    });
+    var data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    var contacts = data.contacts || [];
+    if (!contacts.length) {
+      aiBarNotify('No contacts found in GHL', { duration: 3000 });
+      return;
+    }
+
+    var leads = _ensureLeads();
+    var existingIds = {};
+    leads.forEach(function(l) { if (l.ghl_id) existingIds[l.ghl_id] = true; });
+
+    var newCount = 0;
+    contacts.forEach(function(c) {
+      if (existingIds[c.id]) return;
+      leads.push({
+        id: 'lead-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        ghl_id: c.id,
+        contact_name: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.name || c.contactName || null,
+        contact_email: c.email || null,
+        contact_phone: c.phone || null,
+        contact_company: c.companyName || c.company || null,
+        source_type: 'ghl',
+        source_channel: c.source || 'other',
+        source_detail: c.tags ? c.tags.join(', ') : null,
+        deal_value: c.monetaryValue || null,
+        status: 'new',
+        lead_date: c.dateAdded || c.createdAt || new Date().toISOString(),
+        created_at: new Date().toISOString()
+      });
+      newCount++;
+    });
+
+    scheduleSave();
+    var content = document.getElementById('snapshot-leads-content');
+    if (content) content.innerHTML = _renderLeadsCard();
+    aiBarNotify(newCount + ' new lead' + (newCount !== 1 ? 's' : '') + ' pulled from GHL (' + contacts.length + ' total contacts)', { duration: 4000 });
+  } catch (e) {
+    aiBarNotify('GHL pull failed: ' + e.message, { type: 'error' });
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-download"></i> Pull Contacts'; }
+  }
+}
+
 // ── GSC/GA4 SNAPSHOT HELPERS ──────────────────────────────────────
 
 function _fmtNum(n) { return n != null ? Number(n).toLocaleString() : '0'; }
@@ -4388,12 +4552,27 @@ function _renderLeadsCard() {
   }
   h += '</div>';
 
-  // GHL / Shopify webhook section
+  // GHL integration
+  var ghlConnected = S.setup && S.setup.ghlConnected;
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">';
+  h += '<div style="display:flex;align-items:center;gap:8px"><span style="color:#F97316;font-weight:600;font-size:12px">GoHighLevel</span>';
+  if (ghlConnected) {
+    h += '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(21,142,29,0.12);color:var(--green)">Connected</span>';
+  } else {
+    h += '<span style="font-size:10px;color:var(--n2)">Not connected</span>';
+  }
+  h += '</div>';
+  if (ghlConnected) {
+    h += '<button class="btn btn-primary sm" id="ghl-pull-btn" onclick="pullGHLContacts()" style="background:#F97316;border-color:#F97316"><i class="ti ti-download"></i> Pull Contacts</button>';
+  } else {
+    h += '<button class="btn btn-ghost sm" onclick="goTo(\'setup\')"><i class="ti ti-settings"></i> Connect</button>';
+  }
+  h += '</div>';
+
+  // Shopify / Other webhook section
   h += '<div style="padding:8px 0">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">';
   h += '<div style="display:flex;align-items:center;gap:8px">';
-  h += '<span style="color:#F97316;font-weight:600;font-size:12px">GHL</span>';
-  h += '<span style="color:var(--n2);font-size:10px">·</span>';
   h += '<span style="color:#96BF48;font-weight:600;font-size:12px">Shopify</span>';
   h += '<span style="color:var(--n2);font-size:10px">·</span>';
   h += '<span style="color:var(--n2);font-weight:500;font-size:12px">Other</span>';
@@ -4403,13 +4582,12 @@ function _renderLeadsCard() {
   }
   h += '</div>';
   if (webhookUrl) {
-    h += '<div style="font-size:11px;color:var(--n2);margin-bottom:6px">Paste this URL into your CRM or ecommerce webhook settings.</div>';
+    h += '<div style="font-size:11px;color:var(--n2);margin-bottom:6px">Paste this URL into your ecommerce or CRM webhook settings.</div>';
     h += '<div style="display:flex;gap:6px;align-items:center">';
     h += '<input id="webhook-url-display" type="text" readonly value="' + esc(webhookUrl) + '" style="flex:1;font-size:10px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:monospace" onclick="this.select()">';
     h += '<button class="btn btn-ghost sm" onclick="navigator.clipboard.writeText(document.getElementById(\'webhook-url-display\').value);aiBarNotify(\'Copied!\',{duration:1200})"><i class="ti ti-copy"></i></button>';
     h += '</div>';
     h += '<div style="margin-top:8px;font-size:10px;color:var(--n2)">';
-    h += '<strong>GHL:</strong> Settings → Webhooks → Contact Created · ';
     h += '<strong>Shopify:</strong> Settings → Notifications → Webhooks → Order creation';
     h += '</div>';
   } else {
