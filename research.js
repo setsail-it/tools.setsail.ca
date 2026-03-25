@@ -504,9 +504,62 @@ function renderResearchTabContent() {
     case 'audience':    el.innerHTML = renderRAudience(r); break;
     case 'brand':       el.innerHTML = renderRBrand(r); break;
     case 'schema':      el.innerHTML = renderRSchema(r); break;
-    case 'competitors': el.innerHTML = renderRCompetitors(r); break;
+    case 'competitors': el.innerHTML = renderRCompetitors(r); _wireEnrichNewCompetitors(); break;
     default: el.innerHTML = '';
   }
+}
+
+function _wireEnrichNewCompetitors() {
+  var btn = document.getElementById('enrich-new-competitors-btn');
+  if (!btn) return;
+  btn.onclick = async function() {
+    var r = S.research || researchDefaults();
+    var incomplete = (r.competitors || []).filter(function(c) { return c.name && c.name.trim() && (!c.url || !c.why_they_win); });
+    if (!incomplete.length) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="width:10px;height:10px"></span> Enriching...';
+    var statusEl = document.getElementById('enrich-comp-status');
+    try {
+      var clientName = (S.setup && S.setup.client) || '';
+      var clientUrl = (S.setup && S.setup.url) || '';
+      var geo = (S.setup && S.setup.geo) || '';
+      var industry = r.industry || '';
+      var services = (r.primary_services || []).join(', ');
+      var prompt = 'Business: ' + clientName + '\nURL: ' + clientUrl + '\nLocation: ' + geo + '\nIndustry: ' + industry + '\nServices: ' + services
+        + '\n\nI have these competitor names that need enrichment. For EACH one, find their real website URL, specific competitive strengths, weaknesses, and what our client does better.\n\n'
+        + 'COMPETITORS TO ENRICH:\n' + incomplete.map(function(c) { return '- ' + c.name + (c.url ? ' (' + c.url + ')' : ''); }).join('\n')
+        + '\n\nReturn ONLY a JSON array: [{"name":"...","url":"https://...","why_they_win":"specific strength","weaknesses":"specific weakness","what_we_do_better":"how client beats them"}]';
+      var result = '';
+      await callClaude('You are a competitive intelligence analyst. Return only valid JSON array.', prompt, function(chunk) { result = chunk; }, 2048, 'comp-enrich');
+      var parsed = null;
+      try { parsed = JSON.parse(result.replace(/```json\n?|```\n?/g, '').trim()); } catch(e) {
+        var m = result.match(/\[[\s\S]*\]/);
+        if (m) try { parsed = JSON.parse(m[0]); } catch(e2) {}
+      }
+      if (Array.isArray(parsed)) {
+        var updated = 0;
+        parsed.forEach(function(item) {
+          var existing = r.competitors.find(function(c) { return c.name && item.name && c.name.toLowerCase().trim() === item.name.toLowerCase().trim(); });
+          if (existing) {
+            if (!existing.url && item.url) existing.url = item.url;
+            if (!existing.why_they_win && item.why_they_win) existing.why_they_win = item.why_they_win;
+            if (!existing.weaknesses && item.weaknesses) existing.weaknesses = item.weaknesses;
+            if (!existing.what_we_do_better && item.what_we_do_better) existing.what_we_do_better = item.what_we_do_better;
+            updated++;
+          }
+        });
+        scheduleSave();
+        renderResearchTabContent();
+        if (typeof aiBarNotify === 'function') aiBarNotify('Enriched ' + updated + ' competitor' + (updated !== 1 ? 's' : ''), { duration: 3000 });
+      } else {
+        if (statusEl) statusEl.textContent = 'Could not parse AI response';
+      }
+    } catch(e) {
+      if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-sparkles"></i> Retry';
+    }
+  };
 }
 
 // ── Field helpers ─────────────────────────────────────────────────
@@ -1804,6 +1857,11 @@ function renderRCompetitors(r) {
     [{key:'name',label:'Competitor',width:'130px'},{key:'url',label:'URL',width:'160px'},{key:'why_they_win',label:'Strengths'},{key:'weaknesses',label:'Weaknesses'},{key:'what_we_do_better',label:'What We Do Better'}],
     '+ Add Competitor'
   );
+  // Check for incomplete entries (name exists but URL or strengths missing)
+  var _incomplete = (r.competitors || []).filter(function(c) { return c.name && c.name.trim() && (!c.url || !c.why_they_win); });
+  if (_incomplete.length > 0) {
+    html += '<div style="margin-top:8px"><button class="btn btn-primary sm" id="enrich-new-competitors-btn" style="font-size:11px"><i class="ti ti-sparkles"></i> Enrich ' + _incomplete.length + ' New Competitor' + (_incomplete.length !== 1 ? 's' : '') + '</button> <span id="enrich-comp-status" style="font-size:11px;color:var(--n2)"></span></div>';
+  }
   html += '<div id="research-kw-status" style="font-size:11px;color:var(--n2);margin-top:8px;display:flex;align-items:center;gap:6px"></div>';
   return html;
 }
