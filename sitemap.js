@@ -1652,14 +1652,15 @@ async function _aiFixIssue(fixId) {
 
     var prompt3 = 'These same-type pages all target the keyword "' + cannibalKw + '" — this is real keyword cannibalisation.\n\n'
       + 'STRATEGY:\n'
-      + '1. Keep the keyword on the STRONGEST page (best slug match, highest authority, or broadest scope)\n'
-      + '2. For each other page, find a MORE SPECIFIC related keyword that differentiates its angle\n'
-      + '3. Prefer keywords from the available list below — they have real search volume\n'
-      + '4. The new keyword should still be relevant to the page topic and type\n'
-      + '5. NEVER merge or delete pages — only reassign keywords\n\n'
+      + '1. Keep the original keyword on the STRONGEST page (best slug match, highest authority, or broadest scope)\n'
+      + '2. For each other page, assign a MORE SPECIFIC keyword that differentiates its unique angle\n'
+      + '3. If there is a good match in the AVAILABLE list below, use it (has real search volume)\n'
+      + '4. If NO good match exists in the list, CREATE a descriptive long-tail keyword that matches the page content (e.g. for a case study about LeAgent, use "leagent real estate marketing case study")\n'
+      + '5. The new keyword MUST be different from the original and relevant to that specific page\n'
+      + '6. NEVER merge or delete pages — only reassign keywords\n\n'
       + 'CONFLICTING PAGES:\n' + conflicting.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type + ' | vol: ' + (p.primary_vol || 0); }).join('\n')
-      + '\n\nAVAILABLE REPLACEMENT KEYWORDS (prefer these, they have real volume):\n' + availKws3.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + (k.kd || '?'); }).join('\n')
-      + '\n\nReturn JSON array: [{"slug":"...","keyword":"...","reason":"brief reason for choice"}] for ALL conflicting pages. Only return the JSON array.';
+      + (availKws3.length > 0 ? '\n\nAVAILABLE REPLACEMENT KEYWORDS (prefer these if relevant):\n' + availKws3.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + (k.kd || '?'); }).join('\n') : '\n\nNo pre-researched keywords available — generate descriptive long-tail keywords based on each page name and content.')
+      + '\n\nReturn JSON array: [{"slug":"...","keyword":"...","reason":"brief reason for choice"}] for ALL conflicting pages. Every page MUST get a keyword. Only return the JSON array.';
 
     aiBarStart('AI resolving cannibalisation for "' + cannibalKw + '"\u2026');
     try {
@@ -1670,14 +1671,22 @@ async function _aiFixIssue(fixId) {
       if (Array.isArray(parsed3)) {
         parsed3.forEach(function(item) {
           var page = pages.find(function(p) { return p.slug === item.slug; });
-          if (page && item.keyword) {
+          if (page && item.keyword && item.keyword.toLowerCase() !== cannibalKw) {
             page.primary_keyword = item.keyword;
             var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
             if (kwData) {
               page.primary_vol = kwData.vol || 0;
               page.primary_kd = kwData.kd || 0;
               page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+            } else {
+              // AI-generated keyword not in pool — mark as needing volume lookup
+              page.primary_vol = 0;
+              page.primary_kd = 0;
+              page.score = 0;
             }
+            resolved++;
+          } else if (page && item.keyword && item.keyword.toLowerCase() === cannibalKw) {
+            // Keeping original keyword on strongest page — count as resolved
             resolved++;
           }
         });
