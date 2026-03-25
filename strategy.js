@@ -5998,7 +5998,12 @@ function renderStrategyNav() {
   var el = document.getElementById('strategy-tab-nav');
   if (!el) return;
   var html = '';
-  STRATEGY_TABS.forEach(function(t) {
+  var visibleTabs = STRATEGY_TABS.filter(function(t) {
+    return typeof _roleHidden !== 'function' || !_roleHidden('strategy', 'tab', t.id);
+  });
+  // If current tab was hidden by role, switch to first available
+  if (!visibleTabs.some(function(t) { return t.id === _sTab; })) _sTab = visibleTabs[0] ? visibleTabs[0].id : 'audience';
+  visibleTabs.forEach(function(t) {
     var active = t.id === _sTab;
     var secScore = null;
     if (S.strategy && STRATEGY_SECTION_WEIGHTS[t.id]) {

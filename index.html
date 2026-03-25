@@ -2142,7 +2142,7 @@ function goTo(stage) {
   renderStageBar(stage);
   startStageTips(stage);
   window.scrollTo(0,0);
-  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initWebflowConnection(); _initGHLConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); }
+  if (stage === 'setup') { if (S.setup) prefillSetup(); _initDocDropZone(); _initAnalyticsConnection(); _initWebflowConnection(); _initGHLConnection(); _initTranscriptBtn(); renderTranscriptsList(); renderProofBank(); _applyRoleVisibility('setup'); }
   if (stage === 'snapshot') {
     renderSnapshotNav();
     var _snapClearBtn = document.getElementById('snapshot-clear-btn');
@@ -4454,7 +4454,9 @@ function renderSnapshotNav() {
   var tabs = [
     { id: 'audit', icon: 'ti-radar', label: 'Site Audit' },
     { id: 'leads', icon: 'ti-users', label: 'Leads' + leadsBadge }
-  ];
+  ].filter(function(t) { return !_roleHidden('snapshot', 'tab', t.id); });
+  // If current tab was hidden by role, switch to first available
+  if (_snapTab !== 'audit' && !tabs.some(function(t) { return t.id === _snapTab; })) _snapTab = tabs[0] ? tabs[0].id : 'audit';
   nav.innerHTML = tabs.map(function(t) {
     var active = _snapTab === t.id;
     return '<button onclick="switchSnapTab(\'' + t.id + '\')" style="padding:9px 16px;border:none;border-bottom:2px solid ' + (active ? 'var(--green)' : 'transparent') + ';background:none;font-family:var(--font);font-size:13px;color:' + (active ? 'var(--dark)' : 'var(--n2)') + ';cursor:pointer;white-space:nowrap;font-weight:' + (active ? 500 : 400) + ';transition:color .15s;margin-bottom:-2px"><i class="ti ' + t.icon + '" style="margin-right:5px;font-size:12px"></i>' + t.label + '</button>';
@@ -5946,13 +5948,78 @@ function toggleHelpPanel() {
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 var _adminAllProjects = [];
 
-var _ROLE_LABELS = { super_admin:'Super Admin', admin:'Admin', strategist:'Strategist', viewer:'Viewer' };
+var _ROLE_LABELS = { super_admin:'Super Admin', admin:'Admin', strategist:'Strategist', seo_staff:'SEO Staff', viewer:'Viewer' };
 var _ROLE_STYLES = {
   super_admin: 'background:linear-gradient(135deg,#D8FF29,#158E1D);color:#111;font-weight:600',
   admin: 'background:var(--dg);color:white',
   strategist: 'background:rgba(21,142,29,.12);color:var(--green)',
+  seo_staff: 'background:rgba(59,130,246,.12);color:#3B82F6',
   viewer: 'background:var(--n1);color:var(--n3)'
 };
+
+// ── ROLE-BASED VISIBILITY ─────────────────────────────────────────────────
+// Defines which UI sections are hidden for each role.
+// Element IDs or data-role-section values to hide.
+var ROLE_VISIBILITY = {
+  seo_staff: {
+    setup: {
+      hideIds: ['webflow-connection-card', 'ghl-connection-card'],
+      hideSections: ['Client Goals', 'Call Transcripts', 'Proof Bank']
+    },
+    snapshot: {
+      hideTabs: ['leads']
+    },
+    strategy: {
+      hideTabs: ['economics', 'channels', 'output']
+    }
+  },
+  viewer: {
+    setup: {
+      hideIds: ['webflow-connection-card', 'ghl-connection-card', 'analytics-connection-card'],
+      hideSections: ['Client Goals', 'Call Transcripts', 'Proof Bank']
+    },
+    snapshot: {
+      hideTabs: ['leads']
+    },
+    strategy: {
+      hideTabs: ['economics', 'channels', 'output']
+    }
+  }
+};
+
+// Check if current role should hide a specific element
+function _roleHidden(stage, type, id) {
+  var vis = ROLE_VISIBILITY[S.currentRole];
+  if (!vis) return false;
+  var stageVis = vis[stage];
+  if (!stageVis) return false;
+  if (type === 'id') return (stageVis.hideIds || []).indexOf(id) >= 0;
+  if (type === 'section') return (stageVis.hideSections || []).indexOf(id) >= 0;
+  if (type === 'tab') return (stageVis.hideTabs || []).indexOf(id) >= 0;
+  return false;
+}
+
+// Apply role visibility to a stage after rendering
+function _applyRoleVisibility(stage) {
+  var vis = ROLE_VISIBILITY[S.currentRole];
+  if (!vis || !vis[stage]) return;
+  var sv = vis[stage];
+  // Hide by element ID
+  (sv.hideIds || []).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  // Hide by section-mark label
+  (sv.hideSections || []).forEach(function(label) {
+    var marks = document.querySelectorAll('.section-mark-label');
+    for (var i = 0; i < marks.length; i++) {
+      if (marks[i].textContent.trim() === label) {
+        var card = marks[i].closest('.card');
+        if (card) card.style.display = 'none';
+      }
+    }
+  });
+}
 
 async function loadAdminPage() {
   try {
@@ -6167,7 +6234,7 @@ function openUserModal(u) {
   var roleSelect = document.getElementById('um-role');
   // Build role options — never show super_admin
   roleSelect.innerHTML = '';
-  ['viewer', 'strategist', 'admin'].forEach(function(r) {
+  ['viewer', 'seo_staff', 'strategist', 'admin'].forEach(function(r) {
     var opt = document.createElement('option');
     opt.value = r; opt.textContent = _ROLE_LABELS[r] || r;
     roleSelect.appendChild(opt);

@@ -472,6 +472,15 @@ export default {
       const u = JSON.parse(raw);
       return u.role === 'admin' || u.role === 'super_admin';
     }
+    // Strategist+ check — excludes seo_staff and viewer from integration/lead management
+    async function _isStrategistOrAbove() {
+      if (!userId) return false;
+      if (_isSuperAdminEmail(userId)) return true;
+      const raw = await env.SETSAIL_OS.get('admin:user:' + userId);
+      if (!raw) return false;
+      const u = JSON.parse(raw);
+      return ['super_admin', 'admin', 'strategist'].includes(u.role);
+    }
 
     // GET /api/admin/users
     if (url.pathname === '/api/admin/users' && request.method === 'GET') {
@@ -661,7 +670,7 @@ export default {
         // For strategist+ roles, show all projects across all users (internal team tool)
         const userRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
         const userRole = userRaw ? JSON.parse(userRaw).role : 'viewer';
-        const canSeeAll = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(userRole);
+        const canSeeAll = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist', 'seo_staff'].includes(userRole);
         const prefix = canSeeAll ? 'u:' : userPrefix + 'project:';
         const list = await env.SETSAIL_OS.list({ prefix });
         const projects = [];
@@ -704,7 +713,7 @@ export default {
         if (!ownExists) {
           const uRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
           const uRole = uRaw ? JSON.parse(uRaw).role : 'viewer';
-          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(uRole);
+          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist', 'seo_staff'].includes(uRole);
           if (canCross) {
             const list = await env.SETSAIL_OS.list({ prefix: 'u:' });
             for (const k of list.keys) {
@@ -768,7 +777,7 @@ export default {
         if (!raw) {
           const uRaw = await env.SETSAIL_OS.get('admin:user:' + userId);
           const uRole = uRaw ? JSON.parse(uRaw).role : 'viewer';
-          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist'].includes(uRole);
+          const canCross = _isSuperAdminEmail(userId) || ['super_admin', 'admin', 'strategist', 'seo_staff'].includes(uRole);
           if (canCross) {
             const list = await env.SETSAIL_OS.list({ prefix: 'u:' });
             for (const key of list.keys) {
@@ -3180,6 +3189,7 @@ export default {
 
     // POST /api/webflow/save-token — store Webflow API token securely in KV (not in project JSON)
     if (url.pathname === '/api/webflow/save-token' && request.method === 'POST') {
+      if (!await _isStrategistOrAbove()) return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       try {
         const { projectId, token } = await request.json();
         if (!projectId || !token) return new Response(JSON.stringify({ error: 'projectId and token required' }), {
@@ -3284,6 +3294,7 @@ export default {
 
     // POST /api/webflow/disconnect — remove stored token
     if (url.pathname === '/api/webflow/disconnect' && request.method === 'POST') {
+      if (!await _isStrategistOrAbove()) return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       try {
         const { projectId } = await request.json();
         await env.SETSAIL_OS.delete('webflow_token:' + projectId);
@@ -3302,6 +3313,7 @@ export default {
     // POST /api/ghl/save-token — store GHL token + locationId securely in KV
     // Supports both legacy API keys (v1) and private integration tokens (v2)
     if (url.pathname === '/api/ghl/save-token' && request.method === 'POST') {
+      if (!await _isStrategistOrAbove()) return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       try {
         const { projectId, token, locationId } = await request.json();
         if (!projectId || !token || !locationId) return new Response(JSON.stringify({ error: 'projectId, token, and locationId required' }), {
@@ -3422,6 +3434,7 @@ export default {
 
     // POST /api/ghl/disconnect — remove stored token
     if (url.pathname === '/api/ghl/disconnect' && request.method === 'POST') {
+      if (!await _isStrategistOrAbove()) return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       try {
         const { projectId } = await request.json();
         await env.SETSAIL_OS.delete('ghl_token:' + projectId);
@@ -3519,6 +3532,7 @@ export default {
     // POST /api/webhook/token/:projectId — generate a webhook token for a project
     const webhookTokenMatch = url.pathname.match(/^\/api\/webhook\/token\/([^/]+)$/);
     if (webhookTokenMatch && request.method === 'POST') {
+      if (!await _isStrategistOrAbove()) return new Response(JSON.stringify({ error: 'Insufficient permissions' }), { status: 403, headers: { 'Content-Type': 'application/json', ...cors } });
       const [, projectId] = webhookTokenMatch;
       const token = crypto.randomUUID().replace(/-/g, '');
       await env.SETSAIL_OS.put('webhook_token:' + projectId, token);
