@@ -3505,6 +3505,7 @@ function _renderSitemapResultsInner(approved) {
   }
 
   // ── Ready to approve banner ──
+  var enrichPct = _computeEnrichmentPct();
   var _isClean = _totalIssueCount === 0;
   var _isEnriched = enrichPct >= 80;
   if (_isClean && _isEnriched && !approved && allPages.length > 0) {
