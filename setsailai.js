@@ -417,6 +417,12 @@ function _assembleSaiContext(question, hasFiles) {
   l0.current_stage = (S && S.stage) || 'unknown';
   ctx += 'CORE:\n' + JSON.stringify(l0, null, 0) + '\n\n';
 
+  // Strategic Directives — always included
+  if (typeof getDirectivesContext === 'function') {
+    var _saiDirCtx = getDirectivesContext();
+    if (_saiDirCtx) ctx += _saiDirCtx + '\n\n';
+  }
+
   /* --- Layer 1: strategy overview (~500 tokens) --- */
   if (S && S.strategy) {
     if (S.strategy.compiled_output) {

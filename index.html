@@ -622,6 +622,20 @@ textarea.inp{resize:vertical}
         </div>
       </div>
       <div class="card" style="padding:20px;margin-bottom:16px">
+        <div class="section-mark"><span class="section-mark-label">Strategic Directives</span><div class="section-mark-line"></div></div>
+        <p style="font-size:12px;color:var(--n2);margin:0 0 12px">Rules that apply across the entire pipeline. AI will respect these in every generation — strategy, briefs, copy, and images.</p>
+        <div id="directives-list"></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+          <select id="directive-type" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">
+            <option value="never">⛔ Never</option>
+            <option value="always">✅ Always</option>
+            <option value="prefer">⚠ Prefer</option>
+          </select>
+          <input id="directive-text" type="text" placeholder="e.g. Never mention Rad Power Bikes by name" style="flex:1;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:var(--bg);color:var(--dark);font-family:var(--font);min-width:200px" onkeydown="if(event.key==='Enter')addDirective()">
+          <button class="btn btn-primary sm" style="font-size:11px" onclick="addDirective()"><i class="ti ti-plus"></i> Add</button>
+        </div>
+      </div>
+      <div class="card" style="padding:20px;margin-bottom:16px">
         <div class="section-mark"><span class="section-mark-label">Proof Bank</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px">Store verified testimonials, case study results, and stats. Brief and copy prompts pull ONLY from this bank — preventing fabrication.</p>
         <div id="proof-bank-testimonials"></div>
@@ -1580,6 +1594,7 @@ function prefillSetup() {
   }
   renderDocsList();
   renderTranscriptsList();
+  renderDirectives();
   renderProofBank();
 }
 
@@ -1715,6 +1730,72 @@ function _syncTranscriptVoC() {
 function getProofBank() {
   if (!S.setup || !S.setup.proofBank) return { testimonials: [], caseStudies: [], stats: [] };
   return S.setup.proofBank;
+}
+
+// ── Strategic Directives ──────────────────────────────────────────────
+function _ensureDirectives() {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.directives) S.setup.directives = [];
+  return S.setup.directives;
+}
+
+function addDirective() {
+  var typeEl = document.getElementById('directive-type');
+  var textEl = document.getElementById('directive-text');
+  if (!typeEl || !textEl || !textEl.value.trim()) return;
+  _ensureDirectives().push({
+    type: typeEl.value,
+    text: textEl.value.trim(),
+    addedAt: new Date().toISOString()
+  });
+  textEl.value = '';
+  scheduleSave();
+  renderDirectives();
+}
+
+function removeDirective(idx) {
+  var dirs = _ensureDirectives();
+  if (dirs[idx]) { dirs.splice(idx, 1); scheduleSave(); renderDirectives(); }
+}
+
+function renderDirectives() {
+  var wrap = document.getElementById('directives-list');
+  if (!wrap) return;
+  var dirs = _ensureDirectives();
+  if (!dirs.length) { wrap.innerHTML = '<div style="font-size:11px;color:var(--n2);padding:8px 0">No directives yet. Add rules the AI should follow across all stages.</div>'; return; }
+  var icons = { never: '\u26D4', always: '\u2705', prefer: '\u26A0' };
+  var colors = { never: 'rgba(220,50,47,0.06)', always: 'rgba(21,142,29,0.06)', prefer: 'rgba(245,166,35,0.06)' };
+  var borderColors = { never: 'rgba(220,50,47,0.2)', always: 'rgba(21,142,29,0.2)', prefer: 'rgba(245,166,35,0.2)' };
+  wrap.innerHTML = dirs.map(function(d, i) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:4px;border-radius:6px;background:' + (colors[d.type] || 'transparent') + ';border:1px solid ' + (borderColors[d.type] || 'var(--border)') + '">'
+      + '<span style="font-size:13px">' + (icons[d.type] || '') + '</span>'
+      + '<span style="flex:1;font-size:11px;color:var(--dark)">' + esc(d.text) + '</span>'
+      + '<span style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">' + esc(d.type) + '</span>'
+      + '<button onclick="removeDirective(' + i + ')" style="background:none;border:none;cursor:pointer;color:var(--n2);font-size:12px;padding:2px"><i class="ti ti-x"></i></button>'
+      + '</div>';
+  }).join('');
+}
+
+// Build directive context block for injection into any AI prompt
+function getDirectivesContext() {
+  var dirs = (S.setup && S.setup.directives) || [];
+  if (!dirs.length) return '';
+  var sections = { never: [], always: [], prefer: [] };
+  dirs.forEach(function(d) { if (sections[d.type]) sections[d.type].push(d.text); });
+  var parts = ['\n## STRATEGIC DIRECTIVES (mandatory — apply to ALL content generation)'];
+  if (sections.never.length) {
+    parts.push('NEVER do these (hard rules):');
+    sections.never.forEach(function(t) { parts.push('- \u26D4 ' + t); });
+  }
+  if (sections.always.length) {
+    parts.push('ALWAYS do these (hard rules):');
+    sections.always.forEach(function(t) { parts.push('- \u2705 ' + t); });
+  }
+  if (sections.prefer.length) {
+    parts.push('PREFER these (soft guidance):');
+    sections.prefer.forEach(function(t) { parts.push('- \u26A0 ' + t); });
+  }
+  return parts.join('\n');
 }
 
 function getProofBankContext() {

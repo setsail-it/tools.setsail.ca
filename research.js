@@ -2468,6 +2468,11 @@ async function enrichRTab(tab, forceAll) {
   ctx += _brandAssetsCtx();
   // Inject structured scrape data (social links, FAQs, reviews, blog, team, services)
   ctx += _structuredScrapeCtx();
+  // Inject strategic directives (global rules)
+  if (typeof getDirectivesContext === 'function') {
+    var _rdCtx = getDirectivesContext();
+    if (_rdCtx) ctx += '\n' + _rdCtx;
+  }
   // Inject GSC search performance data
   if (S.snapshot && S.snapshot.gsc && S.snapshot.gsc.queries && S.snapshot.gsc.queries.length) {
     ctx += '\n\nSEARCH CONSOLE DATA (last 90 days, real Google data):\n';

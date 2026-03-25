@@ -4673,6 +4673,11 @@ function _appendStrategistNotes(prompt, diagNum) {
       + 'use the strategist data and note the source as "strategist-provided".\n\n'
       + allNotes.join('\n\n');
   }
+  // Inject global strategic directives
+  if (typeof getDirectivesContext === 'function') {
+    var _dc = getDirectivesContext();
+    if (_dc) prompt += '\n' + _dc;
+  }
   return prompt;
 }
 

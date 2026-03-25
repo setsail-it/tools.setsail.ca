@@ -482,6 +482,11 @@ function buildCopyPrompt(page) {
     var _cpPbCtx = getProofBankContext();
     if (_cpPbCtx) cpProofBlock += _cpPbCtx;
   }
+  // Strategic Directives: global rules from Setup
+  if (typeof getDirectivesContext === 'function') {
+    var _cpDirCtx = getDirectivesContext();
+    if (_cpDirCtx) cpProofBlock += '\n' + _cpDirCtx;
+  }
   // Client goals context
   var _cpGoalLines = [];
   if (r.goal_statement) _cpGoalLines.push('Client says: "' + r.goal_statement + '"');

@@ -1759,6 +1759,11 @@ async function _executePageBrief(pageIdx) {
     var _pbCtx = getProofBankContext();
     if (_pbCtx) ctxProof += _pbCtx;
   }
+  // Strategic Directives: global rules from Setup
+  if (typeof getDirectivesContext === 'function') {
+    var _dirCtx = getDirectivesContext();
+    if (_dirCtx) ctxProof += '\n' + _dirCtx;
+  }
 
   // Client goals context
   var _goalLines = [];
