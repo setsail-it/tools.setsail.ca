@@ -1089,18 +1089,45 @@ function _runSitemapHealthCheck() {
   Object.keys(kwMap).forEach(function(kw) {
     if (kwMap[kw].length < 2) return;
     var slugs = kwMap[kw].map(function(e) { return '/' + e.slug; }).join(', ');
+    var entries = kwMap[kw];
+
     // Check if page types are the same — group by type
     var types = {};
-    kwMap[kw].forEach(function(e) { types[e.type || 'unknown'] = (types[e.type || 'unknown'] || 0) + 1; });
+    entries.forEach(function(e) { types[e.type || 'unknown'] = (types[e.type || 'unknown'] || 0) + 1; });
     var typeKeys = Object.keys(types);
     var hasSameType = typeKeys.some(function(t) { return types[t] > 1; });
 
-    if (hasSameType) {
-      // Real cannibalisation — same page type competing for same keyword
-      errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: kwMap[kw][0].slug, description: '"' + kw + '" targets ' + kwMap[kw].length + ' same-type pages: ' + slugs, suggestion: 'Differentiate: assign a more specific keyword to the weaker page', fixType: 'scroll' });
+    // Check if pages serve different geographic markets (location pages, or different market assignments)
+    var _markets = new Set();
+    var _isGeoSplit = false;
+    entries.forEach(function(e) {
+      var p = pages[e.idx];
+      // Check market field, or infer from slug containing city names
+      var market = (p && p.market) ? p.market : '';
+      if (!market && p && p.slug) {
+        // Infer geo from slug — e.g. /calgary-digital-marketing or /services/seo-vancouver
+        var slugLower = p.slug.toLowerCase();
+        var _geoHints = ['vancouver','toronto','calgary','edmonton','ottawa','montreal','victoria','winnipeg','halifax','hamilton','surrey','kelowna','mississauga','saskatoon','regina','burnaby','new-york','los-angeles','chicago','houston','dallas','miami','seattle','denver','boston','san-francisco','austin','phoenix','atlanta','london','manchester','birmingham','sydney','melbourne','brisbane','perth'];
+        for (var gi = 0; gi < _geoHints.length; gi++) {
+          if (slugLower.indexOf(_geoHints[gi]) >= 0) { market = _geoHints[gi]; break; }
+        }
+      }
+      if (market) _markets.add(market.toLowerCase());
+    });
+    _isGeoSplit = _markets.size > 1;
+
+    // Also check for "near me" keywords — these are inherently local and should exist on each location page
+    var _isNearMe = /\bnear me\b|\bnear by\b|\bnearby\b/i.test(kw);
+
+    if (_isGeoSplit || _isNearMe) {
+      // Different geographic markets or "near me" keyword — not cannibalisation
+      info.push({ id: 'geo-overlap-' + kw, category: 'keywords', severity: 'info', slug: entries[0].slug, description: '"' + kw + '" shared across ' + (_isGeoSplit ? 'different geographic markets' : 'location pages') + ': ' + slugs + ' — correct for local SEO, each page targets a different city SERP', suggestion: 'No action needed — geographic targeting is correct' });
+    } else if (hasSameType) {
+      // Real cannibalisation — same page type, same market, competing for same keyword
+      errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: entries[0].slug, description: '"' + kw + '" targets ' + entries.length + ' same-type pages: ' + slugs, suggestion: 'Differentiate: assign a more specific keyword to the weaker page', fixType: 'scroll' });
     } else {
       // Different page types — likely different intent (service vs blog, case study vs service, etc.)
-      info.push({ id: 'overlap-' + kw, category: 'keywords', severity: 'info', slug: kwMap[kw][0].slug, description: '"' + kw + '" shared across different page types (' + typeKeys.join(', ') + '): ' + slugs + ' — likely different intent, monitor in GSC for URL flickering', suggestion: 'No action needed unless GSC shows URL flickering' });
+      info.push({ id: 'overlap-' + kw, category: 'keywords', severity: 'info', slug: entries[0].slug, description: '"' + kw + '" shared across different page types (' + typeKeys.join(', ') + '): ' + slugs + ' — likely different intent, monitor in GSC for URL flickering', suggestion: 'No action needed unless GSC shows URL flickering' });
     }
   });
 
