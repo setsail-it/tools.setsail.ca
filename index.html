@@ -348,15 +348,6 @@ textarea.inp{resize:vertical}
       </div>
     </div>
   </div>
-  <!-- View-as role switcher (admin/super_admin only) -->
-  <div id="view-as-nav" style="display:none;flex-shrink:0">
-    <select id="view-as-select" onchange="_switchViewAs(this.value)" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:16px;background:var(--white);color:var(--n3);font-family:var(--font);cursor:pointer;appearance:auto">
-      <option value="">View as: My role</option>
-      <option value="seo_staff">View as: SEO Staff</option>
-      <option value="strategist">View as: Strategist</option>
-      <option value="viewer">View as: Viewer</option>
-    </select>
-  </div>
   <!-- Centre: AI progress bar + contextual tips -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
@@ -373,6 +364,12 @@ textarea.inp{resize:vertical}
   <!-- Right: save + guide + user -->
   <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
     <div id="save-indicator" style="opacity:0"></div>
+    <select id="view-as-select" onchange="_switchViewAs(this.value)" style="display:none;font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:16px;background:var(--white);color:var(--n3);font-family:var(--font);cursor:pointer">
+      <option value="">View as: My role</option>
+      <option value="seo_staff">View as: SEO Staff</option>
+      <option value="strategist">View as: Strategist</option>
+      <option value="viewer">View as: Viewer</option>
+    </select>
     <button id="ai-queue-nav-toggle" style="position:relative;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)" title="Operation Queue"><i class="ti ti-list-check" style="font-size:13px"></i> Queue<span id="ai-queue-nav-badge" style="display:none;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px"></span></button>
     <button onclick="toggleSai()" id="sai-toggle" title="SetsailAI" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> SetsailAI<span id="sai-badge"></span></button>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
@@ -5894,8 +5891,8 @@ async function initAuth() {
       var adminBtn = document.getElementById('admin-btn');
       if (adminBtn) adminBtn.style.display = canAdmin() ? '' : 'none';
       // Show "View as" dropdown for admin/super_admin
-      var viewAsNav = document.getElementById('view-as-nav');
-      if (viewAsNav) viewAsNav.style.display = canAdmin() ? '' : 'none';
+      var viewAsSel = document.getElementById('view-as-select');
+      if (viewAsSel) viewAsSel.style.display = canAdmin() ? '' : 'none';
       S._realRole = data.role || 'viewer'; // preserve real role for restoring
 
       // Gate pending/suspended users
