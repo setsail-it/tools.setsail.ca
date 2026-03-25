@@ -3255,6 +3255,9 @@ function _renderBlogPipeline() {
   h += '</div>';
   h += '</div>';
 
+  // Blog Discovery — moved from Site Pages to Blog Pipeline
+  h += _renderBlogDiscoveryCard(S.pages);
+
   // Blog cards
   sorted.forEach(function(p) {
     var idx = S.pages.indexOf(p);
@@ -3840,9 +3843,8 @@ function _renderSitemapResultsInner(approved) {
   html += '</div></div>';
 
 
-  // ── Content Intelligence: Health Checks + Blog Discovery ──
+  // ── Content Intelligence: Health Checks ──
   html += _renderHealthChecksCard(allPages);
-  html += _renderBlogDiscoveryCard(allPages);
 
 
   if (!approved) {
@@ -4798,7 +4800,10 @@ function addBlogPagesToSitemap() {
   });
   if (added > 0) {
     scheduleSave();
+    // Stay on blog pipeline tab to show the newly added posts
+    _sitemapTopTab = 'blog-pipeline';
     renderSitemapResults(S.sitemapApproved);
+    if (typeof aiBarNotify === 'function') aiBarNotify('Added ' + added + ' blog posts', { duration: 2000 });
   }
 }
 
