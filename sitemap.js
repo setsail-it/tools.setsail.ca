@@ -1627,7 +1627,8 @@ async function _aiFixIssue(fixId) {
       var fixed = 0;
       if (Array.isArray(parsed2)) {
         parsed2.forEach(function(item) {
-          var page = pages.find(function(p) { return p.slug === item.slug; });
+          var _s2 = (item.slug || '').replace(/^\/+/, '');
+          var page = pages.find(function(p) { return p.slug === _s2 || p.slug === item.slug || ('/' + p.slug) === item.slug; });
           if (page && item.keyword) {
             page.primary_keyword = item.keyword;
             var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
@@ -1679,7 +1680,9 @@ async function _aiFixIssue(fixId) {
       var resolved = 0;
       if (Array.isArray(parsed3)) {
         parsed3.forEach(function(item) {
-          var page = pages.find(function(p) { return p.slug === item.slug; });
+          // Normalize slug — AI may return with leading slash or full path
+          var itemSlug = (item.slug || '').replace(/^\/+/, '');
+          var page = pages.find(function(p) { return p.slug === itemSlug || p.slug === item.slug || ('/' + p.slug) === item.slug; });
           if (page && item.keyword && item.keyword.toLowerCase() !== cannibalKw) {
             page.primary_keyword = item.keyword;
             var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
