@@ -3504,38 +3504,56 @@ function _renderSitemapResultsInner(approved) {
     return;
   }
 
-  // Keyword opportunities table
+  // ── Ready to approve banner ──
+  var _isClean = _totalIssueCount === 0;
+  var _isEnriched = enrichPct >= 80;
+  if (_isClean && _isEnriched && !approved && allPages.length > 0) {
+    html += '<div style="background:rgba(21,142,29,0.06);border:1px solid rgba(21,142,29,0.25);border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">';
+    html += '<div><div style="font-size:13px;font-weight:600;color:var(--green)"><i class="ti ti-check-circle" style="margin-right:4px"></i>Ready to approve</div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-top:2px">' + allPages.length + ' pages · ' + enrichPct + '% enriched · 0 issues</div></div>';
+    html += '<button class="btn btn-primary" onclick="var g=document.getElementById(\'sitemap-gate1\');if(g)g.scrollIntoView({behavior:\'smooth\',block:\'center\'})">Approve Sitemap</button>';
+    html += '</div>';
+  }
+
+  // ── Contextual toolbar ──
+  // Group tools by workflow relevance — show all but visually separate primary vs secondary
   html += '<div style="margin-bottom:18px">';
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;gap:8px">';
   html += '<div style="font-size:11px;color:var(--n2);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">Page Performance Map</div>';
-  html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">';
+  html += '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;flex-wrap:wrap">';
+
+  // Primary tools — always visible
   if (hasKwData) {
-    html += '<span style="font-size:11px;color:var(--green)"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO data live</span>';
-    html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market. Use after making keyword or market edits." style="font-size:11px;padding:2px 8px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
+    html += '<span style="font-size:10px;color:var(--green);margin-right:4px"><i class="ti ti-database" style="font-size:10px"></i> DataForSEO</span>';
+    html += '<button class="btn btn-ghost sm" data-tip="Refetches DataForSEO volumes for all keywords in the sitemap, grouped by each page target market." style="font-size:10px;padding:2px 6px" onclick="enrichSitemapWithLiveData(true)"><i class="ti ti-refresh"></i> Refresh</button>';
   }
-  html += '<div style="position:relative;display:inline-block" id="goals-dropdown-wrap">';
-  html += '<button class="btn btn-ghost sm" data-tip="AI-generates strategic page goals. Batch mode sends 12 pages per Claude call." style="font-size:11px;padding:2px 8px" onclick="toggleGoalsDropdown()"><i class="ti ti-sparkles"></i> Goals <i class="ti ti-chevron-down" style="font-size:9px;margin-left:1px"></i></button>';
-  html += '<div id="goals-dropdown" style="display:none;position:absolute;top:100%;left:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100;min-width:180px;padding:4px;margin-top:4px">';
-  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" onclick="generateAllPageGoals(\'batch\');toggleGoalsDropdown()"><i class="ti ti-stack-2" style="font-size:11px;margin-right:4px"></i> Next Batch (12 pages)</button>';
-  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" onclick="generateAllPageGoals(\'auto\');toggleGoalsDropdown()"><i class="ti ti-player-play" style="font-size:11px;margin-right:4px"></i> Auto-Complete All</button>';
-  html += '</div></div>';
+  html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:10px;padding:2px 6px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
+
+  // Enrichment tools — in a collapsible dropdown to reduce clutter
+  html += '<div style="position:relative;display:inline-block" id="enrich-tools-wrap">';
+  html += '<button class="btn btn-ghost sm" style="font-size:10px;padding:2px 8px" onclick="var d=document.getElementById(\'enrich-tools-dd\');d.style.display=d.style.display===\'none\'?\'\':\'none\'"><i class="ti ti-tools"></i> Tools <i class="ti ti-chevron-down" style="font-size:8px;margin-left:1px"></i></button>';
+  html += '<div id="enrich-tools-dd" style="display:none;position:absolute;top:100%;right:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100;min-width:200px;padding:4px;margin-top:4px">';
+  // Goals
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="AI-generates strategic page goals." onclick="generateAllPageGoals(\'auto\');document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-sparkles" style="font-size:11px;margin-right:4px"></i> Generate All Goals</button>';
   if (_hasStrategy) {
     var _blogCount = allPages.filter(function(p) { return ['blog','article','recipe','event'].indexOf((p.page_type||'').toLowerCase()) >= 0; }).length;
     if (_blogCount > 0) {
-      html += '<button class="btn btn-ghost sm" data-tip="AI assigns each blog page to a content pillar from your brand strategy. Requires D6 Brand diagnostic in Strategy." style="font-size:11px;padding:2px 8px" onclick="assignContentPillars()"><i class="ti ti-tags"></i> Pillars</button>';
+      html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="AI assigns each blog page to a content pillar from your brand strategy." onclick="assignContentPillars();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-tags" style="font-size:11px;margin-right:4px"></i> Assign Pillars</button>';
     }
     if (_getActivePersonas().length > 0) {
-      html += '<button class="btn btn-ghost sm" data-tip="Auto-assigns a target persona and voice overlay to every page based on page type and audience segments. Click twice to force reassign all." style="font-size:11px;padding:2px 8px" onclick="assignAllPersonas()"><i class="ti ti-users"></i> Personas</button>';
+      html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="Auto-assigns a target persona and voice overlay to every page." onclick="assignAllPersonas();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-users" style="font-size:11px;margin-right:4px"></i> Assign Personas</button>';
     }
     var _suggestCount = allPages.filter(function(p) { var s = _suggestPriority(p); return s && s !== p.priority; }).length;
-    html += '<button class="btn btn-ghost sm" data-tip="Recalculates strategy-driven priority suggestions for all pages based on channel lever scores and growth plan phases." style="font-size:11px;padding:2px 8px" onclick="renderSitemapResults(S.sitemapApproved)"><i class="ti ti-arrows-sort"></i> Re-suggest</button>';
+    html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="Recalculates strategy-driven priority suggestions." onclick="renderSitemapResults(S.sitemapApproved);document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-arrows-sort" style="font-size:11px;margin-right:4px"></i> Re-suggest Priorities' + (_suggestCount > 0 ? ' <span style="color:#3b82f6;font-weight:500">(' + _suggestCount + ' diffs)</span>' : '') + '</button>';
     if (_suggestCount > 0) {
-      html += '<button class="btn btn-ghost sm" data-tip="Accept all ' + _suggestCount + ' priority suggestions from strategy at once." style="font-size:11px;padding:2px 8px;color:#3b82f6;border-color:rgba(59,130,246,0.3)" onclick="acceptAllPrioritySuggestions()"><i class="ti ti-checks"></i> Accept ' + _suggestCount + '</button>';
+      html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px;color:#3b82f6" onclick="acceptAllPrioritySuggestions();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-checks" style="font-size:11px;margin-right:4px"></i> Accept ' + _suggestCount + ' Priority Changes</button>';
     }
   }
-  html += '<button class="btn btn-ghost sm" data-tip="Opens a visual site architecture diagram showing page hierarchy and relationships. Includes rendered preview, SVG download, and Mermaid code for FigJam." style="font-size:11px;padding:2px 8px" onclick="showMermaidModal()"><i class="ti ti-sitemap"></i> Architecture</button>';
-  html += '<button class="btn btn-ghost sm" data-tip="AI reviews the full page list for misclassifications, missing categories, hierarchy issues, and duplicate intent." style="font-size:11px;padding:2px 8px" onclick="runStructureReview()"><i class="ti ti-git-branch"></i> Structure Review</button>';
-  html += '<button class="btn '+(sitemapEditMode?'btn-primary':'btn-ghost')+' sm" style="font-size:11px;padding:2px 8px" data-tip="Toggle edit mode to modify page names, slugs, types, priorities, and keywords inline. Changes auto-save. Exit edit mode before approving." onclick="toggleSitemapEdit()"><i class="ti ti-'+(sitemapEditMode?'check':'pencil')+'"></i> '+(sitemapEditMode?'Done':'Edit')+'</button>';
+  html += '<hr style="border:none;border-top:1px solid var(--border);margin:4px 0">';
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="Opens a visual site architecture diagram." onclick="showMermaidModal();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-sitemap" style="font-size:11px;margin-right:4px"></i> Architecture Diagram</button>';
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="AI reviews the full page list for misclassifications." onclick="runStructureReview();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-git-branch" style="font-size:11px;margin-right:4px"></i> Structure Review</button>';
+  html += '</div></div>';
+
   html += '</div></div>';
   html += '<div style="font-size:10.5px;color:var(--n2);margin-bottom:8px">Cluster anchors set page scope and SEO purpose. Niche keyword expansion and copy-level keyword assignment happen in Stage 6 — Briefs.</div>';
 
