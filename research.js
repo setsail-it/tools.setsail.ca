@@ -1,3 +1,36 @@
+// ── Competitor Blocklist ──────────────────────────────────────────
+// Domains that should never appear as competitors. Checked post-AI.
+var _COMPETITOR_BLOCKLIST = [
+  // Marketplaces & mega-retailers
+  'amazon.com','amazon.ca','amazon.co.uk','amazon.com.au','ebay.com','ebay.ca','ebay.co.uk',
+  'walmart.com','walmart.ca','target.com','costco.com','costco.ca','bestbuy.com','bestbuy.ca',
+  'homedepot.com','homedepot.ca','lowes.com','lowes.ca','canadiantire.ca',
+  'etsy.com','alibaba.com','aliexpress.com','wish.com','temu.com','shein.com',
+  'wayfair.com','wayfair.ca','overstock.com','ikea.com','ikea.ca',
+  // Review / directory sites
+  'clutch.co','designrush.com','upcity.com','expertise.com','goodfirms.co','g2.com',
+  'capterra.com','trustpilot.com','yelp.com','yelp.ca','bbb.org','yellowpages.com','yellowpages.ca',
+  'bark.com','sortlist.com','thumbtack.com','angi.com','angieslist.com','homeadvisor.com',
+  'houzz.com','tripadvisor.com','tripadvisor.ca','healthgrades.com','zocdoc.com','avvo.com',
+  // SEO / marketing tools
+  'semrush.com','ahrefs.com','moz.com','hubspot.com','mailchimp.com',
+  'wordstream.com','searchengineland.com','searchenginejournal.com',
+  'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com',
+  // Website builders / platforms
+  'wix.com','squarespace.com','godaddy.com','shopify.com','webflow.com','wordpress.com','wordpress.org',
+  // Social platforms
+  'facebook.com','instagram.com','linkedin.com','twitter.com','x.com',
+  'tiktok.com','pinterest.com','youtube.com','reddit.com','quora.com','medium.com',
+  // News / reference
+  'wikipedia.org','forbes.com','bbc.com','cnn.com','nytimes.com','globalnews.ca','cbc.ca',
+  // Job boards
+  'indeed.com','indeed.ca','glassdoor.com','glassdoor.ca','ziprecruiter.com',
+  // Tech giants
+  'google.com','apple.com','microsoft.com','oracle.com','salesforce.com',
+  // Government
+  'canada.ca','gc.ca','usa.gov'
+];
+
 // ── Field Metadata Registry ───────────────────────────────────────
 // Maps every research field to tab, label, importance, and source.
 // source: 'ai' = AI-enrichable, 'manual' = human-only, 'auto' = auto-populated
@@ -1854,7 +1887,7 @@ function renderRCompetitors(r) {
   let html = rTabActions('competitors');
   html += _renderSourceBanner('competitors');
   html += rRepGroup('competitors','Competitor Analysis',
-    [{key:'name',label:'Competitor',width:'130px'},{key:'url',label:'URL',width:'160px'},{key:'why_they_win',label:'Strengths'},{key:'weaknesses',label:'Weaknesses'},{key:'what_we_do_better',label:'What We Do Better'}],
+    [{key:'name',label:'Competitor',width:'120px'},{key:'url',label:'URL',width:'140px'},{key:'type',label:'Type',width:'70px',type:'select',options:['direct','indirect']},{key:'why_they_win',label:'Strengths'},{key:'weaknesses',label:'Weaknesses'},{key:'what_we_do_better',label:'What We Do Better'}],
     '+ Add Competitor'
   );
   // Check for incomplete entries (name exists but URL or strengths missing)
@@ -2567,23 +2600,49 @@ async function enrichRTab(tab, forceAll) {
       + b + '"has_blog": "Yes or Planned or No",\n'
       + b + '"has_faq_section": "Yes or Planned or No"\n}',
 
-    competitors: 'Business: ' + (S.setup && S.setup.client ? S.setup.client : '') + '\n'
-      + 'URL: ' + (S.setup && S.setup.url ? S.setup.url : '') + '\n'
-      + 'Location: ' + (S.setup && S.setup.geo ? S.setup.geo : '') + '\n'
-      + 'Industry: ' + (S.research && S.research.industry ? S.research.industry : 'unknown') + '\n'
-      + 'Services: ' + (S.research && S.research.primary_services && S.research.primary_services.length ? S.research.primary_services.join(', ') : 'see strategy doc') + '\n'
-      + (S.setup && S.setup.competitors ? 'Competitors named by client: ' + S.setup.competitors + '\n' : '')
-      + '\n\nIdentify 5-8 REAL, verifiable competitors for this business. Sources in priority order:\n'
-      + '1. Any competitors named by the client above.\n'
-      + '2. Real domains from DataForSEO data (if any was prepended to this prompt).\n'
-      + '3. Your own knowledge of real businesses competing in this industry and geography.\n'
-      + 'You MUST return a full list. Never return an empty array. Use your training knowledge to fill gaps.\n'
-      + 'ONLY include actual competing businesses (agencies, consultancies, service providers).\n'
-      + 'EXCLUDE: review directories (Clutch, DesignRush, UpCity), SEO tools (Semrush, Ahrefs, Moz), '
-      + 'job boards, news sites, social platforms, or any site that is not a direct service competitor.\n'
-      + 'For each: actual business name, full URL with https://, 1-2 sentence specific competitive strength.\n'
-      + 'Return ONLY valid JSON, no preamble.\n{\n'
-      + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "why_they_win": "specific strength", "weaknesses": "specific weakness or gap", "what_we_do_better": "how our client beats them"}]\n}'
+    competitors: (function() {
+      var _r = S.research || {};
+      var _s = S.setup || {};
+      var _businessModel = _r.business_model || _r.revenue_model || '';
+      var _revenueModel = _r.revenue_model || '';
+      var _geoScope = (_r.geography && _r.geography.primary) || _s.geo || '';
+      var _dealSize = _r.average_deal_size || '';
+      return 'CLIENT PROFILE:\n'
+        + 'Business: ' + (_s.client || '') + '\n'
+        + 'URL: ' + (_s.url || '') + '\n'
+        + 'Location: ' + _geoScope + '\n'
+        + 'Industry: ' + (_r.industry || 'unknown') + '\n'
+        + 'Services/Products: ' + (_r.primary_services && _r.primary_services.length ? _r.primary_services.join(', ') : 'see context') + '\n'
+        + 'Business Model: ' + (_businessModel || 'infer from context — e.g. agency, SaaS, manufacturer, retailer, DTC, B2B, professional practice') + '\n'
+        + 'Revenue Model: ' + (_revenueModel || 'infer — e.g. project-based, retainer, subscription, product sales, commission') + '\n'
+        + 'Geographic Scope: ' + (_geoScope || 'infer from context') + '\n'
+        + (_dealSize ? 'Average Deal Size: ' + _dealSize + '\n' : '')
+        + (_s.competitors ? 'Competitors named by client: ' + _s.competitors + '\n' : '')
+        + '\n\nIDENTIFY 5-8 REAL DIRECT COMPETITORS.\n\n'
+        + 'A DIRECT COMPETITOR must match ALL of:\n'
+        + '1. SAME BUSINESS MODEL — if client is a manufacturer, competitor must be a manufacturer (not a retailer or marketplace). If client is an agency, competitor must be an agency (not a tool or directory).\n'
+        + '2. SAME TARGET CUSTOMER — competing for the same buyer. A B2B SaaS does not compete with a consumer app.\n'
+        + '3. SIMILAR SCALE — comparable company size. A 10-person local agency does not compete with Deloitte.\n'
+        + '4. OVERLAPPING GEOGRAPHY — serves the same market area.\n\n'
+        + 'SOURCES in priority order:\n'
+        + '1. Competitors named by the client above (always include).\n'
+        + '2. Real domains from DataForSEO data (if prepended — but ONLY if they match the business model).\n'
+        + '3. Your knowledge of real businesses in this specific industry and geography.\n\n'
+        + 'HARD EXCLUDES — NEVER include these types:\n'
+        + '- General marketplaces (Amazon, eBay, Walmart, Costco, Best Buy, Canadian Tire, Wayfair)\n'
+        + '- Review/directory sites (Clutch, G2, Yelp, BBB, Houzz, Thumbtack, Angi)\n'
+        + '- SEO/marketing tools (Semrush, Ahrefs, HubSpot, Mailchimp)\n'
+        + '- Social platforms (Facebook, LinkedIn, Instagram, YouTube, Reddit)\n'
+        + '- News/content sites (Forbes, Wikipedia, Medium)\n'
+        + '- Website builders (Wix, Squarespace, Shopify — unless client is also a website builder)\n'
+        + '- Job boards, government sites, educational institutions\n'
+        + '- Companies 100x+ larger unless they directly compete in the same niche\n\n'
+        + 'For each competitor, classify as:\n'
+        + '- "direct" — same products/services, same customer, same geography\n'
+        + '- "indirect" — different model but competing for same budget/attention\n\n'
+        + 'Return ONLY valid JSON, no preamble.\n{\n'
+        + b + '"competitors": [{"name": "Real Business Name", "url": "https://domain.com", "type": "direct or indirect", "why_they_win": "1-2 sentence specific strength", "weaknesses": "specific weakness or gap", "what_we_do_better": "how our client beats them"}]\n}';
+    })()
   };
 
   // ── Client Pain extraction (dedicated step — separate from audience tab) ──
@@ -2701,7 +2760,16 @@ async function enrichRTab(tab, forceAll) {
       // Competitors: direct write, skip mergeEnriched entirely
       if (tab === 'competitors') {
         if (parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
-          r.competitors = parsed.competitors;
+          // Post-AI blocklist filter — remove any domains that slipped through
+          var _filtered = parsed.competitors.filter(function(c) {
+            if (!c.url) return true; // keep entries without URL, they'll be enriched later
+            var domain = c.url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+            return !_COMPETITOR_BLOCKLIST.some(function(bl) { return domain === bl || domain.endsWith('.' + bl); });
+          });
+          if (_filtered.length < parsed.competitors.length) {
+            console.log('[competitors] blocklist removed', parsed.competitors.length - _filtered.length, 'entries');
+          }
+          r.competitors = _filtered;
           console.log('COMPETITORS WRITTEN:', r.competitors.length, 'items', JSON.stringify(r.competitors[0]));
         } else {
           console.warn('COMPETITORS EMPTY IN PARSED:', JSON.stringify(parsed));

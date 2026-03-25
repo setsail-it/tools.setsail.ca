@@ -150,13 +150,42 @@ async function fetchGoogleSuggest(term, gl) {
 }
 
 const EXCLUDED_DOMAINS = [
-  'clutch.co','designrush.com','semrush.com','ahrefs.com','moz.com','hubspot.com',
-  'digitalagencynetwork.com','upcity.com','expertise.com','goodfirms.co','g2.com',
-  'capterra.com','trustpilot.com','yelp.com','bbb.org','yellowpages.com','bark.com',
-  'sortlist.com','agencyspotter.com','wadline.com','featured.com','forbes.com',
-  'indeed.com','glassdoor.com','linkedin.com','reddit.com','quora.com','youtube.com',
-  'wikipedia.org','wordstream.com','searchengineland.com','searchenginejournal.com',
-  'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com'
+  // Review / directory sites
+  'clutch.co','designrush.com','upcity.com','expertise.com','goodfirms.co','g2.com',
+  'capterra.com','trustpilot.com','yelp.com','yelp.ca','bbb.org','yellowpages.com',
+  'yellowpages.ca','bark.com','sortlist.com','agencyspotter.com','wadline.com',
+  'featured.com','thumbtack.com','angi.com','angieslist.com','homeadvisor.com',
+  'houzz.com','weddingwire.com','theknot.com','avvo.com','martindale.com',
+  'healthgrades.com','zocdoc.com','vitals.com','ratemds.com','realself.com',
+  'tripadvisor.com','tripadvisor.ca','opentable.com','zomato.com',
+  'digitalagencynetwork.com','topdesignfirms.com','webfx.com/blog',
+  // SEO / marketing tools & blogs
+  'semrush.com','ahrefs.com','moz.com','hubspot.com','mailchimp.com',
+  'wordstream.com','searchengineland.com','searchenginejournal.com',
+  'neilpatel.com','backlinko.com','sproutsocial.com','hootsuite.com',
+  'buffer.com','canva.com','wix.com','squarespace.com','godaddy.com',
+  'shopify.com','bigcommerce.com','volusion.com','webflow.com',
+  // General marketplaces & mega-retailers
+  'amazon.com','amazon.ca','amazon.co.uk','amazon.com.au',
+  'ebay.com','ebay.ca','ebay.co.uk',
+  'walmart.com','walmart.ca','target.com','costco.com','costco.ca',
+  'bestbuy.com','bestbuy.ca','homedepot.com','homedepot.ca',
+  'lowes.com','lowes.ca','canadiantire.ca','rfrk.com',
+  'etsy.com','alibaba.com','aliexpress.com','wish.com','temu.com','shein.com',
+  'wayfair.com','wayfair.ca','overstock.com','ikea.com','ikea.ca',
+  // Social platforms
+  'facebook.com','instagram.com','linkedin.com','twitter.com','x.com',
+  'tiktok.com','pinterest.com','snapchat.com','threads.net',
+  // Content / news / reference
+  'wikipedia.org','forbes.com','medium.com','reddit.com','quora.com',
+  'youtube.com','vimeo.com','slideshare.net','scribd.com',
+  'bbc.com','cnn.com','nytimes.com','globalnews.ca','cbc.ca','ctv.ca',
+  // Job boards
+  'indeed.com','indeed.ca','glassdoor.com','glassdoor.ca','ziprecruiter.com','monster.com',
+  // Government / education
+  'canada.ca','gc.ca','usa.gov',
+  // Tech giants (not competitors to most businesses)
+  'google.com','apple.com','microsoft.com','oracle.com','salesforce.com'
 ];
 
 // ── Rate limiting (KV-based sliding window per user) ─────────────────────
