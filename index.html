@@ -348,6 +348,15 @@ textarea.inp{resize:vertical}
       </div>
     </div>
   </div>
+  <!-- View-as role switcher (admin/super_admin only) -->
+  <div id="view-as-nav" style="display:none;flex-shrink:0">
+    <select id="view-as-select" onchange="_switchViewAs(this.value)" style="font-size:10px;padding:4px 8px;border:1px solid var(--border);border-radius:16px;background:var(--white);color:var(--n3);font-family:var(--font);cursor:pointer;appearance:auto">
+      <option value="">View as: My role</option>
+      <option value="seo_staff">View as: SEO Staff</option>
+      <option value="strategist">View as: Strategist</option>
+      <option value="viewer">View as: Viewer</option>
+    </select>
+  </div>
   <!-- Centre: AI progress bar + contextual tips -->
   <div id="ai-bar">
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
@@ -375,15 +384,6 @@ textarea.inp{resize:vertical}
         <div class="ud-header">
           <div class="ud-name" id="ud-name">—</div>
           <div class="ud-email" id="ud-email">—</div>
-        </div>
-        <div id="view-as-wrap" style="display:none;padding:4px 8px;border-bottom:1px solid var(--border);margin-bottom:2px">
-          <div style="font-size:10px;color:var(--n2);margin-bottom:4px;font-weight:500">View as role</div>
-          <select id="view-as-select" onchange="_switchViewAs(this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">
-            <option value="">— My role —</option>
-            <option value="seo_staff">SEO Staff</option>
-            <option value="strategist">Strategist</option>
-            <option value="viewer">Viewer</option>
-          </select>
         </div>
         <button class="ud-item" onclick="toggleDarkMode()">
           <i class="ti ti-moon" id="dark-mode-icon" style="font-size:13px"></i> <span id="dark-mode-label">Dark mode</span>
@@ -5894,8 +5894,8 @@ async function initAuth() {
       var adminBtn = document.getElementById('admin-btn');
       if (adminBtn) adminBtn.style.display = canAdmin() ? '' : 'none';
       // Show "View as" dropdown for admin/super_admin
-      var viewAsWrap = document.getElementById('view-as-wrap');
-      if (viewAsWrap) viewAsWrap.style.display = canAdmin() ? '' : 'none';
+      var viewAsNav = document.getElementById('view-as-nav');
+      if (viewAsNav) viewAsNav.style.display = canAdmin() ? '' : 'none';
       S._realRole = data.role || 'viewer'; // preserve real role for restoring
 
       // Gate pending/suspended users
