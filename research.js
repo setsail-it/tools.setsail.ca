@@ -102,7 +102,8 @@ var RESEARCH_FIELD_META = {
   has_faq_section:           { tab:'schema',      label:'FAQ Section',              importance:'normal',   source:'ai' },
   schema_injection_method:   { tab:'schema',      label:'Schema Injection Method',  importance:'optional', source:'manual' },
   current_faqs:              { tab:'schema',      label:'Current FAQs',             importance:'normal',   source:'ai' },
-  reviews:                   { tab:'schema',      label:'Reviews',                  importance:'optional', source:'manual' },
+  reviews:                   { tab:'brand',       label:'Reviews',                  importance:'normal',   source:'ai' },
+  testimonials:              { tab:'brand',       label:'Testimonials',             importance:'normal',   source:'ai' },
   // Competitors
   competitors:               { tab:'competitors', label:'Competitors',              importance:'critical', source:'ai' },
 };
@@ -397,6 +398,7 @@ function researchDefaults() {
     reference_brands:[],
     // Proof & E-E-A-T
     case_studies:[], notable_clients:[], awards_certifications:[],
+    reviews:[], testimonials:[],
     team_credentials:'', founder_bio:'', publications_media:[], voc_swipe_raw:'',
     // Schema
     schema_business_type:'', schema_primary_category:'',
@@ -409,7 +411,7 @@ function researchDefaults() {
     has_location_pages:'', has_service_pages:'',
     has_blog:'', has_faq_section:'',
     schema_injection_method:'',
-    current_faqs:[], reviews:[],
+    current_faqs:[],
     // Competitors
     competitors:[],
     // Buyer Psychology — JTBD Force Map
@@ -1649,8 +1651,17 @@ function renderRBrand(r) {
     rField('voc_swipe_raw','Voice of Customer \u2014 Swipe File', r.voc_swipe_raw || '', 'textarea', {rows:5, placeholder:'Paste real customer quotes, review excerpts, or sales call transcripts \u2014 one per line\ne.g. "I just need someone who picks up the phone"\n"We wasted $30k on the last agency and got nothing"'})
   );
   html += rRepGroup('case_studies','Case Studies',
-    [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'}],
+    [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'},{key:'url',label:'URL',width:'150px'}],
     '+ Add Case Study'
+  );
+  html += rSec('Social Proof');
+  html += rRepGroup('testimonials','Testimonials',
+    [{key:'quote',label:'Quote'},{key:'author',label:'Author',width:'120px'},{key:'title',label:'Title / Company',width:'140px'},{key:'source',label:'Source',width:'100px'}],
+    '+ Add Testimonial'
+  );
+  html += rRepGroup('reviews','Reviews',
+    [{key:'author_name',label:'Author',width:'120px'},{key:'rating_value',label:'Rating',width:'60px'},{key:'review_body_short',label:'Excerpt'},{key:'source_url',label:'Source',width:'120px'}],
+    '+ Add Review'
   );
   html += rRepGroup('reference_brands','Reference Brands',
     [{key:'url',label:'URL'},{key:'what_you_like',label:'What You Like'}],
@@ -1782,10 +1793,6 @@ function renderRSchema(r) {
   html += rRepGroup('current_faqs','Current FAQs',
     [{key:'question',label:'Question'},{key:'answer',label:'Answer'}],
     '+ Add FAQ'
-  );
-  html += rRepGroup('reviews','Reviews',
-    [{key:'author_name',label:'Author',width:'120px'},{key:'rating_value',label:'Rating',width:'60px'},{key:'review_body_short',label:'Excerpt'},{key:'source_url',label:'Source URL',width:'150px'}],
-    '+ Add Review'
   );
   return html;
 }
@@ -1942,6 +1949,7 @@ async function enrichAll(forceAll, startFrom) {
           if (scrapeResult.social_profiles && scrapeResult.social_profiles.length) _sp.push(scrapeResult.social_profiles.length + ' social profiles');
           if (scrapeResult.faqs && scrapeResult.faqs.length) _sp.push(scrapeResult.faqs.length + ' FAQs');
           if (scrapeResult.reviews && scrapeResult.reviews.length) _sp.push(scrapeResult.reviews.length + ' reviews');
+          if (scrapeResult.testimonials && scrapeResult.testimonials.length) _sp.push(scrapeResult.testimonials.length + ' testimonials');
           if (scrapeResult.blog_posts && scrapeResult.blog_posts.length) _sp.push(scrapeResult.blog_posts.length + ' blog posts');
           if (scrapeResult.case_studies && scrapeResult.case_studies.length) _sp.push(scrapeResult.case_studies.length + ' case studies');
           if (scrapeResult.team_members && scrapeResult.team_members.length) _sp.push(scrapeResult.team_members.length + ' team members');
@@ -2191,6 +2199,11 @@ function _structuredScrapeCtx() {
   if (d.reviews && d.reviews.length) {
     parts.push('Reviews found: ' + d.reviews.length);
     if (d.aggregate_rating) parts.push('  Aggregate rating: ' + d.aggregate_rating.value + '/5 (' + d.aggregate_rating.count + ' reviews)');
+    d.reviews.slice(0, 3).forEach(function(rv) { parts.push('  - ' + (rv.author_name || 'Anonymous') + ': "' + (rv.review_body_short || '').slice(0, 100) + '"'); });
+  }
+  if (d.testimonials && d.testimonials.length) {
+    parts.push('Testimonials found: ' + d.testimonials.length);
+    d.testimonials.slice(0, 3).forEach(function(t) { parts.push('  - "' + (t.quote || '').slice(0, 100) + '"' + (t.author ? ' — ' + t.author : '')); });
   }
   if (d.blog_posts && d.blog_posts.length) {
     parts.push('Blog posts found: ' + d.blog_posts.length);
@@ -2473,6 +2486,8 @@ async function enrichRTab(tab, forceAll) {
       + b + '"team_credentials": "founder/team qualifications, years of experience, specialisations from /about page",\n'
       + b + '"founder_bio": "founder background and expertise from /about page",\n'
       + b + '"publications_media": ["media mention or publication from docs or website"],\n'
+      + b + '"testimonials": [{"quote": "exact customer quote from testimonials page, homepage, or case studies", "author": "person name if stated", "title": "job title or company if stated", "source": "page path where found e.g. /testimonials"}],\n'
+      + b + '"reviews": [{"author_name": "reviewer name", "rating_value": "star rating if present", "review_body_short": "review text excerpt (max 300 chars)", "source_url": "Google, Clutch, etc."}],\n'
       + b + '"reference_brands": [{"url": "https://example.com", "what_you_like": "specific element the client admires — ONLY include if the client explicitly mentioned reference brands in discovery notes or uploaded documents. If not mentioned, return []"}]\n}',
 
     schema: ctx + '\n\nExtract structured data for Schema.org markup. Return a JSON object:\n{\n'

@@ -1906,6 +1906,65 @@ export default {
           }
         }
 
+        // 4b. Extract testimonials — blockquotes and testimonial sections from any page
+        const testimonials = [];
+        for (const p of pages) {
+          // Look for testimonial-related sections on any page (homepage, about, testimonials)
+          const testimonialSectionRe = /<(?:section|div)[^>]*(?:class|id)\s*=\s*["'][^"']*(?:testimonial|client-quote|customer-review|feedback|praise|success-stor)[^"']*["'][^>]*>([\s\S]*?)<\/(?:section|div)>/gi;
+          let tsm;
+          while ((tsm = testimonialSectionRe.exec(p.html)) !== null && testimonials.length < 20) {
+            // Extract individual quotes within the section
+            const sectionHtml = tsm[1];
+            const quoteRe = /<(?:blockquote|p|span|div)[^>]*[^>]*>([""\u201C][\s\S]*?[""\u201D])<\/(?:blockquote|p|span|div)>/gi;
+            let qm;
+            while ((qm = quoteRe.exec(sectionHtml)) !== null && testimonials.length < 20) {
+              const quote = qm[1].replace(/<[^>]+>/g, '').replace(/^[""\u201C]+|[""\u201D]+$/g, '').trim();
+              if (quote.length > 20 && quote.length < 500) {
+                testimonials.push({ quote, author: '', title: '', source: p.url.replace(base, '') || '/' });
+              }
+            }
+          }
+          // Also get blockquotes from testimonial/review pages
+          if (/testimonial|review|success|client/i.test(p.url)) {
+            const bqRe2 = /<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi;
+            let bm2;
+            while ((bm2 = bqRe2.exec(p.html)) !== null && testimonials.length < 20) {
+              const text = bm2[1].replace(/<[^>]+>/g, '').trim();
+              if (text.length > 20 && text.length < 500 && !testimonials.some(t => t.quote === text)) {
+                testimonials.push({ quote: text, author: '', title: '', source: p.url.replace(base, '') || '/' });
+              }
+            }
+          }
+        }
+
+        // 4c. Enhance case study extraction — fuzzy match portfolio/work/results pages
+        for (const p of pages) {
+          if (!/case.stud|our.work|portfolio|project|result|success|client/i.test(p.url)) continue;
+          // Extract links to individual case study pages
+          const csLinkRe = /<a[^>]+href\s*=\s*["']([^"']*(?:case.stud|our-work|portfolio|project|client|success)[^"']*\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+          let csm;
+          while ((csm = csLinkRe.exec(p.html)) !== null && caseStudies.length < 30) {
+            let href = csm[1];
+            const title = csm[2].replace(/<[^>]+>/g, '').trim();
+            if (!title || title.length < 3 || title.length > 200) continue;
+            if (!href.startsWith('http')) href = base + (href.startsWith('/') ? '' : '/') + href;
+            if (caseStudies.some(cs => cs.url === href || cs.client === title)) continue;
+            caseStudies.push({ client: title, result: '', url: href, timeframe: '' });
+          }
+          // Also look for H2/H3 headings that might be case study titles
+          const headingRe = /<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi;
+          let hm;
+          while ((hm = headingRe.exec(p.html)) !== null && caseStudies.length < 30) {
+            const heading = hm[1].replace(/<[^>]+>/g, '').trim();
+            if (heading.length < 5 || heading.length > 150) continue;
+            // Skip generic headings
+            if (/^(our work|portfolio|case studies|projects|results|clients)/i.test(heading)) continue;
+            if (!caseStudies.some(cs => cs.client === heading)) {
+              caseStudies.push({ client: heading, result: '', url: p.url, timeframe: '' });
+            }
+          }
+        }
+
         // 5. Extract blog posts from /blog page
         const blogPosts = [];
         let hasBlog = false;
@@ -2018,8 +2077,9 @@ export default {
           social_profiles: socialProfiles,
           faqs: faqs.slice(0, 30),
           reviews: reviews.slice(0, 20),
+          testimonials: testimonials.slice(0, 20),
           blog_posts: blogPosts.slice(0, 20),
-          case_studies: caseStudies.slice(0, 20),
+          case_studies: caseStudies.slice(0, 30),
           team_members: teamMembers.slice(0, 30),
           services: services.slice(0, 30),
           json_ld_types: jsonLdTypes,
