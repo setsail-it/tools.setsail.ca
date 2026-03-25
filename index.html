@@ -376,6 +376,15 @@ textarea.inp{resize:vertical}
           <div class="ud-name" id="ud-name">—</div>
           <div class="ud-email" id="ud-email">—</div>
         </div>
+        <div id="view-as-wrap" style="display:none;padding:4px 8px;border-bottom:1px solid var(--border);margin-bottom:2px">
+          <div style="font-size:10px;color:var(--n2);margin-bottom:4px;font-weight:500">View as role</div>
+          <select id="view-as-select" onchange="_switchViewAs(this.value)" style="width:100%;font-size:11px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--dark);font-family:var(--font)">
+            <option value="">— My role —</option>
+            <option value="seo_staff">SEO Staff</option>
+            <option value="strategist">Strategist</option>
+            <option value="viewer">Viewer</option>
+          </select>
+        </div>
         <button class="ud-item" onclick="toggleDarkMode()">
           <i class="ti ti-moon" id="dark-mode-icon" style="font-size:13px"></i> <span id="dark-mode-label">Dark mode</span>
         </button>
@@ -5884,6 +5893,10 @@ async function initAuth() {
       // Show admin button for admin/super_admin
       var adminBtn = document.getElementById('admin-btn');
       if (adminBtn) adminBtn.style.display = canAdmin() ? '' : 'none';
+      // Show "View as" dropdown for admin/super_admin
+      var viewAsWrap = document.getElementById('view-as-wrap');
+      if (viewAsWrap) viewAsWrap.style.display = canAdmin() ? '' : 'none';
+      S._realRole = data.role || 'viewer'; // preserve real role for restoring
 
       // Gate pending/suspended users
       if (S.currentStatus === 'pending') { _showPendingScreen(); return; }
@@ -6019,6 +6032,36 @@ function _applyRoleVisibility(stage) {
       }
     }
   });
+}
+
+// "View as" role impersonation for admin/super_admin
+function _switchViewAs(role) {
+  if (!S._realRole) S._realRole = S.currentRole;
+  if (!role) {
+    // Reset to real role
+    S.currentRole = S._realRole;
+    var pill = document.getElementById('user-pill');
+    if (pill) pill.style.borderColor = 'var(--border)';
+    var indicator = document.getElementById('view-as-indicator');
+    if (indicator) indicator.remove();
+  } else {
+    S.currentRole = role;
+    // Visual indicator that we're impersonating
+    var pill = document.getElementById('user-pill');
+    if (pill) pill.style.borderColor = '#3B82F6';
+    // Add/update floating indicator
+    var indicator = document.getElementById('view-as-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'view-as-indicator';
+      indicator.style.cssText = 'position:fixed;bottom:16px;left:16px;z-index:9999;background:#3B82F6;color:white;padding:6px 14px;border-radius:20px;font-size:11px;font-family:var(--font);font-weight:500;box-shadow:0 2px 8px rgba(59,130,246,0.3);cursor:pointer;display:flex;align-items:center;gap:6px';
+      indicator.onclick = function() { document.getElementById('view-as-select').value = ''; _switchViewAs(''); };
+      document.body.appendChild(indicator);
+    }
+    indicator.innerHTML = '<i class="ti ti-eye" style="font-size:12px"></i>Viewing as: ' + (_ROLE_LABELS[role] || role) + ' <i class="ti ti-x" style="font-size:10px;opacity:0.7"></i>';
+  }
+  // Re-render current stage to apply visibility
+  goTo(S.stage);
 }
 
 async function loadAdminPage() {
