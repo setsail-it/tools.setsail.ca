@@ -3893,7 +3893,7 @@ function _renderSitemapResultsInner(approved) {
 // ── CONTENT INTELLIGENCE ───────────────────────────────────────────
 
 // Session flag for collapsible data sources panel
-var _ciSourcesExpanded = false;
+var _ciSourcesExpanded = true;
 
 function _toggleCISources() {
   _ciSourcesExpanded = !_ciSourcesExpanded;
@@ -4297,7 +4297,7 @@ function _renderBlogDiscoveryCard(allPages) {
 
   // ── Collapsible Data Sources ──
   var _hasData = paaDone > 0 || gapDone > 0;
-  var _sourcesOpen = _ciSourcesExpanded || !_hasData;
+  var _sourcesOpen = _ciSourcesExpanded !== false;
   html += '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px">';
   html += '<div onclick="_toggleCISources()" style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:var(--bg);border-bottom:1px solid var(--border);cursor:pointer;user-select:none">';
   html += '<span style="font-size:11px;font-weight:500;color:var(--dark);display:flex;align-items:center;gap:5px">';
@@ -4528,7 +4528,13 @@ async function runPAA() {
     scheduleSave();
     renderPAAPanel();
   } catch(err) {
-    status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+    // Don't show error if we already have questions — just keep existing data
+    if (S.contentIntel?.paa?.questions?.length) {
+      status.innerHTML = '<span style="font-size:10px;color:var(--n2)">' + S.contentIntel.paa.questions.length + ' questions loaded</span>';
+      renderPAAPanel();
+    } else {
+      status.innerHTML = '<span style="font-size:10px;color:var(--error)">⚠ ' + err.message + '</span>';
+    }
   }
   btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh" style="font-size:9px"></i> Run';
 }
