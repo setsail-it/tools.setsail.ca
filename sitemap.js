@@ -1310,7 +1310,15 @@ function _renderIssuesPanel() {
     groups[cat].push(issue);
   });
 
+  // Count fixable issues
+  var _fixableCount = all.filter(function(i) { return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0); }).length;
   var html = '<div class="wf-issues" id="wf-issues-panel">';
+  if (_fixableCount > 0) {
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px 8px;border-bottom:1px solid var(--border)">';
+    html += '<div style="font-size:11px;color:var(--n2)">' + all.length + ' issue' + (all.length !== 1 ? 's' : '') + ' found' + (_fixableCount > 0 ? ' · ' + _fixableCount + ' auto-fixable' : '') + '</div>';
+    html += '<button class="btn btn-primary sm" id="wf-fix-all-btn" style="font-size:10px;padding:3px 10px"><i class="ti ti-sparkles" style="font-size:10px"></i> Fix All (' + _fixableCount + ')</button>';
+    html += '</div>';
+  }
   ['alignment', 'keywords', 'gaps', 'redundant'].forEach(function(cat) {
     var items = groups[cat];
     if (!items || !items.length) return;
@@ -1344,6 +1352,24 @@ function _renderIssuesPanel() {
 function _mountIssuesPanel() {
   var panel = document.getElementById('wf-issues-panel');
   if (!panel) return;
+  // Fix All button
+  var fixAllBtn = document.getElementById('wf-fix-all-btn');
+  if (fixAllBtn) {
+    fixAllBtn.onclick = async function() {
+      fixAllBtn.disabled = true;
+      fixAllBtn.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span> Fixing all\u2026';
+      var guard = projectGuard();
+      // Fix no-kw first, then zero-vol, then cannibalisation
+      var issues = _runSitemapHealthCheck();
+      var hasNoKw = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'no-kw'; });
+      var hasZeroVol = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'zero-vol'; });
+      var cannibals = issues.errors.concat(issues.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
+      if (hasNoKw && !guard.changed()) { await _aiFixIssue('no-kw'); }
+      if (hasZeroVol && !guard.changed()) { await _aiFixIssue('zero-vol'); }
+      for (var ci = 0; ci < cannibals.length && !guard.changed(); ci++) { await _aiFixIssue(cannibals[ci].id); }
+      if (!guard.changed()) { renderSitemapResults(S.sitemapApproved); scheduleSave(); }
+    };
+  }
   // Scroll-to-fix buttons
   var fixBtns = panel.querySelectorAll('.wf-issue-fix');
   fixBtns.forEach(function(btn) {
@@ -3439,7 +3465,13 @@ function _renderSitemapResultsInner(approved) {
 
   // Workflow strip
   html += _renderWorkflowStrip();
-  if (_sitemapIssuesExpanded) html += _renderIssuesPanel();
+
+  // Always show issues if they exist (not behind a click)
+  var _wfIssues = _runSitemapHealthCheck();
+  var _totalIssueCount = _wfIssues.errors.length + _wfIssues.warnings.length;
+  if (_totalIssueCount > 0 || _sitemapIssuesExpanded) {
+    html += _renderIssuesPanel();
+  }
 
   // Category tabs
   var _removedCount = (S.sitemapRemoved || []).length;
@@ -3878,7 +3910,7 @@ function _renderSitemapResultsInner(approved) {
 
   // Wire workflow strip + issues panel click handlers
   _mountWorkflowStrip();
-  if (_sitemapIssuesExpanded) _mountIssuesPanel();
+  _mountIssuesPanel(); // Always mount — issues panel is always visible when issues exist
 
   // Render structure review panel if results exist
   renderStructureReview();
