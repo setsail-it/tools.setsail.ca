@@ -469,9 +469,10 @@ textarea.inp{resize:vertical}
           <label style="font-size:12px;display:block;margin-bottom:5px">Primary Market <span style="color:var(--n2)">— default geo for all pages, overrideable per page in Sitemap</span></label><input class="inp" id="f-geo" placeholder="e.g. Vancouver, BC">
         </div>
         <div style="margin-top:10px">
-          <label style="font-size:12px;display:block;margin-bottom:5px">Metro / City Target <span style="color:var(--n2)">— city-level targeting for Google Keyword Planner volume data</span></label>
-          <select class="inp" id="f-geo-metro" style="width:100%">
-            <option value="">— Use country-level (default)</option>
+          <label style="font-size:12px;display:block;margin-bottom:5px">Metro / City Targets <span style="color:var(--n2)">— city-level targeting for Google Keyword Planner volume data (select multiple)</span></label>
+          <div id="geo-metro-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px"></div>
+          <select class="inp" id="f-geo-metro-picker" style="width:100%" onchange="_addGeoMetro(this.value);this.value=''">
+            <option value="">+ Add a city...</option>
             <optgroup label="Canada">
               <option value="1002289">Vancouver, BC</option>
               <option value="1002366">Victoria, BC</option>
@@ -520,6 +521,7 @@ textarea.inp{resize:vertical}
               <option value="1000250">Perth, WA</option>
             </optgroup>
           </select>
+          <input type="hidden" id="f-geo-metro" value="">
         </div>
       </div>
       <!-- Analytics Connection — GSC & GA4 property pickers -->
@@ -1504,6 +1506,48 @@ async function deleteProject(id, btn) {
   showProjects();
 }
 
+// ── Geo Metro multi-select ──
+var _GEO_METRO_LABELS = {'1002289':'Vancouver, BC','1002366':'Victoria, BC','1002191':'Kelowna, BC','1002304':'Surrey, BC','1002338':'Toronto, ON','1002244':'Ottawa, ON','1002227':'Mississauga, ON','1002167':'Hamilton, ON','1002228':'Montreal, QC','1002253':'Quebec City, QC','1002078':'Calgary, AB','1002110':'Edmonton, AB','1002373':'Winnipeg, MB','1002166':'Halifax, NS','1002259':'Regina, SK','1002271':'Saskatoon, SK','1014221':'New York, NY','1014218':'Los Angeles, CA','1016367':'Chicago, IL','1026339':'Houston, TX','1026083':'Dallas, TX','1023776':'Miami, FL','1024977':'Seattle, WA','1012873':'Denver, CO','1025202':'Boston, MA','1014895':'San Francisco, CA','1013962':'Austin, TX','1026421':'Phoenix, AZ','1015116':'Atlanta, GA','1006886':'London','1006821':'Manchester','1006543':'Birmingham','1006798':'Leeds','1007140':'Edinburgh','1007144':'Glasgow','1000286':'Sydney, NSW','1000199':'Melbourne, VIC','1000060':'Brisbane, QLD','1000250':'Perth, WA'};
+
+function _getGeoMetroIds() {
+  var v = (document.getElementById('f-geo-metro') || {}).value || '';
+  return v ? v.split(',').filter(Boolean) : [];
+}
+
+function _setGeoMetroIds(ids) {
+  var el = document.getElementById('f-geo-metro');
+  if (el) el.value = ids.join(',');
+}
+
+function _addGeoMetro(id) {
+  if (!id) return;
+  var ids = _getGeoMetroIds();
+  if (ids.indexOf(id) >= 0) return; // already added
+  ids.push(id);
+  _setGeoMetroIds(ids);
+  _renderGeoMetroTags();
+}
+
+function _removeGeoMetro(id) {
+  var ids = _getGeoMetroIds().filter(function(v) { return v !== id; });
+  _setGeoMetroIds(ids);
+  _renderGeoMetroTags();
+}
+
+function _renderGeoMetroTags() {
+  var wrap = document.getElementById('geo-metro-tags');
+  if (!wrap) return;
+  var ids = _getGeoMetroIds();
+  if (!ids.length) { wrap.innerHTML = '<span style="font-size:11px;color:var(--n2)">No cities selected — using country-level data</span>'; return; }
+  wrap.innerHTML = ids.map(function(id) {
+    var label = _GEO_METRO_LABELS[id] || id;
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:4px;background:rgba(21,142,29,0.08);border:1px solid rgba(21,142,29,0.2);color:var(--dark)">'
+      + esc(label)
+      + '<span onclick="_removeGeoMetro(\'' + id + '\')" style="cursor:pointer;color:var(--n2);font-size:13px;line-height:1">&times;</span>'
+      + '</span>';
+  }).join('');
+}
+
 function prefillSetup() {
   const s = S.setup;
   if (!s) return;
@@ -1511,6 +1555,7 @@ function prefillSetup() {
   document.getElementById('f-url').value = s.url || '';
   document.getElementById('f-geo').value = s.geo || '';
   var fgm = document.getElementById('f-geo-metro'); if(fgm) fgm.value = s.geoMetro || '';
+  _renderGeoMetroTags();
   // Client goals
   var fgs = document.getElementById('f-goal-statement'); if(fgs) fgs.value = s.goalStatement || '';
   var fgt = document.getElementById('f-goal-target'); if(fgt) fgt.value = s.goalTarget || '';

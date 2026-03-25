@@ -1097,7 +1097,14 @@ async function fetchKwVolumes() {
 
 // ── Google Keyword Planner enrichment ──────────────────────────────────
 function _getGeoTargetId() {
-  return (S && S.setup && S.setup.geoMetro) ? S.setup.geoMetro : '';
+  var v = (S && S.setup && S.setup.geoMetro) ? S.setup.geoMetro : '';
+  // Support multi-city: return first ID for backward compat (GKP uses single geo)
+  if (v.indexOf(',') >= 0) return v.split(',')[0];
+  return v;
+}
+function _getGeoTargetIds() {
+  var v = (S && S.setup && S.setup.geoMetro) ? S.setup.geoMetro : '';
+  return v ? v.split(',').filter(Boolean) : [];
 }
 var _gkpConfigured = null; // cached from /api/gkp-status
 
