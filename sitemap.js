@@ -1372,15 +1372,22 @@ function _mountIssuesPanel() {
       fixAllBtn.disabled = true;
       fixAllBtn.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span> Fixing all\u2026';
       var guard = projectGuard();
+      var _fixSteps = [];
       // Fix no-kw first, then zero-vol, then cannibalisation
       var issues = _runSitemapHealthCheck();
       var hasNoKw = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'no-kw'; });
       var hasZeroVol = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'zero-vol'; });
       var cannibals = issues.errors.concat(issues.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
-      if (hasNoKw && !guard.changed()) { await _aiFixIssue('no-kw'); }
-      if (hasZeroVol && !guard.changed()) { await _aiFixIssue('zero-vol'); }
-      for (var ci = 0; ci < cannibals.length && !guard.changed(); ci++) { await _aiFixIssue(cannibals[ci].id); }
-      if (!guard.changed()) { renderSitemapResults(S.sitemapApproved); scheduleSave(); }
+      if (hasNoKw && !guard.changed()) { console.log('[Fix All] fixing no-kw...'); await _aiFixIssue('no-kw'); _fixSteps.push('keywords'); }
+      if (hasZeroVol && !guard.changed()) { console.log('[Fix All] fixing zero-vol...'); await _aiFixIssue('zero-vol'); _fixSteps.push('zero-vol'); }
+      for (var ci = 0; ci < cannibals.length && !guard.changed(); ci++) { console.log('[Fix All] fixing cannibal:', cannibals[ci].id); await _aiFixIssue(cannibals[ci].id); _fixSteps.push(cannibals[ci].id.replace('cannibal-', '')); }
+      if (!guard.changed()) {
+        renderSitemapResults(S.sitemapApproved);
+        scheduleSave();
+        var _remaining = _runSitemapHealthCheck();
+        var _remainCount = _remaining.errors.length + _remaining.warnings.length;
+        aiBarNotify('Fix All complete \u2014 ' + _fixSteps.length + ' fixes run' + (_remainCount > 0 ? ', ' + _remainCount + ' issues remaining' : ', all clear!'), { duration: 5000 });
+      }
     };
   }
   // Scroll-to-fix buttons
@@ -1666,7 +1673,9 @@ async function _aiFixIssue(fixId) {
     try {
       var result3 = '';
       await callClaude('You are an SEO cannibalisation resolver. Return only valid JSON.', prompt3, function(chunk) { result3 = chunk; }, 2048, 'cannibal-fix');
+      console.log('[cannibal-fix] raw AI response:', result3.slice(0, 500));
       var parsed3 = _parseAiJson(result3);
+      console.log('[cannibal-fix] parsed:', JSON.stringify(parsed3));
       var resolved = 0;
       if (Array.isArray(parsed3)) {
         parsed3.forEach(function(item) {
