@@ -1076,18 +1076,31 @@ function _runSitemapHealthCheck() {
     });
   }
 
-  // 2. Keyword cannibalisation
+  // 2. Keyword cannibalisation — smart detection
+  // Same page type + same keyword = real cannibalisation (error, fixable)
+  // Different page types = likely different intent (info only, no fix)
   var kwMap = {};
   pages.forEach(function(p, i) {
     var kw = (p.primary_keyword || '').toLowerCase().trim();
     if (!kw) return;
     if (!kwMap[kw]) kwMap[kw] = [];
-    kwMap[kw].push({ slug: p.slug, idx: i });
+    kwMap[kw].push({ slug: p.slug, idx: i, type: (p.page_type || '').toLowerCase() });
   });
   Object.keys(kwMap).forEach(function(kw) {
-    if (kwMap[kw].length > 1) {
-      var slugs = kwMap[kw].map(function(e) { return '/' + e.slug; }).join(', ');
-      errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: kwMap[kw][0].slug, description: '"' + kw + '" targets ' + kwMap[kw].length + ' pages: ' + slugs, suggestion: 'Assign unique primary keywords to each page', fixType: 'scroll' });
+    if (kwMap[kw].length < 2) return;
+    var slugs = kwMap[kw].map(function(e) { return '/' + e.slug; }).join(', ');
+    // Check if page types are the same — group by type
+    var types = {};
+    kwMap[kw].forEach(function(e) { types[e.type || 'unknown'] = (types[e.type || 'unknown'] || 0) + 1; });
+    var typeKeys = Object.keys(types);
+    var hasSameType = typeKeys.some(function(t) { return types[t] > 1; });
+
+    if (hasSameType) {
+      // Real cannibalisation — same page type competing for same keyword
+      errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: kwMap[kw][0].slug, description: '"' + kw + '" targets ' + kwMap[kw].length + ' same-type pages: ' + slugs, suggestion: 'Differentiate: assign a more specific keyword to the weaker page', fixType: 'scroll' });
+    } else {
+      // Different page types — likely different intent (service vs blog, case study vs service, etc.)
+      info.push({ id: 'overlap-' + kw, category: 'keywords', severity: 'info', slug: kwMap[kw][0].slug, description: '"' + kw + '" shared across different page types (' + typeKeys.join(', ') + '): ' + slugs + ' — likely different intent, monitor in GSC for URL flickering', suggestion: 'No action needed unless GSC shows URL flickering' });
     }
   });
 
@@ -1637,10 +1650,16 @@ async function _aiFixIssue(fixId) {
     var usedKws3 = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
     var availKws3 = kwPool.filter(function(k) { return !usedKws3.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
 
-    var prompt3 = 'These pages all target the same keyword "' + cannibalKw + '" — this causes cannibalisation. Keep the keyword on the BEST page and assign different keywords to the others.\n\n'
+    var prompt3 = 'These same-type pages all target the keyword "' + cannibalKw + '" — this is real keyword cannibalisation.\n\n'
+      + 'STRATEGY:\n'
+      + '1. Keep the keyword on the STRONGEST page (best slug match, highest authority, or broadest scope)\n'
+      + '2. For each other page, find a MORE SPECIFIC related keyword that differentiates its angle\n'
+      + '3. Prefer keywords from the available list below — they have real search volume\n'
+      + '4. The new keyword should still be relevant to the page topic and type\n'
+      + '5. NEVER merge or delete pages — only reassign keywords\n\n'
       + 'CONFLICTING PAGES:\n' + conflicting.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type + ' | vol: ' + (p.primary_vol || 0); }).join('\n')
-      + '\n\nAVAILABLE REPLACEMENT KEYWORDS:\n' + availKws3.slice(0, 60).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol; }).join('\n')
-      + '\n\nReturn JSON array: [{"slug":"...","keyword":"..."}] for ALL pages (keep or reassign). Only return the JSON array.';
+      + '\n\nAVAILABLE REPLACEMENT KEYWORDS (prefer these, they have real volume):\n' + availKws3.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + (k.kd || '?'); }).join('\n')
+      + '\n\nReturn JSON array: [{"slug":"...","keyword":"...","reason":"brief reason for choice"}] for ALL conflicting pages. Only return the JSON array.';
 
     aiBarStart('AI resolving cannibalisation for "' + cannibalKw + '"\u2026');
     try {
