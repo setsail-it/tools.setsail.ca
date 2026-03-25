@@ -1823,6 +1823,99 @@ export default {
         }
         const jsonLdTypes = [...new Set(ldItems.map(i => i['@type']).filter(Boolean).flat())];
 
+        // 1b. Extract rich structured data from JSON-LD schema
+        const schemaData = {
+          business: null,     // LocalBusiness / Organization
+          products: [],       // Product schema
+          breadcrumbs: [],    // BreadcrumbList — reveals site hierarchy
+          events: [],         // Event schema
+          videos: [],         // VideoObject
+          offers: [],         // Offer / AggregateOffer
+          siteSearch: false   // WebSite with SearchAction
+        };
+
+        for (const item of ldItems) {
+          const type = Array.isArray(item['@type']) ? item['@type'][0] : item['@type'];
+
+          // LocalBusiness / Organization — core business identity
+          if (['LocalBusiness', 'Organization', 'Corporation', 'Store', 'Restaurant',
+               'MedicalBusiness', 'LegalService', 'FinancialService', 'RealEstateAgent',
+               'AutoDealer', 'HealthAndBeautyBusiness', 'HomeAndConstructionBusiness',
+               'ProfessionalService', 'SportsActivityLocation'].some(t => type === t || (item['@type'] && item['@type'].includes && item['@type'].includes(t)))) {
+            if (!schemaData.business) {
+              schemaData.business = {
+                type: type,
+                name: item.name || '',
+                description: (item.description || '').slice(0, 500),
+                url: item.url || '',
+                phone: item.telephone || '',
+                email: item.email || '',
+                address: item.address ? {
+                  street: (item.address.streetAddress || ''),
+                  city: (item.address.addressLocality || ''),
+                  region: (item.address.addressRegion || ''),
+                  postal: (item.address.postalCode || ''),
+                  country: (item.address.addressCountry || '')
+                } : null,
+                priceRange: item.priceRange || '',
+                openingHours: item.openingHoursSpecification ? 'found' : '',
+                foundingDate: item.foundingDate || '',
+                numberOfEmployees: item.numberOfEmployees ? (item.numberOfEmployees.value || JSON.stringify(item.numberOfEmployees)) : '',
+                areaServed: item.areaServed ? (Array.isArray(item.areaServed) ? item.areaServed.map(a => a.name || a).join(', ') : (item.areaServed.name || item.areaServed)) : '',
+                hasOfferCatalog: !!item.hasOfferCatalog,
+                paymentAccepted: item.paymentAccepted || ''
+              };
+            }
+          }
+
+          // Product — ecommerce or product-based businesses
+          if (type === 'Product' && schemaData.products.length < 30) {
+            schemaData.products.push({
+              name: (item.name || '').slice(0, 100),
+              description: (item.description || '').slice(0, 200),
+              brand: item.brand ? (item.brand.name || item.brand) : '',
+              price: item.offers ? (item.offers.price || item.offers.lowPrice || '') : '',
+              currency: item.offers ? (item.offers.priceCurrency || '') : '',
+              url: item.url || '',
+              sku: item.sku || '',
+              availability: item.offers ? (item.offers.availability || '').replace('https://schema.org/', '') : ''
+            });
+          }
+
+          // BreadcrumbList — reveals site architecture
+          if (type === 'BreadcrumbList' && item.itemListElement && schemaData.breadcrumbs.length < 50) {
+            const crumbs = Array.isArray(item.itemListElement) ? item.itemListElement : [item.itemListElement];
+            const path = crumbs.map(c => ({ name: c.name || '', url: c.item || '' })).filter(c => c.name);
+            if (path.length > 0) schemaData.breadcrumbs.push(path);
+          }
+
+          // WebSite with SearchAction
+          if (type === 'WebSite' && item.potentialAction) {
+            const actions = Array.isArray(item.potentialAction) ? item.potentialAction : [item.potentialAction];
+            if (actions.some(a => a['@type'] === 'SearchAction')) {
+              schemaData.siteSearch = true;
+            }
+          }
+
+          // Event
+          if (type === 'Event' && schemaData.events.length < 10) {
+            schemaData.events.push({
+              name: (item.name || '').slice(0, 100),
+              startDate: item.startDate || '',
+              location: item.location ? (item.location.name || '') : ''
+            });
+          }
+
+          // VideoObject
+          if (type === 'VideoObject' && schemaData.videos.length < 10) {
+            schemaData.videos.push({
+              name: (item.name || '').slice(0, 100),
+              description: (item.description || '').slice(0, 200),
+              uploadDate: item.uploadDate || ''
+            });
+          }
+        }
+
         // 2. Extract social media links
         const socialDomains = { 'facebook.com': 'Facebook', 'fb.com': 'Facebook', 'twitter.com': 'Twitter', 'x.com': 'X',
           'instagram.com': 'Instagram', 'linkedin.com': 'LinkedIn', 'youtube.com': 'YouTube',
@@ -2112,6 +2205,7 @@ export default {
           team_members: teamMembers.slice(0, 30),
           services: services.slice(0, 30),
           json_ld_types: jsonLdTypes,
+          schema_data: schemaData,
           has_blog: hasBlog,
           has_faq_section: hasFaqSection,
           aggregate_rating: aggregateRating,

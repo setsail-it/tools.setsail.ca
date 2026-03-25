@@ -2267,6 +2267,33 @@ async function _fetchStructuredScrape(force) {
     if (data.team_members && data.team_members.length && !r.team_credentials) {
       r.team_credentials = data.team_members.map(function(t) { return t.name + (t.title ? ' — ' + t.title : ''); }).join(', ');
     }
+    // Testimonials from scraper
+    if (data.testimonials && data.testimonials.length && (!r.testimonials || !r.testimonials.length)) {
+      r.testimonials = data.testimonials.map(function(t) { return { quote: t.quote || '', author: t.author || '', title: t.title || '', source: t.source || '' }; });
+    }
+    // Schema business data — auto-populate research fields
+    if (data.schema_data && data.schema_data.business) {
+      var biz = data.schema_data.business;
+      if (biz.phone && !r.schema_phone) r.schema_phone = biz.phone;
+      if (biz.email && !r.schema_email) r.schema_email = biz.email;
+      if (biz.priceRange && !r.schema_price_range) r.schema_price_range = biz.priceRange;
+      if (biz.type && !r.schema_business_type) r.schema_business_type = biz.type;
+      if (biz.description && !r.business_description) r.business_description = biz.description;
+      if (biz.foundingDate && !r.founding_year) r.founding_year = biz.foundingDate;
+      if (biz.areaServed && !r.geography) r.geography = { primary: biz.areaServed, secondary: [] };
+      if (biz.address) {
+        if (biz.address.street && !r.schema_street_address) r.schema_street_address = biz.address.street;
+        if (biz.address.city && !r.schema_city) r.schema_city = biz.address.city;
+        if (biz.address.region && !r.schema_region) r.schema_region = biz.address.region;
+        if (biz.address.postal && !r.schema_postal_code) r.schema_postal_code = biz.address.postal;
+        if (biz.address.country && !r.schema_country) r.schema_country = biz.address.country;
+      }
+    }
+    // Products from schema — useful for ecommerce/product businesses
+    if (data.schema_data && data.schema_data.products && data.schema_data.products.length > 0) {
+      if (!r._schema_products) r._schema_products = [];
+      r._schema_products = data.schema_data.products;
+    }
     scheduleSave();
     return data;
   } catch(e) {
@@ -2313,6 +2340,39 @@ function _structuredScrapeCtx() {
   }
   if (d.json_ld_types && d.json_ld_types.length) {
     parts.push('JSON-LD types: ' + d.json_ld_types.join(', '));
+  }
+  // Schema.org structured data (high-confidence, machine-readable)
+  if (d.schema_data) {
+    var sd = d.schema_data;
+    if (sd.business) {
+      parts.push('\nSCHEMA.ORG BUSINESS DATA (from JSON-LD — high confidence):');
+      parts.push('  Type: ' + (sd.business.type || 'unknown'));
+      if (sd.business.name) parts.push('  Name: ' + sd.business.name);
+      if (sd.business.description) parts.push('  Description: ' + sd.business.description.slice(0, 200));
+      if (sd.business.phone) parts.push('  Phone: ' + sd.business.phone);
+      if (sd.business.priceRange) parts.push('  Price Range: ' + sd.business.priceRange);
+      if (sd.business.foundingDate) parts.push('  Founded: ' + sd.business.foundingDate);
+      if (sd.business.numberOfEmployees) parts.push('  Employees: ' + sd.business.numberOfEmployees);
+      if (sd.business.areaServed) parts.push('  Area Served: ' + sd.business.areaServed);
+      if (sd.business.address) {
+        parts.push('  Address: ' + [sd.business.address.street, sd.business.address.city, sd.business.address.region, sd.business.address.postal].filter(Boolean).join(', '));
+      }
+    }
+    if (sd.products && sd.products.length) {
+      parts.push('\nPRODUCTS (from schema): ' + sd.products.length + ' found');
+      sd.products.slice(0, 8).forEach(function(p) {
+        parts.push('  - ' + p.name + (p.price ? ' $' + p.price + ' ' + (p.currency || '') : '') + (p.brand ? ' [' + p.brand + ']' : ''));
+      });
+    }
+    if (sd.breadcrumbs && sd.breadcrumbs.length) {
+      parts.push('\nSITE HIERARCHY (from breadcrumbs): ' + sd.breadcrumbs.length + ' paths');
+      sd.breadcrumbs.slice(0, 5).forEach(function(path) {
+        parts.push('  ' + path.map(function(c) { return c.name; }).join(' > '));
+      });
+    }
+    if (sd.siteSearch) parts.push('Site has internal search (SearchAction)');
+    if (sd.videos && sd.videos.length) parts.push('Videos found: ' + sd.videos.length);
+    if (sd.events && sd.events.length) parts.push('Events found: ' + sd.events.length);
   }
   return parts.length > 1 ? parts.join('\n') : '';
 }
