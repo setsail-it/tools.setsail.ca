@@ -5198,118 +5198,74 @@ async function generateStrategy() {
   }
 }
 
-async function _resumeDiagnosticsWithD0(startFrom) {
-  window._aiStopAll = false;
+// ── Layered Pipeline Infrastructure ──────────────────────────────────
+// Shared step table used by runAllDiagnostics, runDiagnosticsFrom,
+// rerunKeywordSensitiveDiagnostics, and all resume paths.
+//
+// Steps: 0=D0, 1=KW1, 2=D1, 3=D2, 4=D3, 5=D4, 6=KW2, 7=D5, 8=KW3,
+//        9=D6, 10=D7, 11=D8, 12=D9, 13=COMPILE
+
+var _LAYER_STEPS = [
+  { id: 'D0',  label: 'D0 Audience Intelligence',   run: function() { return runDiagnostic(0); } },
+  { id: 'KW1', label: 'Keyword data collection',    run: function() { return typeof kwPhase1_DataCollection === 'function' ? kwPhase1_DataCollection() : Promise.resolve(); }, optional: true },
+  { id: 'D1',  label: 'D1 Economics',               run: function() { return runDiagnostic(1); } },
+  { id: 'D2',  label: 'D2 Positioning',             run: function() { return runDiagnostic(2); } },
+  { id: 'D3',  label: 'D3 Subtraction',             run: function() { return runDiagnostic(3); } },
+  { id: 'D4',  label: 'D4 Channel Strategy',        run: function() { return runDiagnostic(4); } },
+  { id: 'KW2', label: 'AI-Select Keywords',         run: function() { return typeof kwPhase2_Selection === 'function' ? kwPhase2_Selection() : Promise.resolve(); }, optional: true },
+  { id: 'D5',  label: 'D5 Website & CRO',           run: function() { return runDiagnostic(5); } },
+  { id: 'KW3', label: 'Keyword Clustering',         run: function() { return typeof kwPhase3_Clustering === 'function' ? kwPhase3_Clustering() : Promise.resolve(); }, optional: true },
+  { id: 'D6',  label: 'D6 Content & Authority',     run: function() { return runDiagnostic(6); } },
+  { id: 'D7',  label: 'D7 Risk Assessment',         run: function() { return runDiagnostic(7); } },
+  { id: 'D8',  label: 'D8 Narrative & Messaging',   run: function() { return runDiagnostic(8); }, optional: true },
+  { id: 'D9',  label: 'D9 Sales Intelligence',      run: function() { return runDiagnostic(9); }, optional: true },
+  { id: 'COMPILE', label: 'Compiling strategy document', run: function() { return compileStrategyOutput().then(function() { return synthesiseWebStrategy(); }); }, optional: true }
+];
+
+// Map diagnostic number → step index in _LAYER_STEPS
+var _DIAG_TO_STEP = { 0:0, 1:2, 2:3, 3:4, 4:5, 5:7, 6:9, 7:10, 8:11, 9:12 };
+
+// Core pipeline runner — executes steps fromStep..toStep with stop/resume
+async function _runLayeredPipeline(fromStep, toStep, versionLabel) {
+  if (typeof toStep !== 'number') toStep = _LAYER_STEPS.length - 1;
   try {
-    // If startFrom is 0, run D0 first
-    if (startFrom === 0) {
-      await runDiagnostic(0);
-      await new Promise(function(res) { setTimeout(res, 2000); });
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = { label: 'Strategy paused (D0 done)', fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); }, args: { startFrom: 1 } };
-        return;
-      }
-      startFrom = 1;
-    }
-    for (var d = startFrom; d <= 7; d++) {
+    for (var i = fromStep; i <= toStep; i++) {
       if (window._aiStopAll) {
         window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/9)',
-          fn: function(args) { _resumeDiagnosticsWithD0(args.startFrom); },
-          args: { startFrom: d }
+          label: 'Pipeline paused at ' + _LAYER_STEPS[i].label,
+          fn: function(args) { _resumeLayeredPipeline(args.step, args.toStep, args.versionLabel); },
+          args: { step: i, toStep: toStep, versionLabel: versionLabel }
         };
         return;
       }
-      await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
+      var step = _LAYER_STEPS[i];
+      aiBarStart(step.label);
+      if (step.optional) {
+        try { await step.run(); } catch(e) { console.warn('[pipeline] ' + step.id + ' error:', e.message); }
+      } else {
+        await step.run();
+      }
+      if (i < toStep) await new Promise(function(res) { setTimeout(res, 1500); });
     }
-    // Run D8 Narrative after D1-D7 complete
-    if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Running D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
-    }
+    S.strategy._kwDataStale = false;
     capturePricingSnapshot();
-    createStrategyVersion('auto_draft');
+    createStrategyVersion(versionLabel || 'layered_run');
     await saveProject();
     renderStrategyScorecard();
+    renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
+    var endMsg = toStep >= _LAYER_STEPS.length - 1 ? 'complete — doc compiled' : 'complete';
+    aiBarEnd('Diagnostics ' + endMsg + ' — v' + S.strategy._meta.current_version);
   } catch (e) {
-    if (e.name === 'AbortError') return;
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
   }
 }
 
-async function _resumeDiagnostics(startFrom) {
+// Unified resume — called from Resume button after any pipeline pause
+async function _resumeLayeredPipeline(step, toStep, versionLabel) {
   window._aiStopAll = false;
-  try {
-    // If resuming at D4 and no keywords, run keyword pipeline first
-    if (startFrom === 4) {
-      var _kwCheck = S.kwResearch || {};
-      if (!_kwCheck.keywords || _kwCheck.keywords.length < 10) {
-        if (typeof runFullKeywordPipeline === 'function') {
-          aiBarStart('Running keyword research pipeline');
-          try { await runFullKeywordPipeline(); } catch(kwErr) {
-            console.warn('Keyword pipeline error:', kwErr.message);
-          }
-          await new Promise(function(res) { setTimeout(res, 2000); });
-        }
-      }
-    }
-    for (var d = startFrom; d <= 7; d++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Strategy paused (D' + d + '/9)',
-          fn: function(args) { _resumeDiagnostics(args.startFrom); },
-          args: { startFrom: d }
-        };
-        return;
-      }
-      await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    // Run D8 Narrative after D1-D7 complete
-    if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Running D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
-    }
-    capturePricingSnapshot();
-    createStrategyVersion('auto_draft');
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyTabContent();
-    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated');
-  } catch (e) {
-    if (e.name === 'AbortError') return;
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
-}
-
-async function _resumeStrategyWithKeywords() {
-  window._aiStopAll = false;
-  try {
-    var _kwCheck = S.kwResearch || {};
-    if (!_kwCheck.keywords || _kwCheck.keywords.length < 10) {
-      if (typeof runFullKeywordPipeline === 'function') {
-        aiBarStart('Running keyword research pipeline');
-        try { await runFullKeywordPipeline(); } catch(kwErr) {
-          console.warn('Keyword pipeline error:', kwErr.message);
-        }
-        await new Promise(function(res) { setTimeout(res, 2000); });
-      }
-    }
-    // Continue with D4-D7
-    await _resumeDiagnostics(4);
-  } catch (e) {
-    if (e.name === 'AbortError') return;
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
+  await _runLayeredPipeline(step, toStep, versionLabel);
 }
 
 async function runAllDiagnostics() {
@@ -5317,206 +5273,20 @@ async function runAllDiagnostics() {
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
-  aiBarStart('Running layered diagnostics (D0 → KW Data → D1-D3 → D4+Select → D5+Cluster → D6-D9)');
-  try {
-    // ── LAYERED PIPELINE (same as generateStrategy but without enrichment) ──
-
-    // Layer 0: D0 Audience
-    aiBarStart('Layer 0: D0 Audience Intelligence');
-    if (window._aiStopAll) { aiBarEnd('Stopped'); return; }
-    await runDiagnostic(0);
-    await new Promise(function(res) { setTimeout(res, 1500); });
-
-    // Layer 1: Keyword data collection (D0 context for AI seeds)
-    if (!window._aiStopAll && typeof kwPhase1_DataCollection === 'function') {
-      aiBarStart('Layer 1: Keyword data collection');
-      try { await kwPhase1_DataCollection(); } catch(kwErr) {
-        console.warn('[runAllDiagnostics] kwPhase1 error:', kwErr.message);
-        aiBarNotify('Keyword data collection had issues — continuing', { duration: 3000 });
-      }
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-
-    // Layer 2: D1 Economics + D2 Positioning + D3 Subtraction (D1 gets real CPC!)
-    var _rad = [1, 2, 3];
-    for (var _ri = 0; _ri < _rad.length; _ri++) {
-      if (window._aiStopAll) { aiBarEnd('Stopped'); return; }
-      var _rd = _rad[_ri];
-      aiBarStart('Layer 2: D' + _rd + ' ' + ['', 'Economics', 'Positioning', 'Subtraction'][_rd]);
-      await runDiagnostic(_rd);
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-
-    // Layer 3: D4 Channels + AI-Select
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 3: D4 Channel Strategy');
-      await runDiagnostic(4);
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-    if (!window._aiStopAll && typeof kwPhase2_Selection === 'function') {
-      aiBarStart('Layer 3: AI-Select Keywords');
-      try { await kwPhase2_Selection(); } catch(selErr) { console.warn('[runAllDiagnostics] kwPhase2 error:', selErr.message); }
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-
-    // Layer 4: D5 Website + Clustering
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 4: D5 Website & CRO');
-      await runDiagnostic(5);
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-    if (!window._aiStopAll && typeof kwPhase3_Clustering === 'function') {
-      aiBarStart('Layer 4: Keyword Clustering');
-      try { await kwPhase3_Clustering(); } catch(clErr) { console.warn('[runAllDiagnostics] kwPhase3 error:', clErr.message); }
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-
-    // Layer 5: D6 Content & Authority
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 5: D6 Content & Authority');
-      await runDiagnostic(6);
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-
-    // Layer 6: D7 + D8 + D9
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 6: D7 Risk Assessment');
-      await runDiagnostic(7);
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 6: D8 Narrative & Messaging');
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 6: D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); }
-    }
-
-    S.strategy._kwDataStale = false;
-    capturePricingSnapshot();
-    createStrategyVersion('rerun_all');
-    await saveProject();
-
-    // Layer 7: Compilation
-    if (!window._aiStopAll) {
-      aiBarStart('Layer 7: Compiling strategy document');
-      try {
-        await compileStrategyOutput();
-        await synthesiseWebStrategy();
-        await saveProject();
-      } catch (eComp) { console.warn('Auto-compile skipped:', eComp.message); }
-    }
-
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('Layered diagnostics complete — v' + S.strategy._meta.current_version + ' — doc compiled');
-  } catch (e) {
-    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
+  aiBarStart('Running layered diagnostics (D0 → KW → D1-D3 → D4+Select → D5+Cluster → D6-D9 → Compile)');
+  await _runLayeredPipeline(0, _LAYER_STEPS.length - 1, 'rerun_all');
 }
 
-async function _resumeAllDiagnostics(startFrom) {
-  window._aiStopAll = false;
-  try {
-    for (var d = startFrom; d <= 7; d++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (' + d + '/9)',
-          fn: function(args) { _resumeAllDiagnostics(args.startFrom); },
-          args: { startFrom: d }
-        };
-        return;
-      }
-      await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    // Run D8 Narrative after D1-D7
-    if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Running D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
-    }
-    createStrategyVersion('rerun_all');
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('All diagnostics complete \u2014 v' + S.strategy._meta.current_version + ' (score: ' + S.strategy._meta.overall_score + ')');
-  } catch (e) {
-    if (e.name === 'AbortError') return;
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
-}
-
-// Re-run only D4, D5, D6 with keyword data — used after keyword pipeline completes
+// Re-run D4 → kwPhase2 → D5 → kwPhase3 → D6 (layers 3-5)
 async function rerunKeywordSensitiveDiagnostics() {
   if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version < 1) {
     aiBarNotify('Generate a full strategy first', { isError: true, duration: 3000 });
     return;
   }
   window._aiStopAll = false;
-  aiBarStart('Re-running keyword-sensitive diagnostics (D4, D5, D6)');
-  try {
-    var diagNums = [4, 5, 6];
-    for (var i = 0; i < diagNums.length; i++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Keyword diagnostics paused (' + (i + 1) + '/3)',
-          fn: function(args) { _resumeKwDiagnostics(args.startIdx); },
-          args: { startIdx: i }
-        };
-        return;
-      }
-      await runDiagnostic(diagNums[i]);
-      if (i < diagNums.length - 1) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    // Clear staleness flag
-    S.strategy._kwDataStale = false;
-    capturePricingSnapshot();
-    createStrategyVersion('kw_refresh');
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('D4-D6 updated with keyword data \u2014 v' + S.strategy._meta.current_version);
-  } catch (e) {
-    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
-}
-
-async function _resumeKwDiagnostics(startIdx) {
-  window._aiStopAll = false;
-  var diagNums = [4, 5, 6];
-  try {
-    for (var i = startIdx; i < diagNums.length; i++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Keyword diagnostics paused (' + (i + 1) + '/3)',
-          fn: function(args) { _resumeKwDiagnostics(args.startIdx); },
-          args: { startIdx: i }
-        };
-        return;
-      }
-      await runDiagnostic(diagNums[i]);
-      if (i < diagNums.length - 1) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    S.strategy._kwDataStale = false;
-    createStrategyVersion('kw_refresh');
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('D4-D6 updated with keyword data');
-  } catch (e) {
-    if (e.name === 'AbortError') return;
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
+  aiBarStart('Re-running keyword-sensitive diagnostics (D4 → Select → D5 → Cluster → D6)');
+  // Steps 5 (D4) through 9 (D6) in _LAYER_STEPS
+  await _runLayeredPipeline(5, 9, 'kw_refresh');
 }
 
 async function improveStrategy() {
@@ -6130,85 +5900,18 @@ function _renderKeywordsPanel() {
   }
 }
 
-// ── Run Diagnostics From Here Forward ────────────────────────────────
+// ── Run Diagnostics From Here Forward (layer-aware) ──────────────────
 
 async function runDiagnosticsFrom(startDiag) {
   if (!S.strategy) S.strategy = strategyDefaults();
   window._aiStopAll = false;
   aiBarStart('Loading pricing catalog');
   await fetchPricingCatalog();
+  var startStep = _DIAG_TO_STEP[startDiag];
+  if (startStep === undefined) startStep = 0;
   var diagLabel = { 0:'D0 Audience', 1:'D1 Economics', 2:'D2 Positioning', 3:'D3 Subtraction', 4:'D4 Channels', 5:'D5 Website', 6:'D6 Content', 7:'D7 Risks', 8:'D8 Narrative', 9:'D9 Sales' };
-  aiBarStart('Running diagnostics from ' + (diagLabel[startDiag] || 'D' + startDiag) + ' forward');
-  try {
-    for (var d = startDiag; d <= 7; d++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/9)',
-          fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
-          args: { startFrom: d }
-        };
-        return;
-      }
-      await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    // Run D8 Narrative after D1-D7
-    if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Running D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
-    }
-    S.strategy._kwDataStale = false;
-    capturePricingSnapshot();
-    createStrategyVersion('rerun_from_d' + startDiag);
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('Diagnostics D' + startDiag + '-D9 complete \u2014 v' + S.strategy._meta.current_version);
-  } catch (e) {
-    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
-}
-
-async function _resumeDiagnosticsFrom(startFrom) {
-  window._aiStopAll = false;
-  try {
-    for (var d = startFrom; d <= 7; d++) {
-      if (window._aiStopAll) {
-        window._aiStopResumeCtx = {
-          label: 'Diagnostics paused (D' + d + '/9)',
-          fn: function(args) { _resumeDiagnosticsFrom(args.startFrom); },
-          args: { startFrom: d }
-        };
-        return;
-      }
-      await runDiagnostic(d);
-      if (d < 7) await new Promise(function(res) { setTimeout(res, 2000); });
-    }
-    // Run D8 Narrative after D1-D7
-    if (!window._aiStopAll) {
-      try { await runDiagnostic(8); } catch(e8) { console.warn('D8 Narrative error:', e8.message); aiBarNotify('D8 Narrative: ' + e8.message, { duration: 4000 }); }
-    }
-    if (!window._aiStopAll) {
-      aiBarStart('Running D9 Sales Intelligence');
-      try { await runDiagnostic(9); } catch(e9) { console.warn('D9 Sales error:', e9.message); aiBarNotify('D9 Sales: ' + e9.message, { duration: 4000 }); }
-    }
-    S.strategy._kwDataStale = false;
-    capturePricingSnapshot();
-    createStrategyVersion('rerun_from_d' + startFrom);
-    await saveProject();
-    renderStrategyScorecard();
-    renderStrategyNav();
-    renderStrategyTabContent();
-    aiBarEnd('Diagnostics complete \u2014 v' + S.strategy._meta.current_version);
-  } catch (e) {
-    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
-    aiBarNotify('Error: ' + e.message, { duration: 5000 });
-  }
+  aiBarStart('Running from ' + (diagLabel[startDiag] || 'D' + startDiag) + ' forward (layered)');
+  await _runLayeredPipeline(startStep, _LAYER_STEPS.length - 1, 'rerun_from_d' + startDiag);
 }
 
 // ── Data Source Banner (Strategy) ──────────────────────────────────────
