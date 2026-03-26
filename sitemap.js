@@ -106,6 +106,45 @@ function _isPersonaParked(persona) {
 
 // ── GSC / GA4 PAGE DATA HELPERS ──────────────────────────────────────
 
+// Safety scorecard for a page — returns traffic/conversion/authority signals
+function _pageSafetyScore(slug) {
+  var gsc = _gscPageData(slug);
+  var ga4 = _ga4PageData(slug);
+  var topPage = (S.snapshot && S.snapshot.topPages || []).find(function(p) {
+    var ns = ('/' + (p.slug || '').replace(/^\/+/, '')).replace(/\/+$/, '') || '/';
+    var ts = ('/' + slug.replace(/^\/+/, '')).replace(/\/+$/, '') || '/';
+    return ns === ts;
+  });
+
+  var clicks = gsc ? (gsc.clicks || 0) : 0;
+  var impressions = gsc ? (gsc.impressions || 0) : 0;
+  var position = gsc ? (gsc.position || 0) : 0;
+  var conversions = ga4 ? (ga4.conversions || 0) : 0;
+  var sessions = ga4 ? (ga4.sessions || 0) : 0;
+  var orgTraffic = topPage ? (topPage.traffic || 0) : 0;
+
+  var isProtected = clicks > 5 || conversions > 0 || orgTraffic > 50;
+  var hasSignals = clicks > 0 || impressions > 50 || conversions > 0 || orgTraffic > 0;
+
+  return {
+    clicks: clicks, impressions: impressions, position: position,
+    conversions: conversions, sessions: sessions, orgTraffic: orgTraffic,
+    isProtected: isProtected, hasSignals: hasSignals
+  };
+}
+
+// Format safety data as a compact string for display in issue descriptions
+function _safetySummary(slug) {
+  var s = _pageSafetyScore(slug);
+  var parts = [];
+  if (s.clicks > 0) parts.push(s.clicks + ' clicks');
+  if (s.conversions > 0) parts.push(s.conversions + ' conv');
+  if (s.orgTraffic > 0) parts.push('~' + s.orgTraffic + ' est. traffic');
+  if (s.impressions > 0 && !s.clicks) parts.push(s.impressions + ' impressions');
+  if (!parts.length) return 'no traffic/conversions';
+  return parts.join(', ');
+}
+
 function _gscPageData(slug) {
   if (!S.snapshot || !S.snapshot.gsc || !S.snapshot.gsc.pages) return null;
   return S.snapshot.gsc.pages.find(function(p) {
@@ -1253,17 +1292,30 @@ function _runSitemapHealthCheck() {
   Object.keys(_purposeGroups).forEach(function(purpose) {
     var group = _purposeGroups[purpose];
     if (group.length <= 1) return;
-    // Sort by traffic (keep highest traffic page)
-    group.sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); });
-    var slugs = group.map(function(g) { return '/' + g.slug; }).join(', ');
+    // Enrich each page with safety data
+    group.forEach(function(g) {
+      var safety = _pageSafetyScore(g.slug);
+      g.clicks = safety.clicks;
+      g.conversions = safety.conversions;
+      g.isProtected = safety.isProtected;
+    });
+    // Sort by protection (protected first) then traffic
+    group.sort(function(a, b) {
+      if (a.isProtected !== b.isProtected) return a.isProtected ? -1 : 1;
+      return (b.clicks || 0) - (a.clicks || 0);
+    });
     var keepSlug = group[0].slug;
+    var slugDetails = group.map(function(g) {
+      return '/' + g.slug + ' (' + _safetySummary(g.slug) + ')';
+    }).join(', ');
+    var _hasProtected = group.slice(1).some(function(g) { return g.isProtected; });
     warnings.push({
       id: 'dup-purpose-' + purpose,
       category: 'redundant',
       severity: 'warning',
       slug: group[1].slug,
-      description: group.length + ' pages serve the same "' + purpose + '" purpose: ' + slugs + '. Keep /' + keepSlug + ' (most traffic), merge or cut the rest.',
-      suggestion: 'Merge content into /' + keepSlug + ' and redirect the others',
+      description: group.length + ' pages serve the same "' + purpose + '" purpose: ' + slugDetails + '. Keep /' + keepSlug + ', merge or redirect the rest.' + (_hasProtected ? ' \u26A0 Some pages have traffic — redirect, do not 404.' : ''),
+      suggestion: 'Merge content into /' + keepSlug + ' and 301 redirect the others',
       fixType: 'none'
     });
   });
@@ -1277,13 +1329,17 @@ function _runSitemapHealthCheck() {
     if (_yearMatch) {
       var postYear = parseInt(_yearMatch[1], 10);
       if (_currentYear - postYear >= 3) {
+        var _staleSafety = _pageSafetyScore(p.slug);
+        var _staleAction = _staleSafety.isProtected
+          ? 'Has traffic — update and republish with fresh content'
+          : (_staleSafety.hasSignals ? 'Has some signals — consolidate into a newer post and 301 redirect' : 'No traffic — 301 redirect to parent section or cut');
         info.push({
           id: 'stale-' + p.slug,
           category: 'redundant',
-          severity: 'info',
+          severity: _staleSafety.isProtected ? 'warning' : 'info',
           slug: p.slug,
-          description: '/' + p.slug + ' is from ' + postYear + ' (' + (_currentYear - postYear) + ' years old) — review for relevance',
-          suggestion: 'Update, consolidate, or cut if off-strategy and no traffic',
+          description: '/' + p.slug + ' is from ' + postYear + ' (' + (_currentYear - postYear) + ' years old) — ' + _safetySummary(p.slug),
+          suggestion: _staleAction,
           fixType: 'none'
         });
       }
@@ -1305,15 +1361,22 @@ function _runSitemapHealthCheck() {
     var children = _parentChildMap[parent];
     // Only flag if parent is about/team/services and has 3+ no-traffic children
     if (!(/^about|^team|^our-team/.test(parent))) return;
-    var noTrafficChildren = children.filter(function(c) { return !c.traffic; });
+    var noTrafficChildren = children.filter(function(c) {
+      var safety = _pageSafetyScore(c.slug);
+      return !safety.hasSignals;
+    });
+    var protectedChildren = children.filter(function(c) {
+      var safety = _pageSafetyScore(c.slug);
+      return safety.isProtected;
+    });
     if (noTrafficChildren.length >= 3) {
       info.push({
         id: 'consolidate-' + parent,
         category: 'redundant',
         severity: 'info',
         slug: parent,
-        description: '/' + parent + '/ has ' + noTrafficChildren.length + ' sub-pages with no traffic — consider consolidating into the parent page',
-        suggestion: 'Move sub-page content into sections on /' + parent + ' to reduce page bloat',
+        description: '/' + parent + '/ has ' + noTrafficChildren.length + ' sub-pages with no traffic' + (protectedChildren.length > 0 ? ' (' + protectedChildren.length + ' with traffic — keep those)' : '') + ' — consider consolidating into the parent page',
+        suggestion: 'Move no-traffic sub-page content into sections on /' + parent + '. 301 redirect consolidated pages.',
         fixType: 'none'
       });
     }
@@ -5678,7 +5741,7 @@ async function runStructureReview() {
       aiBarNotify('Structure review returned invalid data — try again', { isError: true, duration: 4000 });
       return;
     }
-    S._sitemapStructureReview = { issues: parsed.issues, summary: parsed.summary || '', reviewedAt: Date.now() };
+    S._sitemapStructureReview = { issues: parsed.issues, summary: parsed.summary || '', reviewedAt: Date.now(), pageCount: (S.pages || []).length };
     _structureReviewCollapsed = false;
     aiBarEnd();
     renderStructureReview();
@@ -5703,10 +5766,12 @@ function renderStructureReview() {
   container.id = 'structure-review-panel';
   container.style.cssText = 'margin-bottom:14px';
 
+  var _reviewStale = review.pageCount && (S.pages || []).length !== review.pageCount;
   var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
     + '<div style="display:flex;align-items:center;gap:8px">'
     + '<span style="font-size:12px;font-weight:600;color:var(--n3)"><i class="ti ti-git-branch" style="font-size:13px;margin-right:2px"></i> Structure Review</span>'
     + '<span style="font-size:10px;background:rgba(245,166,35,0.1);color:#92400e;padding:2px 8px;border-radius:10px">' + review.issues.length + ' issue' + (review.issues.length !== 1 ? 's' : '') + '</span>'
+    + (_reviewStale ? '<span style="font-size:10px;background:rgba(220,50,47,0.1);color:var(--error);padding:2px 8px;border-radius:10px;cursor:pointer" onclick="runStructureReview()">\u26A0 Stale \u2014 pages changed, re-run</span>' : '')
     + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center">'
     + '<button class="btn btn-ghost sm structure-review-toggle" style="font-size:10px;padding:2px 8px">' + (_structureReviewCollapsed ? 'Expand' : 'Collapse') + '</button>'
@@ -5720,23 +5785,46 @@ function renderStructureReview() {
     }
     review.issues.forEach(function(issue, i) {
       var icon = issue.severity === 'warning' ? '\u26A0\uFE0F' : '\u2139\uFE0F';
-      var slugList = (issue.affected_slugs || []).map(function(s) { return esc(s); });
-      var slugDisplay = slugList.length > 5 ? slugList.slice(0, 5).join(', ') + ' +' + (slugList.length - 5) + ' more' : slugList.join(', ');
+      var affectedSlugs = issue.affected_slugs || [];
 
-      bodyHtml += '<div style="padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg)">'
+      // Build safety-annotated slug list
+      var _anyProtected = false;
+      var slugLines = affectedSlugs.slice(0, 8).map(function(s) {
+        var safety = _pageSafetyScore(s);
+        var safetyStr = _safetySummary(s);
+        if (safety.isProtected) _anyProtected = true;
+        var badge = safety.isProtected
+          ? '<span style="background:rgba(220,50,47,0.1);color:var(--error);font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px">\u26D4 protected</span>'
+          : (safety.hasSignals ? '<span style="background:rgba(245,166,35,0.1);color:#92400e;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px">has signals</span>' : '');
+        return '<div style="font-size:11px;color:var(--n2);margin-top:2px">/' + esc(s) + ' <span style="color:var(--n1);font-size:10px">(' + safetyStr + ')</span>' + badge + '</div>';
+      }).join('');
+      if (affectedSlugs.length > 8) slugLines += '<div style="font-size:10px;color:var(--n2);margin-top:2px">+' + (affectedSlugs.length - 8) + ' more</div>';
+
+      // Target slug for merges
+      var targetLine = '';
+      if (issue.target_slug) {
+        var targetSafety = _safetySummary(issue.target_slug);
+        targetLine = '<div style="font-size:11px;color:var(--accent);margin-top:3px">\u2192 Merge into: /' + esc(issue.target_slug) + ' (' + targetSafety + ')</div>';
+      }
+
+      bodyHtml += '<div style="padding:12px;border:1px solid ' + (_anyProtected ? 'rgba(220,50,47,0.3)' : 'var(--border)') + ';border-radius:8px;margin-bottom:8px;background:' + (_anyProtected ? 'rgba(220,50,47,0.03)' : 'var(--bg)') + '">'
         + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">'
         + '<div style="min-width:0">'
-        + '<div style="font-size:13px;font-weight:500">' + icon + ' ' + esc(issue.description) + '</div>';
-      if (slugDisplay) {
-        bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-top:4px;word-break:break-all">' + slugDisplay + '</div>';
-      }
+        + '<div style="font-size:13px;font-weight:500">' + icon + ' ' + esc(issue.description) + '</div>'
+        + slugLines
+        + targetLine;
       if (issue.reason) {
-        bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-top:2px;font-style:italic">' + esc(issue.reason) + '</div>';
+        bodyHtml += '<div style="font-size:11px;color:var(--n2);margin-top:4px;font-style:italic">' + esc(issue.reason) + '</div>';
       }
       bodyHtml += '</div>'
         + '<div style="display:flex;gap:6px;flex-shrink:0">';
-      if (issue.type !== 'duplicate_intent') {
-        bodyHtml += '<button class="btn btn-primary sm structure-review-btn" data-action="apply" data-idx="' + i + '" style="font-size:11px;padding:4px 10px">Apply</button>';
+      if (issue.type !== 'duplicate_intent' && issue.type !== 'duplicate_purpose') {
+        if (_anyProtected) {
+          // Protected pages — show warning, require manual review
+          bodyHtml += '<button class="btn btn-ghost sm structure-review-btn" data-action="apply" data-idx="' + i + '" style="font-size:11px;padding:4px 10px;color:var(--error);border-color:rgba(220,50,47,0.3)" data-tip="Page has traffic — apply will 301 redirect, not 404">\u26A0 Apply (redirect)</button>';
+        } else {
+          bodyHtml += '<button class="btn btn-primary sm structure-review-btn" data-action="apply" data-idx="' + i + '" style="font-size:11px;padding:4px 10px">Apply</button>';
+        }
       }
       bodyHtml += '<button class="btn btn-ghost sm structure-review-btn" data-action="dismiss" data-idx="' + i + '" style="font-size:11px;padding:4px 10px">Dismiss</button>'
         + '</div></div></div>';
