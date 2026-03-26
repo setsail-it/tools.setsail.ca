@@ -1231,6 +1231,94 @@ function _runSitemapHealthCheck() {
     });
   }
 
+  // 10. Duplicate purpose detection — pages serving the same function
+  var _purposeGroups = {};
+  pages.forEach(function(p) {
+    var t = (p.page_type || '').toLowerCase();
+    var s = (p.slug || '').toLowerCase();
+    var name = (p.page_name || '').toLowerCase();
+    // Group by functional purpose (not just page_type)
+    var purpose = null;
+    if (t === 'home' || s === '' || s === '/' || s === 'home') purpose = 'homepage';
+    else if (t === 'contact' || /^contact/.test(s)) purpose = 'contact';
+    else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purpose = 'about';
+    else if (/^about\/team|^team|^our-team|^meet-the-team/.test(s) || name.indexOf('team') >= 0) purpose = 'team';
+    else if (t === 'privacy' || /privacy/.test(s)) purpose = 'privacy';
+    else if (t === 'terms' || /terms/.test(s)) purpose = 'terms';
+    if (purpose) {
+      if (!_purposeGroups[purpose]) _purposeGroups[purpose] = [];
+      _purposeGroups[purpose].push({ slug: p.slug, name: p.page_name, type: t, traffic: (p._gscClicks || 0) });
+    }
+  });
+  Object.keys(_purposeGroups).forEach(function(purpose) {
+    var group = _purposeGroups[purpose];
+    if (group.length <= 1) return;
+    // Sort by traffic (keep highest traffic page)
+    group.sort(function(a, b) { return (b.traffic || 0) - (a.traffic || 0); });
+    var slugs = group.map(function(g) { return '/' + g.slug; }).join(', ');
+    var keepSlug = group[0].slug;
+    warnings.push({
+      id: 'dup-purpose-' + purpose,
+      category: 'redundant',
+      severity: 'warning',
+      slug: group[1].slug,
+      description: group.length + ' pages serve the same "' + purpose + '" purpose: ' + slugs + '. Keep /' + keepSlug + ' (most traffic), merge or cut the rest.',
+      suggestion: 'Merge content into /' + keepSlug + ' and redirect the others',
+      fixType: 'none'
+    });
+  });
+
+  // 11. Outdated blog content — posts with year in slug older than 2 years
+  var _currentYear = new Date().getFullYear();
+  pages.forEach(function(p) {
+    var t = (p.page_type || '').toLowerCase();
+    if (t !== 'blog' && t !== 'article') return;
+    var _yearMatch = (p.slug || '').match(/\b(20[0-2]\d)\b/);
+    if (_yearMatch) {
+      var postYear = parseInt(_yearMatch[1], 10);
+      if (_currentYear - postYear >= 3) {
+        info.push({
+          id: 'stale-' + p.slug,
+          category: 'redundant',
+          severity: 'info',
+          slug: p.slug,
+          description: '/' + p.slug + ' is from ' + postYear + ' (' + (_currentYear - postYear) + ' years old) — review for relevance',
+          suggestion: 'Update, consolidate, or cut if off-strategy and no traffic',
+          fixType: 'none'
+        });
+      }
+    }
+  });
+
+  // 12. Sub-page consolidation — child pages under a parent that could be sections instead
+  var _parentChildMap = {};
+  pages.forEach(function(p) {
+    var s = (p.slug || '');
+    var parts = s.split('/');
+    if (parts.length >= 2) {
+      var parent = parts[0];
+      if (!_parentChildMap[parent]) _parentChildMap[parent] = [];
+      _parentChildMap[parent].push({ slug: s, name: p.page_name, traffic: p._gscClicks || 0 });
+    }
+  });
+  Object.keys(_parentChildMap).forEach(function(parent) {
+    var children = _parentChildMap[parent];
+    // Only flag if parent is about/team/services and has 3+ no-traffic children
+    if (!(/^about|^team|^our-team/.test(parent))) return;
+    var noTrafficChildren = children.filter(function(c) { return !c.traffic; });
+    if (noTrafficChildren.length >= 3) {
+      info.push({
+        id: 'consolidate-' + parent,
+        category: 'redundant',
+        severity: 'info',
+        slug: parent,
+        description: '/' + parent + '/ has ' + noTrafficChildren.length + ' sub-pages with no traffic — consider consolidating into the parent page',
+        suggestion: 'Move sub-page content into sections on /' + parent + ' to reduce page bloat',
+        fixType: 'none'
+      });
+    }
+  });
+
   _sitemapWorkflowIssues = { errors: errors, warnings: warnings, info: info };
   return _sitemapWorkflowIssues;
 }
@@ -2802,16 +2890,26 @@ async function enrichAllSitemap() {
   var guard = projectGuard();
   window._aiStopAll = false;
   var _steps = [];
-  var _totalSteps = 6;
+  var _totalSteps = 7;
 
   try {
+    // Step 0: Structure Review (AI cleanup — find duplicate purpose pages, misclassifications)
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (1/' + _totalSteps + '): Structure review\u2026');
+      try {
+        await runStructureReview();
+        var _srIssues = (S._sitemapStructureReview && S._sitemapStructureReview.issues) || [];
+        if (_srIssues.length > 0) _steps.push('structure(' + _srIssues.length + ')');
+      } catch (_srErr) { console.warn('[enrichAll] structure review error:', _srErr.message); }
+    }
+
     // Step 1: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
     var issues = _runSitemapHealthCheck();
     var _fixable = issues.errors.concat(issues.warnings).filter(function(i) {
       return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
     }).length;
     if (_fixable > 0 && !guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (1/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
+      aiBarStart('Enrich All (2/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
       // Trigger the fix-all logic inline (same as the button)
       var _maxPasses = 3;
       for (var _pass = 0; _pass < _maxPasses; _pass++) {
@@ -2831,7 +2929,7 @@ async function enrichAllSitemap() {
 
     // Step 2: Priorities (instant, no AI)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (2/' + _totalSteps + '): Re-suggesting priorities\u2026');
+      aiBarStart('Enrich All (3/' + _totalSteps + '): Re-suggesting priorities\u2026');
       var _priChanged = 0;
       (S.pages || []).forEach(function(p) {
         var s = _suggestPriority(p);
@@ -2842,14 +2940,14 @@ async function enrichAllSitemap() {
 
     // Step 3: Assign personas
     if (!guard.changed() && !window._aiStopAll && typeof _getActivePersonas === 'function' && _getActivePersonas().length > 0) {
-      aiBarStart('Enrich All (3/' + _totalSteps + '): Assigning personas\u2026');
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Assigning personas\u2026');
       assignAllPersonas();
       _steps.push('personas');
     }
 
     // Step 4: Generate page goals (AI — batched)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (4/' + _totalSteps + '): Generating page goals\u2026');
+      aiBarStart('Enrich All (5/' + _totalSteps + '): Generating page goals\u2026');
       await generateAllPageGoals('auto');
       _steps.push('goals');
     }
@@ -2858,7 +2956,7 @@ async function enrichAllSitemap() {
     if (!guard.changed() && !window._aiStopAll && typeof assignContentPillars === 'function') {
       var _blogCount = (S.pages || []).filter(function(p) { return ['blog', 'article', 'recipe', 'event'].indexOf((p.page_type || '').toLowerCase()) >= 0; }).length;
       if (_blogCount > 0) {
-        aiBarStart('Enrich All (5/' + _totalSteps + '): Assigning content pillars\u2026');
+        aiBarStart('Enrich All (6/' + _totalSteps + '): Assigning content pillars\u2026');
         await assignContentPillars();
         _steps.push('pillars');
       }
@@ -2866,7 +2964,7 @@ async function enrichAllSitemap() {
 
     // Step 6: Fetch live volumes from DataForSEO
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (6/' + _totalSteps + '): Fetching live volumes\u2026');
+      aiBarStart('Enrich All (7/' + _totalSteps + '): Fetching live volumes\u2026');
       await enrichSitemapWithLiveData(true);
       _steps.push('volumes');
     }
@@ -5533,36 +5631,43 @@ async function runStructureReview() {
     positioning = S.strategy.positioning.selected_direction.direction || S.strategy.positioning.selected_direction.label || '';
   }
 
-  var sys = 'You are a senior SEO architect reviewing a website sitemap for structural issues. Analyse the page list and identify misclassifications, missing categories, and hierarchy problems. Output ONLY valid JSON.';
+  var _coreFocus = (S.setup && S.setup.coreFocus) ? S.setup.coreFocus.filter(function(f) { return f && f.trim(); }) : [];
+  var _geo = (S.research && S.research.geography && S.research.geography.primary) || (S.setup && S.setup.geo) || '';
+  var _geoScope2 = (S.research && S.research.target_geography) || '';
+
+  var sys = 'You are a senior SEO architect reviewing a website sitemap for structural issues. Your job is to clean up the page architecture — identify pages that should be merged, cut, reclassified, or consolidated. Be aggressive about removing redundancy. Output ONLY valid JSON.';
 
   var user = 'PAGE SUMMARY BY TYPE:\n' + JSON.stringify(pageSummary, null, 2)
     + '\n\nCLIENT: ' + (S.setup && S.setup.client || '')
     + '\nINDUSTRY: ' + esc(industry)
     + '\nSERVICES: ' + esc(services)
     + '\nPOSITIONING DIRECTION: ' + esc(positioning)
+    + (_coreFocus.length > 0 ? '\nCORE FOCUS (must-win terms): ' + _coreFocus.join(', ') : '')
+    + '\nGEO: ' + esc(_geo) + (_geoScope2 ? ' (' + _geoScope2 + ')' : '')
     + '\n\nReview this sitemap structure and identify:\n'
-    + '1. Pages in the wrong category (e.g. case studies labelled as locations, about/contact in "other")\n'
-    + '2. Missing categories that should exist based on page content (e.g. no case-studies category when portfolio pages exist)\n'
-    + '3. Pages that should be nested under a parent (e.g. /our-work/client-name should be under a /our-work/ hub)\n'
-    + '4. Category bloat (too many pages in one type, suggesting it should be split — e.g. "services" containing both service pages AND industry vertical pages)\n'
-    + '5. Duplicate intent (two pages targeting the same keyword or serving the same purpose)\n'
+    + '1. DUPLICATE PURPOSE — Multiple pages serving the same function (e.g. /about + /about/team should be one page, multiple contact pages)\n'
+    + '2. MERGE CANDIDATES — Pages whose content should be consolidated into a stronger single page (e.g. 3 thin blog posts on the same topic → 1 comprehensive guide)\n'
+    + '3. CUT CANDIDATES — Pages that add no SEO or conversion value: outdated content, off-strategy topics, team sub-pages with no traffic, orphan utility pages\n'
+    + '4. MISCLASSIFICATION — Pages in the wrong category (e.g. case studies labelled as services)\n'
+    + '5. CATEGORY BLOAT — Too many pages in one type, suggesting it should be split\n'
+    + '6. HIERARCHY ISSUES — Pages that should be nested differently\n'
     + '\nReturn JSON matching this schema exactly:\n'
     + '{\n'
     + '  "issues": [\n'
     + '    {\n'
-    + '      "type": "reclassify" | "missing_category" | "category_split" | "duplicate_intent" | "hierarchy",\n'
+    + '      "type": "merge" | "cut" | "reclassify" | "duplicate_purpose" | "category_split" | "hierarchy",\n'
     + '      "severity": "warning" | "info",\n'
     + '      "description": "string",\n'
-    + '      "affected_slugs": ["slug1", "slug2"],\n'
-    + '      "current_type": "string (optional)",\n'
-    + '      "suggested_type": "string (optional)",\n'
-    + '      "suggested_category": "string (optional)",\n'
+    + '      "affected_slugs": ["slug-to-act-on"],\n'
+    + '      "target_slug": "string (for merge — which page to merge INTO)",\n'
+    + '      "current_type": "string (optional, for reclassify)",\n'
+    + '      "suggested_type": "string (optional, for reclassify)",\n'
     + '      "reason": "string"\n'
     + '    }\n'
     + '  ],\n'
     + '  "summary": "string"\n'
     + '}\n'
-    + '\nOnly report genuine issues. If the structure is sound, return {"issues":[],"summary":"No structural issues found"}.';
+    + '\nBe thorough. Flag every genuine issue. Prioritise merge and cut recommendations — a lean sitemap outperforms a bloated one.';
 
   try {
     var result = '';
