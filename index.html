@@ -597,6 +597,15 @@ textarea.inp{resize:vertical}
       <div class="card">
         <div class="section-mark"><span class="section-mark-label">Client Goals</span><div class="section-mark-line"></div></div>
         <p style="font-size:12px;color:var(--n2);margin:0 0 12px 0">Capture what success looks like in the client's own words. This flows into strategy, proposals, briefs, and copy — so the entire pipeline is aligned to their goals.</p>
+        <div style="margin-bottom:14px;padding:12px 14px;border:1px solid rgba(21,142,29,0.25);border-radius:8px;background:rgba(21,142,29,0.03)">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;color:var(--dark)"><i class="ti ti-target" style="color:var(--green);margin-right:4px"></i>Core Focus <span style="font-weight:400;color:var(--n2)">— the must-win terms that anchor the entire keyword strategy</span></label>
+          <p style="font-size:10px;color:var(--n2);margin:0 0 8px 0">Products, tools, platforms, or specializations the client MUST rank for. These survive every stage — seeds, AI-Select, clustering, briefs, copy. They can never be dropped.</p>
+          <div id="core-focus-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px"></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="core-focus-input" type="text" placeholder="e.g. Spotfire, HubSpot, Webflow, renovation..." style="flex:1;padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:var(--bg);color:var(--dark);font-family:var(--font)" onkeydown="if(event.key==='Enter'){addCoreFocus(this.value.trim());this.value='';}">
+            <button class="btn btn-ghost sm" style="font-size:11px" onclick="var el=document.getElementById('core-focus-input');addCoreFocus(el.value.trim());el.value='';"><i class="ti ti-plus"></i> Add</button>
+          </div>
+        </div>
         <label style="font-size:12px;display:block;margin-bottom:5px">What does success look like? <span style="color:var(--n2);font-weight:400">— in the client's own words from the discovery call</span></label>
         <textarea class="inp" id="f-goal-statement" rows="3" placeholder="e.g. &quot;I want to stop relying on referrals and get 40 qualified leads a month from people searching for renovation contractors in Vancouver. I need jobs over $50K, not handyman work.&quot;" style="margin-bottom:10px"></textarea>
         <div class="grid-2" style="margin-bottom:10px">
@@ -1609,6 +1618,7 @@ function prefillSetup() {
   }
   renderDocsList();
   renderTranscriptsList();
+  renderCoreFocus();
   renderDirectives();
   renderProofBank();
 }
@@ -1745,6 +1755,47 @@ function _syncTranscriptVoC() {
 function getProofBank() {
   if (!S.setup || !S.setup.proofBank) return { testimonials: [], caseStudies: [], stats: [] };
   return S.setup.proofBank;
+}
+
+// ── Core Focus (must-win terms) ───────────────────────────────────────
+function _ensureCoreFocus() {
+  if (!S.setup) S.setup = {};
+  if (!S.setup.coreFocus) S.setup.coreFocus = [];
+  return S.setup.coreFocus;
+}
+
+function addCoreFocus(term) {
+  if (!term) return;
+  var focus = _ensureCoreFocus();
+  var lower = term.toLowerCase().trim();
+  if (focus.some(function(f) { return f.toLowerCase() === lower; })) return; // dupe
+  focus.push(term.trim());
+  scheduleSave();
+  renderCoreFocus();
+}
+
+function removeCoreFocus(idx) {
+  var focus = _ensureCoreFocus();
+  if (focus[idx] !== undefined) { focus.splice(idx, 1); scheduleSave(); renderCoreFocus(); }
+}
+
+function renderCoreFocus() {
+  var wrap = document.getElementById('core-focus-tags');
+  if (!wrap) return;
+  var focus = _ensureCoreFocus();
+  if (!focus.length) { wrap.innerHTML = '<span style="font-size:11px;color:var(--n2)">No focus terms yet. Add the products, tools, or specializations this client must rank for.</span>'; return; }
+  wrap.innerHTML = focus.map(function(f, i) {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(21,142,29,0.1);border:1px solid rgba(21,142,29,0.25);color:var(--dark);font-weight:500">'
+      + '<i class="ti ti-target" style="font-size:10px;color:var(--green)"></i>'
+      + esc(f)
+      + '<span onclick="removeCoreFocus(' + i + ')" style="cursor:pointer;color:var(--n2);font-size:13px;line-height:1">&times;</span>'
+      + '</span>';
+  }).join('');
+}
+
+// Get core focus terms — used by keyword builder, AI-Select, clustering
+function getCoreFocus() {
+  return (S.setup && S.setup.coreFocus) || [];
 }
 
 // ── Strategic Directives ──────────────────────────────────────────────

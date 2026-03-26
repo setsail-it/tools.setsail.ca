@@ -368,6 +368,67 @@ function buildKwSeeds() {
   var category = _detectBusinessCategory();
   var templates = _SEED_TEMPLATES[category] || _SEED_TEMPLATES.agency;
 
+  // 1b. Core Focus terms — THE must-win terms, treated as primary services
+  var _coreFocus = (typeof getCoreFocus === 'function') ? getCoreFocus() : [];
+  _coreFocus.forEach(function(focus) {
+    var f = focus.toLowerCase().trim();
+    if (f.length < 2) return;
+    seeds.add(f);
+    // Full service-style expansion — same as primary services
+    if (geoL && f.indexOf(geoL) < 0) {
+      templates.geo.forEach(function(t) { seeds.add(t.replace(/\{s\}/g, f).replace(/\{g\}/g, geoL)); });
+    }
+    templates.bare.forEach(function(t) { seeds.add(t.replace(/\{s\}/g, f)); });
+    // Service suffix expansion
+    ['consulting', 'implementation', 'developer', 'expert', 'training', 'services', 'specialist', 'partner', 'integration', 'support', 'agency', 'company', 'firm'].forEach(function(suffix) {
+      seeds.add(f + ' ' + suffix);
+      if (geoL) seeds.add(f + ' ' + suffix + ' ' + geoL);
+    });
+    // Commercial modifiers
+    ['best', 'top', 'hire', 'certified', 'professional', 'affordable', 'enterprise', 'custom'].forEach(function(mod) {
+      seeds.add(mod + ' ' + f);
+      seeds.add(mod + ' ' + f + ' consultant');
+      seeds.add(mod + ' ' + f + ' services');
+    });
+    // Question/intent forms
+    ['how much does', 'what is', 'how to choose', 'how to find', 'why use', 'benefits of'].forEach(function(q) {
+      seeds.add(q + ' ' + f);
+    });
+    // Comparison forms
+    seeds.add(f + ' vs');
+    seeds.add(f + ' alternatives');
+    seeds.add(f + ' comparison');
+    seeds.add(f + ' reviews');
+    // Transactional
+    seeds.add(f + ' cost');
+    seeds.add(f + ' pricing');
+    seeds.add(f + ' quote');
+    seeds.add(f + ' near me');
+    // Industry combos (from research)
+    var _ind = (r.industry || '').toLowerCase();
+    if (_ind && _ind.length > 3 && f.indexOf(_ind) < 0) {
+      seeds.add(f + ' ' + _ind);
+      seeds.add(f + ' for ' + _ind);
+      seeds.add(_ind + ' ' + f);
+    }
+    // Cross with primary services
+    services.slice(0, 5).forEach(function(svc) {
+      var s2 = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
+      if (s2.length > 3 && s2 !== f && f.indexOf(s2) < 0) {
+        seeds.add(f + ' ' + s2);
+        seeds.add(s2 + ' ' + f);
+      }
+    });
+    // Secondary geos
+    secondaryGeos.forEach(function(sg) {
+      var sgL = sg.replace(/,.*$/, '').trim().toLowerCase();
+      if (sgL && f.indexOf(sgL) < 0) {
+        seeds.add(f + ' ' + sgL);
+        seeds.add(f + ' consulting ' + sgL);
+      }
+    });
+  });
+
   // 2. Service-based seeds with category-appropriate modifiers
   services.slice(0, 14).forEach(function(svc) {
     var s = svc.toLowerCase().replace(/\s+(services?|management|agency|solutions?|platform|company)$/i, '').trim();
@@ -1130,12 +1191,19 @@ async function generateAISeeds() {
 
   var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate 50-75 of the most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- If strategist notes are provided, pay close attention to which services or topics to include or exclude\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
 
-  // Pinned keywords: these are the client's must-win terms — they anchor the entire keyword strategy
+  // Core Focus: THE must-win terms from Setup — strongest signal
+  var _coreFocusAI = (typeof getCoreFocus === 'function') ? getCoreFocus() : [];
+  if (_coreFocusAI.length) {
+    ctx += '\nCORE FOCUS (absolute priority — the client MUST rank for these):\n';
+    ctx += _coreFocusAI.map(function(k, i) { return (i+1) + '. ' + k; }).join('\n') + '\n';
+    ctx += '\nCRITICAL: These Core Focus terms define the ENTIRE keyword territory. Every seed you generate must be semantically connected to at least one Core Focus term. Do NOT generate seeds for services, tools, or topics outside these focus areas.\n';
+  }
+
+  // Pinned keywords: additional must-win terms from the keyword stage
   var _pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
   if (_pinned.length) {
-    ctx += '\nPINNED KEYWORDS (client must-win terms — these are the ANCHOR of the keyword strategy):\n';
+    ctx += '\nPINNED KEYWORDS (additional must-win terms):\n';
     ctx += _pinned.map(function(k, i) { return (i+1) + '. ' + k; }).join('\n') + '\n';
-    ctx += '\nIMPORTANT: Generate seeds that ORBIT these pinned keywords. Every seed should be semantically related to at least one pinned term. Do NOT drift into unrelated service categories. The pinned keywords define the territory — your seeds should fill the gaps around them.\n';
   }
 
   var _seedNotes = _getStrategistNotesCtx();
@@ -3943,6 +4011,7 @@ async function _pipelineAISelect() {
 
   // Pinned keywords: force-include in selection
   var _pinnedForSelect = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+  var _coreFocusForSelect = (typeof getCoreFocus === 'function') ? getCoreFocus() : [];
 
   var _selectNotes = _getStrategistNotesCtx();
   var userPrompt = 'CLIENT: ' + (setup.client || r.client_name || 'business') + '\n'
@@ -3950,7 +4019,8 @@ async function _pipelineAISelect() {
     + 'GEO: ' + (geo || 'N/A') + '\n'
     + 'SERVICES: ' + (sdList || services || 'professional services') + '\n'
     + (positioning ? 'POSITIONING: ' + positioning + '\n' : '')
-    + (_pinnedForSelect.length ? 'PINNED KEYWORDS (MUST-SELECT — these are the client priority terms, always include them as must-have tier):\n' + _pinnedForSelect.map(function(k) { return '- ' + k; }).join('\n') + '\n' : '')
+    + (_coreFocusForSelect.length ? 'CORE FOCUS (absolute priority — MUST select any keyword containing these terms, always must-have tier):\n' + _coreFocusForSelect.map(function(k) { return '- ' + k; }).join('\n') + '\n\n' : '')
+    + (_pinnedForSelect.length ? 'PINNED KEYWORDS (MUST-SELECT):\n' + _pinnedForSelect.map(function(k) { return '- ' + k; }).join('\n') + '\n' : '')
     + _selectNotes
     + '\nKEYWORDS (' + candidates.length + '):\n' + kwBlock;
 
@@ -3980,19 +4050,29 @@ async function _pipelineAISelect() {
       // Store tier data for downstream use (cluster priority, brief importance)
       S.kwResearch._selectionTiers = {};
       parsed.selected.forEach(function(s) { if (s.kw) S.kwResearch._selectionTiers[s.kw] = { tier: s.tier || 'supporting', reason: s.reason || '' }; });
+      // GUARANTEE: force-include Core Focus keywords — any keyword containing a core focus term
+      _coreFocusForSelect.forEach(function(focus) {
+        var focusLower = focus.toLowerCase();
+        // Find ALL keywords in the pool that contain this focus term
+        var focusMatches = kws.filter(function(k) { return k.kw.toLowerCase().indexOf(focusLower) >= 0; });
+        focusMatches.forEach(function(match) {
+          if (S.kwResearch.selected.indexOf(match.kw) < 0) {
+            S.kwResearch.selected.push(match.kw);
+            S.kwResearch._selectionTiers[match.kw] = { tier: 'must-have', reason: 'Core Focus term: ' + focus };
+            console.log('[kwPipeline] Force-included Core Focus keyword:', match.kw, '(from focus:', focus + ')');
+          }
+        });
+      });
       // GUARANTEE: force-include pinned keywords even if AI missed them
       _pinnedForSelect.forEach(function(pin) {
         var pinLower = pin.toLowerCase();
-        // Check if any selected keyword matches or contains the pinned term
         var found = S.kwResearch.selected.some(function(sel) { return sel.toLowerCase() === pinLower || sel.toLowerCase().indexOf(pinLower) >= 0; });
         if (!found) {
-          // Find the exact keyword from the pool that matches
           var poolMatch = kws.find(function(k) { return k.kw.toLowerCase() === pinLower; });
           if (poolMatch) {
             S.kwResearch.selected.push(poolMatch.kw);
             S.kwResearch._selectionTiers[poolMatch.kw] = { tier: 'must-have', reason: 'Pinned keyword — client priority' };
           } else {
-            // Not in pool but still pinned — add raw
             S.kwResearch.selected.push(pin);
             S.kwResearch._selectionTiers[pin] = { tier: 'must-have', reason: 'Pinned keyword — client priority (not in volume pool)' };
           }
