@@ -2659,6 +2659,92 @@ function enrichSitemapWithKwData() {
   });
 }
 
+// ── Enrich All — one-click full enrichment pipeline ──────────────────
+async function enrichAllSitemap() {
+  if (!S.pages || !S.pages.length) { aiBarNotify('Build the sitemap first', { isError: true, duration: 3000 }); return; }
+  var guard = projectGuard();
+  window._aiStopAll = false;
+  var _steps = [];
+  var _totalSteps = 6;
+
+  try {
+    // Step 1: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
+    var issues = _runSitemapHealthCheck();
+    var _fixable = issues.errors.concat(issues.warnings).filter(function(i) {
+      return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
+    }).length;
+    if (_fixable > 0 && !guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (1/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
+      // Trigger the fix-all logic inline (same as the button)
+      var _maxPasses = 3;
+      for (var _pass = 0; _pass < _maxPasses; _pass++) {
+        if (guard.changed() || window._aiStopAll) break;
+        var _iss = _runSitemapHealthCheck();
+        var _hasNoKw = _iss.errors.concat(_iss.warnings).some(function(i) { return i.id === 'no-kw'; });
+        var _hasZV = _iss.errors.concat(_iss.warnings).some(function(i) { return i.id === 'zero-vol'; });
+        var _cann = _iss.errors.concat(_iss.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
+        var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _cann.length;
+        if (_fixCount === 0) break;
+        if (_hasNoKw && !guard.changed() && !window._aiStopAll) await _aiFixIssue('no-kw');
+        for (var _ci = 0; _ci < _cann.length && !guard.changed() && !window._aiStopAll; _ci++) await _aiFixIssue(_cann[_ci].id);
+        if (_hasZV && !guard.changed() && !window._aiStopAll) await _aiFixIssue('zero-vol');
+      }
+      _steps.push('fixes');
+    }
+
+    // Step 2: Priorities (instant, no AI)
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (2/' + _totalSteps + '): Re-suggesting priorities\u2026');
+      var _priChanged = 0;
+      (S.pages || []).forEach(function(p) {
+        var s = _suggestPriority(p);
+        if (s && s !== p.priority) { p.priority = s; _priChanged++; }
+      });
+      if (_priChanged > 0) _steps.push('priorities(' + _priChanged + ')');
+    }
+
+    // Step 3: Assign personas
+    if (!guard.changed() && !window._aiStopAll && typeof _getActivePersonas === 'function' && _getActivePersonas().length > 0) {
+      aiBarStart('Enrich All (3/' + _totalSteps + '): Assigning personas\u2026');
+      assignAllPersonas();
+      _steps.push('personas');
+    }
+
+    // Step 4: Generate page goals (AI — batched)
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Generating page goals\u2026');
+      await generateAllPageGoals('auto');
+      _steps.push('goals');
+    }
+
+    // Step 5: Assign content pillars (AI)
+    if (!guard.changed() && !window._aiStopAll && typeof assignContentPillars === 'function') {
+      var _blogCount = (S.pages || []).filter(function(p) { return ['blog', 'article', 'recipe', 'event'].indexOf((p.page_type || '').toLowerCase()) >= 0; }).length;
+      if (_blogCount > 0) {
+        aiBarStart('Enrich All (5/' + _totalSteps + '): Assigning content pillars\u2026');
+        await assignContentPillars();
+        _steps.push('pillars');
+      }
+    }
+
+    // Step 6: Fetch live volumes from DataForSEO
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (6/' + _totalSteps + '): Fetching live volumes\u2026');
+      await enrichSitemapWithLiveData(true);
+      _steps.push('volumes');
+    }
+
+    if (!guard.changed()) {
+      scheduleSave();
+      renderSitemapResults(S.sitemapApproved);
+      aiBarEnd('Enrich All complete \u2014 ' + _steps.join(' \u2192 '));
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Enrich All error: ' + e.message, { isError: true, duration: 5000 });
+  }
+}
+
 async function enrichSitemapWithLiveData(forceAll) {
   // Async pass: lookup keywords grouped by page target geo
   if (!S.pages?.length) return;
@@ -3703,6 +3789,9 @@ function _renderSitemapResultsInner(approved) {
   html += '<div style="position:relative;display:inline-block" id="enrich-tools-wrap">';
   html += '<button class="btn btn-ghost sm" style="font-size:10px;padding:2px 8px" onclick="var d=document.getElementById(\'enrich-tools-dd\');d.style.display=d.style.display===\'none\'?\'\':\'none\'"><i class="ti ti-tools"></i> Tools <i class="ti ti-chevron-down" style="font-size:8px;margin-left:1px"></i></button>';
   html += '<div id="enrich-tools-dd" style="display:none;position:absolute;top:100%;right:0;background:var(--white);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);z-index:100;min-width:200px;padding:4px;margin-top:4px">';
+  // Enrich All — one button to rule them all
+  html += '<button class="btn btn-primary sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px;margin-bottom:2px" data-tip="Runs Fix All → Goals → Pillars → Personas → Priorities → Live Volumes in one shot." onclick="enrichAllSitemap();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-rocket" style="font-size:11px;margin-right:4px"></i> Enrich All</button>';
+  html += '<hr style="border:none;border-top:1px solid var(--border);margin:4px 0">';
   // Goals
   html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="AI-generates strategic page goals." onclick="generateAllPageGoals(\'auto\');document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-sparkles" style="font-size:11px;margin-right:4px"></i> Generate All Goals</button>';
   if (_hasStrategy) {
