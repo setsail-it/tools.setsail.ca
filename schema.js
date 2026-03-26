@@ -860,6 +860,230 @@ function buildPageSchema(page) {
   if (type === 'pricing' || (page.slug && /pricing|packages|plans/i.test(page.slug))) {
     var catalog2 = _buildOfferCatalog();
     if (catalog2) graph.push(catalog2);
+    var priceFaqs = _extractFaqsFromCopy(page.slug);
+    if (priceFaqs.length >= 2) graph.push(_buildFaqPage(priceFaqs, page.slug));
+  }
+
+  // ── RECIPE PAGES ──
+  if (type === 'recipe') {
+    var recipeSchema = {
+      '@type': 'Recipe',
+      '@id': base + '/' + page.slug + '#recipe',
+      'name': page.page_name || page.primary_keyword || '',
+      'url': base + '/' + page.slug,
+      'author': { '@id': base + '/#organization' },
+      'datePublished': new Date().toISOString().split('T')[0]
+    };
+    if (page.meta_description) recipeSchema.description = page.meta_description;
+    if (img) recipeSchema.image = { '@id': img['@id'] };
+    if (page.primary_keyword) recipeSchema.keywords = page.primary_keyword;
+    // Extract steps from copy as recipeInstructions
+    var recipeHowTo = _extractHowTo(page.slug);
+    if (recipeHowTo && recipeHowTo.step) recipeSchema.recipeInstructions = recipeHowTo.step;
+    graph.push(recipeSchema);
+    var recipeFaqs = _extractFaqsFromCopy(page.slug);
+    if (recipeFaqs.length >= 2) graph.push(_buildFaqPage(recipeFaqs, page.slug));
+  }
+
+  // ── EVENT PAGES ──
+  if (type === 'event') {
+    var eventSchema = {
+      '@type': 'Event',
+      '@id': base + '/' + page.slug + '#event',
+      'name': page.page_name || page.primary_keyword || '',
+      'url': base + '/' + page.slug,
+      'organizer': { '@id': base + '/#organization' },
+      'eventAttendanceMode': 'https://schema.org/MixedEventAttendanceMode',
+      'eventStatus': 'https://schema.org/EventScheduled'
+    };
+    if (page.meta_description) eventSchema.description = page.meta_description;
+    if (img) eventSchema.image = { '@id': img['@id'] };
+    // Location from research
+    if (r.schema_street_address || r.schema_city) {
+      eventSchema.location = { '@type': 'Place', 'name': r.schema_city || '', 'address': { '@type': 'PostalAddress', 'addressLocality': r.schema_city || '', 'addressRegion': r.schema_region || '' } };
+    }
+    // Virtual location
+    eventSchema.location = eventSchema.location || { '@type': 'VirtualLocation', 'url': base + '/' + page.slug };
+    graph.push(eventSchema);
+    var eventFaqs = _extractFaqsFromCopy(page.slug);
+    if (eventFaqs.length >= 2) graph.push(_buildFaqPage(eventFaqs, page.slug));
+  }
+
+  // ── COURSE / TRAINING PAGES ──
+  if (type === 'course' || type === 'training' || type === 'workshop' || (page.slug && /course|training|workshop|class|program/i.test(page.slug))) {
+    var courseSchema = {
+      '@type': 'Course',
+      '@id': base + '/' + page.slug + '#course',
+      'name': page.page_name || page.primary_keyword || '',
+      'url': base + '/' + page.slug,
+      'provider': { '@id': base + '/#organization' }
+    };
+    if (page.meta_description) courseSchema.description = page.meta_description;
+    if (page.primary_keyword) courseSchema.about = { '@type': 'Thing', 'name': page.primary_keyword };
+    // Course instance
+    courseSchema.hasCourseInstance = { '@type': 'CourseInstance', 'courseMode': 'online', 'instructor': { '@id': base + '/#organization' } };
+    graph.push(courseSchema);
+    var courseFaqs = _extractFaqsFromCopy(page.slug);
+    if (courseFaqs.length >= 2) graph.push(_buildFaqPage(courseFaqs, page.slug));
+  }
+
+  // ── CAREERS / JOBS PAGES ──
+  if (type === 'careers' || (page.slug && /careers|jobs|hiring|join-us|work-with-us/i.test(page.slug))) {
+    // JobPosting — basic, details would come from individual job posts
+    var jobSchema = {
+      '@type': 'JobPosting',
+      '@id': base + '/' + page.slug + '#jobposting',
+      'title': page.page_name || 'Open Position',
+      'hiringOrganization': { '@id': base + '/#organization' },
+      'url': base + '/' + page.slug,
+      'datePosted': new Date().toISOString().split('T')[0],
+      'jobLocationType': 'TELECOMMUTE'
+    };
+    if (r.geography && r.geography.primary) {
+      jobSchema.jobLocation = { '@type': 'Place', 'address': { '@type': 'PostalAddress', 'addressLocality': r.geography.primary } };
+    }
+    graph.push(jobSchema);
+  }
+
+  // ── NEWS / PRESS RELEASE PAGES ──
+  if (type === 'news' || type === 'press' || type === 'press-release' || (page.slug && /\/news\/|\/press\/|press-release/i.test(page.slug))) {
+    var newsArticle = _buildArticle(page);
+    newsArticle['@type'] = 'NewsArticle';
+    newsArticle.articleSection = 'Press';
+    if (img) newsArticle.image = { '@id': img['@id'] };
+    graph.push(newsArticle);
+  }
+
+  // ── RESOURCE / GUIDE / HOW-TO PAGES ──
+  if (type === 'resource' || type === 'guide' || type === 'how-to' || (page.slug && /\/guide|\/resource|how-to-/i.test(page.slug) && type !== 'blog')) {
+    var techArticle = _buildArticle(page);
+    techArticle['@type'] = 'TechArticle';
+    techArticle.proficiencyLevel = 'Beginner';
+    graph.push(techArticle);
+    // HowTo if process section exists
+    var guideHowTo = _extractHowTo(page.slug);
+    if (guideHowTo) graph.push(guideHowTo);
+    var guideFaqs = _extractFaqsFromCopy(page.slug);
+    if (guideFaqs.length >= 2) graph.push(_buildFaqPage(guideFaqs, page.slug));
+  }
+
+  // ── GALLERY / PHOTO PAGES ──
+  if (type === 'gallery' || (page.slug && /gallery|photos/i.test(page.slug))) {
+    var gallerySchema = {
+      '@type': 'ImageGallery',
+      '@id': base + '/' + page.slug + '#gallery',
+      'name': page.page_name || 'Gallery',
+      'url': base + '/' + page.slug
+    };
+    graph.push(gallerySchema);
+  }
+
+  // ── SOFTWARE / TOOL / CALCULATOR PAGES ──
+  if (type === 'tool' || type === 'calculator' || type === 'software' || (page.slug && /calculator|tool$|tools\//i.test(page.slug))) {
+    var softwareSchema = {
+      '@type': 'SoftwareApplication',
+      '@id': base + '/' + page.slug + '#software',
+      'name': page.page_name || '',
+      'url': base + '/' + page.slug,
+      'applicationCategory': 'BusinessApplication',
+      'operatingSystem': 'Web',
+      'offers': { '@type': 'Offer', 'price': '0', 'priceCurrency': 'CAD' }
+    };
+    if (page.meta_description) softwareSchema.description = page.meta_description;
+    graph.push(softwareSchema);
+    var toolFaqs = _extractFaqsFromCopy(page.slug);
+    if (toolFaqs.length >= 2) graph.push(_buildFaqPage(toolFaqs, page.slug));
+  }
+
+  // ── COMPARISON / VS PAGES ──
+  if (page.slug && /\/vs-|\/compare|\/comparison|-vs-/i.test(page.slug)) {
+    // ItemList of compared items
+    var compList = {
+      '@type': 'ItemList',
+      '@id': base + '/' + page.slug + '#comparison',
+      'name': page.page_name || 'Comparison',
+      'url': base + '/' + page.slug
+    };
+    graph.push(compList);
+    var compFaqs = _extractFaqsFromCopy(page.slug);
+    if (compFaqs.length >= 2) graph.push(_buildFaqPage(compFaqs, page.slug));
+  }
+
+  // ── CATEGORY / ARCHIVE PAGES ──
+  if (type === 'category' || type === 'archive' || type === 'tag') {
+    webPage['@type'] = 'CollectionPage';
+    // Build ItemList of child pages
+    var childPages = (S.pages || []).filter(function(p) {
+      return p.slug && p.slug.indexOf(page.slug + '/') === 0;
+    });
+    if (childPages.length) graph.push(_buildItemList(childPages, page.page_name || 'Category'));
+  }
+
+  // ── WHITE PAPER / EBOOK / DOWNLOAD PAGES ──
+  if (type === 'whitepaper' || type === 'ebook' || type === 'download' || (page.slug && /whitepaper|ebook|download|report/i.test(page.slug) && type !== 'blog')) {
+    var docSchema = {
+      '@type': 'DigitalDocument',
+      '@id': base + '/' + page.slug + '#document',
+      'name': page.page_name || '',
+      'url': base + '/' + page.slug,
+      'author': { '@id': base + '/#organization' },
+      'hasDigitalDocumentPermission': { '@type': 'DigitalDocumentPermission', 'permissionType': 'https://schema.org/ReadPermission' }
+    };
+    if (page.meta_description) docSchema.description = page.meta_description;
+    graph.push(docSchema);
+  }
+
+  // ── GLOSSARY / DEFINITION PAGES ──
+  if (type === 'glossary' || (page.slug && /glossary|dictionary|definitions/i.test(page.slug))) {
+    var glossarySchema = {
+      '@type': 'DefinedTermSet',
+      '@id': base + '/' + page.slug + '#glossary',
+      'name': page.page_name || 'Glossary',
+      'url': base + '/' + page.slug
+    };
+    graph.push(glossarySchema);
+    // FAQs work well for glossary entries
+    var glossFaqs = _extractFaqsFromCopy(page.slug);
+    if (glossFaqs.length >= 2) graph.push(_buildFaqPage(glossFaqs, page.slug));
+  }
+
+  // ── PODCAST PAGES ──
+  if (type === 'podcast' || (page.slug && /podcast/i.test(page.slug))) {
+    var podcastSchema = {
+      '@type': 'PodcastSeries',
+      '@id': base + '/' + page.slug + '#podcast',
+      'name': page.page_name || '',
+      'url': base + '/' + page.slug,
+      'author': { '@id': base + '/#organization' }
+    };
+    if (page.meta_description) podcastSchema.description = page.meta_description;
+    graph.push(podcastSchema);
+  }
+
+  // ── WEBINAR PAGES ──
+  if (type === 'webinar' || (page.slug && /webinar/i.test(page.slug))) {
+    var webinarSchema = {
+      '@type': 'Event',
+      '@id': base + '/' + page.slug + '#webinar',
+      'name': page.page_name || '',
+      'url': base + '/' + page.slug,
+      'eventAttendanceMode': 'https://schema.org/OnlineEventAttendanceMode',
+      'eventStatus': 'https://schema.org/EventScheduled',
+      'organizer': { '@id': base + '/#organization' },
+      'location': { '@type': 'VirtualLocation', 'url': base + '/' + page.slug }
+    };
+    if (page.meta_description) webinarSchema.description = page.meta_description;
+    graph.push(webinarSchema);
+    var webinarFaqs = _extractFaqsFromCopy(page.slug);
+    if (webinarFaqs.length >= 2) graph.push(_buildFaqPage(webinarFaqs, page.slug));
+  }
+
+  // ── UTILITY PAGES (terms, privacy, legal) — minimal schema ──
+  if (type === 'utility' || (page.slug && /terms|privacy|legal|disclaimer|cookie/i.test(page.slug))) {
+    // Just WebPage (already added) — no special schema
+    webPage['@type'] = 'WebPage';
+    // But add the org as publisher for legal pages
+    webPage.publisher = { '@id': base + '/#organization' };
   }
 
   // ── UNIVERSAL: Proof Bank stats as ClaimReview/QuantitativeValue ──
