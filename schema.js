@@ -492,59 +492,158 @@ function buildPageSchema(page) {
   var s = S.setup || {};
   var graph = [];
 
-  // ── EVERY PAGE: WebPage + Breadcrumb ──
+  // ── EVERY PAGE: WebPage + Breadcrumb + universal properties ──
   var webPage = _buildWebPage(page);
   // Speakable on all pages
   webPage.speakable = _buildSpeakable(page);
   // Primary image
   var img = _buildImageObject(page);
   if (img) { webPage.primaryImageOfPage = { '@id': img['@id'] }; graph.push(img); }
+  // Language
+  webPage.inLanguage = 'en-CA';
+  // Publisher (always the org)
+  webPage.publisher = { '@id': base + '/#organization' };
+  // Date modified
+  if (page.updatedAt) webPage.dateModified = new Date(page.updatedAt).toISOString().split('T')[0];
+  // Keywords
+  if (page.primary_keyword) {
+    var allKws = [page.primary_keyword];
+    (page.supporting_keywords || []).forEach(function(k) { var kw = typeof k === 'string' ? k : (k.kw || ''); if (kw) allKws.push(kw); });
+    webPage.keywords = allKws.join(', ');
+  }
+  // Significance / about
+  if (page.primary_keyword) webPage.about = { '@type': 'Thing', 'name': page.primary_keyword };
+  // Part of site
+  webPage.isPartOf = { '@id': base + '/#website' };
   graph.push(webPage);
   graph.push(_buildBreadcrumb(page));
 
   // ── HOMEPAGE ──
   if (type === 'home' || page.slug === '' || page.slug === '/') {
     var orgSchema = _buildOrgSchema();
-    // Inject contact points
+    // Contact points (phone, email)
     var contactPts = _buildContactPoints();
     if (contactPts.length) orgSchema.contactPoint = contactPts;
-    // Inject reviews
+    // Reviews + AggregateRating
     var reviews = _buildReviews();
     if (reviews.length) orgSchema.review = reviews;
-    // Inject offer catalog
+    // Offer catalog (all services)
     var catalog = _buildOfferCatalog();
     if (catalog) orgSchema.hasOfferCatalog = catalog;
-    // Inject notable client mentions
+    // Notable clients as member organizations
     if (r.notable_clients && r.notable_clients.length) {
       orgSchema.member = r.notable_clients.slice(0, 10).map(function(c) { return { '@type': 'Organization', 'name': c }; });
     }
-    // Awards
-    if (r.awards_certifications && r.awards_certifications.length) {
-      orgSchema.award = r.awards_certifications;
-    }
-    // Founder
+    // Awards & certifications
+    if (r.awards_certifications && r.awards_certifications.length) orgSchema.award = r.awards_certifications;
+    // Founder with full detail
     if (r.founder_bio) {
       orgSchema.founder = { '@type': 'Person', 'description': r.founder_bio };
+      if (r.team_credentials) {
+        var founderMatch = r.team_credentials.split(',')[0];
+        if (founderMatch) {
+          var fp = founderMatch.trim().split(' — ');
+          orgSchema.founder.name = fp[0] || '';
+          if (fp[1]) orgSchema.founder.jobTitle = fp[1];
+        }
+      }
     }
-    // Number of employees
+    // Employee count
     if (r.team_credentials) {
       var teamCount = r.team_credentials.split(',').filter(Boolean).length;
       if (teamCount > 0) orgSchema.numberOfEmployees = { '@type': 'QuantitativeValue', 'value': teamCount };
     }
+    // Opening hours
+    if (r.schema_hours) {
+      orgSchema.openingHoursSpecification = { '@type': 'OpeningHoursSpecification', 'description': r.schema_hours };
+    }
+    // Known-for / slogan
+    if (r.current_slogan) orgSchema.slogan = r.current_slogan;
+    // Geo coordinates from address
+    if (r.schema_city && r.schema_region) {
+      orgSchema.geo = { '@type': 'GeoCoordinates', 'addressLocality': r.schema_city, 'addressRegion': r.schema_region };
+    }
+    // Brand
+    if (r.brand_name) orgSchema.brand = { '@type': 'Brand', 'name': r.brand_name };
+    // Legal name (if different)
+    if (r.legal_name) orgSchema.legalName = r.legal_name;
+    // Industry / NAICS
+    if (r.industry) orgSchema.knowsAbout = r.industry;
     graph.push(orgSchema);
+
+    // WebSite
     graph.push(_buildWebSite());
+
     // Sitelinks SearchAction
     graph.push({
-      '@type': 'WebSite',
-      '@id': base + '/#website-search',
-      'url': base,
+      '@type': 'WebSite', '@id': base + '/#website-search', 'url': base,
       'potentialAction': { '@type': 'SearchAction', 'target': { '@type': 'EntryPoint', 'urlTemplate': base + '/search?q={search_term_string}' }, 'query-input': 'required name=search_term_string' }
     });
+
+    // Homepage FAQs (from copy or research)
+    var homeFaqs = _extractFaqsFromCopy(page.slug);
+    if (homeFaqs.length >= 2) graph.push(_buildFaqPage(homeFaqs, page.slug));
+
+    // Homepage HowTo (process section)
+    var homeHowTo = _extractHowTo(page.slug);
+    if (homeHowTo) graph.push(homeHowTo);
+
+    // Homepage videos
+    var homeVideos = _extractVideos(page.slug);
+    homeVideos.forEach(function(v) { graph.push(v); });
+
+    // Individual service entities (not just catalog — each as a Service node for rich results)
+    var svcPages = (S.pages || []).filter(function(p) { return ['service','industry'].indexOf((p.page_type || '').toLowerCase()) >= 0; });
+    if (svcPages.length > 0 && svcPages.length <= 15) {
+      svcPages.forEach(function(sp) {
+        graph.push({
+          '@type': 'Service',
+          '@id': base + '/' + sp.slug + '#service',
+          'name': sp.page_name || sp.primary_keyword || '',
+          'url': base + '/' + sp.slug,
+          'provider': { '@id': base + '/#organization' }
+        });
+      });
+    }
+
+    // Proof Bank stats as claims
+    var pb = (s.proofBank || {});
+    if (pb.stats && pb.stats.length) {
+      webPage.citation = pb.stats.map(function(stat) {
+        return { '@type': 'CreativeWork', 'name': stat.stat, 'author': { '@type': 'Organization', 'name': stat.source || s.client || '' } };
+      });
+    }
+
+    // E-E-A-T mentions
+    var homeMentions = _buildMentions(page);
+    if (homeMentions.length) webPage.mentions = homeMentions;
+
+    // Case studies as knowledge articles
+    if (r.case_studies && r.case_studies.length) {
+      var csPages = (S.pages || []).filter(function(p) { return (p.page_type || '').toLowerCase() === 'case-study'; });
+      if (csPages.length) {
+        webPage.relatedLink = csPages.map(function(p) { return base + '/' + p.slug; });
+      }
+    }
   }
 
   // ── SERVICE / INDUSTRY / LANDING PAGES ──
   if (['service','industry','landing'].indexOf(type) >= 0) {
-    graph.push(_buildProfessionalService(page));
+    var svcSchema = _buildProfessionalService(page);
+    // Supporting keywords as additional service types
+    if (page.supporting_keywords && page.supporting_keywords.length) {
+      svcSchema.hasOfferCatalog = {
+        '@type': 'OfferCatalog', 'name': page.page_name || '',
+        'itemListElement': (page.supporting_keywords || []).slice(0, 10).map(function(k) {
+          var kw = typeof k === 'string' ? k : (k.kw || '');
+          return { '@type': 'Offer', 'itemOffered': { '@type': 'Service', 'name': kw } };
+        })
+      };
+    }
+    // Brand on service
+    if (r.brand_name) svcSchema.brand = { '@type': 'Brand', 'name': r.brand_name };
+    graph.push(svcSchema);
+
     // FAQPage from copy
     var faqs = _extractFaqsFromCopy(page.slug);
     if (faqs.length >= 2) graph.push(_buildFaqPage(faqs, page.slug));
@@ -554,23 +653,43 @@ function buildPageSchema(page) {
     // Videos embedded in copy
     var videos = _extractVideos(page.slug);
     videos.forEach(function(v) { graph.push(v); });
-    // Reviews relevant to this service (all reviews, scoped to this page)
+    // Reviews on service
     var svcReviews = _buildReviews();
     if (svcReviews.length) {
-      var svcNode = graph.find(function(g) { return g['@id'] && g['@id'].indexOf('#service') >= 0; });
-      if (svcNode) {
-        svcNode.review = svcReviews.slice(0, 5);
-        // Aggregate rating
-        var totalR = 0, countR = 0;
-        svcReviews.forEach(function(rv) { if (rv.reviewRating && rv.reviewRating.ratingValue) { totalR += parseFloat(rv.reviewRating.ratingValue); countR++; } });
-        if (countR > 0) {
-          svcNode.aggregateRating = { '@type': 'AggregateRating', 'ratingValue': Math.round(totalR / countR * 10) / 10, 'reviewCount': (r.reviews || []).length + (r.testimonials || []).length, 'bestRating': 5 };
-        }
+      svcSchema.review = svcReviews.slice(0, 5);
+      var totalR = 0, countR = 0;
+      svcReviews.forEach(function(rv) { if (rv.reviewRating && rv.reviewRating.ratingValue) { totalR += parseFloat(rv.reviewRating.ratingValue); countR++; } });
+      if (countR > 0) {
+        svcSchema.aggregateRating = { '@type': 'AggregateRating', 'ratingValue': Math.round(totalR / countR * 10) / 10, 'reviewCount': (r.reviews || []).length + (r.testimonials || []).length, 'bestRating': 5 };
       }
     }
-    // Mentions for E-E-A-T
+    // E-E-A-T mentions
     var mentions = _buildMentions(page);
     if (mentions.length) webPage.mentions = mentions;
+    // Related case studies for this service
+    var relatedCS = (r.case_studies || []).filter(function(cs) {
+      return page.page_name && cs.client;
+    }).slice(0, 3);
+    if (relatedCS.length) {
+      webPage.relatedLink = relatedCS.map(function(cs) { return cs.url || ''; }).filter(Boolean);
+    }
+    // Proof Bank stats as citations on service pages
+    var spb = (s.proofBank || {});
+    if (spb.stats && spb.stats.length) {
+      webPage.citation = webPage.citation || [];
+      spb.stats.forEach(function(stat) {
+        webPage.citation.push({ '@type': 'CreativeWork', 'name': stat.stat, 'author': { '@type': 'Organization', 'name': stat.source || s.client || '' } });
+      });
+    }
+    // Awareness stage as audience
+    if (page.awareness_stage) {
+      webPage.audience = { '@type': 'Audience', 'audienceType': page.awareness_stage.replace(/_/g, ' ') };
+    }
+    // Persona as target audience
+    if (page.target_persona) {
+      webPage.audience = webPage.audience || {};
+      webPage.audience.name = page.target_persona;
+    }
   }
 
   // ── LOCATION PAGES ──
