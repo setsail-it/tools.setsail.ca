@@ -3839,7 +3839,8 @@ function buildDiagnosticPrompt(num) {
       + '- Detect whether this is B2B, B2C, or hybrid from the business model, services, and audience description.\n'
       + '- B2B: expect buying committees, longer cycles, multiple stakeholders, procurement processes. Personas should map the decision-maker, influencer, and end-user.\n'
       + '- B2C: expect individual decision-makers, shorter cycles, emotional triggers, price sensitivity. Personas should map demographics and lifestyle.\n'
-      + '- Adjust the buying_motions structure accordingly — do not force B2B language onto B2C businesses.\n\n'
+      + '- Adjust the buying_motions structure accordingly — do not force B2B language onto B2C businesses.\n'
+      + '- SERVICE-PROVIDER GUARD: For service providers (real estate agents, insurance brokers, financial advisors, lawyers, dentists, contractors, accountants), the AUDIENCE is the end consumer who pays for the core service — NOT the practitioner\'s internal team. A real estate agent\'s audience is homebuyers and sellers. If the research data mentions "training agents" or "coaching salespeople", verify whether this is an INTERNAL team activity or an EXTERNAL service sold to customers. Internal team development is NOT a segment.\n\n'
 
       + 'CRITICAL PERSONA RULES:\n'
       + '1. NEVER invent fictional persona names (Marcus, Jennifer, etc.). Use descriptive labels: "Construction Owner-Operator (DIY)" or "Professional Services Managing Partner (Agency Switcher)." Archetypes are the default structure.\n'
@@ -3980,6 +3981,7 @@ function buildDiagnosticPrompt(num) {
       + '  },\n'
       + '  "audience_summary": "2-3 sentence overview of the audience landscape",\n'
       + '  "confidence": "high | medium | low — per the criteria above"\n}';
+    return d0ctx;
   }
 
   if (num === 1) {
@@ -9570,6 +9572,8 @@ function _buildRevenueProjection() {
 
   if (!cpl || !monthlyBudget) return '';
 
+  // Use conservative organic CVR (3.5%) rather than blended site CVR which is inflated by branded/direct traffic
+  var organicCvr = parseFloat(ue.organic_cvr) || 0.035;
   var leadsPerMonth = Math.round(monthlyBudget / cpl);
   var dealsPerMonth = Math.round(leadsPerMonth * closeRate * 10) / 10;
   var monthlyRevenue = Math.round(dealsPerMonth * dealSize);
@@ -9578,6 +9582,7 @@ function _buildRevenueProjection() {
   var proj = '- Monthly marketing budget: $' + monthlyBudget.toLocaleString() + '\n';
   proj += '- Estimated CPL: $' + cpl + '\n';
   proj += '- Leads per month: ~' + leadsPerMonth + '\n';
+  proj += '- Organic conversion rate: ' + Math.round(organicCvr * 1000) / 10 + '% (conservative — excludes branded/direct traffic inflation)\n';
   proj += '- Close rate: ' + Math.round(closeRate * 100) + '%\n';
   proj += '- Deals per month: ~' + dealsPerMonth + '\n';
   proj += '- Average deal size: $' + dealSize.toLocaleString() + '\n';
@@ -9609,8 +9614,10 @@ function _buildStrategyDataTables() {
     var selKws = allKws.filter(function(k) { return selSet.has(k.kw); })
       .sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
     if (selKws.length) {
+      var _appGeo = detectCountry((S.setup || {}).geo || '') || 'US';
       md += '\n\n---\n\n## Appendix A: Selected Keyword Opportunities (' + selKws.length + ')\n\n';
-      md += '| Keyword | Vol/mo | KD | CPC | Score |\n';
+      md += '*Volumes: ' + _appGeo + ' market. KD: DataForSEO competition index (verify critical scores in Ahrefs).*\n\n';
+      md += '| Keyword | Vol/mo (' + _appGeo + ') | KD | CPC | Score |\n';
       md += '|---------|-------:|---:|----:|------:|\n';
       selKws.forEach(function(k) {
         var kd = k.kd > 0 ? k.kd : 30;
@@ -9626,8 +9633,9 @@ function _buildStrategyDataTables() {
   var clusters = kwR.clusters || [];
   var qualClusters = clusters.filter(function(c) { return c.qualifies !== false; });
   if (qualClusters.length) {
+    var _appGeoB = detectCountry((S.setup || {}).geo || '') || 'US';
     md += '\n\n## Appendix B: Cluster → Page Map (' + qualClusters.length + ' pages)\n\n';
-    md += '| Cluster | Primary Keyword | Vol/mo | KD | Page Type | Action | Slug |\n';
+    md += '| Cluster | Primary Keyword | Vol/mo (' + _appGeoB + ') | KD | Page Type | Action | Slug |\n';
     md += '|---------|----------------|-------:|---:|-----------|--------|------|\n';
     qualClusters.forEach(function(c) {
       var action = c.recommendation === 'improve_existing' ? 'Improve' : 'Build';
@@ -10063,7 +10071,9 @@ async function compileStrategyOutput() {
     var qualifiedClusters = kwClusters.filter(function(c) { return c.qualifies !== false; });
     var totalVol = 0;
     qualifiedClusters.forEach(function(c) { totalVol += (c.primaryVol || 0); });
-    ctx += '\nKEYWORD CLUSTERS (' + qualifiedClusters.length + ' qualified, ' + totalVol.toLocaleString() + ' total monthly volume):\n';
+    var _geoLabel = detectCountry((S.setup || {}).geo || '') || 'US';
+    ctx += '\nKEYWORD CLUSTERS (' + qualifiedClusters.length + ' qualified, ' + totalVol.toLocaleString() + ' total monthly volume — ' + _geoLabel + ' geo-specific volumes):\n';
+    ctx += 'NOTE: Volumes are geo-specific (' + _geoLabel + ' market). KD scores are from DataForSEO competition index (scale 0-100, differs from Ahrefs KD — verify critical KD scores in Ahrefs before classifying as quick wins).\n';
     qualifiedClusters.slice(0, 25).forEach(function(c) {
       ctx += '- ' + (c.name || c.primaryKw || '') + ' [' + (c.pageType || '?') + ']';
       ctx += ' — "' + (c.primaryKw || '') + '" (' + (c.primaryVol || 0).toLocaleString() + '/mo, KD:' + (c.primaryKd || '?') + ')';
@@ -10100,7 +10110,7 @@ async function compileStrategyOutput() {
   if (kwR2.keywords && kwR2.keywords.length) {
     var compileQW = kwR2.keywords.filter(function(k) { return k.vol >= 100 && k.kd <= 20; });
     if (compileQW.length) {
-      ctx += '\nQUICK-WIN KEYWORDS (' + compileQW.length + ' — vol>=100, KD<=20):\n';
+      ctx += '\nQUICK-WIN CANDIDATES (' + compileQW.length + ' — vol>=100, DataForSEO KD<=20 — VERIFY KD in Ahrefs before classifying as quick wins):\n';
       compileQW.slice(0, 10).forEach(function(k) {
         ctx += '- "' + k.kw + '" — ' + k.vol.toLocaleString() + '/mo, KD:' + k.kd + '\n';
       });
@@ -10167,6 +10177,8 @@ async function compileStrategyOutput() {
     + 'CRITICAL RULES:\n'
     + '- Use ACTUAL data: real competitor names, real keyword volumes, real dollar amounts, real DR scores, real case study results\n'
     + '- Never use placeholder language like "various keywords" or "competitive budget" when you have specific numbers\n'
+    + '- VOLUME METHODOLOGY: Always state the geographic scope of keyword volumes (e.g. "US: 700/mo"). KD scores are from DataForSEO competition index — note this in the strategy and flag that critical KD scores should be verified against Ahrefs. Do NOT classify keywords as "quick wins" solely based on DataForSEO KD — cross-reference DR requirements.\n'
+    + '- ORGANIC PROJECTIONS: When projecting organic traffic leads, use a conservative organic conversion rate (3-4%, NOT the blended site CVR which is inflated by branded/direct traffic). State the CVR assumption explicitly.\n'
     + '- Include markdown tables where data is tabular (competitor comparison, channel allocation, risk register)\n'
     + '- Every claim must reference the data that supports it\n'
     + '- If strategist notes were provided, incorporate their direction\n\n'

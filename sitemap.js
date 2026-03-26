@@ -579,7 +579,10 @@ function _suggestPriority(page) {
   if (align === 'cut') suggested = 'P3';
 
   // High-volume override: if vol >= 500 and we would suggest P2/P3, suggest P1
-  if ((page.primary_vol || 0) >= 500 && suggested !== 'P1') suggested = 'P1';
+  // ONLY for commercial page types — blogs/resources stay at their earned priority
+  var _hvType = (page.page_type || '').toLowerCase();
+  var _hvCommercial = ['service','services','solution','solutions','product','home','landing','cta','location'].indexOf(_hvType) >= 0;
+  if ((page.primary_vol || 0) >= 500 && suggested !== 'P1' && _hvCommercial) suggested = 'P1';
 
   // Budget tier check: lever not funded in current budget → cap at P3
   var currentBudget = st.channel_strategy && st.channel_strategy.budget_tiers && st.channel_strategy.budget_tiers.current_budget;
@@ -937,7 +940,22 @@ function _triagePages(pages) {
       }
     }
 
-    // 5. Off-strategy pages (alignment = 'cut') — only if strategy exists
+    // 5. Vanity keyword guard — structural/utility pages with absurdly generic primary keywords
+    // (e.g. /contact mapped to "contact" 60k vol, /blog mapped to "training" 90k vol, /search mapped to "search" 450k vol)
+    if (!reason && !p.is_structural) {
+      var _vkType = (p.page_type || '').toLowerCase();
+      var _vkSlug = slug.replace(/\//g, '');
+      var _vkKw = (p.primary_keyword || '').toLowerCase().trim();
+      var _vkVol = p.primary_vol || 0;
+      // Single-word generic keywords with high volume on non-service pages are almost always vanity mappings
+      var _vkIsGeneric = _vkKw && _vkKw.indexOf(' ') < 0 && _vkVol > 10000;
+      var _vkIsUtilityType = ['utility','contact','about','team','faq'].indexOf(_vkType) >= 0;
+      if (_vkIsGeneric && _vkIsUtilityType) {
+        reason = 'Vanity keyword "' + _vkKw + '" (' + _vkVol.toLocaleString() + ' vol) on ' + _vkType + ' page';
+      }
+    }
+
+    // 6. Off-strategy pages (alignment = 'cut') — only if strategy exists
     if (!reason && _hasStrategy) {
       var align = _computeAlignment(p);
       if (align === 'cut') {
@@ -2194,13 +2212,16 @@ async function _aiFixIssue(fixId) {
         'blog': 5, 'article': 5, 'case-study': 6, 'casestudy': 6, 'resource': 6, 'resource-hub': 6 };
       var _priOrder = { 'P1': 0, 'P2': 1, 'P3': 2 };
 
+      // Sort by page type tier FIRST so service pages always get first pick of
+      // commercial keywords, then by priority within the same tier.
+      // This prevents P1 blog pages from stealing commercial keywords from P2 service pages.
       remaining.sort(function(a, b) {
-        var priA = _priOrder[a.priority] !== undefined ? _priOrder[a.priority] : 1;
-        var priB = _priOrder[b.priority] !== undefined ? _priOrder[b.priority] : 1;
-        if (priA !== priB) return priA - priB;
         var tierA = _tierOrder[(a.page_type || '').toLowerCase()] !== undefined ? _tierOrder[(a.page_type || '').toLowerCase()] : 3;
         var tierB = _tierOrder[(b.page_type || '').toLowerCase()] !== undefined ? _tierOrder[(b.page_type || '').toLowerCase()] : 3;
-        return tierA - tierB;
+        if (tierA !== tierB) return tierA - tierB;
+        var priA = _priOrder[a.priority] !== undefined ? _priOrder[a.priority] : 1;
+        var priB = _priOrder[b.priority] !== undefined ? _priOrder[b.priority] : 1;
+        return priA - priB;
       });
 
       // Build tier labels for AI bar
@@ -2750,7 +2771,8 @@ function _guessPageType(slug) {
   if (/case-stud|portfolio|work|project/.test(s)) return 'blog';
   if (/team|people|staff/.test(s)) return 'team';
   if (/faq|faqs/.test(s)) return 'faq';
-  if (/privacy|terms|sitemap|thank/.test(s)) return 'utility';
+  if (/privacy|terms|sitemap|thank|404|search$|login|signup|sign-up|sign-in|register|unsubscribe|cookie|disclaimer/.test(s)) return 'utility';
+  if (/challenge|contest|sweepstake|giveaway/.test(s)) return 'utility';
   return 'service';
 }
 
@@ -3020,7 +3042,7 @@ function buildSitemapFromClusters() {
       primary_keyword: rkws.length ? (rkws[0].kw||'') : '',
       primary_vol: 0, primary_kd: 0, score: 0,
       supporting_keywords: rkws.slice(1,6).map(function(k){ return k.kw||k; }),
-      search_intent: 'commercial',
+      search_intent: (['blog','article','resource','resource-hub'].indexOf(_existPt) >= 0) ? 'informational' : (['utility','about','contact','team','faq'].indexOf(_existPt) >= 0) ? 'navigational' : 'commercial',
       existing_traffic: sp ? (sp.traffic||0) : 0,
       existing_ranking_kws: rkws,
     });

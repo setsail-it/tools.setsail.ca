@@ -43,7 +43,7 @@ worker.js        — All backend API routes + queue consumer + webhooks (~4748 l
 index.html       — Shell + CSS + core JS (state, nav, save/load, AI bar, leads, directives, changelog) (~7270 lines)
 strategy.js      — Stage 4: strategy engine + 7-layer pipeline + scoring + diagnostics + revenue model (~10798 lines)
 keywords.js      — Keyword research: 3-phase pipeline (data/select/cluster) + GKP + Core Focus (~4345 lines)
-sitemap.js       — Stage 5: sitemap generation + blog pipeline + smart cannibalization (~5398 lines)
+sitemap.js       — Stage 5: sitemap generation + blog pipeline + smart cannibalization (~7229 lines)
 briefs.js        — Stage 6: brief generation + queue + strategy context integration (~2437 lines)
 copy.js          — Stage 7: copy generation + audit + strategy context integration (~2088 lines)
 research.js      — Stage 3: AI enrichment + field metadata + scorecard + competitor blocklist (~3065 lines)
@@ -105,7 +105,7 @@ Single Cloudflare Worker handling all API routes via sequential `if` statements.
 
 ### Strategy Engine (strategy.js)
 
-The strategy engine is the most complex subsystem. It runs 9 AI diagnostics sequentially (D0-D8), scores each section on three dimensions, and enforces anti-inflation caps to prevent score gaming.
+The strategy engine is the most complex subsystem. It runs 10 AI diagnostics sequentially (D0-D9), scores each section on three dimensions, and enforces anti-inflation caps to prevent score gaming.
 
 **Diagnostic pipeline (auto-orchestrated by `generateStrategy()`):**
 - **D0 — Audience Intelligence:** Segments, personas (archetype labels, not fictional names), buying motions, purchase triggers, objection maps, vertical coverage (active + parked segments)
@@ -317,7 +317,7 @@ These are defined once and used across all routes:
 - **User management:** `/api/admin/users` CRUD + `/api/admin/users/:email/approve`. Super admin cannot be demoted/deleted. Admin panel with Pending Approval section + Team section.
 - **Cross-user projects:** Strategist+ roles can list/load/save ALL projects across users. Viewers scoped to own prefix only.
 - **Save concurrency:** `_saveInFlight` lock prevents concurrent `saveProject()` calls causing 409 version conflicts. Queued saves fire after in-flight save completes.
-- **Claude proxy:** model whitelist (`claude-sonnet-4-20250514`, `claude-haiku-4-5-20251001`), max_tokens capped at 8192, payload sanitised
+- **Claude proxy:** model whitelist (`claude-sonnet-4-20250514`, `claude-haiku-4-5-20251001`, `claude-opus-4-20250514`, `claude-opus-4-6-20250610`), max_tokens capped at 8192, payload sanitised
 - **Rate limiting:** per-user sliding window — ai (60/5min), data (40/5min), queue (5/1min), image (20/5min)
 - **XSS:** all AI-generated HTML sanitised via DOMPurify before innerHTML
 - **KV isolation:** all user data prefixed `u:{email}:` — strategist+ can cross-read via lookup
