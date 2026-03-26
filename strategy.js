@@ -5345,6 +5345,16 @@ async function runAllDiagnostics() {
       }
       await new Promise(function(res) { setTimeout(res, 2000); });
     }
+    // Re-run D1 Economics NOW that keyword CPC data exists
+    // First run was baseline (no CPC). This pass has real keyword CPC + GKP bid data.
+    if (!window._aiStopAll && S.kwResearch && S.kwResearch.keywords && S.kwResearch.keywords.some(function(k) { return k.cpc > 0 || k.high_bid > 0; })) {
+      aiBarStart('Re-running D1 Economics with keyword CPC data');
+      try {
+        await runDiagnostic(1);
+        console.log('[runAllDiagnostics] D1 re-run with CPC data complete');
+      } catch(e) { console.warn('[runAllDiagnostics] D1 re-run failed:', e.message); }
+      await new Promise(function(res) { setTimeout(res, 1500); });
+    }
     // D4-D7 (informed by keyword data)
     for (var d2 = 4; d2 <= 7; d2++) {
       if (window._aiStopAll) {

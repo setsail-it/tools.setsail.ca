@@ -1227,7 +1227,17 @@ async function saveProject() {
       // Strip monthly trend arrays from keywords before saving — reconstructed from DataForSEO on next fetch
       kwResearch: S.kwResearch ? Object.assign({}, S.kwResearch, {
         keywords: (S.kwResearch.keywords || []).map(function(k) {
-          return { kw: k.kw, vol: k.vol, kd: k.kd, cpc: k.cpc, score: k.score };
+          var out = { kw: k.kw, vol: k.vol, kd: k.kd, cpc: k.cpc, score: k.score };
+          // Preserve GKP data if present
+          if (k.low_bid !== undefined) out.low_bid = k.low_bid;
+          if (k.high_bid !== undefined) out.high_bid = k.high_bid;
+          if (k.ad_competition) out.ad_competition = k.ad_competition;
+          if (k.ad_competition_idx !== undefined) out.ad_competition_idx = k.ad_competition_idx;
+          if (k.gkp_volume) out.gkp_volume = k.gkp_volume;
+          if (k.gkp_monthly) out.gkp_monthly = k.gkp_monthly;
+          // Preserve source bucket
+          if (k.source) out.source = k.source;
+          return out;
         })
       }) : null,
       contentIntel: S.contentIntel || null,
