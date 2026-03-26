@@ -1514,9 +1514,10 @@ async function _aiFixIssue(fixId) {
 
     console.log('[no-kw fix] Found', allNeedKw.length, 'pages needing keywords');
     console.log('[no-kw fix] Keyword pool size:', kwPool.length);
-    var usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
-    var availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
-    console.log('[no-kw fix] Used keywords:', usedKws.size, '| Available from pool:', availKws.length);
+    // Same keyword CAN be used across different page types (service + blog = OK, different intent)
+    // Only filter to keywords with volume — cannibal check handles same-type conflicts
+    var availKws = kwPool.filter(function(k) { return k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    console.log('[no-kw fix] Available keywords with volume:', availKws.length);
     var geo = ((S.research || {}).geography || {}).primary || (S.setup || {}).geo || '';
     var industry = (S.research || {}).industry || '';
 
@@ -1530,9 +1531,7 @@ async function _aiFixIssue(fixId) {
       console.log('[no-kw fix] Starting batch', batchNum, '/', totalBatches, '| pages:', batch.length);
       aiBarStart('AI assigning keywords: batch ' + batchNum + '/' + totalBatches + ' (' + totalAssigned + ' assigned so far)');
 
-      // Rebuild available list each batch (exclude newly assigned)
-      usedKws = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
-      availKws = kwPool.filter(function(k) { return !usedKws.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+      // Available pool stays the same — keywords can be reused across page types
       console.log('[no-kw fix] Batch', batchNum, '| available from pool:', availKws.length);
 
       var kwSection = availKws.length > 0
@@ -1545,7 +1544,8 @@ async function _aiFixIssue(fixId) {
         + '- If no good match exists in the list, GENERATE a relevant keyword that someone would search to find this page\n'
         + '- Generated keywords should be specific, searchable phrases (2-5 words), not generic terms\n'
         + '- Consider the page type, industry (' + (industry || 'general') + '), and location (' + (geo || 'general') + ')\n'
-        + '- Each keyword can only be used once across all pages\n'
+        + '- A keyword CAN be shared across DIFFERENT page types (service + blog = OK, different intent)\n'
+        + '- A keyword should NOT be shared between pages of the SAME type (that is cannibalisation)\n'
         + '- For blog posts, use informational/question-based keywords\n'
         + '- For service pages, use commercial-intent keywords with geo modifiers\n\n'
         + 'PAGES NEEDING KEYWORDS:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
@@ -1655,8 +1655,20 @@ async function _aiFixIssue(fixId) {
     });
     if (!zeroPages.length) { aiBarNotify('No zero-volume pages to fix', { duration: 2000 }); return; }
 
-    var usedKws2 = new Set(pages.filter(function(p) { return p.primary_keyword && p.primary_vol > 0; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
-    var availKws2 = kwPool.filter(function(k) { return !usedKws2.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    // Keywords with volume — same keyword CAN appear on different page types (different intent)
+    // Only exclude same-keyword+same-type combos (real cannibalisation — handled by cannibal fix)
+    var availKws2 = kwPool.filter(function(k) { return k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    if (!availKws2.length) { aiBarNotify('No keywords with volume in pool', { duration: 3000 }); return; }
+
+    // Build a map of which keywords are already used by which page types (for same-type dedup guidance)
+    var _kwTypeMap = {};
+    pages.forEach(function(p) {
+      if (p.primary_keyword && p.primary_vol > 0) {
+        var k = p.primary_keyword.toLowerCase();
+        if (!_kwTypeMap[k]) _kwTypeMap[k] = [];
+        _kwTypeMap[k].push((p.page_type || 'unknown').toLowerCase());
+      }
+    });
 
     // Process in batches of 40 (larger batches = fewer AI calls)
     var _zvBatchSize = 40;
@@ -1667,22 +1679,22 @@ async function _aiFixIssue(fixId) {
     for (var _zvBatch = 0; _zvBatch < _zvBatches; _zvBatch++) {
       if (window._aiStopAll) break;
       var batchPages = zeroPages.slice(_zvBatch * _zvBatchSize, (_zvBatch + 1) * _zvBatchSize);
-      // Refresh used keywords between batches
-      if (_zvBatch > 0) {
-        usedKws2 = new Set(pages.filter(function(p) { return p.primary_keyword && p.primary_vol > 0; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
-        availKws2 = kwPool.filter(function(k) { return !usedKws2.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
-      }
 
-      if (!availKws2.length) { console.log('[zero-vol] no available keywords left, stopping'); break; }
+      // For each batch page, filter available keywords to exclude same-type conflicts
+      var _batchTypeStr = batchPages.map(function(p) { return '/' + p.slug + ' is type: ' + (p.page_type || '?'); }).join(', ');
 
       var prompt2 = 'These pages have zero search volume on their current keyword. Find a better keyword from the AVAILABLE list for each page.\n\n'
         + 'IMPORTANT RULES:\n'
         + '- ONLY assign keywords from the AVAILABLE list below — do not invent keywords\n'
-        + '- Each keyword can only be assigned to ONE page\n'
+        + '- A keyword CAN be shared across DIFFERENT page types (e.g. service page + blog post = OK, different intent)\n'
+        + '- A keyword should NOT be shared between pages of the SAME type (that is cannibalisation)\n'
         + '- If no good match exists for a page, SKIP it entirely\n'
-        + '- Match by topical relevance, not just string similarity\n\n'
+        + '- Match by topical relevance to the page name and slug\n\n'
         + 'ZERO-VOLUME PAGES (batch ' + (_zvBatch + 1) + '/' + _zvBatches + '):\n' + batchPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + (p.page_type || '?') + ' | current: "' + p.primary_keyword + '" (0 vol)'; }).join('\n')
-        + '\n\nAVAILABLE KEYWORDS WITH VOLUME:\n' + availKws2.slice(0, 120).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+        + '\n\nAVAILABLE KEYWORDS WITH VOLUME:\n' + availKws2.slice(0, 150).map(function(k) {
+          var types = _kwTypeMap[k.kw.toLowerCase()];
+          return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd + (types ? ' (used on: ' + types.join(', ') + ')' : '');
+        }).join('\n')
         + '\n\nReturn JSON array: [{"slug":"...","keyword":"exact keyword from available list"}]\nSkip pages with no good match. Only return the JSON array.';
 
       aiBarStart('AI fixing zero-vol batch ' + (_zvBatch + 1) + '/' + _zvBatches + ' (' + batchPages.length + ' pages)\u2026');
@@ -1722,8 +1734,9 @@ async function _aiFixIssue(fixId) {
     var conflicting = pages.filter(function(p) { return (p.primary_keyword || '').toLowerCase() === cannibalKw; });
     if (conflicting.length < 2) return;
 
-    var usedKws3 = new Set(pages.filter(function(p) { return p.primary_keyword; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
-    var availKws3 = kwPool.filter(function(k) { return !usedKws3.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+    // For cannibal fix, offer all keywords with volume except the cannibalised keyword itself
+    // Keywords used on other page types are fine (different intent)
+    var availKws3 = kwPool.filter(function(k) { return k.kw.toLowerCase() !== cannibalKw && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
 
     var prompt3 = 'These same-type pages all target the keyword "' + cannibalKw + '" — this is real keyword cannibalisation.\n\n'
       + 'STRATEGY:\n'
