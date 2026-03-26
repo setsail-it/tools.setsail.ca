@@ -3156,47 +3156,64 @@ async function fillKeywordGaps() {
 
   console.log('[fillKeywordGaps] Total unique seeds:', _uniqueSeeds.length);
 
-  var batchSize = 20;
-  for (var bStart = 0; bStart < _uniqueSeeds.length && _callsMade < _maxCalls; bStart += batchSize) {
-    if (window._aiStopAll) break;
-    var batch = _uniqueSeeds.slice(bStart, bStart + batchSize);
-    _callsMade++;
-    aiBarStart('Expanding keyword pool: batch ' + _callsMade + ' (' + batch.length + ' seeds)\u2026');
-    console.log('[fillKeywordGaps] Batch', _callsMade, 'seeds:', batch.slice(0, 5).join(', '), '...');
-
-    try {
-      var res = await fetch('/api/kw-expand', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seeds: batch, country: country })
-      });
-      if (!res.ok) {
-        console.warn('[fillKeywordGaps] Batch', _callsMade, 'returned', res.status, '— skipping');
-        continue;
-      }
-      var data = await res.json();
-      if (data.keywords && data.keywords.length) {
-        data.keywords.forEach(function(k) {
-          if (k.volume > 0) {
-            allNewKws.push({
-              kw: k.keyword,
-              vol: k.volume,
-              kd: k.difficulty || 0,
-              cpc: k.cpc || 0,
-              score: k.volume >= 10 && k.difficulty > 0 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(k.difficulty, 5) * 10) / 10 : 0,
-              _source: 'gap-fill'
-            });
-          }
-        });
-        console.log('[fillKeywordGaps] Batch', _callsMade, 'returned', data.keywords.length, 'keywords,', allNewKws.length, 'total with volume');
-      }
-    } catch (e) {
-      console.warn('[fillKeywordGaps] Batch', _callsMade, 'failed:', e.message);
-    }
-    if (bStart + batchSize < _uniqueSeeds.length && _callsMade < _maxCalls) {
-      await new Promise(function(res) { setTimeout(res, 1500); });
-    }
+  // Queue each batch through the AI queue system — handles rate limiting, errors, cancellation
+  var batchSize = 10; // Smaller batches = fewer API errors
+  var _batches = [];
+  for (var bStart = 0; bStart < _uniqueSeeds.length && bStart < _maxCalls * batchSize; bStart += batchSize) {
+    _batches.push(_uniqueSeeds.slice(bStart, bStart + batchSize));
   }
+
+  if (!_batches.length) {
+    console.log('[fillKeywordGaps] No valid seeds to expand');
+    return { expanded: 0, assigned: 0 };
+  }
+
+  console.log('[fillKeywordGaps] Queuing', _batches.length, 'batches of', batchSize, 'seeds each');
+
+  // Use a promise that resolves when all batches complete
+  var _batchesDone = 0;
+  var _batchTotal = _batches.length;
+
+  await new Promise(function(resolve) {
+    _batches.forEach(function(batch, idx) {
+      aiQueueAdd('kw-expand', 'KW Expand ' + (idx + 1) + '/' + _batchTotal + ' (' + batch.slice(0, 2).join(', ') + '\u2026)', async function() {
+        try {
+          var res = await fetch('/api/kw-expand', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ seeds: batch, country: country })
+          });
+          if (!res.ok) {
+            console.warn('[fillKeywordGaps] Batch', idx + 1, 'returned', res.status, '— skipping');
+            return;
+          }
+          var data = await res.json();
+          if (data.keywords && data.keywords.length) {
+            data.keywords.forEach(function(k) {
+              if (k.volume > 0) {
+                allNewKws.push({
+                  kw: k.keyword,
+                  vol: k.volume,
+                  kd: k.difficulty || 0,
+                  cpc: k.cpc || 0,
+                  score: k.volume >= 10 && k.difficulty > 0 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(k.difficulty, 5) * 10) / 10 : 0,
+                  _source: 'gap-fill'
+                });
+              }
+            });
+            console.log('[fillKeywordGaps] Batch', idx + 1, 'returned', data.keywords.length, 'keywords,', allNewKws.length, 'total with volume');
+          }
+        } catch (e) {
+          console.warn('[fillKeywordGaps] Batch', idx + 1, 'failed:', e.message);
+        }
+        _batchesDone++;
+        if (_batchesDone >= _batchTotal) resolve();
+      });
+    });
+
+    // Safety timeout — resolve after 60s even if some batches failed
+    setTimeout(function() { resolve(); }, 60000);
+  });
 
   // Merge into keyword pool (dedup against existing)
   if (!S.kwResearch) S.kwResearch = {};
