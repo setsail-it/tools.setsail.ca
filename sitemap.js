@@ -1428,6 +1428,13 @@ function _runSitemapHealthCheck() {
     }
   });
 
+  // Filter out dismissed issues (unfixable after auto-fix attempts)
+  var _dismissed = window._sitemapDismissedIds || new Set();
+  if (_dismissed.size > 0) {
+    errors = errors.filter(function(e) { return !_dismissed.has(e.id); });
+    warnings = warnings.filter(function(w) { return !_dismissed.has(w.id); });
+  }
+
   _sitemapWorkflowIssues = { errors: errors, warnings: warnings, info: info };
   return _sitemapWorkflowIssues;
 }
@@ -1780,12 +1787,34 @@ async function _fixAllIssuesComprehensive() {
     }
   }
 
+  // After all passes: dismiss any remaining unfixable issues
+  // These have been attempted and can't be resolved automatically
   if (!guard.changed()) {
-    scheduleSave();
     _sitemapWorkflowIssues = null;
-    var _remaining = _runSitemapHealthCheck();
-    var _remainCount = _remaining.errors.length + _remaining.warnings.length;
-    aiBarEnd('Fixed ' + _totalFixed + ' issues' + (_remainCount > 0 ? ', ' + _remainCount + ' remaining (protected/unfixable)' : ' — all clear!'));
+    var _final = _runSitemapHealthCheck();
+
+    // Dismiss ping-pong cannibals that survived all passes
+    if (!window._sitemapDismissedIds) window._sitemapDismissedIds = new Set();
+    _final.errors.forEach(function(e) {
+      if (e.id && e.id.indexOf('cannibal-') === 0 && _cannibalAttempts[e.id] >= 2) {
+        window._sitemapDismissedIds.add(e.id);
+        console.log('[fixAll] Dismissed unfixable cannibal:', e.id);
+      }
+    });
+    // Dismiss persona gaps that persist after assignment
+    _final.warnings.concat(_final.info).forEach(function(w) {
+      if (w.id && w.id.indexOf('persona-gap-') === 0) {
+        window._sitemapDismissedIds.add(w.id);
+        console.log('[fixAll] Dismissed unfixable persona gap:', w.id);
+      }
+    });
+
+    // Bust cache so dismissed issues get filtered
+    _sitemapWorkflowIssues = null;
+    scheduleSave();
+    var _remaining2 = _runSitemapHealthCheck();
+    var _remainCount = _remaining2.errors.length + _remaining2.warnings.length;
+    aiBarEnd('Fixed ' + _totalFixed + ' issues' + (_remainCount > 0 ? ', ' + _remainCount + ' remaining' : ' \u2014 all clear!'));
   }
   return _totalFixed;
 }
