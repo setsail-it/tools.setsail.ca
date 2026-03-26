@@ -3524,17 +3524,22 @@ function removeKeyword(pageIdx, kw) {
 var _kwPipelineActive = false; // runtime-only flag — true only while pipeline is executing
 
 var KW_PIPELINE_STEPS = [
-  { id: 'questions',   label: 'Generate Questions',       icon: 'ti-help-circle' },
-  { id: 'ai_seeds',    label: 'AI Generate Seeds',        icon: 'ti-sparkles' },
-  { id: 'mechanical',  label: 'Build Mechanical Seeds',   icon: 'ti-settings-2' },
-  { id: 'competitors', label: 'Pull Competitor Keywords',  icon: 'ti-building-store' },
-  { id: 'merge',       label: 'Merge All Sources',        icon: 'ti-git-merge' },
-  { id: 'volumes',     label: 'Fetch Volumes',            icon: 'ti-chart-bar' },
-  { id: 'gkp_enrich',  label: 'Enrich with Google Ads',   icon: 'ti-brand-google' },
-  { id: 'select',      label: 'AI-Select Keywords',       icon: 'ti-brain' },
-  { id: 'cluster',     label: 'Cluster into Pages',       icon: 'ti-stack-2' },
-  { id: 'audit',       label: 'Run Audit',                icon: 'ti-clipboard-check' }
+  { id: 'questions',   label: 'Generate Questions',       icon: 'ti-help-circle',   phase: 1 },
+  { id: 'ai_seeds',    label: 'AI Generate Seeds',        icon: 'ti-sparkles',      phase: 1 },
+  { id: 'mechanical',  label: 'Build Mechanical Seeds',   icon: 'ti-settings-2',    phase: 1 },
+  { id: 'competitors', label: 'Pull Competitor Keywords',  icon: 'ti-building-store', phase: 1 },
+  { id: 'merge',       label: 'Merge All Sources',        icon: 'ti-git-merge',     phase: 1 },
+  { id: 'volumes',     label: 'Fetch Volumes',            icon: 'ti-chart-bar',     phase: 1 },
+  { id: 'gkp_enrich',  label: 'Enrich with Google Ads',   icon: 'ti-brand-google',  phase: 1 },
+  { id: 'select',      label: 'AI-Select Keywords',       icon: 'ti-brain',         phase: 2 },
+  { id: 'cluster',     label: 'Cluster into Pages',       icon: 'ti-stack-2',       phase: 3 },
+  { id: 'audit',       label: 'Run Audit',                icon: 'ti-clipboard-check', phase: 3 }
 ];
+
+// Phase groupings for the layered pipeline
+var KW_PHASE1_STEPS = ['questions', 'ai_seeds', 'mechanical', 'competitors', 'merge', 'volumes', 'gkp_enrich'];
+var KW_PHASE2_STEPS = ['select'];
+var KW_PHASE3_STEPS = ['cluster', 'audit'];
 
 // Silent competitor seed fetch — no DOM dependency
 async function _autoCompetitorSeeds() {
@@ -3612,162 +3617,200 @@ async function _autoCompetitorSeeds() {
   }
 }
 
-async function runFullKeywordPipeline(startFrom) {
-  _kwPipelineActive = true;
-  window._aiStopAll = false;
+// ── PHASED KEYWORD PIPELINE ────────────────────────────────────────────
+// Phase 1: Data collection — seeds, expansion, volumes, GKP (Layers 0-1)
+// Phase 2: Selection — AI-Select with full strategy context (Layer 3)
+// Phase 3: Clustering — group into pages with D5 context (Layer 4)
+
+function _ensureKwResearch() {
   if (!S.kwResearch) {
     S.kwResearch = { seeds: [], seedSources: { mechanical: [], ai: [], competitor: [], questions: [] }, activeSources: ['mechanical', 'ai', 'competitor', 'questions'], keywords: [], selected: [], clusters: [], paaQuestions: [], fetchedAt: null, clusteredAt: null };
   }
-  // Track pipeline state
   if (!S.kwResearch._pipeline) S.kwResearch._pipeline = {};
-  var pl = S.kwResearch._pipeline;
+  return S.kwResearch._pipeline;
+}
 
-  var steps = KW_PIPELINE_STEPS;
+async function kwPhase1_DataCollection(startFrom) {
+  var pl = _ensureKwResearch();
+  var phaseSteps = KW_PIPELINE_STEPS.filter(function(s) { return KW_PHASE1_STEPS.indexOf(s.id) >= 0; });
   var startIdx = 0;
   if (startFrom) {
-    for (var si = 0; si < steps.length; si++) {
-      if (steps[si].id === startFrom) { startIdx = si; break; }
+    for (var si = 0; si < phaseSteps.length; si++) {
+      if (phaseSteps[si].id === startFrom) { startIdx = si; break; }
     }
   }
 
-  if (typeof aiBarStart === 'function') aiBarStart('Running keyword pipeline…');
+  if (typeof aiBarStart === 'function') aiBarStart('Keyword Phase 1: collecting data…');
 
-  for (var i = startIdx; i < steps.length; i++) {
+  for (var i = startIdx; i < phaseSteps.length; i++) {
     if (window._aiStopAll) {
+      pl.status = 'paused'; pl.pausedAt = phaseSteps[i].id;
       window._aiStopResumeCtx = {
-        label: 'Keyword pipeline paused at ' + steps[i].label + ' (' + (i + 1) + '/' + steps.length + ')',
-        fn: function(args) { runFullKeywordPipeline(args.startFrom); },
-        args: { startFrom: steps[i].id }
+        label: 'KW Phase 1 paused at ' + phaseSteps[i].label,
+        fn: function(args) { kwPhase1_DataCollection(args.startFrom); },
+        args: { startFrom: phaseSteps[i].id }
       };
-      pl.status = 'paused';
-      pl.pausedAt = steps[i].id;
-      _kwPipelineActive = false;
-      scheduleSave();
-      _renderPipelineStatus();
-      return;
+      scheduleSave(); _renderPipelineStatus(); return;
     }
-
-    var step = steps[i];
-    pl.currentStep = step.id;
-    pl.status = 'running';
-    _renderPipelineStatus();
+    var step = phaseSteps[i];
+    pl.currentStep = step.id; pl.status = 'running'; _renderPipelineStatus();
 
     try {
       if (step.id === 'questions') {
-        // Generate questions if none exist
         var existingQs = _getQuestionsArray();
-        if (existingQs.length < 5) {
-          await _pipelineGenerateQuestions();
-        }
-        // Extract question-derived seeds and ensure 'questions' is an active source
+        if (existingQs.length < 5) await _pipelineGenerateQuestions();
         var qAdded = _autoExtractQuestionSeeds();
         if (!S.kwResearch.activeSources) S.kwResearch.activeSources = ['mechanical', 'ai', 'competitor'];
         if (S.kwResearch.activeSources.indexOf('questions') < 0) S.kwResearch.activeSources.push('questions');
         pl.questions = { done: true, count: _getQuestionsArray().length, seedsAdded: qAdded, at: Date.now() };
-
       } else if (step.id === 'ai_seeds') {
-        // Generate AI seeds silently
         await _pipelineAISeeds();
         pl.ai_seeds = { done: true, count: (S.kwResearch.seedSources.ai || []).length, at: Date.now() };
-
       } else if (step.id === 'mechanical') {
         S.kwResearch.seedSources.mechanical = buildKwSeeds();
         if (S.kwResearch.activeSources.indexOf('mechanical') < 0) S.kwResearch.activeSources.push('mechanical');
         pl.mechanical = { done: true, count: S.kwResearch.seedSources.mechanical.length, at: Date.now() };
-
       } else if (step.id === 'competitors') {
         var compResult = await _autoCompetitorSeeds();
         pl.competitors = { done: true, count: compResult.added, skipped: compResult.skipped || null, at: Date.now() };
-
       } else if (step.id === 'merge') {
         _rebuildSeeds();
-        // Log source counts for debugging
         var _srcCounts = {};
         var _ss = S.kwResearch.seedSources || {};
         Object.keys(_ss).forEach(function(k) { _srcCounts[k] = (_ss[k] || []).length; });
-        console.log('[kwPipeline] Merge — sources:', JSON.stringify(_srcCounts), 'total seeds:', S.kwResearch.seeds.length);
+        console.log('[kwPhase1] Merge — sources:', JSON.stringify(_srcCounts), 'total seeds:', S.kwResearch.seeds.length);
         pl.merge = { done: true, count: S.kwResearch.seeds.length, sources: _srcCounts, at: Date.now() };
-
       } else if (step.id === 'volumes') {
         await _pipelineFetchVolumes();
         pl.volumes = { done: true, count: (S.kwResearch.keywords || []).length, at: Date.now() };
-
       } else if (step.id === 'gkp_enrich') {
-        // Enrich with Google Keyword Planner (skip if not configured)
         var gkpOk = await _checkGkpStatus();
         if (gkpOk && S.kwResearch.keywords && S.kwResearch.keywords.length) {
           await _pipelineGkpEnrich();
           pl.gkp_enrich = { done: true, count: S.kwResearch.keywords.filter(function(k) { return k.low_bid; }).length, at: Date.now() };
         } else {
           pl.gkp_enrich = { done: true, count: 0, skipped: gkpOk ? 'no keywords' : 'Google Ads not configured', at: Date.now() };
-          console.log('[kwPipeline] GKP enrichment skipped —', gkpOk ? 'no keywords' : 'not configured');
-        }
-
-      } else if (step.id === 'select') {
-        // AI-validated keyword selection (replaces old top-50 logic)
-        var kws = S.kwResearch.keywords || [];
-        if (!kws.length) {
-          console.warn('[kwPipeline] Select skipped — no keywords with volumes');
-          pl.select = { done: true, count: 0, at: Date.now() };
-        } else {
-          await _pipelineAISelect();
-          console.log('[kwPipeline] AI-Selected', S.kwResearch.selected.length, 'of', kws.length, 'keywords');
-          pl.select = { done: true, count: S.kwResearch.selected.length, at: Date.now() };
-        }
-
-      } else if (step.id === 'cluster') {
-        if (S.kwResearch.selected.length >= 5) {
-          await _pipelineCluster();
-        }
-        pl.cluster = { done: true, count: (S.kwResearch.clusters || []).length, at: Date.now() };
-
-      } else if (step.id === 'audit') {
-        if (typeof auditKeywordPipeline === 'function') {
-          var audit = auditKeywordPipeline();
-          pl.audit = { done: true, result: audit, at: Date.now() };
-          // Feed into demand validation
-          if (typeof keywordDemandCheck === 'function') {
-            await keywordDemandCheck();
-          }
         }
       }
     } catch (e) {
       pl[step.id] = { done: false, error: e.message, at: Date.now() };
-      console.error('[kwPipeline] Step ' + step.id + ' failed:', e);
-      // Continue to next step — do not halt entire pipeline
+      console.error('[kwPhase1] Step ' + step.id + ' failed:', e);
     }
+    scheduleSave(); _renderPipelineStatus();
+  }
+  pl.phase1Complete = true;
+  pl.phase1At = Date.now();
+  console.log('[kwPhase1] Complete — ' + (S.kwResearch.keywords || []).length + ' keywords with volumes');
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+}
 
-    scheduleSave();
-    _renderPipelineStatus();
+async function kwPhase2_Selection() {
+  var pl = _ensureKwResearch();
+  var kws = S.kwResearch.keywords || [];
+  if (kws.length < 5) {
+    console.warn('[kwPhase2] Skipped — fewer than 5 keywords');
+    pl.select = { done: true, count: 0, skipped: 'fewer than 5 keywords', at: Date.now() };
+    return;
+  }
+  if (window._aiStopAll) return;
+  if (typeof aiBarStart === 'function') aiBarStart('Keyword Phase 2: AI-Select…');
+  pl.currentStep = 'select'; pl.status = 'running'; _renderPipelineStatus();
+
+  try {
+    await _pipelineAISelect();
+    console.log('[kwPhase2] AI-Selected', S.kwResearch.selected.length, 'of', kws.length, 'keywords');
+    pl.select = { done: true, count: S.kwResearch.selected.length, at: Date.now() };
+  } catch (e) {
+    pl.select = { done: false, error: e.message, at: Date.now() };
+    console.error('[kwPhase2] AI-Select failed:', e);
+  }
+  pl.phase2Complete = true;
+  pl.phase2At = Date.now();
+  scheduleSave(); _renderPipelineStatus();
+  if (typeof aiBarEnd === 'function') aiBarEnd();
+}
+
+async function kwPhase3_Clustering() {
+  var pl = _ensureKwResearch();
+  if (!S.kwResearch.selected || S.kwResearch.selected.length < 5) {
+    console.warn('[kwPhase3] Skipped — fewer than 5 selected keywords');
+    pl.cluster = { done: true, count: 0, skipped: 'fewer than 5 selected', at: Date.now() };
+    return;
+  }
+  if (window._aiStopAll) return;
+  if (typeof aiBarStart === 'function') aiBarStart('Keyword Phase 3: Clustering…');
+  pl.currentStep = 'cluster'; pl.status = 'running'; _renderPipelineStatus();
+
+  try {
+    await _pipelineCluster();
+    pl.cluster = { done: true, count: (S.kwResearch.clusters || []).length, at: Date.now() };
+  } catch (e) {
+    pl.cluster = { done: false, error: e.message, at: Date.now() };
+    console.error('[kwPhase3] Cluster failed:', e);
+  }
+
+  // Audit
+  pl.currentStep = 'audit'; _renderPipelineStatus();
+  try {
+    if (typeof auditKeywordPipeline === 'function') {
+      var audit = auditKeywordPipeline();
+      pl.audit = { done: true, result: audit, at: Date.now() };
+      if (typeof keywordDemandCheck === 'function') await keywordDemandCheck();
+    }
+  } catch (e) {
+    pl.audit = { done: false, error: e.message, at: Date.now() };
   }
 
   pl.status = 'complete';
   pl.completedAt = Date.now();
-  _kwPipelineActive = false;
-  scheduleSave();
-  _renderPipelineStatus();
+  pl.phase3Complete = true;
+  pl.phase3At = Date.now();
+  scheduleSave(); _renderPipelineStatus();
 
-  // Refresh the tab content
+  // Refresh UI
   renderKwTabContent();
-
-  // Migrate questions to canonical location
   _migrateQuestions();
 
-  // Flag diagnostics as stale if they were already run before keyword data existed
+  // Flag diagnostics as stale
   if (S.strategy && S.strategy._meta && S.strategy._meta.current_version > 0) {
     S.strategy._kwDataStale = true;
     scheduleSave();
   }
-
   if (typeof aiBarEnd === 'function') aiBarEnd();
   if (typeof aiBarNotify === 'function') {
     var kwCount = (S.kwResearch.keywords || []).length;
     var selCount = (S.kwResearch.selected || []).length;
     var clCount = (S.kwResearch.clusters || []).length;
-    var selMethod = S.kwResearch._selectionMethod === 'ai' ? ' (AI-selected)' : '';
-    var staleMsg = (S.strategy && S.strategy._kwDataStale) ? ' — re-run D4-D6 to use keyword data' : '';
-    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + selCount + ' selected' + selMethod + ', ' + clCount + ' clusters' + staleMsg, { duration: 8000 });
+    aiBarNotify('Keyword pipeline complete — ' + kwCount + ' keywords, ' + selCount + ' selected, ' + clCount + ' clusters', { duration: 5000 });
   }
+}
+
+// ── Original monolithic wrapper (backward compat for "Re-run Pipeline" button) ──
+async function runFullKeywordPipeline(startFrom) {
+  _kwPipelineActive = true;
+  window._aiStopAll = false;
+  _ensureKwResearch();
+
+  // Determine which phase to start from
+  var startPhase = 1;
+  if (startFrom) {
+    if (KW_PHASE2_STEPS.indexOf(startFrom) >= 0) startPhase = 2;
+    else if (KW_PHASE3_STEPS.indexOf(startFrom) >= 0) startPhase = 3;
+  }
+
+  // Run phases sequentially
+  if (startPhase <= 1) {
+    await kwPhase1_DataCollection(startPhase === 1 ? startFrom : undefined);
+    if (window._aiStopAll) { _kwPipelineActive = false; return; }
+  }
+  if (startPhase <= 2) {
+    await kwPhase2_Selection();
+    if (window._aiStopAll) { _kwPipelineActive = false; return; }
+  }
+  if (startPhase <= 3) {
+    await kwPhase3_Clustering();
+  }
+  _kwPipelineActive = false;
 }
 
 // ── Pipeline sub-steps (silent versions of existing functions) ─────────────
