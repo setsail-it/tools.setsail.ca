@@ -1660,14 +1660,35 @@ async function _fixAllIssuesComprehensive() {
     var _stale = _all.filter(function(i) { return i.id && i.id.indexOf('stale-') === 0; });
     var _personaGaps = _all.filter(function(i) { return i.id && i.id.indexOf('persona-gap-') === 0 && i.severity === 'warning'; });
 
-    // Filter out ping-pong cannibals (tried 2+ times already)
-    var _fixableCann = _cann.filter(function(c) {
+    // Handle ping-pong cannibals: force-resolve after 2 attempts
+    var _fixableCann = [];
+    _cann.forEach(function(c) {
       var attempts = _cannibalAttempts[c.id] || 0;
       if (attempts >= 2) {
-        console.log('[fixAll] Skipping ping-pong cannibal:', c.id, '(attempted', attempts, 'times)');
-        return false;
+        // Force-resolve: keep keyword on strongest page, remove from weaker page
+        var cannibalKw = c.id.replace('cannibal-', '');
+        var conflicting = (S.pages || []).filter(function(p) { return (p.primary_keyword || '').toLowerCase() === cannibalKw && !p._removed; });
+        if (conflicting.length >= 2) {
+          // Sort by: best slug match first, then traffic
+          conflicting.sort(function(a, b) {
+            var slugMatchA = (a.slug || '').toLowerCase().indexOf(cannibalKw.replace(/\s+/g, '-')) >= 0 ? 1 : 0;
+            var slugMatchB = (b.slug || '').toLowerCase().indexOf(cannibalKw.replace(/\s+/g, '-')) >= 0 ? 1 : 0;
+            if (slugMatchA !== slugMatchB) return slugMatchB - slugMatchA;
+            return (_pageSafetyScore(b.slug).clicks || 0) - (_pageSafetyScore(a.slug).clicks || 0);
+          });
+          // Keep keyword on first page, clear from rest and mark for reassignment
+          for (var _fi = 1; _fi < conflicting.length; _fi++) {
+            console.log('[fixAll] Force-resolve ping-pong: /' + conflicting[_fi].slug + ' loses "' + cannibalKw + '" (kept on /' + conflicting[0].slug + ')');
+            conflicting[_fi].primary_keyword = '';
+            conflicting[_fi].primary_vol = 0;
+            conflicting[_fi].primary_kd = 0;
+            conflicting[_fi].score = 0;
+            _totalFixed++;
+          }
+        }
+      } else {
+        _fixableCann.push(c);
       }
-      return true;
     });
 
     var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _fixableCann.length + _dupPurpose.length + _misclass.length + _stale.length + (_personaGaps.length > 0 ? 1 : 0);
@@ -2044,8 +2065,9 @@ async function _aiFixIssue(fixId) {
     console.log('[no-kw] Phase 1: Deterministic structural assignment');
     console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Pinned:', pinnedSeeds.join(', '), '| Geo:', geo, '| Scope:', _geoScope || 'inferred', '| Local:', _isLocal);
 
-    // ── Phase 1: Deterministic structural pages ──
-    allNeedKw.forEach(function(p) {
+    // ── Phase 1: Deterministic structural pages (ALWAYS override — these are brand pages) ──
+    pages.forEach(function(p) {
+      if (p._removed) return;
       var t = (p.page_type || '').toLowerCase();
       var s = (p.slug || '').toLowerCase();
       var assigned = null;
