@@ -553,6 +553,6 @@ function exportWireframes() {
   URL.revokeObjectURL(url);
 }
 
-let schemaStopFlag = false;
+// schemaStopFlag is declared in schema.js
 S.schemaCurrentSlug = null;
 S.schemaExpandedSlug = null;
