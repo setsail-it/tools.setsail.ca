@@ -655,12 +655,15 @@ export default {
         const body = await request.json();
         // ── Security: lock down proxy to allowed models + cap tokens ──
         const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-20250514', 'claude-opus-4-6'];
-        const MAX_TOKENS_CAP = 8192;
+        const MAX_TOKENS_SONNET = 8192;
+        const MAX_TOKENS_OPUS = 16384;
         if (body.model && !ALLOWED_MODELS.includes(body.model)) {
           return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
         if (!body.model) body.model = 'claude-sonnet-4-20250514';
-        if (!body.max_tokens || body.max_tokens > MAX_TOKENS_CAP) body.max_tokens = MAX_TOKENS_CAP;
+        var _isOpus = body.model && body.model.includes('opus');
+        var _tokenCap = _isOpus ? MAX_TOKENS_OPUS : MAX_TOKENS_SONNET;
+        if (!body.max_tokens || body.max_tokens > _tokenCap) body.max_tokens = _tokenCap;
         if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
           return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
@@ -2363,12 +2366,15 @@ export default {
         const body = await request.json();
         // ── Security: same lockdown as /api/claude ──
         const ALLOWED_MODELS = ['claude-sonnet-4-20250514', 'claude-haiku-4-5-20251001', 'claude-opus-4-20250514', 'claude-opus-4-6'];
-        const MAX_TOKENS_CAP = 8192;
+        const MAX_TOKENS_SONNET = 8192;
+        const MAX_TOKENS_OPUS = 16384;
         if (body.model && !ALLOWED_MODELS.includes(body.model)) {
           return new Response(JSON.stringify({ error: 'Model not allowed' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }
         if (!body.model) body.model = 'claude-sonnet-4-20250514';
-        if (!body.max_tokens || body.max_tokens > MAX_TOKENS_CAP) body.max_tokens = MAX_TOKENS_CAP;
+        var _isOpus = body.model && body.model.includes('opus');
+        var _tokenCap = _isOpus ? MAX_TOKENS_OPUS : MAX_TOKENS_SONNET;
+        if (!body.max_tokens || body.max_tokens > _tokenCap) body.max_tokens = _tokenCap;
         if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
           return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400, headers: { 'Content-Type': 'application/json', ...cors } });
         }

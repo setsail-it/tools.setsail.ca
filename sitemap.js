@@ -2125,6 +2125,14 @@ async function _aiFixIssue(fixId) {
       } else if (t === 'contact' || s === 'contact' || s === 'contact-us') {
         // Contact: brand + "contact" (+ city only if local)
         if (clientName) assigned = clientName.toLowerCase() + ' contact' + _geoSuffix;
+      // Blog index and resource hub index — navigational, not keyword-targeting
+      } else if ((t === 'blog' && (s === 'blog' || s === 'blog/')) || (s === 'resource-hub' && t !== 'resource')) {
+        if (clientName) assigned = clientName.toLowerCase() + ' blog';
+        else assigned = 'blog';
+      // Search page — utility, not a service
+      } else if (s === 'search' || s === 'search/') {
+        // Skip — search pages don't need keywords
+        return;
       }
 
       if (assigned) {
@@ -3626,6 +3634,12 @@ async function enrichAllSitemap() {
         else if (slug.indexOf('resource-hub/') === 0 && pt !== 'resource' && pt !== 'resource-hub') {
           console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "resource" (slug pattern)');
           p.page_type = 'resource';
+          _reclassCount++;
+        }
+        // /search is utility, not service
+        else if (slug === 'search' && pt !== 'utility') {
+          console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "utility" (search page)');
+          p.page_type = 'utility';
           _reclassCount++;
         }
       });
@@ -6782,6 +6796,67 @@ function _buildSeoStrategyCtx() {
     if (nar.emotional_veins && nar.emotional_veins.length) {
       ctx += '- Emotional veins: ' + nar.emotional_veins.map(function(ev) { return ev.vein + ': ' + (ev.messaging || '').slice(0, 50); }).join('; ') + '\n';
     }
+
+    // Objection Map
+    if (nar.objection_map && nar.objection_map.length) {
+      ctx += '\nOBJECTION MAP:\n';
+      nar.objection_map.slice(0, 8).forEach(function(o) {
+        ctx += '- ' + (o.objection || '') + ': ' + (o.rebuttal || '').slice(0, 100) + ' (proof: ' + (o.proof_available ? 'yes' : 'no') + ')\n';
+      });
+    }
+
+    // Content Hooks per Awareness Stage (object format)
+    if (nar.content_hooks && typeof nar.content_hooks === 'object' && !Array.isArray(nar.content_hooks)) {
+      ctx += '\nCONTENT HOOKS BY AWARENESS STAGE:\n';
+      ['unaware', 'problem_aware', 'solution_aware', 'product_aware', 'most_aware'].forEach(function(stage) {
+        if (nar.content_hooks[stage]) {
+          var hooks = Array.isArray(nar.content_hooks[stage]) ? nar.content_hooks[stage].slice(0, 5) : [nar.content_hooks[stage]];
+          ctx += stage.replace(/_/g, '-') + ': ' + hooks.join('; ') + '\n';
+        }
+      });
+    }
+
+    // VoC Swipe File
+    if (nar.voc_swipe_file && nar.voc_swipe_file.length) {
+      ctx += '\nVOC SWIPE FILE (real buyer language):\n';
+      nar.voc_swipe_file.slice(0, 8).forEach(function(v) {
+        ctx += '- "' + (v.quote || v) + '"' + (v.context || v.source ? ' — ' + (v.context || v.source || '') : '') + '\n';
+      });
+    }
+
+    // Emotional Journey
+    if (nar.emotional_journey && nar.emotional_journey.length) {
+      ctx += '\nEMOTIONAL JOURNEY:\n';
+      nar.emotional_journey.forEach(function(stage, idx) {
+        ctx += 'Stage ' + (idx + 1) + ': ' + (typeof stage === 'string' ? stage : (stage.stage || '') + ' — ' + (stage.description || '')) + '\n';
+      });
+    }
+
+    // Touchpoint Messaging
+    if (nar.touchpoint_messaging && nar.touchpoint_messaging.length) {
+      ctx += '\nTOUCHPOINT MESSAGING:\n';
+      nar.touchpoint_messaging.slice(0, 6).forEach(function(tp) {
+        ctx += '- ' + (tp.touchpoint || '') + ': rational="' + (tp.rational || '').slice(0, 60) + '" emotional="' + (tp.emotional || '').slice(0, 60) + '"\n';
+      });
+    }
+  }
+
+  // JTBD Force Map (push-pull dynamics)
+  var _buyerPsych = (st.audience && st.audience.buyer_psychology) || (r.buyer_psychology) || null;
+  if (_buyerPsych) {
+    ctx += '\nPUSH-PULL FORCES (JTBD):\n';
+    if (_buyerPsych.push && _buyerPsych.push.length) {
+      ctx += 'Push (away from status quo): ' + _buyerPsych.push.slice(0, 5).map(function(f) { return typeof f === 'string' ? f : (f.force || f.description || ''); }).join('; ') + '\n';
+    }
+    if (_buyerPsych.pull && _buyerPsych.pull.length) {
+      ctx += 'Pull (toward solution): ' + _buyerPsych.pull.slice(0, 5).map(function(f) { return typeof f === 'string' ? f : (f.force || f.description || ''); }).join('; ') + '\n';
+    }
+    if (_buyerPsych.anxieties && _buyerPsych.anxieties.length) {
+      ctx += 'Anxieties: ' + _buyerPsych.anxieties.slice(0, 5).map(function(f) { return typeof f === 'string' ? f : (f.anxiety || f.description || ''); }).join('; ') + '\n';
+    }
+    if (_buyerPsych.habits && _buyerPsych.habits.length) {
+      ctx += 'Habits: ' + _buyerPsych.habits.slice(0, 5).map(function(f) { return typeof f === 'string' ? f : (f.habit || f.description || ''); }).join('; ') + '\n';
+    }
   }
 
   // Demand validation
@@ -6973,6 +7048,7 @@ var _SEO_STRATEGY_SYSTEM_PROMPT = 'You are a senior SEO strategist writing a com
   + '## 8. NARRATIVE, MESSAGING & ON-PAGE STANDARDS\n'
   + 'How the positioning direction shapes SEO content — not just keywords, but what we are saying and why. StoryBrand framework mapped to page structure: hero (homepage), problem (blog/service), guide (about/case studies), plan (service pages), CTA (landing pages), success (testimonials/results).\n\n'
   + 'Meta title formula per page type (e.g., "Service pages: [Primary Keyword] in [Geo] | [Positioning Hook] — [Client Name]"). Meta description formula per page type. H1/H2 hierarchy standards. Voice and tone per awareness stage — how copy shifts from problem-aware (empathetic, educational) to most-aware (direct, proof-heavy). Which messaging pillars map to which page types. Emotional veins that should run through headlines and meta descriptions. Words/phrases to use and avoid.\n\n'
+  + 'CONTENT STRATEGY CONTEXT: Show the client HOW messaging decisions are made. Include the push-pull dynamics (what pushes buyers away from status quo, what pulls them toward the solution), the objection map (what objections each page type needs to address, and what proof assets counter them), and content hooks per awareness stage. This demonstrates strategic thinking, not just keyword placement. If VoC (Voice of Customer) quotes are available, show how real buyer language shapes headline and CTA copy.\n\n'
   + '## 9. COMPETITOR SEO LANDSCAPE\n'
   + 'Markdown table: competitor | DR | strengths | weaknesses | our edge. For each competitor: what they rank for that we do not (content gaps), where they are vulnerable (thin content, low DR subsections, missing schema). Keyword overlap analysis. Content areas competitors have neglected. Differentiation path: how the positioning direction creates separation that competitors cannot easily copy. DR gap context.\n\n'
   + '## 10. PROJECTIONS & IMPLEMENTATION ROADMAP\n'
@@ -7028,7 +7104,7 @@ async function compileSeoStrategy() {
         _streamEl.innerHTML = sanitiseHTML(rendered);
         _streamEl.scrollTop = _streamEl.scrollHeight;
       }
-    }, 8192, 'SEO Strategy', 'claude-opus-4-6');
+    }, 16384, 'SEO Strategy', 'claude-opus-4-6');
     if (guard.changed()) { aiBarEnd('Project changed — discarded'); return; }
 
     S.seoStrategy = result + _buildSeoStrategyDataTables();
