@@ -1409,20 +1409,58 @@ function _mountIssuesPanel() {
       fixAllBtn.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span> Fixing all\u2026';
       var guard = projectGuard();
       var _fixSteps = [];
-      // Fix no-kw first, then zero-vol, then cannibalisation
-      var issues = _runSitemapHealthCheck();
-      var hasNoKw = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'no-kw'; });
-      var hasZeroVol = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'zero-vol'; });
-      var cannibals = issues.errors.concat(issues.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
-      if (hasNoKw && !guard.changed()) { console.log('[Fix All] fixing no-kw...'); await _aiFixIssue('no-kw'); _fixSteps.push('keywords'); }
-      if (hasZeroVol && !guard.changed()) { console.log('[Fix All] fixing zero-vol...'); await _aiFixIssue('zero-vol'); _fixSteps.push('zero-vol'); }
-      for (var ci = 0; ci < cannibals.length && !guard.changed(); ci++) { console.log('[Fix All] fixing cannibal:', cannibals[ci].id); await _aiFixIssue(cannibals[ci].id); _fixSteps.push(cannibals[ci].id.replace('cannibal-', '')); }
+      var _maxPasses = 3; // Loop until stable — cannibal fixes can create new cannibals
+
+      for (var _pass = 0; _pass < _maxPasses; _pass++) {
+        if (guard.changed() || window._aiStopAll) break;
+
+        var issues = _runSitemapHealthCheck();
+        var hasNoKw = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'no-kw'; });
+        var hasZeroVol = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'zero-vol'; });
+        var cannibals = issues.errors.concat(issues.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
+        var _fixableThisPass = (hasNoKw ? 1 : 0) + (hasZeroVol ? 1 : 0) + cannibals.length;
+
+        if (_fixableThisPass === 0) break; // All clear
+        console.log('[Fix All] Pass ' + (_pass + 1) + '/' + _maxPasses + ': ' + _fixableThisPass + ' fixable issues');
+        aiBarStart('Fix All pass ' + (_pass + 1) + ' — ' + _fixableThisPass + ' issues\u2026');
+
+        // Pass 1: no-kw first (so cannibal fix has keywords to work with)
+        if (hasNoKw && !guard.changed() && !window._aiStopAll) {
+          console.log('[Fix All] fixing no-kw...');
+          await _aiFixIssue('no-kw');
+          _fixSteps.push('keywords');
+        }
+
+        // Pass 2: all cannibals (before zero-vol, so reassigned keywords get checked)
+        for (var ci = 0; ci < cannibals.length && !guard.changed() && !window._aiStopAll; ci++) {
+          console.log('[Fix All] fixing cannibal:', cannibals[ci].id);
+          await _aiFixIssue(cannibals[ci].id);
+          _fixSteps.push(cannibals[ci].id.replace('cannibal-', ''));
+        }
+
+        // Pass 3: zero-vol last (after cannibals, so newly zero-vol pages get caught)
+        if (hasZeroVol && !guard.changed() && !window._aiStopAll) {
+          console.log('[Fix All] fixing zero-vol...');
+          await _aiFixIssue('zero-vol');
+          _fixSteps.push('zero-vol');
+        }
+
+        // Check if new issues emerged from fixes
+        var _postCheck = _runSitemapHealthCheck();
+        var _newFixable = _postCheck.errors.concat(_postCheck.warnings).filter(function(i) {
+          return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
+        }).length;
+
+        if (_newFixable === 0) { console.log('[Fix All] All clear after pass ' + (_pass + 1)); break; }
+        if (_pass < _maxPasses - 1) console.log('[Fix All] ' + _newFixable + ' issues remain, running pass ' + (_pass + 2));
+      }
+
       if (!guard.changed()) {
         renderSitemapResults(S.sitemapApproved);
         scheduleSave();
         var _remaining = _runSitemapHealthCheck();
         var _remainCount = _remaining.errors.length + _remaining.warnings.length;
-        aiBarNotify('Fix All complete \u2014 ' + _fixSteps.length + ' fixes run' + (_remainCount > 0 ? ', ' + _remainCount + ' issues remaining' : ', all clear!'), { duration: 5000 });
+        aiBarNotify('Fix All complete \u2014 ' + _fixSteps.length + ' fixes across ' + (_pass + 1) + ' pass' + (_pass > 0 ? 'es' : '') + (_remainCount > 0 ? ', ' + _remainCount + ' issues remaining' : ', all clear!'), { duration: 5000 });
       }
     };
   }
