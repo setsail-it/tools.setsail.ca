@@ -1554,6 +1554,18 @@ function _renderIssuesPanel() {
       if (issue.id && issue.id.indexOf('cannibal-') === 0) {
         html += '<button class="btn btn-ghost sm wf-issue-aifix" data-fix-id="' + esc(issue.id) + '" style="font-size:10px;padding:2px 8px;color:var(--green);border-color:rgba(21,142,29,0.3)"><i class="ti ti-sparkles" style="font-size:9px"></i> AI Fix</button>';
       }
+      // Duplicate purpose — cut/merge buttons for redundant pages
+      if (issue.id && issue.id.indexOf('dup-purpose-') === 0) {
+        html += '<button class="btn btn-ghost sm wf-issue-action" data-action="cut-duplicates" data-issue-id="' + esc(issue.id) + '" style="font-size:10px;padding:2px 8px;color:var(--error);border-color:rgba(220,50,47,0.3)"><i class="ti ti-trash" style="font-size:9px"></i> Cut Extras</button>';
+      }
+      // Stale blog — redirect or cut
+      if (issue.id && issue.id.indexOf('stale-') === 0) {
+        html += '<button class="btn btn-ghost sm wf-issue-action" data-action="cut-page" data-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px;color:var(--warn);border-color:rgba(245,166,35,0.3)"><i class="ti ti-arrow-right" style="font-size:9px"></i> Cut + Redirect</button>';
+      }
+      // Sub-page consolidation
+      if (issue.id && issue.id.indexOf('consolidate-') === 0) {
+        html += '<button class="btn btn-ghost sm wf-issue-action" data-action="consolidate" data-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px;color:var(--warn);border-color:rgba(245,166,35,0.3)"><i class="ti ti-arrows-merge" style="font-size:9px"></i> Consolidate</button>';
+      }
       html += '</div>';
     });
     html += '</div></div>';
@@ -1654,6 +1666,103 @@ function _mountIssuesPanel() {
         renderSitemapResults(S.sitemapApproved);
         scheduleSave();
       });
+    };
+  });
+
+  // Action buttons (cut, merge, consolidate)
+  var actionBtns = panel.querySelectorAll('.wf-issue-action');
+  actionBtns.forEach(function(btn) {
+    btn.onclick = function() {
+      var action = btn.getAttribute('data-action');
+      var slug = btn.getAttribute('data-slug');
+      var issueId = btn.getAttribute('data-issue-id');
+
+      if (action === 'cut-page' && slug) {
+        // Cut a single page (stale blog) — move to Removed tab
+        var page = (S.pages || []).find(function(p) { return p.slug === slug; });
+        if (page) {
+          var safety = _pageSafetyScore(slug);
+          if (safety.isProtected) {
+            aiBarNotify('Page has traffic (' + safety.clicks + ' clicks, ' + safety.conversions + ' conv) \u2014 marking as CUT but keeping in sitemap for redirect planning', { duration: 5000 });
+          }
+          page._removed = true;
+          page._removeReason = 'Outdated content — redirected';
+          page._removedAt = Date.now();
+          // Track redirect
+          if (!S._redirectPlan) S._redirectPlan = [];
+          var parentSlug = slug.split('/').slice(0, -1).join('/') || '/';
+          S._redirectPlan.push({ from: '/' + slug, to: '/' + parentSlug, reason: 'Stale content cut', addedAt: Date.now() });
+          scheduleSave();
+          renderSitemapResults(S.sitemapApproved);
+          aiBarNotify('Cut /' + slug + ' \u2192 redirect to /' + parentSlug, { duration: 4000 });
+        }
+      }
+
+      if (action === 'cut-duplicates' && issueId) {
+        // Cut duplicate purpose pages — keep the first (most traffic), remove the rest
+        var purpose = issueId.replace('dup-purpose-', '');
+        var pages = S.pages || [];
+        // Re-detect the duplicate group
+        var _purposeMatch = [];
+        pages.forEach(function(p) {
+          var t = (p.page_type || '').toLowerCase();
+          var s = (p.slug || '').toLowerCase();
+          var name = (p.page_name || '').toLowerCase();
+          var purp = null;
+          if (t === 'home' || s === '' || s === '/' || s === 'home') purp = 'homepage';
+          else if (t === 'contact' || /^contact/.test(s)) purp = 'contact';
+          else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purp = 'about';
+          else if (/^about\/team|^team|^our-team|^meet-the-team/.test(s) || name.indexOf('team') >= 0) purp = 'team';
+          else if (t === 'privacy' || /privacy/.test(s)) purp = 'privacy';
+          else if (t === 'terms' || /terms/.test(s)) purp = 'terms';
+          if (purp === purpose) _purposeMatch.push(p);
+        });
+
+        if (_purposeMatch.length <= 1) { aiBarNotify('No duplicates found for "' + purpose + '"', { duration: 2000 }); return; }
+
+        // Sort: protected first, then by traffic
+        _purposeMatch.sort(function(a, b) {
+          var sa = _pageSafetyScore(a.slug);
+          var sb = _pageSafetyScore(b.slug);
+          if (sa.isProtected !== sb.isProtected) return sa.isProtected ? -1 : 1;
+          return (sb.clicks || 0) - (sa.clicks || 0);
+        });
+
+        var keepPage = _purposeMatch[0];
+        var cutCount = 0;
+        if (!S._redirectPlan) S._redirectPlan = [];
+        for (var di = 1; di < _purposeMatch.length; di++) {
+          var dupPage = _purposeMatch[di];
+          dupPage._removed = true;
+          dupPage._removeReason = 'Duplicate "' + purpose + '" purpose \u2014 merged into /' + keepPage.slug;
+          dupPage._removedAt = Date.now();
+          S._redirectPlan.push({ from: '/' + dupPage.slug, to: '/' + keepPage.slug, reason: 'Duplicate purpose merge', addedAt: Date.now() });
+          cutCount++;
+        }
+        scheduleSave();
+        renderSitemapResults(S.sitemapApproved);
+        aiBarNotify('Kept /' + keepPage.slug + ', cut ' + cutCount + ' duplicate "' + purpose + '" page' + (cutCount !== 1 ? 's' : '') + ' with redirects', { duration: 5000 });
+      }
+
+      if (action === 'consolidate' && slug) {
+        // Consolidate sub-pages — mark no-traffic children as removed
+        var parentSlug2 = slug;
+        var cutCount2 = 0;
+        if (!S._redirectPlan) S._redirectPlan = [];
+        (S.pages || []).forEach(function(p) {
+          if ((p.slug || '').indexOf(parentSlug2 + '/') !== 0) return;
+          var safety = _pageSafetyScore(p.slug);
+          if (safety.isProtected) return; // Keep protected pages
+          p._removed = true;
+          p._removeReason = 'Consolidated into /' + parentSlug2;
+          p._removedAt = Date.now();
+          S._redirectPlan.push({ from: '/' + p.slug, to: '/' + parentSlug2, reason: 'Sub-page consolidation', addedAt: Date.now() });
+          cutCount2++;
+        });
+        scheduleSave();
+        renderSitemapResults(S.sitemapApproved);
+        aiBarNotify('Consolidated ' + cutCount2 + ' sub-pages into /' + parentSlug2 + ' with redirects', { duration: 5000 });
+      }
     };
   });
 }
