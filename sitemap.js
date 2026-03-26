@@ -7003,6 +7003,7 @@ async function compileSeoStrategy() {
   var guard = projectGuard();
 
   // Switch to SEO Strategy tab so user sees streaming output
+  window._seoStrategyCompiling = true;
   switchSitemapTopTab('seo-strategy');
 
   // Set up streaming render container
@@ -7034,9 +7035,11 @@ async function compileSeoStrategy() {
     S._seoStrategyCompiledAt = new Date().toISOString();
     await saveProject();
 
+    window._seoStrategyCompiling = false;
     _renderSeoStrategyContent();
     aiBarEnd('SEO Strategy Document compiled');
   } catch (e) {
+    window._seoStrategyCompiling = false;
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('SEO Strategy compile failed: ' + e.message, { isError: true, duration: 5000 });
   }
@@ -7066,6 +7069,8 @@ function downloadSeoStrategy() {
 function _renderSeoStrategyContent() {
   var el = document.getElementById('seo-strategy-panel');
   if (!el) return;
+  // Don't overwrite streaming container during compilation
+  if (window._seoStrategyCompiling) return;
 
   if (!S.pages || !S.pages.length) {
     el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--n2)">'
