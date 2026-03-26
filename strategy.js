@@ -4846,7 +4846,7 @@ async function runDiagnostic(num) {
     prompt = _appendStrategistNotes(prompt, num);
 
     // D8 (Narrative) uses Opus for higher-quality strategic writing
-    var diagModel = (num === 8) ? 'claude-opus-4-20250514' : undefined;
+    var diagModel = (num === 8) ? 'claude-opus-4-6' : undefined;
     var result = await callClaude(DIAGNOSTIC_SYSTEM, prompt, null, 8000, label, diagModel);
     var parsed = parseEnrichResult(result);
     if (!parsed) {
