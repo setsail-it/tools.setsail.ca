@@ -1131,8 +1131,17 @@ function _runSitemapHealthCheck() {
     }
   });
 
-  // 3. Zero-volume non-structural pages
-  var zeroVol = pages.filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; });
+  // 3. Zero-volume non-structural pages (exclude page types that legitimately have low/no volume)
+  var _zeroVolExcludedTypes = ['case-study', 'case_study', 'casestudy', 'resource', 'resource-hub', 'team', 'utility', 'thank-you', 'thankyou', 'privacy', 'terms', 'careers', 'testimonial', 'testimonials', 'gallery', 'portfolio'];
+  var zeroVol = pages.filter(function(p) {
+    if (p.is_structural) return false;
+    var t = (p.page_type || '').toLowerCase();
+    if (_zeroVolExcludedTypes.indexOf(t) >= 0) return false;
+    // Also exclude pages whose slug clearly indicates non-SEO content
+    var s = (p.slug || '').toLowerCase();
+    if (/^case-stud|^resource-hub\/|^team\/|^portfolio\//.test(s)) return false;
+    return (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword;
+  });
   if (zeroVol.length > 0) {
     warnings.push({ id: 'zero-vol', category: 'keywords', severity: 'warning', slug: zeroVol[0].slug, description: zeroVol.length + ' page' + (zeroVol.length !== 1 ? 's have' : ' has') + ' zero search volume', suggestion: 'Consider higher-volume keywords or remove low-value pages', fixType: 'scroll' });
   }
@@ -1634,46 +1643,77 @@ async function _aiFixIssue(fixId) {
   }
 
   else if (fixId === 'zero-vol') {
-    // Find better keywords for zero-volume pages
-    var zeroPages = pages.filter(function(p) { return !p.is_structural && (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword; }).slice(0, 30);
+    // Find better keywords for zero-volume pages (respects same exclusions as health check)
+    var _zvExcluded = ['case-study', 'case_study', 'casestudy', 'resource', 'resource-hub', 'team', 'utility', 'thank-you', 'thankyou', 'privacy', 'terms', 'careers', 'testimonial', 'testimonials', 'gallery', 'portfolio'];
+    var zeroPages = pages.filter(function(p) {
+      if (p.is_structural) return false;
+      var t = (p.page_type || '').toLowerCase();
+      if (_zvExcluded.indexOf(t) >= 0) return false;
+      var s = (p.slug || '').toLowerCase();
+      if (/^case-stud|^resource-hub\/|^team\/|^portfolio\//.test(s)) return false;
+      return (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword;
+    });
     if (!zeroPages.length) { aiBarNotify('No zero-volume pages to fix', { duration: 2000 }); return; }
 
     var usedKws2 = new Set(pages.filter(function(p) { return p.primary_keyword && p.primary_vol > 0; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
     var availKws2 = kwPool.filter(function(k) { return !usedKws2.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
 
-    var prompt2 = 'These pages have zero search volume on their current keyword. Find a better keyword from the available list for each page.\n\n'
-      + 'ZERO-VOLUME PAGES:\n' + zeroPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | current: "' + p.primary_keyword + '" (0 vol)'; }).join('\n')
-      + '\n\nAVAILABLE KEYWORDS WITH VOLUME:\n' + availKws2.slice(0, 80).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
-      + '\n\nReturn JSON array: [{"slug":"...","keyword":"..."}]\nIf no good match exists for a page, skip it. Only return the JSON array.';
+    // Process in batches of 40 (larger batches = fewer AI calls)
+    var _zvBatchSize = 40;
+    var _zvTotalFixed = 0;
+    var _zvBatches = Math.ceil(zeroPages.length / _zvBatchSize);
+    aiBarStart('AI finding better keywords for ' + zeroPages.length + ' pages (' + _zvBatches + ' batches)\u2026');
 
-    aiBarStart('AI finding better keywords for ' + zeroPages.length + ' pages\u2026');
-    try {
-      var result2 = '';
-      await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt2, function(chunk) { result2 = chunk; }, 4096, 'vol-fix');
-      var parsed2 = _parseAiJson(result2);
-      var fixed = 0;
-      if (Array.isArray(parsed2)) {
-        parsed2.forEach(function(item) {
-          var _s2 = (item.slug || '').replace(/^\/+/, '');
-          var page = pages.find(function(p) { return p.slug === _s2 || p.slug === item.slug || ('/' + p.slug) === item.slug; });
-          if (page && item.keyword) {
-            page.primary_keyword = item.keyword;
-            var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
-            if (kwData) {
-              page.primary_vol = kwData.vol || 0;
-              page.primary_kd = kwData.kd || 0;
-              page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
-            }
-            fixed++;
-          }
-        });
+    for (var _zvBatch = 0; _zvBatch < _zvBatches; _zvBatch++) {
+      if (window._aiStopAll) break;
+      var batchPages = zeroPages.slice(_zvBatch * _zvBatchSize, (_zvBatch + 1) * _zvBatchSize);
+      // Refresh used keywords between batches
+      if (_zvBatch > 0) {
+        usedKws2 = new Set(pages.filter(function(p) { return p.primary_keyword && p.primary_vol > 0; }).map(function(p) { return p.primary_keyword.toLowerCase(); }));
+        availKws2 = kwPool.filter(function(k) { return !usedKws2.has(k.kw.toLowerCase()) && k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
       }
-      aiBarEnd();
-      aiBarNotify('Fixed keywords on ' + fixed + ' pages', { duration: 4000 });
-    } catch (e) {
-      aiBarEnd();
-      aiBarNotify('AI volume fix failed: ' + e.message, { isError: true, duration: 4000 });
+
+      if (!availKws2.length) { console.log('[zero-vol] no available keywords left, stopping'); break; }
+
+      var prompt2 = 'These pages have zero search volume on their current keyword. Find a better keyword from the AVAILABLE list for each page.\n\n'
+        + 'IMPORTANT RULES:\n'
+        + '- ONLY assign keywords from the AVAILABLE list below — do not invent keywords\n'
+        + '- Each keyword can only be assigned to ONE page\n'
+        + '- If no good match exists for a page, SKIP it entirely\n'
+        + '- Match by topical relevance, not just string similarity\n\n'
+        + 'ZERO-VOLUME PAGES (batch ' + (_zvBatch + 1) + '/' + _zvBatches + '):\n' + batchPages.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + (p.page_type || '?') + ' | current: "' + p.primary_keyword + '" (0 vol)'; }).join('\n')
+        + '\n\nAVAILABLE KEYWORDS WITH VOLUME:\n' + availKws2.slice(0, 120).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+        + '\n\nReturn JSON array: [{"slug":"...","keyword":"exact keyword from available list"}]\nSkip pages with no good match. Only return the JSON array.';
+
+      aiBarStart('AI fixing zero-vol batch ' + (_zvBatch + 1) + '/' + _zvBatches + ' (' + batchPages.length + ' pages)\u2026');
+      try {
+        var result2 = '';
+        await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON. Only use keywords from the provided AVAILABLE list.', prompt2, function(chunk) { result2 = chunk; }, 4096, 'vol-fix');
+        var parsed2 = _parseAiJson(result2);
+        if (Array.isArray(parsed2)) {
+          parsed2.forEach(function(item) {
+            var _s2 = (item.slug || '').replace(/^\/+/, '');
+            var page = pages.find(function(p) { return p.slug === _s2 || p.slug === item.slug || ('/' + p.slug) === item.slug; });
+            if (page && item.keyword) {
+              // Only assign if keyword is actually in the pool with volume > 0
+              var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+              if (kwData && kwData.vol > 0) {
+                page.primary_keyword = item.keyword;
+                page.primary_vol = kwData.vol;
+                page.primary_kd = kwData.kd || 0;
+                page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+                _zvTotalFixed++;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[zero-vol] batch ' + (_zvBatch + 1) + ' failed:', e.message);
+      }
+      if (_zvBatch < _zvBatches - 1) await new Promise(function(res) { setTimeout(res, 1000); });
     }
+    aiBarEnd();
+    aiBarNotify('Fixed keywords on ' + _zvTotalFixed + '/' + zeroPages.length + ' pages' + (_zvTotalFixed < zeroPages.length ? ' — ' + (zeroPages.length - _zvTotalFixed) + ' unfixable (no matching keyword with volume)' : ''), { duration: 5000 });
   }
 
   else if (fixId.indexOf('cannibal-') === 0) {
@@ -1718,10 +1758,12 @@ async function _aiFixIssue(fixId) {
               page.primary_kd = kwData.kd || 0;
               page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
             } else {
-              // AI-generated keyword not in pool — mark as needing volume lookup
-              page.primary_vol = 0;
-              page.primary_kd = 0;
+              // AI-generated keyword not in pool — keep existing volume data if same keyword family
+              // Mark with _needsVolLookup flag so volume fetch can pick it up later
+              page.primary_vol = page.primary_vol || 0;
+              page.primary_kd = page.primary_kd || 0;
               page.score = 0;
+              page._needsVolLookup = true;
             }
             resolved++;
           } else if (page && item.keyword && item.keyword.toLowerCase() === cannibalKw) {
