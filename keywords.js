@@ -380,6 +380,41 @@ function buildKwSeeds() {
     templates.bare.forEach(function(t) { seeds.add(t.replace(/\{s\}/g, s)); });
   });
 
+  // 2b. Pinned keywords as first-class seeds — expand mechanically like services
+  var _pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+  _pinned.forEach(function(pin) {
+    var p = pin.toLowerCase().trim();
+    if (p.length < 3) return;
+    seeds.add(p); // exact match
+    // Geo-qualified variants
+    if (geoL && p.indexOf(geoL) < 0) {
+      seeds.add(p + ' ' + geoL);
+      seeds.add(geoL + ' ' + p);
+    }
+    // Commercial modifiers
+    ['best', 'top', 'hire', 'affordable', 'professional', 'expert'].forEach(function(mod) {
+      if (p.indexOf(mod) < 0) seeds.add(mod + ' ' + p);
+    });
+    // Question forms
+    ['how much does', 'what is', 'how to choose', 'how to find'].forEach(function(q) {
+      seeds.add(q + ' ' + p);
+    });
+    // Comparison forms
+    seeds.add(p + ' vs');
+    seeds.add(p + ' alternative');
+    seeds.add(p + ' comparison');
+    // Near me
+    seeds.add(p + ' near me');
+    // Cost/pricing
+    seeds.add(p + ' cost');
+    seeds.add(p + ' pricing');
+    // Secondary geos
+    secondaryGeos.forEach(function(sg) {
+      var sgL = sg.replace(/,.*$/, '').trim().toLowerCase();
+      if (sgL && p.indexOf(sgL) < 0) seeds.add(p + ' ' + sgL);
+    });
+  });
+
   // 3. Business type seeds
   var businessType = setup.businessType || r.business_type || '';
   if (businessType) {
@@ -994,8 +1029,18 @@ async function generateAISeeds() {
 
   var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate 50-75 of the most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- If strategist notes are provided, pay close attention to which services or topics to include or exclude\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
 
+  // Pinned keywords: these are the client's must-win terms — they anchor the entire keyword strategy
+  var _pinned = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+  if (_pinned.length) {
+    ctx += '\nPINNED KEYWORDS (client must-win terms — these are the ANCHOR of the keyword strategy):\n';
+    ctx += _pinned.map(function(k, i) { return (i+1) + '. ' + k; }).join('\n') + '\n';
+    ctx += '\nIMPORTANT: Generate seeds that ORBIT these pinned keywords. Every seed should be semantically related to at least one pinned term. Do NOT drift into unrelated service categories. The pinned keywords define the territory — your seeds should fill the gaps around them.\n';
+  }
+
   var _seedNotes = _getStrategistNotesCtx();
-  var userPrompt = 'Generate 50-75 SHORT HEAD TERMS (2-4 words max) for this client. These will be expanded by Google Autocomplete — so output BROAD category terms, not specific long-tail phrases. Output ONLY a JSON array.\n\n' + ctx + _seedNotes;
+  var userPrompt = 'Generate 50-75 SHORT HEAD TERMS (2-4 words max) for this client. These will be expanded by Google Autocomplete — so output BROAD category terms, not specific long-tail phrases. Output ONLY a JSON array.'
+    + (_pinned.length ? '\n\nCRITICAL: The pinned keywords listed below are the CLIENT\'S PRIORITY TERMS. Build your seeds around these themes. Every seed should connect to the pinned keyword territory. Do not generate seeds for unrelated services.' : '')
+    + '\n\n' + ctx + _seedNotes;
 
   try {
     var result = await callClaude(systemPrompt, userPrompt, null, 8000);
@@ -3795,12 +3840,16 @@ async function _pipelineAISelect() {
     + '{"selected":[{"kw":"keyword","tier":"must-have|high-value|supporting","reason":"short reason"}],"rejected_examples":[{"kw":"keyword","reason":"competitor brand"}]}\n'
     + 'Include 3-5 rejected_examples to show why certain high-scoring keywords were excluded.';
 
+  // Pinned keywords: force-include in selection
+  var _pinnedForSelect = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+
   var _selectNotes = _getStrategistNotesCtx();
   var userPrompt = 'CLIENT: ' + (setup.client || r.client_name || 'business') + '\n'
     + 'INDUSTRY: ' + (r.industry || '') + '\n'
     + 'GEO: ' + (geo || 'N/A') + '\n'
     + 'SERVICES: ' + (sdList || services || 'professional services') + '\n'
     + (positioning ? 'POSITIONING: ' + positioning + '\n' : '')
+    + (_pinnedForSelect.length ? 'PINNED KEYWORDS (MUST-SELECT — these are the client priority terms, always include them as must-have tier):\n' + _pinnedForSelect.map(function(k) { return '- ' + k; }).join('\n') + '\n' : '')
     + _selectNotes
     + '\nKEYWORDS (' + candidates.length + '):\n' + kwBlock;
 
@@ -3830,6 +3879,25 @@ async function _pipelineAISelect() {
       // Store tier data for downstream use (cluster priority, brief importance)
       S.kwResearch._selectionTiers = {};
       parsed.selected.forEach(function(s) { if (s.kw) S.kwResearch._selectionTiers[s.kw] = { tier: s.tier || 'supporting', reason: s.reason || '' }; });
+      // GUARANTEE: force-include pinned keywords even if AI missed them
+      _pinnedForSelect.forEach(function(pin) {
+        var pinLower = pin.toLowerCase();
+        // Check if any selected keyword matches or contains the pinned term
+        var found = S.kwResearch.selected.some(function(sel) { return sel.toLowerCase() === pinLower || sel.toLowerCase().indexOf(pinLower) >= 0; });
+        if (!found) {
+          // Find the exact keyword from the pool that matches
+          var poolMatch = kws.find(function(k) { return k.kw.toLowerCase() === pinLower; });
+          if (poolMatch) {
+            S.kwResearch.selected.push(poolMatch.kw);
+            S.kwResearch._selectionTiers[poolMatch.kw] = { tier: 'must-have', reason: 'Pinned keyword — client priority' };
+          } else {
+            // Not in pool but still pinned — add raw
+            S.kwResearch.selected.push(pin);
+            S.kwResearch._selectionTiers[pin] = { tier: 'must-have', reason: 'Pinned keyword — client priority (not in volume pool)' };
+          }
+          console.log('[kwPipeline] Force-included pinned keyword:', pin);
+        }
+      });
       S.kwResearch._selectionMethod = 'ai';
       S.kwResearch._rejectedExamples = parsed.rejected_examples || [];
       console.log('[kwPipeline] AI selected', S.kwResearch.selected.length, '— tiers:', JSON.stringify({
