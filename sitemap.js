@@ -3071,15 +3071,202 @@ function enrichSitemapWithKwData() {
 }
 
 // ── Enrich All — one-click full enrichment pipeline ──────────────────
+// ── Fill Keyword Gaps — expand pool for pages without keyword matches ──
+async function fillKeywordGaps() {
+  var pages = S.pages || [];
+  if (!pages.length) return { expanded: 0, assigned: 0 };
+
+  // Find pages with no keyword or zero-vol keyword (excluding non-SEO types)
+  var _skipTypes = ['utility', 'faq', 'team', 'thank-you', 'thankyou', 'privacy', 'terms'];
+  var gapPages = pages.filter(function(p) {
+    if (p._removed) return false;
+    var t = (p.page_type || '').toLowerCase();
+    if (_skipTypes.indexOf(t) >= 0) return false;
+    return !p.primary_keyword || (!p.primary_vol || p.primary_vol === 0);
+  });
+
+  if (!gapPages.length) {
+    console.log('[fillKeywordGaps] No gap pages found');
+    return { expanded: 0, assigned: 0 };
+  }
+
+  console.log('[fillKeywordGaps] Found', gapPages.length, 'pages needing keywords');
+  var setup = S.setup || {};
+  var research = S.research || {};
+  var country = (S.kwResearch && S.kwResearch.country) ? S.kwResearch.country
+    : (typeof detectCountryLower === 'function' ? detectCountryLower((research.geography && research.geography.primary) || setup.geo || '') : 'ca');
+  var coreFocus = (setup.coreFocus || []).filter(function(f) { return f && f.trim(); });
+
+  // Generate seeds from gap pages grouped by topic
+  var seedGroups = {};
+  gapPages.forEach(function(p) {
+    // Extract meaningful terms from page name and slug
+    var name = (p.page_name || '').toLowerCase();
+    var slug = (p.slug || '').toLowerCase();
+    var tokens = slug.split(/[-\/]/).filter(function(t) {
+      return t.length > 2 && ['the', 'and', 'for', 'with', 'our', 'your', 'blog', 'services', 'page', 'post'].indexOf(t) < 0;
+    });
+    // Use first 2-3 meaningful tokens as seed group key
+    var key = tokens.slice(0, 3).join(' ');
+    if (!key || key.length < 4) key = name.split(/\s+/).slice(0, 3).join(' ');
+    if (!key || key.length < 4) return;
+    if (!seedGroups[key]) seedGroups[key] = { seeds: new Set(), pages: [] };
+    seedGroups[key].pages.push(p);
+    // Generate search variations
+    seedGroups[key].seeds.add(key);
+    if (name.length > 5) seedGroups[key].seeds.add(name.slice(0, 60));
+    // Add Core Focus combinations
+    coreFocus.forEach(function(cf) {
+      if (key.indexOf(cf.toLowerCase()) < 0) {
+        seedGroups[key].seeds.add(cf.toLowerCase() + ' ' + tokens[0]);
+      }
+    });
+  });
+
+  var groupKeys = Object.keys(seedGroups);
+  console.log('[fillKeywordGaps] Generated', groupKeys.length, 'seed groups');
+
+  // Batch DataForSEO calls — max 20 seeds per call, max 6 calls
+  var allNewKws = [];
+  var _maxCalls = 6;
+  var _callsMade = 0;
+  var _batchSeeds = [];
+
+  // Flatten all seeds into batches of 20
+  groupKeys.forEach(function(key) {
+    seedGroups[key].seeds.forEach(function(s) { _batchSeeds.push(s); });
+  });
+  // Deduplicate
+  var _uniqueSeeds = [];
+  var _seedSet = new Set();
+  _batchSeeds.forEach(function(s) {
+    var lower = s.toLowerCase().trim();
+    if (lower && !_seedSet.has(lower)) { _seedSet.add(lower); _uniqueSeeds.push(lower); }
+  });
+
+  console.log('[fillKeywordGaps] Total unique seeds:', _uniqueSeeds.length);
+
+  var batchSize = 20;
+  for (var bStart = 0; bStart < _uniqueSeeds.length && _callsMade < _maxCalls; bStart += batchSize) {
+    if (window._aiStopAll) break;
+    var batch = _uniqueSeeds.slice(bStart, bStart + batchSize);
+    _callsMade++;
+    aiBarStart('Expanding keyword pool: batch ' + _callsMade + ' (' + batch.length + ' seeds)\u2026');
+    console.log('[fillKeywordGaps] Batch', _callsMade, 'seeds:', batch.slice(0, 5).join(', '), '...');
+
+    try {
+      var res = await fetch('/api/kw-expand', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seeds: batch, country: country })
+      });
+      var data = await res.json();
+      if (data.keywords && data.keywords.length) {
+        data.keywords.forEach(function(k) {
+          if (k.volume > 0) {
+            allNewKws.push({
+              kw: k.keyword,
+              vol: k.volume,
+              kd: k.difficulty || 0,
+              cpc: k.cpc || 0,
+              score: k.volume >= 10 && k.difficulty > 0 ? Math.round((Math.log(k.volume + 1) * 100) / Math.max(k.difficulty, 5) * 10) / 10 : 0,
+              _source: 'gap-fill'
+            });
+          }
+        });
+        console.log('[fillKeywordGaps] Batch', _callsMade, 'returned', data.keywords.length, 'keywords,', allNewKws.length, 'total with volume');
+      }
+    } catch (e) {
+      console.warn('[fillKeywordGaps] Batch', _callsMade, 'failed:', e.message);
+    }
+    if (bStart + batchSize < _uniqueSeeds.length && _callsMade < _maxCalls) {
+      await new Promise(function(res) { setTimeout(res, 1500); });
+    }
+  }
+
+  // Merge into keyword pool (dedup against existing)
+  if (!S.kwResearch) S.kwResearch = {};
+  if (!S.kwResearch.keywords) S.kwResearch.keywords = [];
+  var _existingSet = new Set(S.kwResearch.keywords.map(function(k) { return (k.kw || '').toLowerCase(); }));
+  var _newCount = 0;
+  allNewKws.forEach(function(k) {
+    if (!_existingSet.has(k.kw.toLowerCase())) {
+      S.kwResearch.keywords.push(k);
+      _existingSet.add(k.kw.toLowerCase());
+      _newCount++;
+    }
+  });
+
+  console.log('[fillKeywordGaps] Merged', _newCount, 'new keywords into pool (total:', S.kwResearch.keywords.length + ')');
+  return { expanded: _newCount, assigned: 0, totalPool: S.kwResearch.keywords.length };
+}
+
+// ── Reassign All Keywords — clear + expand pool + full 3-phase assignment ──
+async function reassignAllKeywords() {
+  if (!S.pages || !S.pages.length) { aiBarNotify('No pages to reassign', { isError: true, duration: 3000 }); return; }
+
+  var pageCount = S.pages.filter(function(p) { return !p._removed; }).length;
+  var poolSize = (S.kwResearch && S.kwResearch.keywords) ? S.kwResearch.keywords.filter(function(k) { return k.vol > 0; }).length : 0;
+
+  // Confirmation
+  if (!confirm('Reassign keywords on all ' + pageCount + ' pages?\n\nThis will:\n1. Clear all current keyword assignments\n2. Expand the keyword pool if needed (currently ' + poolSize + ' with volume)\n3. Assign using priority logic: Core Focus → service pages → location → blog\n\nExisting manual tweaks will be overridden.')) return;
+
+  window._aiStopAll = false;
+  var guard = projectGuard();
+
+  try {
+    // Step 1: Clear all keyword assignments
+    aiBarStart('Reassign: clearing current assignments\u2026');
+    var _clearedCount = 0;
+    (S.pages || []).forEach(function(p) {
+      if (p._removed) return;
+      if (p.primary_keyword) {
+        p._previousKeyword = p.primary_keyword; // Store for reference
+        p.primary_keyword = '';
+        p.primary_vol = 0;
+        p.primary_kd = 0;
+        p.score = 0;
+        delete p._kwGenerated;
+        _clearedCount++;
+      }
+    });
+    console.log('[reassignAll] Cleared', _clearedCount, 'keyword assignments');
+
+    // Step 2: Expand pool if needed
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Reassign: expanding keyword pool for uncovered pages\u2026');
+      var gapResult = await fillKeywordGaps();
+      console.log('[reassignAll] Gap fill result:', gapResult);
+    }
+
+    // Step 3: Run the no-kw fix (3-phase priority assignment)
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Reassign: assigning keywords with priority logic\u2026');
+      await _aiFixIssue('no-kw');
+    }
+
+    if (!guard.changed()) {
+      var newPoolSize = (S.kwResearch && S.kwResearch.keywords) ? S.kwResearch.keywords.filter(function(k) { return k.vol > 0; }).length : 0;
+      var assignedCount = (S.pages || []).filter(function(p) { return !p._removed && p.primary_keyword; }).length;
+      scheduleSave();
+      renderSitemapResults(S.sitemapApproved);
+      aiBarEnd('Reassigned ' + assignedCount + '/' + pageCount + ' pages. Pool: ' + poolSize + ' \u2192 ' + newPoolSize + ' keywords.');
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('Reassign error: ' + e.message, { isError: true, duration: 5000 });
+  }
+}
+
 async function enrichAllSitemap() {
   if (!S.pages || !S.pages.length) { aiBarNotify('Build the sitemap first', { isError: true, duration: 3000 }); return; }
   var guard = projectGuard();
   window._aiStopAll = false;
   var _steps = [];
-  var _totalSteps = 7;
+  var _totalSteps = 8;
 
   try {
-    // Step 0: Structure Review (AI cleanup — find duplicate purpose pages, misclassifications)
+    // Step 1: Structure Review (AI cleanup — find duplicate purpose pages, misclassifications)
     if (!guard.changed() && !window._aiStopAll) {
       aiBarStart('Enrich All (1/' + _totalSteps + '): Structure review\u2026');
       try {
@@ -3089,13 +3276,22 @@ async function enrichAllSitemap() {
       } catch (_srErr) { console.warn('[enrichAll] structure review error:', _srErr.message); }
     }
 
-    // Step 1: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
+    // Step 2: Fill keyword gaps — expand pool for uncovered pages
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (2/' + _totalSteps + '): Expanding keyword pool\u2026');
+      try {
+        var _gapResult = await fillKeywordGaps();
+        if (_gapResult.expanded > 0) _steps.push('pool(+' + _gapResult.expanded + ')');
+      } catch (_gapErr) { console.warn('[enrichAll] gap fill error:', _gapErr.message); }
+    }
+
+    // Step 3: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
     var issues = _runSitemapHealthCheck();
     var _fixable = issues.errors.concat(issues.warnings).filter(function(i) {
       return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
     }).length;
     if (_fixable > 0 && !guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (2/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
+      aiBarStart('Enrich All (3/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
       // Trigger the fix-all logic inline (same as the button)
       var _maxPasses = 3;
       for (var _pass = 0; _pass < _maxPasses; _pass++) {
@@ -3115,7 +3311,7 @@ async function enrichAllSitemap() {
 
     // Step 2: Priorities (instant, no AI)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (3/' + _totalSteps + '): Re-suggesting priorities\u2026');
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Re-suggesting priorities\u2026');
       var _priChanged = 0;
       (S.pages || []).forEach(function(p) {
         var s = _suggestPriority(p);
@@ -3126,14 +3322,14 @@ async function enrichAllSitemap() {
 
     // Step 3: Assign personas
     if (!guard.changed() && !window._aiStopAll && typeof _getActivePersonas === 'function' && _getActivePersonas().length > 0) {
-      aiBarStart('Enrich All (4/' + _totalSteps + '): Assigning personas\u2026');
+      aiBarStart('Enrich All (5/' + _totalSteps + '): Assigning personas\u2026');
       assignAllPersonas();
       _steps.push('personas');
     }
 
     // Step 4: Generate page goals (AI — batched)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (5/' + _totalSteps + '): Generating page goals\u2026');
+      aiBarStart('Enrich All (6/' + _totalSteps + '): Generating page goals\u2026');
       await generateAllPageGoals('auto');
       _steps.push('goals');
     }
@@ -3142,7 +3338,7 @@ async function enrichAllSitemap() {
     if (!guard.changed() && !window._aiStopAll && typeof assignContentPillars === 'function') {
       var _blogCount = (S.pages || []).filter(function(p) { return ['blog', 'article', 'recipe', 'event'].indexOf((p.page_type || '').toLowerCase()) >= 0; }).length;
       if (_blogCount > 0) {
-        aiBarStart('Enrich All (6/' + _totalSteps + '): Assigning content pillars\u2026');
+        aiBarStart('Enrich All (7/' + _totalSteps + '): Assigning content pillars\u2026');
         await assignContentPillars();
         _steps.push('pillars');
       }
@@ -3150,7 +3346,7 @@ async function enrichAllSitemap() {
 
     // Step 6: Fetch live volumes from DataForSEO
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (7/' + _totalSteps + '): Fetching live volumes\u2026');
+      aiBarStart('Enrich All (8/' + _totalSteps + '): Fetching live volumes\u2026');
       await enrichSitemapWithLiveData(true);
       _steps.push('volumes');
     }
@@ -4230,6 +4426,7 @@ function _renderSitemapResultsInner(approved) {
     }
   }
   html += '<hr style="border:none;border-top:1px solid var(--border);margin:4px 0">';
+  html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="Clears all keywords, expands the pool for uncovered pages, and reassigns using priority logic." onclick="reassignAllKeywords();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-refresh" style="font-size:11px;margin-right:4px"></i> Reassign All Keywords</button>';
   html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="Opens a visual site architecture diagram." onclick="showMermaidModal();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-sitemap" style="font-size:11px;margin-right:4px"></i> Architecture Diagram</button>';
   html += '<button class="btn btn-ghost sm" style="width:100%;text-align:left;font-size:11px;padding:6px 10px;border-radius:6px" data-tip="AI reviews the full page list for misclassifications." onclick="runStructureReview();document.getElementById(\'enrich-tools-dd\').style.display=\'none\'"><i class="ti ti-git-branch" style="font-size:11px;margin-right:4px"></i> Structure Review</button>';
   html += '</div></div>';
