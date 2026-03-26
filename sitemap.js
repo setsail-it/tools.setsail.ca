@@ -1830,7 +1830,7 @@ async function _aiFixIssue(fixId) {
     var research = S.research || {};
     var geo = (research.geography || {}).primary || setup.geo || '';
     var city = geo.split(',')[0].trim();
-    var clientName = setup.clientName || '';
+    var clientName = setup.client || setup.clientName || '';
     var coreFocus = (setup.coreFocus || []).filter(function(f) { return f && f.trim(); });
     var pinnedSeeds = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
     // Combine Core Focus + pinned seeds as the business's must-win terms
@@ -3112,13 +3112,18 @@ async function fillKeywordGaps() {
     if (!key || key.length < 4) return;
     if (!seedGroups[key]) seedGroups[key] = { seeds: new Set(), pages: [] };
     seedGroups[key].pages.push(p);
-    // Generate search variations
-    seedGroups[key].seeds.add(key);
-    if (name.length > 5) seedGroups[key].seeds.add(name.slice(0, 60));
+    // Generate search variations (max 80 chars, min 4 chars, max 6 words)
+    var _addSeed = function(s) {
+      var clean = s.trim().slice(0, 80);
+      if (clean.length >= 4 && clean.split(/\s+/).length <= 6) seedGroups[key].seeds.add(clean);
+    };
+    _addSeed(key);
+    // Use first 4-5 words of page name (not the full name — too long for API)
+    if (name.length > 5) _addSeed(name.split(/\s+/).slice(0, 5).join(' '));
     // Add Core Focus combinations
     coreFocus.forEach(function(cf) {
-      if (key.indexOf(cf.toLowerCase()) < 0) {
-        seedGroups[key].seeds.add(cf.toLowerCase() + ' ' + tokens[0]);
+      if (key.indexOf(cf.toLowerCase()) < 0 && tokens[0]) {
+        _addSeed(cf.toLowerCase() + ' ' + tokens[0]);
       }
     });
   });
@@ -3136,12 +3141,17 @@ async function fillKeywordGaps() {
   groupKeys.forEach(function(key) {
     seedGroups[key].seeds.forEach(function(s) { _batchSeeds.push(s); });
   });
-  // Deduplicate
+  // Deduplicate and clean — filter out seeds that are too short, too long, or single generic words
+  var _genericWords = new Set(['blog', 'services', 'about', 'contact', 'home', 'team', 'page', 'post', 'the', 'and', 'for', 'with', 'new', 'our', 'how', 'what', 'why', 'download', 'free', 'join']);
   var _uniqueSeeds = [];
   var _seedSet = new Set();
   _batchSeeds.forEach(function(s) {
     var lower = s.toLowerCase().trim();
-    if (lower && !_seedSet.has(lower)) { _seedSet.add(lower); _uniqueSeeds.push(lower); }
+    if (!lower || lower.length < 4 || lower.length > 80) return;
+    if (lower.split(/\s+/).length === 1 && _genericWords.has(lower)) return; // Skip single generic words
+    if (_seedSet.has(lower)) return;
+    _seedSet.add(lower);
+    _uniqueSeeds.push(lower);
   });
 
   console.log('[fillKeywordGaps] Total unique seeds:', _uniqueSeeds.length);
@@ -3160,6 +3170,10 @@ async function fillKeywordGaps() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seeds: batch, country: country })
       });
+      if (!res.ok) {
+        console.warn('[fillKeywordGaps] Batch', _callsMade, 'returned', res.status, '— skipping');
+        continue;
+      }
       var data = await res.json();
       if (data.keywords && data.keywords.length) {
         data.keywords.forEach(function(k) {
