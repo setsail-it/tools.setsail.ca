@@ -323,104 +323,435 @@ function _extractHowTo(slug) {
   return { '@type': 'HowTo', 'name': 'How It Works', 'step': steps };
 }
 
+// ── Build Speakable (voice search) ────────────────────────────────────
+function _buildSpeakable(page) {
+  var base = _schemaBaseUrl();
+  // Speakable: the H1 and first paragraph are the best voice search targets
+  return {
+    '@type': 'SpeakableSpecification',
+    'cssSelector': ['h1', '.page-copy > p:first-of-type', '.hero-subheadline']
+  };
+}
+
+// ── Build OfferCatalog (for service listing pages) ────────────────────
+function _buildOfferCatalog() {
+  var base = _schemaBaseUrl();
+  var r = S.research || {};
+  var services = (r.schema_services || r.primary_services || []);
+  if (!services.length) return null;
+  return {
+    '@type': 'OfferCatalog',
+    '@id': base + '/#offer-catalog',
+    'name': 'Services',
+    'itemListElement': services.map(function(svc) {
+      var name = typeof svc === 'string' ? svc : (svc.service_name || svc.name || svc);
+      return {
+        '@type': 'Offer',
+        'itemOffered': { '@type': 'Service', 'name': name }
+      };
+    }).slice(0, 20)
+  };
+}
+
+// ── Build ItemList for blog index / portfolio pages ───────────────────
+function _buildItemList(listPages, listName) {
+  var base = _schemaBaseUrl();
+  return {
+    '@type': 'ItemList',
+    'name': listName || 'Pages',
+    'numberOfItems': listPages.length,
+    'itemListElement': listPages.slice(0, 30).map(function(p, i) {
+      return {
+        '@type': 'ListItem',
+        'position': i + 1,
+        'name': p.page_name || p.primary_keyword || p.slug,
+        'url': base + '/' + p.slug
+      };
+    })
+  };
+}
+
+// ── Build ContactPoint ────────────────────────────────────────────────
+function _buildContactPoints() {
+  var r = S.research || {};
+  var points = [];
+  if (r.schema_phone) {
+    points.push({
+      '@type': 'ContactPoint',
+      'telephone': r.schema_phone,
+      'contactType': 'customer service',
+      'availableLanguage': ['English']
+    });
+  }
+  if (r.schema_email) {
+    points.push({
+      '@type': 'ContactPoint',
+      'email': r.schema_email,
+      'contactType': 'customer service'
+    });
+  }
+  return points;
+}
+
+// ── Build ImageObject for page ────────────────────────────────────────
+function _buildImageObject(page) {
+  var base = _schemaBaseUrl();
+  var imgData = S.images && S.images[page.slug];
+  if (imgData && imgData.url) {
+    return { '@type': 'ImageObject', '@id': base + '/' + page.slug + '#image', 'url': imgData.url, 'contentUrl': imgData.url };
+  }
+  return null;
+}
+
+// ── Build Offer for service pages (priced services) ───────────────────
+function _buildServiceOffer(page) {
+  var r = S.research || {};
+  if (!r.schema_price_range) return null;
+  var base = _schemaBaseUrl();
+  return {
+    '@type': 'Offer',
+    '@id': base + '/' + page.slug + '#offer',
+    'url': base + '/' + page.slug,
+    'availability': 'https://schema.org/InStock',
+    'priceSpecification': {
+      '@type': 'PriceSpecification',
+      'priceCurrency': 'CAD'
+    }
+  };
+}
+
+// ── Build VideoObject from page copy embeds ───────────────────────────
+function _extractVideos(slug) {
+  var copyData = S.copy && S.copy[slug];
+  if (!copyData || !copyData.html) return [];
+  var videos = [];
+  // YouTube embeds
+  var ytRe = /(?:youtube\.com\/embed\/|youtu\.be\/|youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/gi;
+  var m;
+  while ((m = ytRe.exec(copyData.html)) !== null && videos.length < 5) {
+    videos.push({
+      '@type': 'VideoObject',
+      'embedUrl': 'https://www.youtube.com/embed/' + m[1],
+      'thumbnailUrl': 'https://img.youtube.com/vi/' + m[1] + '/hqdefault.jpg'
+    });
+  }
+  // Vimeo embeds
+  var vimeoRe = /vimeo\.com\/(?:video\/)?(\d+)/gi;
+  while ((m = vimeoRe.exec(copyData.html)) !== null && videos.length < 5) {
+    videos.push({
+      '@type': 'VideoObject',
+      'embedUrl': 'https://player.vimeo.com/video/' + m[1]
+    });
+  }
+  return videos;
+}
+
+// ── Build mentions/citations for E-E-A-T ──────────────────────────────
+function _buildMentions(page) {
+  var r = S.research || {};
+  var mentions = [];
+  // Notable clients as mentions
+  (r.notable_clients || []).slice(0, 5).forEach(function(c) {
+    mentions.push({ '@type': 'Organization', 'name': c });
+  });
+  return mentions;
+}
+
+// ── Build ProfessionalService (agencies, law firms, etc.) ─────────────
+function _buildProfessionalService(page) {
+  var base = _schemaBaseUrl();
+  var r = S.research || {};
+  var svc = {
+    '@type': ['ProfessionalService', 'Service'],
+    '@id': base + '/' + page.slug + '#service',
+    'name': page.page_name || page.primary_keyword || '',
+    'url': base + '/' + page.slug,
+    'provider': { '@id': base + '/#organization' }
+  };
+  if (page.page_goal) svc.description = page.page_goal;
+  if (page.primary_keyword) svc.serviceType = page.primary_keyword;
+  if (r.geography && r.geography.primary) {
+    svc.areaServed = [{ '@type': 'City', 'name': r.geography.primary }];
+    if (r.geography.secondary && r.geography.secondary.length) {
+      r.geography.secondary.forEach(function(s) {
+        svc.areaServed.push({ '@type': 'City', 'name': s });
+      });
+    }
+  }
+  // Service offer
+  var offer = _buildServiceOffer(page);
+  if (offer) svc.offers = offer;
+  return svc;
+}
+
 // ── Master Schema Builder per Page ────────────────────────────────────
 function buildPageSchema(page) {
   var base = _schemaBaseUrl();
   var type = (page.page_type || '').toLowerCase();
+  var r = S.research || {};
+  var s = S.setup || {};
   var graph = [];
 
-  // Every page gets WebPage + Breadcrumb
-  graph.push(_buildWebPage(page));
+  // ── EVERY PAGE: WebPage + Breadcrumb ──
+  var webPage = _buildWebPage(page);
+  // Speakable on all pages
+  webPage.speakable = _buildSpeakable(page);
+  // Primary image
+  var img = _buildImageObject(page);
+  if (img) { webPage.primaryImageOfPage = { '@id': img['@id'] }; graph.push(img); }
+  graph.push(webPage);
   graph.push(_buildBreadcrumb(page));
 
-  // Homepage: full Organization + WebSite
+  // ── HOMEPAGE ──
   if (type === 'home' || page.slug === '' || page.slug === '/') {
-    graph.push(_buildOrgSchema());
-    graph.push(_buildWebSite());
-    // Reviews on homepage
+    var orgSchema = _buildOrgSchema();
+    // Inject contact points
+    var contactPts = _buildContactPoints();
+    if (contactPts.length) orgSchema.contactPoint = contactPts;
+    // Inject reviews
     var reviews = _buildReviews();
-    if (reviews.length) {
-      var org = graph.find(function(g) { return g['@type'] && (g['@type'] === 'Organization' || g['@type'] === 'LocalBusiness' || typeof g['@type'] === 'string' && g['@type'].indexOf('Business') >= 0); });
-      if (org) org.review = reviews;
+    if (reviews.length) orgSchema.review = reviews;
+    // Inject offer catalog
+    var catalog = _buildOfferCatalog();
+    if (catalog) orgSchema.hasOfferCatalog = catalog;
+    // Inject notable client mentions
+    if (r.notable_clients && r.notable_clients.length) {
+      orgSchema.member = r.notable_clients.slice(0, 10).map(function(c) { return { '@type': 'Organization', 'name': c }; });
     }
+    // Awards
+    if (r.awards_certifications && r.awards_certifications.length) {
+      orgSchema.award = r.awards_certifications;
+    }
+    // Founder
+    if (r.founder_bio) {
+      orgSchema.founder = { '@type': 'Person', 'description': r.founder_bio };
+    }
+    // Number of employees
+    if (r.team_credentials) {
+      var teamCount = r.team_credentials.split(',').filter(Boolean).length;
+      if (teamCount > 0) orgSchema.numberOfEmployees = { '@type': 'QuantitativeValue', 'value': teamCount };
+    }
+    graph.push(orgSchema);
+    graph.push(_buildWebSite());
+    // Sitelinks SearchAction
+    graph.push({
+      '@type': 'WebSite',
+      '@id': base + '/#website-search',
+      'url': base,
+      'potentialAction': { '@type': 'SearchAction', 'target': { '@type': 'EntryPoint', 'urlTemplate': base + '/search?q={search_term_string}' }, 'query-input': 'required name=search_term_string' }
+    });
   }
 
-  // Service / Industry pages
+  // ── SERVICE / INDUSTRY / LANDING PAGES ──
   if (['service','industry','landing'].indexOf(type) >= 0) {
-    graph.push(_buildService(page));
+    graph.push(_buildProfessionalService(page));
+    // FAQPage from copy
     var faqs = _extractFaqsFromCopy(page.slug);
-    if (faqs.length >= 3) graph.push(_buildFaqPage(faqs, page.slug));
-    // HowTo if process section exists
+    if (faqs.length >= 2) graph.push(_buildFaqPage(faqs, page.slug));
+    // HowTo from process section
     var howTo = _extractHowTo(page.slug);
     if (howTo) graph.push(howTo);
+    // Videos embedded in copy
+    var videos = _extractVideos(page.slug);
+    videos.forEach(function(v) { graph.push(v); });
+    // Reviews relevant to this service (all reviews, scoped to this page)
+    var svcReviews = _buildReviews();
+    if (svcReviews.length) {
+      var svcNode = graph.find(function(g) { return g['@id'] && g['@id'].indexOf('#service') >= 0; });
+      if (svcNode) {
+        svcNode.review = svcReviews.slice(0, 5);
+        // Aggregate rating
+        var totalR = 0, countR = 0;
+        svcReviews.forEach(function(rv) { if (rv.reviewRating && rv.reviewRating.ratingValue) { totalR += parseFloat(rv.reviewRating.ratingValue); countR++; } });
+        if (countR > 0) {
+          svcNode.aggregateRating = { '@type': 'AggregateRating', 'ratingValue': Math.round(totalR / countR * 10) / 10, 'reviewCount': (r.reviews || []).length + (r.testimonials || []).length, 'bestRating': 5 };
+        }
+      }
+    }
+    // Mentions for E-E-A-T
+    var mentions = _buildMentions(page);
+    if (mentions.length) webPage.mentions = mentions;
   }
 
-  // Location pages
+  // ── LOCATION PAGES ──
   if (type === 'location') {
-    // Location-specific LocalBusiness
     var locBiz = _buildOrgSchema();
     locBiz['@id'] = base + '/' + page.slug + '#localbusiness';
-    // Override name with location-specific name
     if (page.page_name) locBiz.name = page.page_name;
-    // Try to extract city from slug
+    // City from slug
     var slugParts = page.slug.split('/');
     var cityHint = slugParts[slugParts.length - 1].replace(/-/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
     locBiz.areaServed = { '@type': 'City', 'name': cityHint };
+    // Contact points
+    var locContacts = _buildContactPoints();
+    if (locContacts.length) locBiz.contactPoint = locContacts;
+    // Reviews
+    var locReviews = _buildReviews();
+    if (locReviews.length) locBiz.review = locReviews;
+    // Services offered at this location
+    var locServices = (r.primary_services || []).slice(0, 10);
+    if (locServices.length) {
+      locBiz.makesOffer = locServices.map(function(s) {
+        return { '@type': 'Offer', 'itemOffered': { '@type': 'Service', 'name': typeof s === 'string' ? s : (s.name || s) } };
+      });
+    }
     graph.push(locBiz);
     var locFaqs = _extractFaqsFromCopy(page.slug);
-    if (locFaqs.length >= 3) graph.push(_buildFaqPage(locFaqs, page.slug));
+    if (locFaqs.length >= 2) graph.push(_buildFaqPage(locFaqs, page.slug));
+    var locHowTo = _extractHowTo(page.slug);
+    if (locHowTo) graph.push(locHowTo);
   }
 
-  // Blog / Article pages
+  // ── BLOG / ARTICLE PAGES ──
   if (['blog','article','recipe','event','portfolio'].indexOf(type) >= 0) {
-    graph.push(_buildArticle(page));
+    var article = _buildArticle(page);
+    // Word count estimate from copy
+    var copyData = S.copy && S.copy[page.slug];
+    if (copyData && copyData.html) {
+      var textContent = copyData.html.replace(/<[^>]+>/g, '').trim();
+      article.wordCount = textContent.split(/\s+/).length;
+    }
+    // Speakable for articles
+    article.speakable = _buildSpeakable(page);
+    // Image
+    if (img) article.image = { '@id': img['@id'] };
+    // Videos
+    var articleVideos = _extractVideos(page.slug);
+    if (articleVideos.length) article.video = articleVideos;
+    // Supporting keywords as keywords
+    var kws = [page.primary_keyword].concat((page.supporting_keywords || []).map(function(k) { return typeof k === 'string' ? k : (k.kw || ''); })).filter(Boolean);
+    if (kws.length) article.keywords = kws.join(', ');
+    // Content pillar as articleSection
+    if (page.contentPillar) article.articleSection = page.contentPillar;
+    // About (topic)
+    if (page.primary_keyword) article.about = { '@type': 'Thing', 'name': page.primary_keyword };
+    // Mentions
+    var artMentions = _buildMentions(page);
+    if (artMentions.length) article.mentions = artMentions;
+    graph.push(article);
+    // FAQs
     var blogFaqs = _extractFaqsFromCopy(page.slug);
-    if (blogFaqs.length >= 3) graph.push(_buildFaqPage(blogFaqs, page.slug));
+    if (blogFaqs.length >= 2) graph.push(_buildFaqPage(blogFaqs, page.slug));
   }
 
-  // Product pages
+  // ── PRODUCT PAGES ──
   if (type === 'product') {
-    graph.push(_buildProduct(page));
+    var product = _buildProduct(page);
+    // Reviews on product
+    var prodReviews = _buildReviews();
+    if (prodReviews.length) {
+      product.review = prodReviews.slice(0, 5);
+      var totPR = 0, cntPR = 0;
+      prodReviews.forEach(function(rv) { if (rv.reviewRating && rv.reviewRating.ratingValue) { totPR += parseFloat(rv.reviewRating.ratingValue); cntPR++; } });
+      if (cntPR > 0) product.aggregateRating = { '@type': 'AggregateRating', 'ratingValue': Math.round(totPR / cntPR * 10) / 10, 'reviewCount': prodReviews.length, 'bestRating': 5 };
+    }
+    if (img) product.image = { '@id': img['@id'] };
+    graph.push(product);
+    // Product FAQs
+    var prodFaqs = _extractFaqsFromCopy(page.slug);
+    if (prodFaqs.length >= 2) graph.push(_buildFaqPage(prodFaqs, page.slug));
   }
 
-  // Case study pages
+  // ── CASE STUDY PAGES ──
   if (type === 'case-study' || type === 'case-studies') {
     var csArticle = _buildArticle(page);
     csArticle['@type'] = 'Article';
+    csArticle.articleSection = 'Case Study';
+    // Try to find matching case study data
+    var caseMatch = (r.case_studies || []).find(function(cs) {
+      return page.page_name && cs.client && page.page_name.toLowerCase().indexOf(cs.client.toLowerCase()) >= 0;
+    });
+    if (caseMatch) {
+      csArticle.about = { '@type': 'Organization', 'name': caseMatch.client };
+      if (caseMatch.result) csArticle.description = caseMatch.result;
+    }
+    if (img) csArticle.image = { '@id': img['@id'] };
     graph.push(csArticle);
   }
 
-  // About page
+  // ── ABOUT PAGE ──
   if (type === 'about') {
-    graph.push(_buildOrgSchema());
+    var aboutOrg = _buildOrgSchema();
+    var aboutContacts = _buildContactPoints();
+    if (aboutContacts.length) aboutOrg.contactPoint = aboutContacts;
+    // Awards
+    if (r.awards_certifications && r.awards_certifications.length) aboutOrg.award = r.awards_certifications;
+    // Founder
+    if (r.founder_bio) {
+      aboutOrg.founder = { '@type': 'Person', 'description': r.founder_bio };
+    }
+    graph.push(aboutOrg);
     // Team members as Person schema
-    var r = S.research || {};
     if (r.team_credentials) {
       var members = r.team_credentials.split(',').map(function(m) { return m.trim(); }).filter(Boolean);
-      members.slice(0, 5).forEach(function(member) {
-        var parts = member.split(' — ');
-        graph.push({
-          '@type': 'Person',
-          'name': parts[0] || member,
-          'jobTitle': parts[1] || '',
-          'worksFor': { '@id': base + '/#organization' }
-        });
+      members.slice(0, 10).forEach(function(member) {
+        var pts = member.split(' — ');
+        var person = { '@type': 'Person', 'name': pts[0] || member, 'worksFor': { '@id': base + '/#organization' } };
+        if (pts[1]) person.jobTitle = pts[1];
+        graph.push(person);
+      });
+    }
+    // Notable clients as mentions
+    if (r.notable_clients && r.notable_clients.length) {
+      webPage.mentions = r.notable_clients.map(function(c) { return { '@type': 'Organization', 'name': c }; });
+    }
+  }
+
+  // ── CONTACT PAGE ──
+  if (type === 'contact') {
+    var contactOrg = _buildOrgSchema();
+    contactOrg['@id'] = base + '/' + page.slug + '#contact-org';
+    var cContacts = _buildContactPoints();
+    if (cContacts.length) contactOrg.contactPoint = cContacts;
+    graph.push(contactOrg);
+  }
+
+  // ── FAQ PAGE (dedicated) ──
+  if (type === 'faq') {
+    var allFaqs = (r.current_faqs || []).map(function(f) { return { question: f.question, answer: f.answer || '' }; });
+    if (allFaqs.length) graph.push(_buildFaqPage(allFaqs, page.slug));
+  }
+
+  // ── TESTIMONIALS PAGE ──
+  if (type === 'testimonials') {
+    var testOrg = _buildOrgSchema();
+    var allReviews = _buildReviews();
+    if (allReviews.length) testOrg.review = allReviews;
+    graph.push(testOrg);
+  }
+
+  // ── TEAM PAGE ──
+  if (type === 'team') {
+    if (r.team_credentials) {
+      var teamMembers = r.team_credentials.split(',').map(function(m) { return m.trim(); }).filter(Boolean);
+      teamMembers.slice(0, 15).forEach(function(member) {
+        var pts = member.split(' — ');
+        graph.push({ '@type': 'Person', 'name': pts[0] || member, 'jobTitle': pts[1] || '', 'worksFor': { '@id': base + '/#organization' } });
       });
     }
   }
 
-  // Contact page
-  if (type === 'contact') {
-    var contactOrg = _buildOrgSchema();
-    contactOrg['@id'] = base + '/' + page.slug + '#contact-org';
-    graph.push(contactOrg);
+  // ── PORTFOLIO / OUR WORK INDEX ──
+  if (type === 'portfolio' || (page.slug && /our-work|portfolio|projects/i.test(page.slug) && type !== 'case-study')) {
+    var caseStudyPages = (S.pages || []).filter(function(p) { return (p.page_type || '').toLowerCase() === 'case-study'; });
+    if (caseStudyPages.length) graph.push(_buildItemList(caseStudyPages, 'Our Work'));
   }
 
-  // FAQ page (dedicated)
-  if (type === 'faq') {
-    var r2 = S.research || {};
-    var allFaqs = (r2.current_faqs || []).map(function(f) { return { question: f.question, answer: f.answer || '' }; });
-    if (allFaqs.length) graph.push(_buildFaqPage(allFaqs, page.slug));
+  // ── PRICING PAGE ──
+  if (type === 'pricing' || (page.slug && /pricing|packages|plans/i.test(page.slug))) {
+    var catalog2 = _buildOfferCatalog();
+    if (catalog2) graph.push(catalog2);
+  }
+
+  // ── UNIVERSAL: Proof Bank stats as ClaimReview/QuantitativeValue ──
+  var pb = (s.proofBank || {});
+  if (pb.stats && pb.stats.length && ['home','service','industry','about','landing'].indexOf(type) >= 0) {
+    pb.stats.forEach(function(stat) {
+      if (stat.stat && stat.source) {
+        webPage.citation = webPage.citation || [];
+        webPage.citation.push({ '@type': 'CreativeWork', 'name': stat.stat, 'author': { '@type': 'Organization', 'name': stat.source } });
+      }
+    });
   }
 
   // Build the final JSON-LD
