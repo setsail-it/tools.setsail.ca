@@ -1558,6 +1558,10 @@ async function _aiFixIssue(fixId) {
     var city = geo.split(',')[0].trim();
     var clientName = setup.clientName || '';
     var coreFocus = (setup.coreFocus || []).filter(function(f) { return f && f.trim(); });
+    var pinnedSeeds = (S.kwResearch && S.kwResearch.pinnedSeeds) ? S.kwResearch.pinnedSeeds : [];
+    // Combine Core Focus + pinned seeds as the business's must-win terms
+    var _mustWinTerms = coreFocus.slice();
+    pinnedSeeds.forEach(function(p) { if (_mustWinTerms.indexOf(p) < 0) _mustWinTerms.push(p); });
     var industry = research.industry || '';
     var services = ((research.services || []).length > 0) ? research.services : [];
     var availKws = kwPool.filter(function(k) { return k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
@@ -1575,8 +1579,14 @@ async function _aiFixIssue(fixId) {
     }
     var _geoSuffix = _isLocal && city ? ' ' + city.toLowerCase() : '';
 
+    // Helper: find highest-volume keyword from pool containing a given term
+    function _bestKwFor(term) {
+      var termLower = term.toLowerCase();
+      return availKws.find(function(k) { return k.kw.toLowerCase().indexOf(termLower) >= 0; });
+    }
+
     console.log('[no-kw] Phase 1: Deterministic structural assignment');
-    console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Geo:', geo, '| Scope:', _geoScope || 'inferred', '| Local:', _isLocal);
+    console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Pinned:', pinnedSeeds.join(', '), '| Geo:', geo, '| Scope:', _geoScope || 'inferred', '| Local:', _isLocal);
 
     // ── Phase 1: Deterministic structural pages ──
     allNeedKw.forEach(function(p) {
@@ -1585,12 +1595,24 @@ async function _aiFixIssue(fixId) {
       var assigned = null;
 
       if (t === 'home' || s === '' || s === '/' || s === 'home') {
-        // Homepage: Core Focus[0] (+ city only if local), or primary service
-        if (coreFocus.length > 0) assigned = coreFocus[0].toLowerCase() + _geoSuffix;
-        else if (services.length > 0) assigned = (typeof services[0] === 'string' ? services[0] : (services[0].name || '')).toLowerCase() + _geoSuffix;
-        else if (clientName) assigned = clientName.toLowerCase() + (_geoSuffix || (' ' + (industry || '').toLowerCase()));
+        // Homepage: find highest-volume keyword matching Core Focus or pinned terms
+        // Priority: pool keyword with volume > fabricated keyword
+        var _homeKw = null;
+        for (var _hi = 0; _hi < _mustWinTerms.length && !_homeKw; _hi++) {
+          _homeKw = _bestKwFor(_mustWinTerms[_hi]);
+        }
+        if (_homeKw) {
+          // Use the actual pool keyword (has real volume data)
+          assigned = _homeKw.kw;
+        } else if (coreFocus.length > 0) {
+          assigned = coreFocus[0].toLowerCase() + _geoSuffix;
+        } else if (services.length > 0) {
+          assigned = (typeof services[0] === 'string' ? services[0] : (services[0].name || '')).toLowerCase() + _geoSuffix;
+        } else if (clientName) {
+          assigned = clientName.toLowerCase() + (_geoSuffix || (' ' + (industry || '').toLowerCase()));
+        }
       } else if (t === 'about' && (s === 'about' || s === 'about-us')) {
-        // About page: brand + industry/service (no city — about pages are brand-focused)
+        // About page: brand name keyword (no city — brand-focused)
         if (clientName && industry) assigned = clientName.toLowerCase() + ' ' + industry.toLowerCase();
         else if (clientName) assigned = clientName.toLowerCase();
       } else if (t === 'contact' || s === 'contact' || s === 'contact-us') {
