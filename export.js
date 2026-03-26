@@ -112,6 +112,12 @@ function downloadPackage() {
     out += S.strategy.compiled_output + '\n\n';
   }
 
+  // SEO Strategy document
+  if (S.seoStrategy) {
+    out += '='.repeat(60)+'\nSEO STRATEGY\n'+'-'.repeat(40)+'\n\n';
+    out += S.seoStrategy + '\n\n';
+  }
+
   // Investment summary
   if (typeof buildInvestmentText === 'function') {
     var investText = buildInvestmentText();

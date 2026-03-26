@@ -3260,7 +3260,7 @@ function showHtmlSitemapModal() {
 function switchSitemapTab(tab) { _sitemapCatTab = tab; renderSitemapResults(S.sitemapApproved); }
 
 // ── TOP-LEVEL SITEMAP TABS: Site Pages / Blog Pipeline ────────────────
-var _sitemapTopTab = 'site-pages'; // 'site-pages' | 'blog-pipeline'
+var _sitemapTopTab = 'site-pages'; // 'site-pages' | 'blog-pipeline' | 'seo-strategy'
 
 function _isBlogPage(p) {
   return ['blog','article','recipe','event','portfolio'].indexOf((p.page_type||'').toLowerCase()) >= 0;
@@ -3274,7 +3274,8 @@ function renderSitemapTopTabs() {
   var blogCount = S.pages.filter(function(p) { return _isBlogPage(p); }).length;
   var tabs = [
     { id: 'site-pages', icon: 'ti-layout-grid', label: 'Site Pages', count: siteCount },
-    { id: 'blog-pipeline', icon: 'ti-article', label: 'Blog Pipeline', count: blogCount }
+    { id: 'blog-pipeline', icon: 'ti-article', label: 'Blog Pipeline', count: blogCount },
+    { id: 'seo-strategy', icon: 'ti-file-analytics', label: 'SEO Strategy', count: S.seoStrategy ? 1 : 0 }
   ];
   nav.innerHTML = '<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">' + tabs.map(function(t) {
     var active = _sitemapTopTab === t.id;
@@ -3286,14 +3287,22 @@ function switchSitemapTopTab(tab) {
   _sitemapTopTab = tab;
   var resultsEl = document.getElementById('sitemap-results');
   var blogEl = document.getElementById('blog-pipeline');
+  var seoEl = document.getElementById('seo-strategy-panel');
   if (tab === 'site-pages') {
     if (resultsEl) resultsEl.style.display = '';
     if (blogEl) blogEl.style.display = 'none';
+    if (seoEl) seoEl.style.display = 'none';
     renderSitemapResults(S.sitemapApproved);
-  } else {
+  } else if (tab === 'blog-pipeline') {
     if (resultsEl) resultsEl.style.display = 'none';
     if (blogEl) blogEl.style.display = '';
+    if (seoEl) seoEl.style.display = 'none';
     _renderBlogPipeline();
+  } else if (tab === 'seo-strategy') {
+    if (resultsEl) resultsEl.style.display = 'none';
+    if (blogEl) blogEl.style.display = 'none';
+    if (seoEl) seoEl.style.display = '';
+    _renderSeoStrategyContent();
   }
   renderSitemapTopTabs();
 }
@@ -5394,6 +5403,522 @@ function dismissStructureReviewIssue(issueIdx) {
   review.issues.splice(issueIdx, 1);
   if (!review.issues.length) S._sitemapStructureReview = null;
   renderStructureReview();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SEO STRATEGY DOCUMENT — Compile from Sitemap stage
+// ══════════════════════════════════════════════════════════════════
+
+// ── Schema type lookup (derived from schema.js buildPageSchema) ──
+function _getSchemaTypesForPageType(pageType) {
+  var t = (pageType || '').toLowerCase();
+  var map = {
+    home:       ['Organization','WebSite','SearchAction','FAQPage'],
+    service:    ['ProfessionalService','FAQPage','HowTo','VideoObject'],
+    industry:   ['ProfessionalService','FAQPage','HowTo','VideoObject'],
+    landing:    ['ProfessionalService','FAQPage','HowTo'],
+    location:   ['LocalBusiness','FAQPage'],
+    blog:       ['BlogPosting','FAQPage'],
+    article:    ['BlogPosting','FAQPage'],
+    product:    ['Product','Offer','FAQPage'],
+    'case-study': ['Article'],
+    about:      ['Organization','Person'],
+    contact:    ['Organization','ContactPage'],
+    faq:        ['FAQPage'],
+    recipe:     ['Recipe','FAQPage'],
+    event:      ['Event','FAQPage'],
+    portfolio:  ['CreativeWork','ItemList'],
+    careers:    ['JobPosting'],
+    guide:      ['Article','HowTo','FAQPage']
+  };
+  return map[t] || ['WebPage'];
+}
+
+// ── Context assembly ─────────────────────────────────────────────
+function _buildSeoStrategyCtx() {
+  var s = S.setup || {};
+  var r = S.research || {};
+  var st = S.strategy || {};
+  var snap = S.snapshot || {};
+  var kwR = S.kwResearch || {};
+  var pages = S.pages || [];
+
+  var ctx = 'CLIENT: ' + (s.client || r.client_name || '') + '\n';
+  ctx += 'URL: ' + (s.url || '') + '\n';
+  ctx += 'INDUSTRY: ' + (r.industry || '') + '\n';
+  ctx += 'GEO: ' + (r.geography && r.geography.primary ? r.geography.primary : s.geo || '') + '\n';
+  ctx += 'SERVICES: ' + (r.primary_services || []).join(', ') + '\n';
+  if (r.services_detail && r.services_detail.length) {
+    r.services_detail.slice(0, 8).forEach(function(sd) {
+      ctx += '- ' + (sd.name || '') + ': ' + (sd.description || '').slice(0, 100) + '\n';
+    });
+  }
+
+  // Core Focus terms
+  var cf = typeof getCoreFocus === 'function' ? getCoreFocus() : (s.coreFocus || []);
+  if (cf.length) ctx += 'CORE FOCUS TERMS (must-win): ' + cf.join(', ') + '\n';
+
+  // Strategic directives
+  if (typeof getDirectivesContext === 'function') {
+    var dirCtx = getDirectivesContext();
+    if (dirCtx) ctx += dirCtx + '\n';
+  }
+
+  // ── Snapshot baseline ──
+  if (typeof _snapshotCtxBlock === 'function') {
+    var snapBlock = _snapshotCtxBlock();
+    if (snapBlock) ctx += '\n' + snapBlock + '\n';
+  }
+
+  // Current schema detection
+  if (snap.schemas && snap.schemas.length) {
+    ctx += '\nCURRENT SCHEMA DETECTED ON LIVE SITE:\n';
+    snap.schemas.forEach(function(sch) {
+      ctx += '- ' + (sch.type || sch) + (sch.page ? ' (on ' + sch.page + ')' : '') + '\n';
+    });
+  } else {
+    ctx += '\nCURRENT SCHEMA: None detected on live site\n';
+  }
+
+  // GSC data
+  if (snap.gsc && snap.gsc.queries && snap.gsc.queries.length) {
+    ctx += '\nGSC TOP QUERIES (' + snap.gsc.queries.length + '):\n';
+    snap.gsc.queries.slice(0, 15).forEach(function(q) {
+      ctx += '- "' + q.query + '" — clicks:' + q.clicks + ' impr:' + q.impressions + ' pos:' + (q.position || 0).toFixed(1) + '\n';
+    });
+  }
+  if (snap.gsc && snap.gsc.pages && snap.gsc.pages.length) {
+    ctx += '\nGSC TOP PAGES (' + snap.gsc.pages.length + '):\n';
+    snap.gsc.pages.slice(0, 10).forEach(function(p) {
+      ctx += '- ' + (p.page || p.url || '') + ' — clicks:' + p.clicks + ' impr:' + p.impressions + '\n';
+    });
+  }
+
+  // GA4 summary
+  if (snap.ga4 && snap.ga4.totals) {
+    var ga = snap.ga4.totals;
+    ctx += '\nGA4 OVERVIEW: sessions:' + (ga.sessions || 0) + ' bounce:' + (ga.bounceRate || 0) + '% conversions:' + (ga.conversions || 0) + '\n';
+  }
+
+  // ── Research data ──
+  // Competitors with DR
+  var comps = r.competitors || [];
+  if (comps.length) {
+    ctx += '\nCOMPETITORS:\n';
+    comps.slice(0, 8).forEach(function(c) {
+      ctx += '- ' + (c.name || '') + (c.url ? ' (' + c.url + ')' : '');
+      if (c.dr || c.domain_rating) ctx += ' DR:' + (c.dr || c.domain_rating);
+      if (c.why_they_win) ctx += ' — Strength: ' + c.why_they_win;
+      if (c.weaknesses) ctx += ' | Weakness: ' + c.weaknesses;
+      if (c.what_we_do_better) ctx += ' | Our edge: ' + c.what_we_do_better;
+      ctx += '\n';
+    });
+  }
+
+  // Proof bank
+  if (typeof getProofBankContext === 'function') {
+    var pbCtx = getProofBankContext();
+    if (pbCtx) ctx += '\n' + pbCtx + '\n';
+  }
+
+  // ── Strategy diagnostics (summary) ──
+  // D0 Audience
+  if (st.audience && st.audience.segments) {
+    ctx += '\nAUDIENCE SEGMENTS:\n';
+    st.audience.segments.slice(0, 6).forEach(function(seg) {
+      ctx += '- ' + seg.name + ' (priority:' + (seg.priority || '?') + ', revenue:' + (seg.revenue_potential || '?') + ')\n';
+    });
+  }
+  if (st.audience && st.audience.personas && st.audience.personas.length) {
+    ctx += 'KEY PERSONAS: ' + st.audience.personas.slice(0, 3).map(function(p) {
+      return (p.archetype || p.name || '') + ' — ' + (p.primary_goal || '').slice(0, 60);
+    }).join('; ') + '\n';
+  }
+
+  // D2 Positioning
+  if (st.positioning) {
+    ctx += '\nPOSITIONING DIRECTION:\n';
+    if (st.positioning.selected_direction) ctx += '- Direction: ' + st.positioning.selected_direction + '\n';
+    if (st.positioning.core_value_proposition) ctx += '- Value prop: ' + st.positioning.core_value_proposition + '\n';
+    if (st.positioning.messaging_hierarchy) {
+      var mh = st.positioning.messaging_hierarchy;
+      if (mh.primary_message) ctx += '- Primary message: ' + mh.primary_message + '\n';
+      if (mh.proof_points && mh.proof_points.length) ctx += '- Proof points: ' + mh.proof_points.join('; ') + '\n';
+    }
+    if (st.positioning.brand_voice) {
+      var bv = st.positioning.brand_voice;
+      if (bv.tone_words) ctx += '- Tone: ' + (Array.isArray(bv.tone_words) ? bv.tone_words.join(', ') : bv.tone_words) + '\n';
+      if (bv.words_to_avoid) ctx += '- Avoid: ' + (Array.isArray(bv.words_to_avoid) ? bv.words_to_avoid.join(', ') : bv.words_to_avoid) + '\n';
+    }
+  }
+
+  // D1 Unit economics summary
+  if (st.unit_economics) {
+    var ue = st.unit_economics;
+    ctx += '\nUNIT ECONOMICS: CPL:$' + (ue.cpl || '?') + ' CAC:$' + (ue.cac || '?') + ' LTV:$' + (ue.ltv || '?') + ' LTV:CAC:' + (ue.ltv_cac_ratio || '?') + ' close rate:' + (ue.close_rate || '?') + '% deal size:$' + (ue.avg_deal_size || '?') + '\n';
+  }
+
+  // D6 Content & Authority
+  if (st.brand_strategy) {
+    var bs = st.brand_strategy;
+    if (bs.content_pillars && bs.content_pillars.length) {
+      ctx += '\nCONTENT PILLARS:\n';
+      bs.content_pillars.forEach(function(cp) {
+        ctx += '- ' + (cp.pillar || cp.name || '') + ': ' + (cp.description || '').slice(0, 80);
+        if (cp.keyword_clusters) ctx += ' — clusters: ' + cp.keyword_clusters.join(', ');
+        ctx += '\n';
+      });
+    }
+    if (bs.dr_gap_analysis) ctx += 'DR GAP: current ' + (bs.dr_gap_analysis.current_dr || '?') + ' → target ' + (bs.dr_gap_analysis.target_dr || '?') + ' (' + (bs.dr_gap_analysis.gap_assessment || '') + ')\n';
+    if (bs.eeat_strategy) ctx += 'E-E-A-T: ' + (typeof bs.eeat_strategy === 'string' ? bs.eeat_strategy : JSON.stringify(bs.eeat_strategy).slice(0, 200)) + '\n';
+    if (bs.authority_timeline) ctx += 'AUTHORITY TIMELINE: ' + (typeof bs.authority_timeline === 'string' ? bs.authority_timeline : JSON.stringify(bs.authority_timeline).slice(0, 200)) + '\n';
+    if (bs.publishing_cadence) ctx += 'PUBLISHING CADENCE: ' + bs.publishing_cadence + '\n';
+  }
+
+  // D8 Narrative
+  if (st.narrative) {
+    var nar = st.narrative;
+    ctx += '\nNARRATIVE & MESSAGING:\n';
+    if (nar.storybrand) {
+      ctx += '- StoryBrand hero: ' + (nar.storybrand.hero || '') + '\n';
+      ctx += '- External problem: ' + (nar.storybrand.external_problem || '') + '\n';
+      ctx += '- Internal problem: ' + (nar.storybrand.internal_problem || '') + '\n';
+      ctx += '- Guide authority: ' + (nar.storybrand.guide_authority || '') + '\n';
+      ctx += '- Plan: ' + (nar.storybrand.plan || []).join(' \u2192 ') + '\n';
+      ctx += '- Direct CTA: ' + (nar.storybrand.direct_cta || '') + '\n';
+      ctx += '- Success: ' + (nar.storybrand.success_transformation || '') + '\n';
+    }
+    if (nar.messaging_pillars && nar.messaging_pillars.length) {
+      ctx += '- Messaging pillars:\n';
+      nar.messaging_pillars.slice(0, 5).forEach(function(p) {
+        ctx += '  · ' + (p.pillar || '') + ': ' + (p.evidence || '').slice(0, 60) + '\n';
+      });
+    }
+    if (nar.content_hooks && nar.content_hooks.length) {
+      ctx += '- Content hooks by awareness stage:\n';
+      nar.content_hooks.slice(0, 10).forEach(function(h) {
+        ctx += '  · [' + (h.awareness_stage || '?') + '] ' + (h.hook || '') + '\n';
+      });
+    }
+    if (nar.emotional_veins && nar.emotional_veins.length) {
+      ctx += '- Emotional veins: ' + nar.emotional_veins.map(function(ev) { return ev.vein + ': ' + (ev.messaging || '').slice(0, 50); }).join('; ') + '\n';
+    }
+  }
+
+  // Demand validation
+  if (st.demand_validation) {
+    ctx += '\nDEMAND VALIDATION: viability=' + (st.demand_validation.seo_viability || '?') + ' verdict=' + (st.demand_validation.verdict || '?') + '\n';
+  }
+
+  // ── Keyword data ──
+  var selected = kwR.selected || [];
+  var allKws = kwR.keywords || [];
+  var selSet = {};
+  selected.forEach(function(k) { selSet[k] = true; });
+  var totalSelVol = 0;
+  allKws.forEach(function(k) { if (selSet[k.kw]) totalSelVol += (k.vol || 0); });
+  ctx += '\nKEYWORDS: ' + allKws.length + ' total, ' + selected.length + ' selected, ' + totalSelVol.toLocaleString() + '/mo selected volume\n';
+
+  // Top clusters
+  var clusters = kwR.clusters || [];
+  var qualClusters = clusters.filter(function(c) { return c.qualifies !== false; });
+  if (qualClusters.length) {
+    var totalClVol = 0;
+    qualClusters.forEach(function(c) { totalClVol += (c.primaryVol || 0); });
+    ctx += '\nKEYWORD CLUSTERS (' + qualClusters.length + ' qualified, ' + totalClVol.toLocaleString() + '/mo total):\n';
+    qualClusters.slice(0, 25).forEach(function(c) {
+      ctx += '- ' + (c.name || c.primaryKw || '') + ' [' + (c.pageType || '?') + '] — "' + (c.primaryKw || '') + '" (' + (c.primaryVol || 0).toLocaleString() + '/mo, KD:' + (c.primaryKd || '?') + ') → ' + (c.recommendation === 'improve_existing' ? 'improve /' + (c.existingSlug || '') : 'build /' + (c.suggestedSlug || ''));
+      if (c.supportingKws && c.supportingKws.length) ctx += ' + ' + c.supportingKws.length + ' supporting';
+      ctx += '\n';
+    });
+  }
+
+  // Quick wins
+  var quickWins = allKws.filter(function(k) { return k.vol >= 100 && k.kd <= 20; });
+  if (quickWins.length) {
+    ctx += '\nQUICK-WIN KEYWORDS (' + quickWins.length + ' — vol>=100, KD<=20):\n';
+    quickWins.slice(0, 10).forEach(function(k) {
+      ctx += '- "' + k.kw + '" — ' + k.vol.toLocaleString() + '/mo, KD:' + k.kd + '\n';
+    });
+  }
+
+  // PAA questions
+  var paaQs = typeof _getQuestionsArray === 'function' ? _getQuestionsArray() : [];
+  if (paaQs.length) {
+    ctx += '\nPAA QUESTIONS (' + paaQs.length + '):\n';
+    paaQs.slice(0, 15).forEach(function(q) { ctx += '- ' + q + '\n'; });
+  }
+
+  // ── Sitemap pages ──
+  var sitePages = pages.filter(function(p) { return !_isBlogPage(p); });
+  var blogPages = pages.filter(_isBlogPage);
+  var locationPages = pages.filter(function(p) { return (p.page_type || '').toLowerCase() === 'location'; });
+
+  // Summary counts by type
+  var typeCounts = {};
+  pages.forEach(function(p) {
+    var t = (p.page_type || 'other').toLowerCase();
+    typeCounts[t] = (typeCounts[t] || 0) + 1;
+  });
+  ctx += '\nSITEMAP (' + pages.length + ' pages): ' + Object.keys(typeCounts).map(function(t) { return t + ':' + typeCounts[t]; }).join(', ') + '\n';
+  if (locationPages.length) ctx += 'HAS LOCATION PAGES: YES (' + locationPages.length + ' location pages)\n';
+
+  // Page table
+  ctx += '\nPAGE ARCHITECTURE:\n';
+  ctx += 'page_name | slug | type | primary_kw | vol | kd | priority | awareness | pillar | schema_types\n';
+  var pageLimit = pages.length > 40 ? 40 : pages.length;
+  pages.slice(0, pageLimit).forEach(function(p) {
+    var schemas = _getSchemaTypesForPageType(p.page_type).join(', ');
+    ctx += (p.page_name || '') + ' | /' + (p.slug || '') + ' | ' + (p.page_type || '') + ' | ' + (p.primary_keyword || '') + ' | ' + (p.primary_vol || 0) + ' | ' + (p.primary_kd || 0) + ' | ' + (p.priority || '') + ' | ' + (p.awareness_stage || '') + ' | ' + (p.content_pillar || '') + ' | ' + schemas + '\n';
+  });
+  if (pages.length > 40) ctx += '... and ' + (pages.length - 40) + ' more pages (see Appendix A)\n';
+
+  // Blog posts separately
+  if (blogPages.length) {
+    ctx += '\nBLOG PIPELINE (' + blogPages.length + ' posts):\n';
+    blogPages.forEach(function(p) {
+      ctx += '- ' + (p.page_name || '') + ' | /' + (p.slug || '') + ' | kw:"' + (p.primary_keyword || '') + '" vol:' + (p.primary_vol || 0) + ' | awareness:' + (p.awareness_stage || '?') + ' | pillar:' + (p.content_pillar || '?') + '\n';
+    });
+  } else {
+    ctx += '\nBLOG PIPELINE: No blog posts built yet — recommend topics based on PAA questions and content pillars\n';
+  }
+
+  // Removed/triaged pages
+  var removed = S.sitemapRemoved || [];
+  if (removed.length) {
+    ctx += '\nPAGES REMOVED/TRIAGED (' + removed.length + '):\n';
+    removed.slice(0, 10).forEach(function(p) {
+      ctx += '- /' + (p.slug || '') + ' — ' + (p._removeReason || 'removed') + '\n';
+    });
+  }
+
+  // ── Schema plan ──
+  var schemaTypes = Object.keys(typeCounts);
+  ctx += '\nSCHEMA PLAN BY PAGE TYPE:\n';
+  schemaTypes.forEach(function(t) {
+    var types = _getSchemaTypesForPageType(t);
+    ctx += '- ' + t + ' (' + typeCounts[t] + ' pages) → ' + types.join(', ') + '\n';
+  });
+
+  // ── Client goals ──
+  if (s.goalStatement || s.goalTarget) {
+    ctx += '\nCLIENT GOALS:\n';
+    if (s.goalStatement) ctx += '- Goal: "' + s.goalStatement + '"\n';
+    if (s.goalTarget) ctx += '- Target: ' + s.goalTarget + '\n';
+    if (s.goalBaseline) ctx += '- Baseline: ' + s.goalBaseline + '\n';
+    if (s.goalTimeline) ctx += '- Timeline: ' + s.goalTimeline + '\n';
+    if (s.goalKpi) ctx += '- KPI: ' + s.goalKpi.replace(/_/g, ' ') + '\n';
+  }
+
+  return ctx.slice(0, 30000);
+}
+
+// ── Deterministic data appendices ────────────────────────────────
+function _buildSeoStrategyDataTables() {
+  var md = '';
+  var pages = S.pages || [];
+  var kwR = S.kwResearch || {};
+
+  // Appendix A: Page Architecture Table
+  if (pages.length) {
+    md += '\n\n---\n\n## Appendix A: Page Architecture (' + pages.length + ' pages)\n\n';
+    md += '| Page | Slug | Type | Primary KW | Vol/mo | KD | Priority | Awareness | Schema Types |\n';
+    md += '|------|------|------|-----------|-------:|---:|----------|-----------|-------------|\n';
+    pages.slice(0, 80).forEach(function(p) {
+      var schemas = _getSchemaTypesForPageType(p.page_type).join(', ');
+      md += '| ' + (p.page_name || '') + ' | /' + (p.slug || '') + ' | ' + (p.page_type || '') + ' | ' + (p.primary_keyword || '') + ' | ' + (p.primary_vol || 0).toLocaleString() + ' | ' + (p.primary_kd || '-') + ' | ' + (p.priority || '-') + ' | ' + (p.awareness_stage || '-') + ' | ' + schemas + ' |\n';
+    });
+    if (pages.length > 80) md += '\n*... and ' + (pages.length - 80) + ' additional pages*\n';
+  }
+
+  // Appendix B: Keyword-to-Page Map
+  var selected = kwR.selected || [];
+  var allKws = kwR.keywords || [];
+  if (selected.length && allKws.length && pages.length) {
+    var selSet = {};
+    selected.forEach(function(k) { selSet[k.toLowerCase()] = true; });
+    var selKws = allKws.filter(function(k) { return selSet[(k.kw || '').toLowerCase()]; })
+      .sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
+
+    // Build keyword → page lookup
+    var kwPageMap = {};
+    pages.forEach(function(p) {
+      if (p.primary_keyword) kwPageMap[p.primary_keyword.toLowerCase()] = { name: p.page_name || p.slug, type: p.page_type };
+      (p.secondary_keywords || []).forEach(function(sk) {
+        if (!kwPageMap[sk.toLowerCase()]) kwPageMap[sk.toLowerCase()] = { name: p.page_name || p.slug, type: p.page_type };
+      });
+    });
+
+    if (selKws.length) {
+      md += '\n\n## Appendix B: Keyword-to-Page Map (' + selKws.length + ' selected keywords)\n\n';
+      md += '| Keyword | Vol/mo | KD | CPC | Mapped Page | Page Type |\n';
+      md += '|---------|-------:|---:|----:|-----------|----------|\n';
+      selKws.slice(0, 100).forEach(function(k) {
+        var mapped = kwPageMap[(k.kw || '').toLowerCase()];
+        md += '| ' + k.kw + ' | ' + (k.vol || 0).toLocaleString() + ' | ' + (k.kd || '-') + ' | $' + (k.cpc || 0).toFixed(2) + ' | ' + (mapped ? mapped.name : '-') + ' | ' + (mapped ? mapped.type : '-') + ' |\n';
+      });
+    }
+  }
+
+  return md;
+}
+
+// ── System prompt ────────────────────────────────────────────────
+var _SEO_STRATEGY_SYSTEM_PROMPT = 'You are a senior SEO strategist writing a comprehensive, client-ready SEO Strategy document. This translates a broader growth strategy into a focused, actionable organic search plan. Every recommendation must reference specific data — real keywords, real volumes, real competitor names, real page slugs.\n\n'
+  + 'Use Canadian spelling throughout (optimise, colour, centre, analyse). Use the client name naturally throughout the document.\n\n'
+  + 'CRITICAL RULES:\n'
+  + '- Use ACTUAL data from the context: real keyword volumes, real DR scores, real competitor names, real page slugs, real traffic numbers\n'
+  + '- Never use vague language like "various keywords" or "competitive market" when you have specific numbers\n'
+  + '- Include markdown tables where data is tabular\n'
+  + '- Every recommendation must reference the data that supports it\n'
+  + '- When location pages exist in the sitemap, include local SEO strategy\n'
+  + '- Connect messaging guidance to the StoryBrand framework from the narrative\n'
+  + '- The schema section must reference specific JSON-LD types per page type\n'
+  + '- Reference the broader growth strategy briefly where relevant but do not rehash it — this document stands on its own as an SEO deliverable\n\n'
+  + 'Write exactly these 10 sections:\n\n'
+  + '## 1. EXECUTIVE CONTEXT\n'
+  + '2-3 paragraphs. Open with the positioning direction (quote the headline if available). State total addressable search volume across all keyword clusters. SEO viability score and demand validation verdict. Frame why organic search matters specifically for this business and this positioning. Core Focus terms that anchor the keyword strategy. This section makes the case: "this is the right SEO strategy for this specific business."\n\n'
+  + '## 2. CURRENT SEO BASELINE\n'
+  + 'Current DR score and competitive context (where it sits vs competitor DRs). Core Web Vitals pass/fail with specific scores. Current organic traffic from GSC: total clicks, impressions, average position. Top 5 performing pages with traffic and ranking keywords. Schema markup currently detected vs gaps. Tech stack implications for SEO (client-rendered content, CMS limitations). Redirect issues if any exist. This section grounds everything in measured reality.\n\n'
+  + '## 3. KEYWORD OPPORTUNITY MAP\n'
+  + 'Total addressable monthly volume across all clusters. Top keyword clusters ranked by opportunity — markdown table: cluster name, primary keyword, volume, KD, page type, action (build/improve). Quick-win keywords: high volume + low KD (list them). Core Focus terms and which clusters they anchor. Search intent distribution (informational vs commercial vs transactional). PAA questions to target for featured snippet opportunities. SERP feature opportunities (FAQ rich results, local pack, knowledge panel). Connect search behaviour to buyer journey stages.\n\n'
+  + '## 4. SITE ARCHITECTURE & PAGE PLAN\n'
+  + 'The centrepiece. Total page count grouped by type (service, location, blog, structural). Explain the architectural logic — why these pages, in this structure, serving these intents. Hub/spoke structure and internal linking strategy. For each page type group: count, example pages with slugs, which audience segment they serve, which awareness stage they target. Priority tiers (P1/P2/P3) explained. Pages to build vs improve vs cut (with reasons for cuts). CTA landing pages and their conversion role. Cannibalisation resolutions. Note: full page table is in Appendix A.\n\n'
+  + '## 5. CONTENT & AUTHORITY STRATEGY\n'
+  + 'Content pillars mapped to keyword clusters — markdown table: pillar, clusters covered, total volume, page count. Publishing cadence and content velocity recommendation. DR gap analysis: current DR to competitor DR range to 12-month target DR. What link building is realistically needed at this DR level. E-E-A-T strategy: which proof bank assets strengthen credibility (case studies, testimonials, credentials, awards — reference specific ones). Authority timeline with quarterly milestones.\n\n'
+  + 'LOCAL SEO SUBSECTION (include only when location pages exist): LocalBusiness schema implementation, GMB optimisation priorities, geo-targeted content strategy, city-specific keyword approach, local citation plan.\n\n'
+  + '## 6. BLOG PIPELINE & CONTENT PLAN\n'
+  + 'Blog topics from the sitemap with target keywords and volumes — markdown table: title, target keyword, volume, awareness stage, content pillar, priority. How blog posts support main service/location pages through internal linking. PAA questions each blog targets. Awareness stage distribution. Recommended publishing frequency. Priority order for publishing — which blogs first and why. If no blog posts exist yet: recommend 5-8 blog topics based on PAA questions, keyword gaps, and content pillar coverage.\n\n'
+  + '## 7. SCHEMA & STRUCTURED DATA PLAN\n'
+  + 'Markdown table: page type | JSON-LD schema types | rich result opportunity. For each page type in the sitemap, list exactly which schema types will be implemented and what rich results they enable. Current schema detected on the live site vs what the plan adds. Rich result opportunities: FAQ rich results (which pages), review stars (which pages), knowledge panel signals, sitelinks search box, how-to carousels, breadcrumbs. Implementation priority order.\n\n'
+  + '## 8. NARRATIVE, MESSAGING & ON-PAGE STANDARDS\n'
+  + 'How the positioning direction shapes SEO content — not just keywords, but what we are saying and why. StoryBrand framework mapped to page structure: hero (homepage), problem (blog/service), guide (about/case studies), plan (service pages), CTA (landing pages), success (testimonials/results).\n\n'
+  + 'Meta title formula per page type (e.g., "Service pages: [Primary Keyword] in [Geo] | [Positioning Hook] — [Client Name]"). Meta description formula per page type. H1/H2 hierarchy standards. Voice and tone per awareness stage — how copy shifts from problem-aware (empathetic, educational) to most-aware (direct, proof-heavy). Which messaging pillars map to which page types. Emotional veins that should run through headlines and meta descriptions. Words/phrases to use and avoid.\n\n'
+  + '## 9. COMPETITOR SEO LANDSCAPE\n'
+  + 'Markdown table: competitor | DR | strengths | weaknesses | our edge. For each competitor: what they rank for that we do not (content gaps), where they are vulnerable (thin content, low DR subsections, missing schema). Keyword overlap analysis. Content areas competitors have neglected. Differentiation path: how the positioning direction creates separation that competitors cannot easily copy. DR gap context.\n\n'
+  + '## 10. PROJECTIONS & IMPLEMENTATION ROADMAP\n'
+  + 'Traffic projection model: selected keyword volumes multiplied by expected CTR by position tier (position 1 is roughly 28% CTR, position 3 is roughly 11%, position 5 is roughly 5%, position 10 is roughly 2.5%). Use conservative position estimates.\n\n'
+  + 'Targets — markdown table: metric | 3-month | 6-month | 12-month. Metrics: organic traffic, keywords ranking page 1, leads from organic (tied to unit economics close rate).\n\n'
+  + 'Phased implementation:\n'
+  + '- Phase 1 (Month 1-2): Technical fixes + core service/location pages + schema implementation\n'
+  + '- Phase 2 (Month 2-4): Content production (blog pipeline) + authority building begins\n'
+  + '- Phase 3 (Month 4-12): Scale content velocity + link building + optimise based on GSC data\n\n'
+  + 'Migration/redirect notes if URL changes are planned. KPIs and measurement cadence (monthly GSC review, quarterly strategy review).\n\n'
+  + 'Write 3000-4000 words total. Use markdown format with ## headers. Include markdown tables where data is tabular. This is a premium client deliverable that should make the SEO plan feel inevitable — the right pages, for the right searches, with the right message, in the right order.';
+
+// ── Main compile function ────────────────────────────────────────
+async function compileSeoStrategy() {
+  if (!S.pages || !S.pages.length) {
+    aiBarNotify('Build the sitemap first, then compile the SEO Strategy', { isError: true, duration: 3000 });
+    return;
+  }
+  if (!S.strategy || !S.strategy._meta || S.strategy._meta.current_version === 0) {
+    aiBarNotify('Run strategy diagnostics first', { isError: true, duration: 3000 });
+    return;
+  }
+
+  var ctx = _buildSeoStrategyCtx();
+  storePrompt('seo-strategy', _SEO_STRATEGY_SYSTEM_PROMPT, 'SEO Strategy compile context:\n\n' + ctx, 'SEO Strategy Document', 'Sitemap stage compile');
+
+  aiBarStart('Compiling SEO Strategy Document...');
+  var guard = projectGuard();
+
+  try {
+    var result = await callClaude(_SEO_STRATEGY_SYSTEM_PROMPT, 'Complete SEO strategy analysis:\n\n' + ctx, null, 8192, 'SEO Strategy', 'claude-opus-4-20250514');
+    if (guard.changed()) { aiBarEnd('Project changed — discarded'); return; }
+
+    S.seoStrategy = result + _buildSeoStrategyDataTables();
+    S._seoStrategyCompiledAt = new Date().toISOString();
+    await saveProject();
+
+    _renderSeoStrategyContent();
+    aiBarEnd('SEO Strategy Document compiled');
+  } catch (e) {
+    if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
+    aiBarNotify('SEO Strategy compile failed: ' + e.message, { isError: true, duration: 5000 });
+  }
+}
+
+// ── Copy / Download ──────────────────────────────────────────────
+function copySeoStrategy() {
+  if (!S.seoStrategy) return;
+  copyToClip2(S.seoStrategy);
+  aiBarNotify('SEO Strategy copied to clipboard', { duration: 2000 });
+}
+
+function downloadSeoStrategy() {
+  if (!S.seoStrategy) return;
+  var client = (S.setup && S.setup.client) || 'Client';
+  var blob = new Blob([S.seoStrategy], { type: 'text/markdown' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = client.toLowerCase().replace(/\s+/g, '-') + '-seo-strategy.md';
+  a.click();
+  URL.revokeObjectURL(url);
+  aiBarNotify('SEO Strategy downloaded', { duration: 2000 });
+}
+
+// ── UI Renderer ──────────────────────────────────────────────────
+function _renderSeoStrategyContent() {
+  var el = document.getElementById('seo-strategy-panel');
+  if (!el) return;
+
+  if (!S.pages || !S.pages.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--n2)">'
+      + '<i class="ti ti-file-analytics" style="font-size:32px;display:block;margin-bottom:8px;opacity:0.4"></i>'
+      + '<div style="font-size:13px;font-weight:500;margin-bottom:4px">Build the sitemap first</div>'
+      + '<div style="font-size:11px">The SEO Strategy Document compiles data from all pipeline stages into a client-ready deliverable.</div>'
+      + '</div>';
+    return;
+  }
+
+  var html = '';
+
+  if (S.seoStrategy) {
+    // Document exists — show with action buttons
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">';
+    html += '<div>';
+    html += '<div style="font-size:14px;font-weight:600;color:var(--dark)">SEO Strategy Document</div>';
+    if (S._seoStrategyCompiledAt) {
+      var dt = new Date(S._seoStrategyCompiledAt);
+      html += '<div style="font-size:10px;color:var(--n2);margin-top:2px">Compiled ' + dt.toLocaleDateString('en-CA') + ' ' + dt.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' }) + '</div>';
+    }
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<button class="btn btn-ghost sm" id="seo-strat-recompile-btn" data-tip="Recompile SEO Strategy with current data"><i class="ti ti-refresh" style="font-size:11px"></i> Recompile</button>';
+    html += '<button class="btn btn-ghost sm" id="seo-strat-copy-btn" data-tip="Copy to clipboard"><i class="ti ti-copy" style="font-size:11px"></i> Copy</button>';
+    html += '<button class="btn btn-ghost sm" id="seo-strat-dl-btn" data-tip="Download as markdown"><i class="ti ti-download" style="font-size:11px"></i> Download .md</button>';
+    html += '</div></div>';
+
+    // Rendered document
+    var rendered = typeof _markdownToHtml === 'function' ? _markdownToHtml(S.seoStrategy) : S.seoStrategy.replace(/</g, '&lt;');
+    html += '<div class="card" style="padding:24px 28px;font-size:13px;line-height:1.7;font-family:var(--font)">' + sanitiseHTML(rendered) + '</div>';
+  } else {
+    // No document — show compile button
+    html += '<div style="text-align:center;padding:40px 20px">';
+    html += '<i class="ti ti-file-analytics" style="font-size:36px;display:block;margin-bottom:10px;color:var(--green)"></i>';
+    html += '<div style="font-size:14px;font-weight:600;color:var(--dark);margin-bottom:6px">SEO Strategy Document</div>';
+    html += '<div style="font-size:12px;color:var(--n2);max-width:480px;margin:0 auto 16px">Compile all pipeline data — keywords, page architecture, schema plan, narrative, and competitive landscape — into a client-ready SEO Strategy document.</div>';
+    html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
+    html += '<button class="btn btn-primary" id="seo-strat-compile-btn"><i class="ti ti-file-analytics"></i> Compile SEO Strategy</button>';
+    html += '<button class="btn btn-ghost sm" onclick="showPromptModal(\'seo-strategy\')" data-tip="Preview the prompt that will be sent to Claude"><i class="ti ti-eye"></i> Preview Prompt</button>';
+    html += '</div>';
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:10px">Uses Claude Opus · ~3000-4000 words · 10 sections</div>';
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+
+  // Wire buttons post-innerHTML
+  var compileBtn = document.getElementById('seo-strat-compile-btn');
+  if (compileBtn) compileBtn.onclick = function() { compileSeoStrategy(); };
+  var recompileBtn = document.getElementById('seo-strat-recompile-btn');
+  if (recompileBtn) recompileBtn.onclick = function() { compileSeoStrategy(); };
+  var copyBtn = document.getElementById('seo-strat-copy-btn');
+  if (copyBtn) copyBtn.onclick = function() { copySeoStrategy(); };
+  var dlBtn = document.getElementById('seo-strat-dl-btn');
+  if (dlBtn) dlBtn.onclick = function() { downloadSeoStrategy(); };
 }
 
 // ── COPY ───────────────────────────────────────────────────────────
