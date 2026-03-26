@@ -10065,7 +10065,7 @@ async function compileStrategyOutput() {
 
   aiBarStart('Compiling strategy document...');
   try {
-    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 28000), null, 8192, 'Strategy output', 'claude-opus-4-20250514');
+    var result = await callClaude(sys, 'Complete strategy analysis:\n\n' + ctx.slice(0, 28000), null, 8192, 'Strategy output', 'claude-opus-4-6-20250610');
     // Append data tables after the AI prose
     S.strategy.compiled_output = result + appendices;
     // Also update the webStrategy brief (shorter version for downstream)
