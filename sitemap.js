@@ -2111,6 +2111,7 @@ async function _aiFixIssue(fixId) {
           p._kwGenerated = true;
         }
         p.score = 0;
+        p._kwLocked = true; // Locked — Phase 3 AI must not override
         totalAssigned++;
         console.log('[no-kw] Deterministic:', p.slug, '→', assigned);
       }
@@ -2146,7 +2147,7 @@ async function _aiFixIssue(fixId) {
     }
 
     // ── Phase 3: AI-batched, priority-sorted ──
-    var remaining = allNeedKw.filter(function(p) { return !p.primary_keyword; });
+    var remaining = pages.filter(function(p) { return !p._removed && !p.primary_keyword && !p._kwLocked; });
     if (remaining.length > 0 && !window._aiStopAll) {
       console.log('[no-kw] Phase 3: AI assignment for', remaining.length, 'remaining pages (priority-sorted)');
 
@@ -2218,7 +2219,7 @@ async function _aiFixIssue(fixId) {
             parsed.forEach(function(item) {
               var _slug = (item.slug || '').replace(/^\/+/, '');
               var page = pages.find(function(p) { return p.slug === _slug || p.slug === item.slug || ('/' + p.slug) === item.slug; });
-              if (page && item.keyword) {
+              if (page && item.keyword && !page._kwLocked) {
                 page.primary_keyword = item.keyword;
                 var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
                 if (kwData) {
