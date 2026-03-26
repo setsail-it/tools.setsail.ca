@@ -998,7 +998,10 @@ textarea.inp{resize:vertical}
       <div style="margin-bottom:16px">
         <div class="eyebrow stage-eyebrow" data-stage-num="10"></div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
-        <p class="psub" style="margin-bottom:0">Click any page to generate schema. Expands inline.</p>
+        <p class="psub" style="margin-bottom:0">Deterministic JSON-LD assembly from all previous stages. No AI calls — pure data.</p>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-primary" onclick="runAllSchemas()"><i class="ti ti-code"></i> Generate All Schemas</button>
+        </div>
       </div>
       <div id="schema-progress" style="display:none" class="progress-wrap">
         <div class="progress-meta"><span id="schema-count-label" style="color:var(--n2)"></span><span id="schema-pct-label" style="color:var(--dark);font-weight:500"></span></div>
