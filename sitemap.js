@@ -2157,7 +2157,9 @@ async function _aiFixIssue(fixId) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ keywords: kwList, country: country, limit: kwList.length })
             });
-            if (volRes.ok) {
+            if (!volRes.ok) {
+              console.warn('[no-kw fix] kw-expand volume fetch returned', volRes.status, '— skipping batch');
+            } else {
               var volData = await volRes.json();
               var volItems = volData.items || volData.tasks && volData.tasks[0] && volData.tasks[0].result || [];
               volBatch.forEach(function(p) {
@@ -3195,14 +3197,17 @@ async function fillKeywordGaps() {
     : (typeof detectCountryLower === 'function' ? detectCountryLower((research.geography && research.geography.primary) || setup.geo || '') : 'ca');
   var coreFocus = (setup.coreFocus || []).filter(function(f) { return f && f.trim(); });
 
-  // Generate seeds from gap pages grouped by topic
+  // Generate diverse seeds from gap pages grouped by topic
+  var industry = (S.research && (S.research.industry || S.research.business_type)) || '';
   var seedGroups = {};
   gapPages.forEach(function(p) {
     // Extract meaningful terms from page name and slug
     var name = (p.page_name || '').toLowerCase();
     var slug = (p.slug || '').toLowerCase();
+    var pt = (p.page_type || '').toLowerCase();
+    var _stopWords = ['the', 'and', 'for', 'with', 'our', 'your', 'blog', 'services', 'page', 'post', 'case', 'studies', 'study', 'resource', 'hub'];
     var tokens = slug.split(/[-\/]/).filter(function(t) {
-      return t.length > 2 && ['the', 'and', 'for', 'with', 'our', 'your', 'blog', 'services', 'page', 'post'].indexOf(t) < 0;
+      return t.length > 2 && _stopWords.indexOf(t) < 0;
     });
     // Use first 2-3 meaningful tokens as seed group key
     var key = tokens.slice(0, 3).join(' ');
@@ -3210,18 +3215,66 @@ async function fillKeywordGaps() {
     if (!key || key.length < 4) return;
     if (!seedGroups[key]) seedGroups[key] = { seeds: new Set(), pages: [] };
     seedGroups[key].pages.push(p);
+    var topic = tokens.join(' ');
     // Generate search variations (max 80 chars, min 4 chars, max 6 words)
     var _addSeed = function(s) {
       var clean = s.trim().slice(0, 80);
-      if (clean.length >= 4 && clean.split(/\s+/).length <= 6) seedGroups[key].seeds.add(clean);
+      if (clean.length >= 4 && clean.split(/\s+/).length <= 8) seedGroups[key].seeds.add(clean);
     };
-    _addSeed(key);
-    // Use first 4-5 words of page name (not the full name — too long for API)
-    if (name.length > 5) _addSeed(name.split(/\s+/).slice(0, 5).join(' '));
-    // Add Core Focus combinations
+
+    // Page-type-aware seed generation
+    if (pt === 'service' || pt === 'landing') {
+      // Service pages: "[coreFocus] [page-topic]", "[service-name] consulting", "[service-name] services"
+      _addSeed(topic + ' services');
+      _addSeed(topic + ' consulting');
+      _addSeed(topic + ' solutions');
+      _addSeed(topic + ' company');
+      if (industry) {
+        _addSeed(industry + ' ' + topic);
+        _addSeed(topic + ' for ' + industry);
+      }
+      coreFocus.forEach(function(cf) {
+        _addSeed(cf.toLowerCase() + ' ' + topic);
+        _addSeed(topic + ' ' + cf.toLowerCase());
+      });
+    } else if (pt === 'blog' || pt === 'article' || pt === 'resource') {
+      // Blog pages: "how to [topic]", "what is [topic]", "[topic] best practices", "[topic] guide"
+      _addSeed('how to ' + topic);
+      _addSeed('what is ' + topic);
+      _addSeed(topic + ' best practices');
+      _addSeed(topic + ' guide');
+      _addSeed(topic + ' tips');
+      _addSeed(topic + ' strategies');
+      if (industry) {
+        _addSeed(industry + ' ' + topic + ' guide');
+        _addSeed(topic + ' for ' + industry);
+      }
+      coreFocus.forEach(function(cf) {
+        _addSeed(cf.toLowerCase() + ' ' + topic);
+      });
+    } else if (pt === 'case-study' || pt === 'case-studies' || pt === 'portfolio') {
+      // Case studies: "[topic] case study", "[client-industry] [topic] case study"
+      _addSeed(topic + ' case study');
+      _addSeed(topic + ' results');
+      _addSeed(topic + ' success story');
+      if (industry) {
+        _addSeed(industry + ' ' + topic + ' case study');
+        _addSeed(industry + ' ' + topic + ' results');
+      }
+    } else {
+      // Fallback for all other page types
+      _addSeed(key);
+      if (name.length > 5) _addSeed(name.split(/\s+/).slice(0, 5).join(' '));
+    }
+
+    // Universal: Core Focus + page topic combos
     coreFocus.forEach(function(cf) {
-      if (key.indexOf(cf.toLowerCase()) < 0 && tokens[0]) {
-        _addSeed(cf.toLowerCase() + ' ' + tokens[0]);
+      var cfLow = cf.toLowerCase();
+      if (key.indexOf(cfLow) < 0 && tokens[0]) {
+        _addSeed(cfLow + ' ' + tokens[0]);
+      }
+      if (industry) {
+        _addSeed(cfLow + ' ' + industry);
       }
     });
   });
@@ -3229,9 +3282,9 @@ async function fillKeywordGaps() {
   var groupKeys = Object.keys(seedGroups);
   console.log('[fillKeywordGaps] Generated', groupKeys.length, 'seed groups');
 
-  // Batch DataForSEO calls — max 20 seeds per call, max 6 calls
+  // Batch DataForSEO calls — max 10 seeds per call, max 10 calls
   var allNewKws = [];
-  var _maxCalls = 6;
+  var _maxCalls = 10;
   var _callsMade = 0;
   var _batchSeeds = [];
 
@@ -3392,7 +3445,7 @@ async function enrichAllSitemap() {
   var guard = projectGuard();
   window._aiStopAll = false;
   var _steps = [];
-  var _totalSteps = 8;
+  var _totalSteps = 9;
 
   try {
     // Step 1: Structure Review (AI cleanup — find duplicate purpose pages, misclassifications)
@@ -3405,22 +3458,60 @@ async function enrichAllSitemap() {
       } catch (_srErr) { console.warn('[enrichAll] structure review error:', _srErr.message); }
     }
 
-    // Step 2: Fill keyword gaps — expand pool for uncovered pages
+    // Step 2: Auto-fix misclassifications based on slug patterns
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (2/' + _totalSteps + '): Expanding keyword pool\u2026');
+      aiBarStart('Enrich All (2/' + _totalSteps + '): Auto-fixing misclassifications\u2026');
+      var _reclassCount = 0;
+      var _serviceWrongTypes = ['contact', 'about', 'home', 'team'];
+      var _blogWrongTypes = ['contact', 'about', 'home', 'service'];
+      (S.pages || []).forEach(function(p) {
+        if (p._removed) return;
+        var slug = (p.slug || '').toLowerCase();
+        var pt = (p.page_type || '').toLowerCase();
+        // services/ or solutions/ slug but wrong page_type
+        if ((slug.indexOf('services/') === 0 || slug.indexOf('solutions/') === 0) && _serviceWrongTypes.indexOf(pt) >= 0) {
+          console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "service" (slug pattern)');
+          p.page_type = 'service';
+          _reclassCount++;
+        }
+        // blog/ slug but wrong page_type
+        else if (slug.indexOf('blog/') === 0 && _blogWrongTypes.indexOf(pt) >= 0) {
+          console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "blog" (slug pattern)');
+          p.page_type = 'blog';
+          _reclassCount++;
+        }
+        // case-stud* slug but not case-study
+        else if (slug.indexOf('case-stud') === 0 && pt !== 'case-study') {
+          console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "case-study" (slug pattern)');
+          p.page_type = 'case-study';
+          _reclassCount++;
+        }
+        // resource-hub/ slug but not resource or resource-hub
+        else if (slug.indexOf('resource-hub/') === 0 && pt !== 'resource' && pt !== 'resource-hub') {
+          console.log('[enrichAll] Reclassify "' + p.slug + '" from "' + p.page_type + '" to "resource" (slug pattern)');
+          p.page_type = 'resource';
+          _reclassCount++;
+        }
+      });
+      if (_reclassCount > 0) _steps.push('reclassify(' + _reclassCount + ')');
+    }
+
+    // Step 3: Fill keyword gaps — expand pool for uncovered pages
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (3/' + _totalSteps + '): Expanding keyword pool\u2026');
       try {
         var _gapResult = await fillKeywordGaps();
         if (_gapResult.expanded > 0) _steps.push('pool(+' + _gapResult.expanded + ')');
       } catch (_gapErr) { console.warn('[enrichAll] gap fill error:', _gapErr.message); }
     }
 
-    // Step 3: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
+    // Step 4: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
     var issues = _runSitemapHealthCheck();
     var _fixable = issues.errors.concat(issues.warnings).filter(function(i) {
       return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
     }).length;
     if (_fixable > 0 && !guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (3/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
       // Trigger the fix-all logic inline (same as the button)
       var _maxPasses = 3;
       for (var _pass = 0; _pass < _maxPasses; _pass++) {
@@ -3438,9 +3529,9 @@ async function enrichAllSitemap() {
       _steps.push('fixes');
     }
 
-    // Step 2: Priorities (instant, no AI)
+    // Step 5: Priorities (instant, no AI)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (4/' + _totalSteps + '): Re-suggesting priorities\u2026');
+      aiBarStart('Enrich All (5/' + _totalSteps + '): Re-suggesting priorities\u2026');
       var _priChanged = 0;
       (S.pages || []).forEach(function(p) {
         var s = _suggestPriority(p);
@@ -3449,33 +3540,33 @@ async function enrichAllSitemap() {
       if (_priChanged > 0) _steps.push('priorities(' + _priChanged + ')');
     }
 
-    // Step 3: Assign personas
+    // Step 6: Assign personas
     if (!guard.changed() && !window._aiStopAll && typeof _getActivePersonas === 'function' && _getActivePersonas().length > 0) {
-      aiBarStart('Enrich All (5/' + _totalSteps + '): Assigning personas\u2026');
+      aiBarStart('Enrich All (6/' + _totalSteps + '): Assigning personas\u2026');
       assignAllPersonas();
       _steps.push('personas');
     }
 
-    // Step 4: Generate page goals (AI — batched)
+    // Step 7: Generate page goals (AI — batched)
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (6/' + _totalSteps + '): Generating page goals\u2026');
+      aiBarStart('Enrich All (7/' + _totalSteps + '): Generating page goals\u2026');
       await generateAllPageGoals('auto');
       _steps.push('goals');
     }
 
-    // Step 5: Assign content pillars (AI)
+    // Step 8: Assign content pillars (AI)
     if (!guard.changed() && !window._aiStopAll && typeof assignContentPillars === 'function') {
       var _blogCount = (S.pages || []).filter(function(p) { return ['blog', 'article', 'recipe', 'event'].indexOf((p.page_type || '').toLowerCase()) >= 0; }).length;
       if (_blogCount > 0) {
-        aiBarStart('Enrich All (7/' + _totalSteps + '): Assigning content pillars\u2026');
+        aiBarStart('Enrich All (8/' + _totalSteps + '): Assigning content pillars\u2026');
         await assignContentPillars();
         _steps.push('pillars');
       }
     }
 
-    // Step 6: Fetch live volumes from DataForSEO
+    // Step 9: Fetch live volumes from DataForSEO
     if (!guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (8/' + _totalSteps + '): Fetching live volumes\u2026');
+      aiBarStart('Enrich All (9/' + _totalSteps + '): Fetching live volumes\u2026');
       await enrichSitemapWithLiveData(true);
       _steps.push('volumes');
     }
