@@ -1244,8 +1244,8 @@ function _computeEnrichmentPct() {
     var type = (p.page_type || '').toLowerCase();
     // Pages that don't need persona (they serve all visitors)
     var noPersonaNeeded = ['home', 'about', 'contact', 'utility', 'faq', 'team', 'terms', 'privacy'].indexOf(type) >= 0;
-    // Pages that don't need a primary keyword (structural/utility)
-    var noKwNeeded = ['home', 'about', 'contact', 'utility', 'terms', 'privacy', 'team'].indexOf(type) >= 0;
+    // Pages that don't need a primary keyword (utility only — home/about/contact DO need keywords)
+    var noKwNeeded = ['utility', 'terms', 'privacy', 'team', 'faq', 'thank-you', 'thankyou'].indexOf(type) >= 0;
 
     // Page goal — required for all
     totalPoints++; if (p.page_goal) earnedPoints++;
@@ -1540,8 +1540,11 @@ async function _aiFixIssue(fixId) {
   console.log('[_aiFixIssue] pages:', pages.length, '| kwPool:', kwPool.length, '| clusters:', clusters.length);
 
   if (fixId === 'no-kw') {
-    // Assign best keywords to pages missing them — batched, auto-loops
-    // Home/about/contact SHOULD get keywords (they are SEO-relevant pages)
+    // ── PRIORITY-SORTED KEYWORD ASSIGNMENT ──
+    // Phase 1: Deterministic (structural pages — no AI needed)
+    // Phase 2: Core Focus → service pages (deterministic)
+    // Phase 3: AI-batched, priority-sorted (P1 service → P1 location → P2 → P3 → blog)
+
     var allNeedKw = pages.filter(function(p) {
       var t = (p.page_type || '').toLowerCase();
       if (['utility', 'faq', 'team', 'thank-you', 'thankyou'].indexOf(t) >= 0) return false;
@@ -1549,88 +1552,189 @@ async function _aiFixIssue(fixId) {
     });
     if (!allNeedKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
 
-    console.log('[no-kw fix] Found', allNeedKw.length, 'pages needing keywords');
-    console.log('[no-kw fix] Keyword pool size:', kwPool.length);
-    // Same keyword CAN be used across different page types (service + blog = OK, different intent)
-    // Only filter to keywords with volume — cannibal check handles same-type conflicts
+    var setup = S.setup || {};
+    var research = S.research || {};
+    var geo = (research.geography || {}).primary || setup.geo || '';
+    var city = geo.split(',')[0].trim();
+    var clientName = setup.clientName || '';
+    var coreFocus = (setup.coreFocus || []).filter(function(f) { return f && f.trim(); });
+    var industry = research.industry || '';
+    var services = ((research.services || []).length > 0) ? research.services : [];
     var availKws = kwPool.filter(function(k) { return k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
-    console.log('[no-kw fix] Available keywords with volume:', availKws.length);
-    var geo = ((S.research || {}).geography || {}).primary || (S.setup || {}).geo || '';
-    var industry = (S.research || {}).industry || '';
-
     var totalAssigned = 0;
-    var batchSize = 25;
-    for (var batchStart = 0; batchStart < allNeedKw.length; batchStart += batchSize) {
-      if (window._aiStopAll) break;
-      var batch = allNeedKw.slice(batchStart, batchStart + batchSize);
-      var batchNum = Math.floor(batchStart / batchSize) + 1;
-      var totalBatches = Math.ceil(allNeedKw.length / batchSize);
-      console.log('[no-kw fix] Starting batch', batchNum, '/', totalBatches, '| pages:', batch.length);
-      aiBarStart('AI assigning keywords: batch ' + batchNum + '/' + totalBatches + ' (' + totalAssigned + ' assigned so far)');
 
-      // Available pool stays the same — keywords can be reused across page types
-      console.log('[no-kw fix] Batch', batchNum, '| available from pool:', availKws.length);
+    console.log('[no-kw] Phase 1: Deterministic structural assignment');
+    console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Geo:', geo);
 
-      var kwSection = availKws.length > 0
-        ? '\n\nAVAILABLE KEYWORDS FROM RESEARCH (prefer these, sorted by volume):\n' + availKws.slice(0, 60).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
-        : '';
+    // ── Phase 1: Deterministic structural pages ──
+    allNeedKw.forEach(function(p) {
+      var t = (p.page_type || '').toLowerCase();
+      var s = (p.slug || '').toLowerCase();
+      var assigned = null;
 
-      var prompt = 'Assign the best primary keyword to each page.\n\n'
-        + 'RULES:\n'
-        + '- First, try to match from the AVAILABLE KEYWORDS list below (these have real search volume data)\n'
-        + '- If no good match exists in the list, GENERATE a relevant keyword that someone would search to find this page\n'
-        + '- Generated keywords should be specific, searchable phrases (2-5 words), not generic terms\n'
-        + '- Consider the page type, industry (' + (industry || 'general') + '), and location (' + (geo || 'general') + ')\n'
-        + '- A keyword CAN be shared across DIFFERENT page types (service + blog = OK, different intent)\n'
-        + '- A keyword should NOT be shared between pages of the SAME type (that is cannibalisation)\n'
-        + '- For blog posts, use informational/question-based keywords\n'
-        + '- For service pages, use commercial-intent keywords with geo modifiers\n'
-        + '- For homepage, use the primary brand + service keyword (e.g. "[brand] [core service]" or "[core service] [city]")\n'
-        + '- For about pages, use brand-name keywords or "[company] [city]"\n'
-        + '- For contact pages, use "[service] contact [city]" or "[company] contact"\n\n'
-        + 'PAGES NEEDING KEYWORDS:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
-        + kwSection
-        + '\n\nReturn a JSON array: [{"slug":"page-slug","keyword":"assigned or generated keyword","source":"pool|generated"}]\nOnly return the JSON array, nothing else.';
-
-      try {
-        var result = await callClaude('You are a keyword-to-page mapping expert. Return only valid JSON.', prompt, null, 4096, 'kw-fix');
-        console.log('[no-kw fix] Batch', batchNum, 'response length:', result.length, 'first 200:', result.slice(0, 200));
-        var parsed = _parseAiJson(result);
-        console.log('[no-kw fix] Batch', batchNum, 'parsed items:', Array.isArray(parsed) ? parsed.length : 'NOT ARRAY', parsed && parsed[0] ? JSON.stringify(parsed[0]) : 'empty');
-        if (Array.isArray(parsed)) {
-          parsed.forEach(function(item) {
-            var page = pages.find(function(p) { return p.slug === item.slug; });
-            if (!page && item.slug) {
-              // Try matching without leading slash
-              page = pages.find(function(p) { return p.slug === item.slug.replace(/^\/+/, ''); });
-            }
-            if (page && item.keyword) {
-              page.primary_keyword = item.keyword;
-              var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
-              if (kwData) {
-                page.primary_vol = kwData.vol || 0;
-                page.primary_kd = kwData.kd || 0;
-                page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
-              } else {
-                // Generated keyword — mark for volume lookup later
-                page.primary_vol = 0;
-                page.primary_kd = 0;
-                page._kwGenerated = true;
-              }
-              totalAssigned++;
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('[no-kw fix] batch error:', e.message);
+      if (t === 'home' || s === '' || s === '/' || s === 'home') {
+        // Homepage: Core Focus[0] + city, or clientName + primary service
+        if (coreFocus.length > 0 && city) assigned = coreFocus[0].toLowerCase() + ' ' + city.toLowerCase();
+        else if (coreFocus.length > 0) assigned = coreFocus[0].toLowerCase();
+        else if (services.length > 0 && city) assigned = (typeof services[0] === 'string' ? services[0] : (services[0].name || '')).toLowerCase() + ' ' + city.toLowerCase();
+        else if (clientName && city) assigned = clientName.toLowerCase() + ' ' + city.toLowerCase();
+      } else if (t === 'about' && (s === 'about' || s === 'about-us')) {
+        // About page: brand + industry/service
+        if (clientName && industry) assigned = clientName.toLowerCase() + ' ' + industry.toLowerCase();
+        else if (clientName && city) assigned = clientName.toLowerCase() + ' ' + city.toLowerCase();
+        else if (clientName) assigned = clientName.toLowerCase();
+      } else if (t === 'contact' || s === 'contact' || s === 'contact-us') {
+        // Contact: brand + "contact" + city
+        if (clientName && city) assigned = clientName.toLowerCase() + ' contact ' + city.toLowerCase();
+        else if (clientName) assigned = clientName.toLowerCase() + ' contact';
       }
-      // Pause between batches to avoid rate limits
-      if (batchStart + batchSize < allNeedKw.length) {
-        await new Promise(function(res) { setTimeout(res, 2000); });
+
+      if (assigned) {
+        p.primary_keyword = assigned;
+        // Check pool for volume data
+        var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === assigned.toLowerCase(); });
+        if (kwData) {
+          p.primary_vol = kwData.vol || 0;
+          p.primary_kd = kwData.kd || 0;
+        } else {
+          p.primary_vol = 0;
+          p.primary_kd = 0;
+          p._kwGenerated = true;
+        }
+        p.score = 0;
+        totalAssigned++;
+        console.log('[no-kw] Deterministic:', p.slug, '→', assigned);
+      }
+    });
+
+    // ── Phase 2: Core Focus → best-matching service pages ──
+    if (coreFocus.length > 0) {
+      console.log('[no-kw] Phase 2: Core Focus → service pages');
+      var servicePages = allNeedKw.filter(function(p) {
+        return !p.primary_keyword && ['service', 'services', 'solution', 'solutions', 'product'].indexOf((p.page_type || '').toLowerCase()) >= 0;
+      });
+      coreFocus.forEach(function(focus) {
+        var focusLower = focus.toLowerCase();
+        // Find service pages whose name/slug contains this focus term
+        var matchPages = servicePages.filter(function(p) {
+          return (p.page_name || '').toLowerCase().indexOf(focusLower) >= 0
+            || (p.slug || '').toLowerCase().indexOf(focusLower.replace(/\s+/g, '-')) >= 0;
+        });
+        matchPages.forEach(function(p) {
+          if (p.primary_keyword) return; // Already assigned
+          // Find best keyword from pool containing this focus term
+          var focusKw = availKws.find(function(k) { return k.kw.toLowerCase().indexOf(focusLower) >= 0; });
+          if (focusKw) {
+            p.primary_keyword = focusKw.kw;
+            p.primary_vol = focusKw.vol;
+            p.primary_kd = focusKw.kd || 0;
+            p.score = focusKw.vol >= 50 && focusKw.kd > 0 ? Math.round((Math.log(focusKw.vol + 1) * 100 / Math.max(focusKw.kd, 5)) * 10) / 10 : 0;
+            totalAssigned++;
+            console.log('[no-kw] Core Focus:', p.slug, '→', focusKw.kw, '(vol:', focusKw.vol + ')');
+          }
+        });
+      });
+    }
+
+    // ── Phase 3: AI-batched, priority-sorted ──
+    var remaining = allNeedKw.filter(function(p) { return !p.primary_keyword; });
+    if (remaining.length > 0 && !window._aiStopAll) {
+      console.log('[no-kw] Phase 3: AI assignment for', remaining.length, 'remaining pages (priority-sorted)');
+
+      // Sort by strategic value: P1 service > P1 location > P1 other > P2 > P3 > blog
+      var _tierOrder = { 'service': 0, 'services': 0, 'solution': 0, 'solutions': 0, 'product': 0,
+        'location': 1, 'landing': 2, 'cta': 2,
+        'blog': 5, 'article': 5, 'case-study': 6, 'casestudy': 6, 'resource': 6, 'resource-hub': 6 };
+      var _priOrder = { 'P1': 0, 'P2': 1, 'P3': 2 };
+
+      remaining.sort(function(a, b) {
+        var priA = _priOrder[a.priority] !== undefined ? _priOrder[a.priority] : 1;
+        var priB = _priOrder[b.priority] !== undefined ? _priOrder[b.priority] : 1;
+        if (priA !== priB) return priA - priB;
+        var tierA = _tierOrder[(a.page_type || '').toLowerCase()] !== undefined ? _tierOrder[(a.page_type || '').toLowerCase()] : 3;
+        var tierB = _tierOrder[(b.page_type || '').toLowerCase()] !== undefined ? _tierOrder[(b.page_type || '').toLowerCase()] : 3;
+        return tierA - tierB;
+      });
+
+      // Build tier labels for AI bar
+      var _tierLabels = ['Service', 'Location', 'Landing', 'General', 'General', 'Blog', 'Resource'];
+
+      var batchSize = 25;
+      var totalBatches = Math.ceil(remaining.length / batchSize);
+
+      for (var batchStart = 0; batchStart < remaining.length; batchStart += batchSize) {
+        if (window._aiStopAll) break;
+        var batch = remaining.slice(batchStart, batchStart + batchSize);
+        var batchNum = Math.floor(batchStart / batchSize) + 1;
+
+        // Determine dominant tier for this batch
+        var _domType = (batch[0].page_type || '').toLowerCase();
+        var _domTier = _tierOrder[_domType] !== undefined ? _tierOrder[_domType] : 3;
+        var _domLabel = _tierLabels[_domTier] || 'General';
+        var _domPri = batch[0].priority || 'P2';
+
+        aiBarStart('Keywords: batch ' + batchNum + '/' + totalBatches + ' (' + _domPri + ' ' + _domLabel + ' pages)');
+        console.log('[no-kw] Batch', batchNum, '| ' + _domPri + ' ' + _domLabel + ' |', batch.length, 'pages');
+
+        var kwSection = availKws.length > 0
+          ? '\n\nAVAILABLE KEYWORDS FROM RESEARCH (prefer these — they have verified search volume):\n' + availKws.slice(0, 100).map(function(k) { return '- "' + k.kw + '" vol:' + k.vol + ' kd:' + k.kd; }).join('\n')
+          : '';
+
+        var prompt = 'Assign the best primary keyword to each page.\n\n'
+          + 'BUSINESS CONTEXT:\n'
+          + '- Client: ' + (clientName || 'unknown') + '\n'
+          + '- Industry: ' + (industry || 'unknown') + '\n'
+          + '- Location: ' + (geo || 'unknown') + '\n'
+          + (coreFocus.length > 0 ? '- Core Focus (must-win terms): ' + coreFocus.join(', ') + '\n' : '')
+          + (services.length > 0 ? '- Services: ' + services.slice(0, 10).map(function(s) { return typeof s === 'string' ? s : (s.name || ''); }).join(', ') + '\n' : '')
+          + '\nRULES:\n'
+          + '- First, try to match from the AVAILABLE KEYWORDS list below (these have real search volume data)\n'
+          + '- If no good match exists, GENERATE a relevant keyword someone would search to find this page\n'
+          + '- Generated keywords should be specific, searchable phrases (2-5 words)\n'
+          + '- A keyword CAN be shared across DIFFERENT page types (service + blog = different intent, OK)\n'
+          + '- A keyword should NOT be shared between pages of the SAME type (cannibalisation)\n'
+          + '- For service pages: commercial-intent keywords, include geo modifier if local business\n'
+          + '- For blog posts: informational/how-to/question keywords\n'
+          + '- For location pages: "[service] [city]" pattern\n'
+          + '- For case studies: "[topic] case study" or specific project name\n\n'
+          + 'PAGES NEEDING KEYWORDS (sorted by priority — assign best keywords to top pages):\n'
+          + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + (p.page_type || '?') + ' | priority: ' + (p.priority || '?'); }).join('\n')
+          + kwSection
+          + '\n\nReturn a JSON array: [{"slug":"page-slug","keyword":"assigned or generated keyword","source":"pool|generated"}]\nOnly return the JSON array.';
+
+        try {
+          var result = await callClaude('You are an SEO keyword-to-page mapping expert. Assign the highest-value commercial keywords to service pages first. Return only valid JSON.', prompt, null, 4096, 'kw-fix');
+          var parsed = _parseAiJson(result);
+          if (Array.isArray(parsed)) {
+            parsed.forEach(function(item) {
+              var _slug = (item.slug || '').replace(/^\/+/, '');
+              var page = pages.find(function(p) { return p.slug === _slug || p.slug === item.slug || ('/' + p.slug) === item.slug; });
+              if (page && item.keyword) {
+                page.primary_keyword = item.keyword;
+                var kwData = kwPool.find(function(k) { return k.kw.toLowerCase() === item.keyword.toLowerCase(); });
+                if (kwData) {
+                  page.primary_vol = kwData.vol || 0;
+                  page.primary_kd = kwData.kd || 0;
+                  page.score = kwData.vol >= 50 && kwData.kd > 0 ? Math.round((Math.log(kwData.vol + 1) * 100 / Math.max(kwData.kd, 5)) * 10) / 10 : 0;
+                } else {
+                  page.primary_vol = 0;
+                  page.primary_kd = 0;
+                  page._kwGenerated = true;
+                }
+                totalAssigned++;
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[no-kw] batch', batchNum, 'error:', e.message);
+        }
+        if (batchStart + batchSize < remaining.length) {
+          await new Promise(function(res) { setTimeout(res, 1500); });
+        }
       }
     }
     aiBarEnd();
-    aiBarNotify('Assigned keywords to ' + totalAssigned + ' pages', { duration: 3000 });
+    aiBarNotify('Assigned keywords to ' + totalAssigned + ' pages (deterministic + AI)', { duration: 4000 });
 
     // Auto-fetch volumes for generated keywords that have no volume data
     if (totalAssigned > 0 && !window._aiStopAll) {
