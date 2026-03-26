@@ -7003,7 +7003,7 @@ async function compileSeoStrategy() {
   var guard = projectGuard();
 
   try {
-    var result = await callClaude(_SEO_STRATEGY_SYSTEM_PROMPT, 'Complete SEO strategy analysis:\n\n' + ctx, null, 8192, 'SEO Strategy', 'claude-opus-4-6-20250610');
+    var result = await callClaude(_SEO_STRATEGY_SYSTEM_PROMPT, 'Complete SEO strategy analysis:\n\n' + ctx, null, 8192, 'SEO Strategy', 'claude-opus-4-20250514');
     if (guard.changed()) { aiBarEnd('Project changed — discarded'); return; }
 
     S.seoStrategy = result + _buildSeoStrategyDataTables();
