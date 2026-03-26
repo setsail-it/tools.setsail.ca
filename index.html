@@ -1000,8 +1000,9 @@ textarea.inp{resize:vertical}
         <div class="eyebrow stage-eyebrow" data-stage-num="10"></div>
         <h2 class="ph sm">Schema + Meta Tags</h2>
         <p class="psub" style="margin-bottom:0">Deterministic JSON-LD assembly from all previous stages. No AI calls — pure data.</p>
-        <div style="display:flex;gap:8px;margin-top:10px">
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="runAllSchemas()"><i class="ti ti-code"></i> Generate All Schemas</button>
+          <button class="btn btn-ghost" onclick="validateAllSchemas()"><i class="ti ti-shield-check"></i> Validate All</button>
         </div>
       </div>
       <div id="schema-progress" style="display:none" class="progress-wrap">

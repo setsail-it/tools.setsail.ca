@@ -1247,6 +1247,64 @@ function redoSchemaPage(slug) {
   checkSchemaAllDone();
 }
 
+// ── External Validation ────────────────────────────────────────────────
+function validateWithGoogle(slug) {
+  var r = S.schema[slug];
+  if (!r || !r.schema) return;
+  // Extract JSON-LD from the schema output
+  var jsonMatch = r.schema.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!jsonMatch) { if (typeof aiBarNotify === 'function') aiBarNotify('No JSON-LD found in schema', { isError: true }); return; }
+  // Google Rich Results Test accepts code snippet via URL
+  // Method: open with URL of the page (if live), or use code snippet approach
+  var base = _schemaBaseUrl();
+  var pageUrl = base + '/' + slug;
+  // Try URL-based test first (works if page is live)
+  var testUrl = 'https://search.google.com/test/rich-results?url=' + encodeURIComponent(pageUrl);
+  window.open(testUrl, '_blank');
+  if (typeof aiBarNotify === 'function') aiBarNotify('Opened Google Rich Results Test — if page is not live yet, use "Copy Schema" and paste into the code snippet tab', { duration: 5000 });
+}
+
+function validateWithSchemaOrg(slug) {
+  var r = S.schema[slug];
+  if (!r || !r.schema) return;
+  var jsonMatch = r.schema.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!jsonMatch) return;
+  // Schema.org validator accepts JSON input
+  var testUrl = 'https://validator.schema.org/';
+  window.open(testUrl, '_blank');
+  // Copy the JSON to clipboard so user can paste
+  var jsonText = jsonMatch[1].trim();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(jsonText);
+    if (typeof aiBarNotify === 'function') aiBarNotify('JSON-LD copied to clipboard — paste into the Schema.org validator', { duration: 4000 });
+  }
+}
+
+// ── Validate All Schemas — batch internal validation ──────────────────
+function validateAllSchemas() {
+  var total = 0, passed = 0, richCount = 0, errorCount = 0, warnCount = 0;
+  var richTypes = {};
+  S.pages.forEach(function(page) {
+    var r = S.schema[page.slug];
+    if (!r || !r.schema) return;
+    total++;
+    var v = r.validation || { errors: [], warnings: [], richResults: [] };
+    if (v.errors.length === 0) passed++;
+    errorCount += v.errors.length;
+    warnCount += v.warnings.length;
+    v.richResults.forEach(function(rr) {
+      richCount++;
+      richTypes[rr.type] = (richTypes[rr.type] || 0) + 1;
+    });
+  });
+  var summary = 'Validated ' + total + ' pages: ' + passed + ' clean, ' + errorCount + ' errors, ' + warnCount + ' warnings. ';
+  summary += richCount + ' rich results eligible';
+  if (Object.keys(richTypes).length) {
+    summary += ' (' + Object.keys(richTypes).map(function(t) { return t + ': ' + richTypes[t]; }).join(', ') + ')';
+  }
+  if (typeof aiBarNotify === 'function') aiBarNotify(summary, { duration: 8000 });
+}
+
 function toggleSchemaCode(slug) {
   var el = document.getElementById('schema-code-' + slug);
   var btn = document.getElementById('schema-code-btn-' + slug);
@@ -1311,6 +1369,8 @@ function renderSchemaQueue() {
         html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
           + '<button class="btn btn-ghost sm" onclick="copyToClip2((S.schema[\'' + p.slug + '\']||{}).schema)"><i class="ti ti-copy"></i> Copy Schema</button>'
           + '<button class="btn btn-ghost sm" id="schema-code-btn-' + p.slug + '" onclick="toggleSchemaCode(\'' + p.slug + '\')">Show code</button>'
+          + '<button class="btn btn-ghost sm" onclick="validateWithGoogle(\'' + esc(p.slug) + '\')"><i class="ti ti-shield-check"></i> Google Test</button>'
+          + '<button class="btn btn-ghost sm" onclick="validateWithSchemaOrg(\'' + esc(p.slug) + '\')"><i class="ti ti-code"></i> Schema.org Test</button>'
           + '<button class="btn btn-ghost sm" style="color:var(--error)" onclick="redoSchemaPage(\'' + p.slug + '\')"><i class="ti ti-refresh"></i> Redo</button>'
           + '</div>'
           + '<div id="schema-code-' + p.slug + '" style="display:none;max-height:280px;overflow:auto;font-family:monospace;font-size:11px;color:var(--n3);white-space:pre-wrap;line-height:1.65;background:var(--bg);border-radius:5px;padding:10px;border:1px solid var(--border)">' + esc(r.schema) + '</div>';
