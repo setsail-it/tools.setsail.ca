@@ -3631,6 +3631,7 @@ function _ensureKwResearch() {
 }
 
 async function kwPhase1_DataCollection(startFrom) {
+  _kwPipelineActive = true;
   var pl = _ensureKwResearch();
   var phaseSteps = KW_PIPELINE_STEPS.filter(function(s) { return KW_PHASE1_STEPS.indexOf(s.id) >= 0; });
   var startIdx = 0;
@@ -3645,6 +3646,7 @@ async function kwPhase1_DataCollection(startFrom) {
   for (var i = startIdx; i < phaseSteps.length; i++) {
     if (window._aiStopAll) {
       pl.status = 'paused'; pl.pausedAt = phaseSteps[i].id;
+      _kwPipelineActive = false;
       window._aiStopResumeCtx = {
         label: 'KW Phase 1 paused at ' + phaseSteps[i].label,
         fn: function(args) { kwPhase1_DataCollection(args.startFrom); },
@@ -3700,19 +3702,22 @@ async function kwPhase1_DataCollection(startFrom) {
   }
   pl.phase1Complete = true;
   pl.phase1At = Date.now();
+  _kwPipelineActive = false;
   console.log('[kwPhase1] Complete — ' + (S.kwResearch.keywords || []).length + ' keywords with volumes');
   if (typeof aiBarEnd === 'function') aiBarEnd();
 }
 
 async function kwPhase2_Selection() {
+  _kwPipelineActive = true;
   var pl = _ensureKwResearch();
   var kws = S.kwResearch.keywords || [];
   if (kws.length < 5) {
     console.warn('[kwPhase2] Skipped — fewer than 5 keywords');
     pl.select = { done: true, count: 0, skipped: 'fewer than 5 keywords', at: Date.now() };
+    _kwPipelineActive = false;
     return;
   }
-  if (window._aiStopAll) return;
+  if (window._aiStopAll) { _kwPipelineActive = false; return; }
   if (typeof aiBarStart === 'function') aiBarStart('Keyword Phase 2: AI-Select…');
   pl.currentStep = 'select'; pl.status = 'running'; _renderPipelineStatus();
 
@@ -3726,18 +3731,21 @@ async function kwPhase2_Selection() {
   }
   pl.phase2Complete = true;
   pl.phase2At = Date.now();
+  _kwPipelineActive = false;
   scheduleSave(); _renderPipelineStatus();
   if (typeof aiBarEnd === 'function') aiBarEnd();
 }
 
 async function kwPhase3_Clustering() {
+  _kwPipelineActive = true;
   var pl = _ensureKwResearch();
   if (!S.kwResearch.selected || S.kwResearch.selected.length < 5) {
     console.warn('[kwPhase3] Skipped — fewer than 5 selected keywords');
     pl.cluster = { done: true, count: 0, skipped: 'fewer than 5 selected', at: Date.now() };
+    _kwPipelineActive = false;
     return;
   }
-  if (window._aiStopAll) return;
+  if (window._aiStopAll) { _kwPipelineActive = false; return; }
   if (typeof aiBarStart === 'function') aiBarStart('Keyword Phase 3: Clustering…');
   pl.currentStep = 'cluster'; pl.status = 'running'; _renderPipelineStatus();
 
@@ -3765,6 +3773,7 @@ async function kwPhase3_Clustering() {
   pl.completedAt = Date.now();
   pl.phase3Complete = true;
   pl.phase3At = Date.now();
+  _kwPipelineActive = false;
   scheduleSave(); _renderPipelineStatus();
 
   // Refresh UI
