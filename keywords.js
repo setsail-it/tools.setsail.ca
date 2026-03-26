@@ -415,6 +415,107 @@ function buildKwSeeds() {
     });
   });
 
+  // 2c. Extract product/tool/platform specializations from goals, positioning, service detail, differentiators
+  // These are proper nouns or specific terms that define WHAT the business actually does
+  // e.g. "Spotfire" for Cadeon, "Webflow" for a Webflow agency, "HubSpot" for a HubSpot partner
+  var _specializations = new Set();
+  // From client goals — parse for specific terms
+  var _goalText = (setup.goalStatement || '') + ' ' + (setup.goalTarget || '');
+  // From positioning direction
+  var _posDir = S.strategy && S.strategy.positioning && S.strategy.positioning.selected_direction;
+  if (_posDir) {
+    _goalText += ' ' + (_posDir.direction || '') + ' ' + (_posDir.headline || '') + ' ' + (_posDir.angle || '');
+  }
+  // From key differentiators
+  var _diffs = (S.strategy && S.strategy.positioning && S.strategy.positioning.key_differentiators) || r.key_differentiators || [];
+  if (Array.isArray(_diffs)) _diffs.forEach(function(d) { _goalText += ' ' + (typeof d === 'string' ? d : (d.differentiator || d.claim || '')); });
+  // From services_detail (sub-services often contain tool/platform names)
+  var _svcDetail = r.services_detail || [];
+  _svcDetail.forEach(function(sd) {
+    var name = (sd.name || sd.service_name || '').trim();
+    if (name && name.length > 2) {
+      // Service detail names are high-signal — add as seeds directly
+      var sLower = name.toLowerCase();
+      _specializations.add(sLower);
+    }
+    // Description may mention tools
+    _goalText += ' ' + (sd.description || sd.service_description_short || '');
+  });
+  // From discovery docs — extract product/tool mentions (first 2000 chars of each doc)
+  if (setup.docs && setup.docs.length) {
+    setup.docs.slice(0, 3).forEach(function(doc) {
+      var text = doc.extracted || doc.text || '';
+      _goalText += ' ' + text.slice(0, 2000);
+    });
+  }
+  // Extract capitalized multi-word terms and known product patterns from the combined text
+  // Look for: Capitalized terms (Spotfire, HubSpot, Webflow), terms before "consulting/implementation/services"
+  var _specRe = /\b([A-Z][a-zA-Z0-9]*(?:\s+[A-Z][a-zA-Z0-9]*){0,2})\s+(?:consult|implement|integrat|develop|partner|special|expert|train|certif|deploy|migrat|custom|optim)/gi;
+  var _specMatch;
+  while ((_specMatch = _specRe.exec(_goalText)) !== null) {
+    var term = _specMatch[1].trim();
+    // Filter out generic terms
+    if (term.length >= 3 && !/^(The|Our|Your|This|That|We|They|Best|Top|New|All|Most|Data|Business|Digital|Marketing|Service|Company|Client)$/i.test(term)) {
+      _specializations.add(term.toLowerCase());
+    }
+  }
+  // Also extract terms that appear before common service suffixes in the goal/positioning
+  var _suffixRe = /\b(\w{3,}(?:\s+\w{3,})?)\s+(?:consulting|implementation|integration|development|services|solutions|platform|training|certification|deployment|migration|customization|optimization)\b/gi;
+  while ((_specMatch = _suffixRe.exec(_goalText)) !== null) {
+    var term2 = _specMatch[1].trim().toLowerCase();
+    if (term2.length >= 3 && !/^(the|our|your|this|best|top|all|professional|affordable|custom|full|end|data|business|digital|marketing|it|their|these|our|provide|offer)$/i.test(term2)) {
+      _specializations.add(term2);
+    }
+  }
+  // Expand each specialization as a first-class service term
+  if (_specializations.size > 0) {
+    console.log('[buildKwSeeds] Extracted specializations:', Array.from(_specializations).join(', '));
+    _specializations.forEach(function(spec) {
+      seeds.add(spec);
+      // Service-style expansions
+      ['consulting', 'implementation', 'developer', 'expert', 'training', 'services', 'specialist', 'partner', 'integration', 'support'].forEach(function(suffix) {
+        seeds.add(spec + ' ' + suffix);
+      });
+      // Geo-qualified
+      if (geoL && spec.indexOf(geoL) < 0) {
+        seeds.add(spec + ' ' + geoL);
+        seeds.add(spec + ' consulting ' + geoL);
+        seeds.add(spec + ' services ' + geoL);
+      }
+      // Commercial modifiers
+      ['best', 'top', 'hire', 'certified'].forEach(function(mod) {
+        seeds.add(mod + ' ' + spec);
+        seeds.add(mod + ' ' + spec + ' consultant');
+      });
+      // Question forms
+      seeds.add('what is ' + spec);
+      seeds.add(spec + ' vs');
+      seeds.add(spec + ' cost');
+      seeds.add(spec + ' pricing');
+      seeds.add(spec + ' tutorial');
+      seeds.add(spec + ' alternative');
+      // Industry combinations (from research)
+      var _industry = (r.industry || '').toLowerCase();
+      if (_industry && _industry.length > 3 && spec.indexOf(_industry) < 0) {
+        seeds.add(spec + ' ' + _industry);
+        seeds.add(spec + ' for ' + _industry);
+      }
+      // Audience segment combinations
+      var _segments = (S.strategy && S.strategy.audience && S.strategy.audience.segments) || [];
+      _segments.slice(0, 3).forEach(function(seg) {
+        var segName = (seg.segment || seg.name || '').toLowerCase().trim();
+        if (segName && segName.length > 3) {
+          seeds.add(spec + ' for ' + segName);
+        }
+      });
+      // Secondary geos
+      secondaryGeos.forEach(function(sg) {
+        var sgL = sg.replace(/,.*$/, '').trim().toLowerCase();
+        if (sgL && spec.indexOf(sgL) < 0) seeds.add(spec + ' ' + sgL);
+      });
+    });
+  }
+
   // 3. Business type seeds
   var businessType = setup.businessType || r.business_type || '';
   if (businessType) {
