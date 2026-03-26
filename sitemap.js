@@ -6999,11 +6999,35 @@ async function compileSeoStrategy() {
   var ctx = _buildSeoStrategyCtx();
   storePrompt('seo-strategy', _SEO_STRATEGY_SYSTEM_PROMPT, 'SEO Strategy compile context:\n\n' + ctx, 'SEO Strategy Document', 'Sitemap stage compile');
 
-  aiBarStart('Compiling SEO Strategy Document...');
+  aiBarStart('Compiling SEO Strategy Document (Opus 4.6)...');
   var guard = projectGuard();
 
+  // Switch to SEO Strategy tab so user sees streaming output
+  switchSitemapTopTab('seo-strategy');
+
+  // Set up streaming render container
+  var el = document.getElementById('seo-strategy-panel');
+  if (el) {
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+      + '<div><div style="font-size:14px;font-weight:600;color:var(--dark)">Compiling SEO Strategy\u2026</div>'
+      + '<div style="font-size:10px;color:var(--n2);margin-top:2px">Streaming from Claude Opus 4.6</div></div></div>'
+      + '<div id="seo-strategy-stream" class="card" style="padding:24px 28px;font-size:13px;line-height:1.7;font-family:var(--font);min-height:200px"></div>';
+  }
+
+  var _streamEl = document.getElementById('seo-strategy-stream');
+  var _lastRender = 0;
+
   try {
-    var result = await callClaude(_SEO_STRATEGY_SYSTEM_PROMPT, 'Complete SEO strategy analysis:\n\n' + ctx, null, 8192, 'SEO Strategy', 'claude-opus-4-6');
+    var result = await callClaude(_SEO_STRATEGY_SYSTEM_PROMPT, 'Complete SEO strategy analysis:\n\n' + ctx, function(chunk) {
+      // Stream progressive rendering (throttled to 300ms)
+      var now = Date.now();
+      if (_streamEl && now - _lastRender > 300) {
+        _lastRender = now;
+        var rendered = typeof _markdownToHtml === 'function' ? _markdownToHtml(chunk) : chunk.replace(/</g, '&lt;');
+        _streamEl.innerHTML = sanitiseHTML(rendered);
+        _streamEl.scrollTop = _streamEl.scrollHeight;
+      }
+    }, 8192, 'SEO Strategy', 'claude-opus-4-6');
     if (guard.changed()) { aiBarEnd('Project changed — discarded'); return; }
 
     S.seoStrategy = result + _buildSeoStrategyDataTables();
