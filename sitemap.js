@@ -3505,29 +3505,125 @@ async function enrichAllSitemap() {
       } catch (_gapErr) { console.warn('[enrichAll] gap fill error:', _gapErr.message); }
     }
 
-    // Step 4: Fix All issues (no-kw, cannibals, zero-vol — loops until stable)
-    var issues = _runSitemapHealthCheck();
-    var _fixable = issues.errors.concat(issues.warnings).filter(function(i) {
-      return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
-    }).length;
-    if (_fixable > 0 && !guard.changed() && !window._aiStopAll) {
-      aiBarStart('Enrich All (4/' + _totalSteps + '): Fixing ' + _fixable + ' issues\u2026');
-      // Trigger the fix-all logic inline (same as the button)
-      var _maxPasses = 3;
-      for (var _pass = 0; _pass < _maxPasses; _pass++) {
-        if (guard.changed() || window._aiStopAll) break;
-        var _iss = _runSitemapHealthCheck();
-        var _hasNoKw = _iss.errors.concat(_iss.warnings).some(function(i) { return i.id === 'no-kw'; });
-        var _hasZV = _iss.errors.concat(_iss.warnings).some(function(i) { return i.id === 'zero-vol'; });
-        var _cann = _iss.errors.concat(_iss.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
-        var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _cann.length;
-        if (_fixCount === 0) break;
-        if (_hasNoKw && !guard.changed() && !window._aiStopAll) await _aiFixIssue('no-kw');
-        for (var _ci = 0; _ci < _cann.length && !guard.changed() && !window._aiStopAll; _ci++) await _aiFixIssue(_cann[_ci].id);
-        if (_hasZV && !guard.changed() && !window._aiStopAll) await _aiFixIssue('zero-vol');
+    // Step 4: Auto-fix ALL actionable issues — loop until zero or max passes
+    // Handles: no-kw, cannibals, zero-vol, duplicate purpose, stale blogs, misclassifications
+    var _maxPasses = 6; // More passes to handle cascading fixes
+    var _totalFixed = 0;
+    for (var _pass = 0; _pass < _maxPasses; _pass++) {
+      if (guard.changed() || window._aiStopAll) break;
+      _sitemapWorkflowIssues = null; // Bust cache every pass
+      var _iss = _runSitemapHealthCheck();
+      var _allIssues = _iss.errors.concat(_iss.warnings);
+
+      // Collect all fixable issues
+      var _hasNoKw = _allIssues.some(function(i) { return i.id === 'no-kw'; });
+      var _hasZV = _allIssues.some(function(i) { return i.id === 'zero-vol'; });
+      var _cann = _allIssues.filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
+      var _dupPurpose = _allIssues.filter(function(i) { return i.id && i.id.indexOf('dup-purpose-') === 0; });
+      var _misclass = _allIssues.filter(function(i) { return i.id && i.id.indexOf('misclass-') === 0; });
+      var _stale = _allIssues.filter(function(i) { return i.id && i.id.indexOf('stale-') === 0; });
+
+      var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _cann.length + _dupPurpose.length + _misclass.length + _stale.length;
+      if (_fixCount === 0) { console.log('[enrichAll] Pass ' + (_pass + 1) + ': zero fixable issues — done'); break; }
+
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Fixing issues pass ' + (_pass + 1) + ' (' + _fixCount + ' issues)\u2026');
+      console.log('[enrichAll] Pass ' + (_pass + 1) + ': ' + _fixCount + ' fixable (' + _cann.length + ' cannibal, ' + _dupPurpose.length + ' dup, ' + _misclass.length + ' misclass, ' + _stale.length + ' stale)');
+
+      // Fix order: misclassify → duplicate purpose → no-kw → cannibals → zero-vol → stale blogs
+
+      // Auto-reclassify misclassified pages
+      _misclass.forEach(function(issue) {
+        var mcSlug = issue.id.replace('misclass-', '');
+        var match = (issue.suggestion || '').match(/as "([^"]+)"/);
+        if (match) {
+          var page = (S.pages || []).find(function(p) { return p.slug === mcSlug; });
+          if (page) {
+            console.log('[enrichAll] Reclassify: /' + mcSlug + ' ' + page.page_type + ' → ' + match[1]);
+            page.page_type = match[1];
+            _totalFixed++;
+          }
+        }
+      });
+
+      // Auto-cut duplicate purpose pages (keep highest traffic)
+      _dupPurpose.forEach(function(issue) {
+        var purpose = issue.id.replace('dup-purpose-', '');
+        var _purposePages = [];
+        (S.pages || []).forEach(function(p) {
+          if (p._removed) return;
+          var t = (p.page_type || '').toLowerCase();
+          var s = (p.slug || '').toLowerCase();
+          var purp = null;
+          if (t === 'home' || s === '' || s === '/' || s === 'home') purp = 'homepage';
+          else if ((t === 'contact' && /^contact/.test(s)) || s === 'contact' || s === 'contact-us') purp = 'contact';
+          else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purp = 'about';
+          else if (/^about\/team|^team|^our-team/.test(s)) purp = 'team';
+          else if (t === 'privacy' || /privacy/.test(s)) purp = 'privacy';
+          else if (t === 'terms' || /terms/.test(s)) purp = 'terms';
+          if (purp === purpose) _purposePages.push(p);
+        });
+        if (_purposePages.length <= 1) return;
+        _purposePages.sort(function(a, b) {
+          var sa = _pageSafetyScore(a.slug);
+          var sb = _pageSafetyScore(b.slug);
+          if (sa.isProtected !== sb.isProtected) return sa.isProtected ? -1 : 1;
+          return (sb.clicks || 0) - (sa.clicks || 0);
+        });
+        if (!S._redirectPlan) S._redirectPlan = [];
+        for (var di = 1; di < _purposePages.length; di++) {
+          _purposePages[di]._removed = true;
+          _purposePages[di]._removeReason = 'Duplicate "' + purpose + '" — merged into /' + _purposePages[0].slug;
+          _purposePages[di]._removedAt = Date.now();
+          S._redirectPlan.push({ from: '/' + _purposePages[di].slug, to: '/' + _purposePages[0].slug, reason: 'Duplicate purpose auto-merge', addedAt: Date.now() });
+          console.log('[enrichAll] Cut dup: /' + _purposePages[di].slug + ' → /' + _purposePages[0].slug);
+          _totalFixed++;
+        }
+      });
+
+      // Fix missing keywords
+      _sitemapWorkflowIssues = null;
+      if (_hasNoKw && !guard.changed() && !window._aiStopAll) await _aiFixIssue('no-kw');
+
+      // Fix cannibals
+      for (var _ci = 0; _ci < _cann.length && !guard.changed() && !window._aiStopAll; _ci++) {
+        await _aiFixIssue(_cann[_ci].id);
+        _totalFixed++;
       }
-      _steps.push('fixes');
+
+      // Fix zero-vol
+      if (_hasZV && !guard.changed() && !window._aiStopAll) await _aiFixIssue('zero-vol');
+
+      // Auto-cut stale blogs (only those with no traffic — protected ones stay)
+      _stale.forEach(function(issue) {
+        var staleSlug = issue.slug;
+        if (!staleSlug) return;
+        var safety = _pageSafetyScore(staleSlug);
+        if (safety.isProtected) return; // Skip protected pages
+        var page = (S.pages || []).find(function(p) { return p.slug === staleSlug; });
+        if (page && !page._removed) {
+          page._removed = true;
+          page._removeReason = 'Outdated content auto-cut';
+          page._removedAt = Date.now();
+          // Smart redirect target
+          if (!S._redirectPlan) S._redirectPlan = [];
+          var _cutTokens = staleSlug.toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+          var _bestTarget = null;
+          var _bestOverlap = 0;
+          (S.pages || []).forEach(function(tp) {
+            if (tp._removed || tp.slug === staleSlug) return;
+            var tTokens = (tp.slug || '').toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+            var overlap = 0;
+            _cutTokens.forEach(function(ct) { if (tTokens.indexOf(ct) >= 0) overlap++; });
+            if (overlap > _bestOverlap) { _bestOverlap = overlap; _bestTarget = tp.slug; }
+          });
+          var redirectTo = _bestTarget || staleSlug.split('/').slice(0, -1).join('/') || '/';
+          S._redirectPlan.push({ from: '/' + staleSlug, to: '/' + redirectTo, reason: 'Stale content auto-cut', addedAt: Date.now() });
+          console.log('[enrichAll] Cut stale: /' + staleSlug + ' → /' + redirectTo);
+          _totalFixed++;
+        }
+      });
     }
+    if (_totalFixed > 0) _steps.push('fixes(' + _totalFixed + ')');
 
     // Step 5: Priorities (instant, no AI)
     if (!guard.changed() && !window._aiStopAll) {
