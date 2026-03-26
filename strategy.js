@@ -6406,6 +6406,11 @@ function renderStrategyTabContent() {
     }
   }
 
+  // Wire audience segment add/remove buttons
+  if (_sTab === 'audience') {
+    _mountAudienceSegmentControls();
+  }
+
   // Mount interactive Gantt chart (now lives in Channels tab with growth content)
   if (_sTab === 'channels') {
     _mountGantt(S.strategy || {});
@@ -6927,13 +6932,17 @@ function _renderAudience(st) {
 
   // Segments
   if (a.segments && a.segments.length) {
-    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-layout-grid" style="font-size:12px"></i> AUDIENCE SEGMENTS (' + a.segments.length + ')</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark)"><i class="ti ti-layout-grid" style="font-size:12px"></i> AUDIENCE SEGMENTS (' + a.segments.length + ')</div>';
+    html += '<button class="btn btn-ghost sm" id="audience-add-segment-btn" style="font-size:11px;padding:2px 8px"><i class="ti ti-plus" style="font-size:11px"></i> Add</button>';
+    html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:20px">';
-    a.segments.forEach(function(seg) {
+    a.segments.forEach(function(seg, segIdx) {
       var revColour = seg.revenue_potential === 'high' ? '#15803d' : seg.revenue_potential === 'medium' ? '#b45309' : '#6b7280';
       var diffColour = seg.acquisition_difficulty === 'low' ? '#15803d' : seg.acquisition_difficulty === 'medium' ? '#b45309' : '#dc2626';
-      html += '<div class="card" style="margin-bottom:0">';
-      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:6px">' + esc(seg.name) + '</div>';
+      html += '<div class="card" style="margin-bottom:0;position:relative">';
+      html += '<button class="btn btn-ghost sm audience-remove-seg-btn" data-seg-idx="' + segIdx + '" style="position:absolute;top:6px;right:6px;padding:2px 4px;font-size:10px;color:var(--n2);opacity:0.5" data-tip="Remove segment"><i class="ti ti-x" style="font-size:12px"></i></button>';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:6px;padding-right:24px">' + esc(seg.name) + '</div>';
       if (seg.description) html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px">' + esc(seg.description) + '</div>';
       html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
       if (seg.estimated_size) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f3f4f6;color:#374151">Size: ' + esc(seg.estimated_size) + '</span>';
@@ -7127,6 +7136,50 @@ function _renderAudience(st) {
   }
 
   return html;
+}
+
+function _mountAudienceSegmentControls() {
+  var a = S.strategy && S.strategy.audience;
+  if (!a) return;
+
+  // Wire remove buttons
+  var removeBtns = document.querySelectorAll('.audience-remove-seg-btn');
+  removeBtns.forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-seg-idx'), 10);
+    btn.onclick = function() {
+      if (!a.segments || idx < 0 || idx >= a.segments.length) return;
+      var name = a.segments[idx].name || 'this segment';
+      if (!confirm('Remove "' + name + '" from audience segments?')) return;
+      a.segments.splice(idx, 1);
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire add button
+  var addBtn = document.getElementById('audience-add-segment-btn');
+  if (addBtn) {
+    addBtn.onclick = function() {
+      if (!a.segments) a.segments = [];
+      var name = prompt('Segment name:');
+      if (!name || !name.trim()) return;
+      a.segments.push({
+        name: name.trim(),
+        description: '',
+        estimated_size: '',
+        revenue_potential: 'medium',
+        acquisition_difficulty: 'medium',
+        why_they_buy: '',
+        why_they_hesitate: '',
+        best_channels: [],
+        key_messages: [],
+        priority_score: '5',
+        priority_rationale: 'Manually added'
+      });
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
 }
 
 function _renderPositioning(st) {
