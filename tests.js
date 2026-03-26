@@ -484,8 +484,7 @@ var _LAYER_STEPS = [
   { id: 'D6',  label: 'D6 Content & Authority',     run: function() { return runDiagnostic(6); } },
   { id: 'D7',  label: 'D7 Risk Assessment',         run: function() { return runDiagnostic(7); } },
   { id: 'D8',  label: 'D8 Narrative & Messaging',   run: function() { return runDiagnostic(8); }, optional: true },
-  { id: 'D9',  label: 'D9 Sales Intelligence',      run: function() { return runDiagnostic(9); }, optional: true },
-  { id: 'COMPILE', label: 'Compiling strategy document', run: function() { return compileStrategyOutput().then(function() { return synthesiseWebStrategy(); }); }, optional: true }
+  { id: 'D9',  label: 'D9 Sales Intelligence',      run: function() { return runDiagnostic(9); }, optional: true }
 ];
 
 var _DIAG_TO_STEP = { 0:0, 1:2, 2:3, 3:4, 4:5, 5:7, 6:9, 7:10, 8:11, 9:12 };
@@ -518,7 +517,7 @@ async function _runLayeredPipeline(fromStep, toStep, versionLabel) {
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    var endMsg = toStep >= _LAYER_STEPS.length - 1 ? 'complete — doc compiled' : 'complete';
+    var endMsg = 'complete';
     aiBarEnd('Diagnostics ' + endMsg + ' — v' + S.strategy._meta.current_version);
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
@@ -564,11 +563,11 @@ async function runDiagnosticsFrom(startDiag) {
   // ── 6a. Step table structure ───────────────────────────────────
   console.log('\n\x1b[1m═══ _LAYER_STEPS table ═══\x1b[0m');
 
-  assertEq(_LAYER_STEPS.length, 14, 'Step table has exactly 14 entries');
+  assertEq(_LAYER_STEPS.length, 13, 'Step table has exactly 13 entries (COMPILE is manual)');
 
-  var expectedIds = ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9','COMPILE'];
+  var expectedIds = ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9'];
   var actualIds = _LAYER_STEPS.map(function(s) { return s.id; });
-  assertArrayEq(actualIds, expectedIds, 'Step IDs in correct layer order');
+  assertArrayEq(actualIds, expectedIds, 'Step IDs in correct layer order (no COMPILE)');
 
   // KW phases sit between correct diagnostics
   assertEq(_LAYER_STEPS[5].id, 'D4', 'D4 is at step 5');
@@ -578,7 +577,7 @@ async function runDiagnosticsFrom(startDiag) {
 
   // Optional flags: KW1, KW2, KW3, D8, D9, COMPILE are optional; D0-D7 are not
   var optionalIds = _LAYER_STEPS.filter(function(s) { return s.optional; }).map(function(s) { return s.id; });
-  assertArrayEq(optionalIds, ['KW1','KW2','KW3','D8','D9','COMPILE'], 'Optional steps are KW1, KW2, KW3, D8, D9, COMPILE');
+  assertArrayEq(optionalIds, ['KW1','KW2','KW3','D8','D9'], 'Optional steps are KW1, KW2, KW3, D8, D9');
 
   var requiredIds = _LAYER_STEPS.filter(function(s) { return !s.optional; }).map(function(s) { return s.id; });
   assertArrayEq(requiredIds, ['D0','D1','D2','D3','D4','D5','D6','D7'], 'Required steps are D0-D7');
@@ -613,8 +612,8 @@ async function runDiagnosticsFrom(startDiag) {
   _resetPipe();
   await _runLayeredPipeline(0, _LAYER_STEPS.length - 1, 'test_full');
   assertArrayEq(_pLog,
-    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9','COMPILE','WEBBRIEF'],
-    'Full pipeline (0→13) executes all 15 operations in correct layer order');
+    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9'],
+    'Full pipeline (0→12) executes all 13 operations in correct layer order');
   assertEq(_pFinalized, true, 'Full pipeline finalises (capturePricingSnapshot called)');
   assertEq(_pVersionLabel, 'test_full', 'Version label propagated correctly');
   assertEq(S.strategy._kwDataStale, false, '_kwDataStale cleared after full run');
@@ -631,14 +630,14 @@ async function runDiagnosticsFrom(startDiag) {
   // runDiagnosticsFrom(D5) → steps 7-13 = D5 → KW3 → D6 → D7 → D8 → D9 → COMPILE + WEBBRIEF
   _resetPipe();
   await _runLayeredPipeline(7, _LAYER_STEPS.length - 1, 'from_d5');
-  assertArrayEq(_pLog, ['D5','KW3','D6','D7','D8','D9','COMPILE','WEBBRIEF'],
-    'Steps 7-13 (from D5) runs D5 → KW3 → D6 → D7-D9 → COMPILE');
+  assertArrayEq(_pLog, ['D5','KW3','D6','D7','D8','D9'],
+    'Steps 7-12 (from D5) runs D5 → KW3 → D6 → D7-D9');
 
   // runDiagnosticsFrom(D6) → steps 9-13 = D6 → D7 → D8 → D9 → COMPILE + WEBBRIEF (no KW phases)
   _resetPipe();
   await _runLayeredPipeline(9, _LAYER_STEPS.length - 1, 'from_d6');
-  assertArrayEq(_pLog, ['D6','D7','D8','D9','COMPILE','WEBBRIEF'],
-    'Steps 9-13 (from D6) skips KW phases — no keyword work needed');
+  assertArrayEq(_pLog, ['D6','D7','D8','D9'],
+    'Steps 9-12 (from D6) skips KW phases — no keyword work needed');
 
   // Single step: D0 only (step 0 to 0)
   _resetPipe();
@@ -646,10 +645,10 @@ async function runDiagnosticsFrom(startDiag) {
   assertArrayEq(_pLog, ['D0'], 'Single step (0→0) runs only D0');
   assertEq(_pFinalized, true, 'Single step still finalises');
 
-  // COMPILE only (step 13 to 13)
+  // D9 only (step 12 to 12)
   _resetPipe();
-  await _runLayeredPipeline(13, 13, 'just_compile');
-  assertArrayEq(_pLog, ['COMPILE','WEBBRIEF'], 'Single step (13→13) runs COMPILE + WEBBRIEF');
+  await _runLayeredPipeline(12, 12, 'just_d9');
+  assertArrayEq(_pLog, ['D9'], 'Single step (12→12) runs only D9');
 
   // ── 6e. Stop / Resume ─────────────────────────────────────────
   console.log('\n\x1b[1m═══ Pipeline stop/resume ═══\x1b[0m');
@@ -673,7 +672,7 @@ async function runDiagnosticsFrom(startDiag) {
     window._aiStopResumeCtx.args.versionLabel
   );
   assertArrayEq(_pLog,
-    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9','COMPILE','WEBBRIEF'],
+    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9'],
     'Resume continues from D4 and completes the full pipeline');
   assertEq(_pFinalized, true, 'Resumed pipeline finalises');
 
@@ -709,8 +708,8 @@ async function runDiagnosticsFrom(startDiag) {
   _diagFails.D8 = true;
   await _runLayeredPipeline(10, 13, 'optional_d8_fail');
   assert(_pLog.indexOf('D8') === -1, 'Failed D8 not in execution log');
-  assertArrayEq(_pLog, ['D7','D9','COMPILE','WEBBRIEF'],
-    'D8 failure does not block D9 or COMPILE');
+  assertArrayEq(_pLog, ['D7','D9'],
+    'D8 failure does not block D9');
 
   // Required step (D1) error — propagates to error handler, stops pipeline
   _resetPipe();
@@ -728,8 +727,8 @@ async function runDiagnosticsFrom(startDiag) {
   _resetPipe();
   await runAllDiagnostics();
   assertArrayEq(_pLog,
-    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9','COMPILE','WEBBRIEF'],
-    'runAllDiagnostics runs full layered pipeline');
+    ['D0','KW1','D1','D2','D3','D4','KW2','D5','KW3','D6','D7','D8','D9'],
+    'runAllDiagnostics runs full layered pipeline (no auto-compile)');
   assertEq(_pVersionLabel, 'rerun_all', 'runAllDiagnostics version label is rerun_all');
 
   // rerunKeywordSensitiveDiagnostics — D4 through D6 with KW phases
@@ -749,7 +748,7 @@ async function runDiagnosticsFrom(startDiag) {
   _resetPipe();
   await runDiagnosticsFrom(0);
   assertEq(_pLog[0], 'D0', 'runDiagnosticsFrom(0) starts with D0 (D0-falsy guard)');
-  assertEq(_pLog.length, 15, 'runDiagnosticsFrom(0) runs all 15 operations');
+  assertEq(_pLog.length, 13, 'runDiagnosticsFrom(0) runs all 13 operations');
   assertEq(_pVersionLabel, 'rerun_from_d0', 'runDiagnosticsFrom(0) version label correct');
 
   // runDiagnosticsFrom(4) — starts at D4, includes KW2 + KW3
@@ -771,8 +770,8 @@ async function runDiagnosticsFrom(startDiag) {
   // runDiagnosticsFrom(8) — starts at D8 (optional), includes D9 + COMPILE
   _resetPipe();
   await runDiagnosticsFrom(8);
-  assertArrayEq(_pLog, ['D8','D9','COMPILE','WEBBRIEF'],
-    'runDiagnosticsFrom(8) runs D8 → D9 → COMPILE');
+  assertArrayEq(_pLog, ['D8','D9'],
+    'runDiagnosticsFrom(8) runs D8 → D9');
 
   // Restore setTimeout
   global.setTimeout = _origTimeout;

@@ -5177,20 +5177,16 @@ async function generateStrategy() {
       await saveProject();
     }
 
-    // Layer 7: Compilation
+    // Compilation is manual — use Output tab → Compile Strategy Document
+    // Auto-generate web brief only (lightweight, needed by downstream stages)
     if (!window._aiStopAll) {
-      aiBarStart('Layer 7: Compiling strategy document');
-      try {
-        await compileStrategyOutput();
-        await synthesiseWebStrategy();
-        await saveProject();
-      } catch (eComp) { console.warn('Auto-compile skipped:', eComp.message); }
+      try { await synthesiseWebStrategy(); await saveProject(); } catch (eWb) { console.warn('Web brief skipped:', eWb.message); }
     }
 
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated — layered pipeline complete');
+    aiBarEnd('Strategy v' + S.strategy._meta.current_version + ' generated — compile output when ready');
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Strategy generation error: ' + e.message, { duration: 5000 });
@@ -5203,7 +5199,8 @@ async function generateStrategy() {
 // rerunKeywordSensitiveDiagnostics, and all resume paths.
 //
 // Steps: 0=D0, 1=KW1, 2=D1, 3=D2, 4=D3, 5=D4, 6=KW2, 7=D5, 8=KW3,
-//        9=D6, 10=D7, 11=D8, 12=D9, 13=COMPILE
+//        9=D6, 10=D7, 11=D8, 12=D9
+// Note: COMPILE is manual only — use compileStrategyOutput() from Output tab
 
 var _LAYER_STEPS = [
   { id: 'D0',  label: 'D0 Audience Intelligence',   run: function() { return runDiagnostic(0); } },
@@ -5218,8 +5215,7 @@ var _LAYER_STEPS = [
   { id: 'D6',  label: 'D6 Content & Authority',     run: function() { return runDiagnostic(6); } },
   { id: 'D7',  label: 'D7 Risk Assessment',         run: function() { return runDiagnostic(7); } },
   { id: 'D8',  label: 'D8 Narrative & Messaging',   run: function() { return runDiagnostic(8); }, optional: true },
-  { id: 'D9',  label: 'D9 Sales Intelligence',      run: function() { return runDiagnostic(9); }, optional: true },
-  { id: 'COMPILE', label: 'Compiling strategy document', run: function() { return compileStrategyOutput().then(function() { return synthesiseWebStrategy(); }); }, optional: true }
+  { id: 'D9',  label: 'D9 Sales Intelligence',      run: function() { return runDiagnostic(9); }, optional: true }
 ];
 
 // Map diagnostic number → step index in _LAYER_STEPS
@@ -5254,8 +5250,7 @@ async function _runLayeredPipeline(fromStep, toStep, versionLabel) {
     renderStrategyScorecard();
     renderStrategyNav();
     renderStrategyTabContent();
-    var endMsg = toStep >= _LAYER_STEPS.length - 1 ? 'complete — doc compiled' : 'complete';
-    aiBarEnd('Diagnostics ' + endMsg + ' — v' + S.strategy._meta.current_version);
+    aiBarEnd('Diagnostics complete — v' + S.strategy._meta.current_version + ' — compile output when ready');
   } catch (e) {
     if (e.name === 'AbortError') { aiBarEnd('Stopped'); return; }
     aiBarNotify('Error: ' + e.message, { duration: 5000 });
