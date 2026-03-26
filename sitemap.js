@@ -1563,8 +1563,20 @@ async function _aiFixIssue(fixId) {
     var availKws = kwPool.filter(function(k) { return k.vol > 0; }).sort(function(a, b) { return (b.vol || 0) - (a.vol || 0); });
     var totalAssigned = 0;
 
+    // Detect market scope — only append city for local/regional businesses
+    var _geoScope = (research.target_geography || '').toLowerCase();
+    var _isLocal = (_geoScope === 'local' || _geoScope === 'regional');
+    // If no scope set, infer from geo: if it looks like a city/metro, treat as local
+    if (!_geoScope && geo) {
+      var _geoLower = geo.toLowerCase();
+      // Country/continent-level = not local
+      if (/\b(north america|united states|usa|canada|international|global|nationwide)\b/.test(_geoLower)) _isLocal = false;
+      else if (/,/.test(geo)) _isLocal = true; // "Calgary, Alberta" pattern = local
+    }
+    var _geoSuffix = _isLocal && city ? ' ' + city.toLowerCase() : '';
+
     console.log('[no-kw] Phase 1: Deterministic structural assignment');
-    console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Geo:', geo);
+    console.log('[no-kw] Client:', clientName, '| Core Focus:', coreFocus.join(', '), '| Geo:', geo, '| Scope:', _geoScope || 'inferred', '| Local:', _isLocal);
 
     // ── Phase 1: Deterministic structural pages ──
     allNeedKw.forEach(function(p) {
@@ -1573,20 +1585,17 @@ async function _aiFixIssue(fixId) {
       var assigned = null;
 
       if (t === 'home' || s === '' || s === '/' || s === 'home') {
-        // Homepage: Core Focus[0] + city, or clientName + primary service
-        if (coreFocus.length > 0 && city) assigned = coreFocus[0].toLowerCase() + ' ' + city.toLowerCase();
-        else if (coreFocus.length > 0) assigned = coreFocus[0].toLowerCase();
-        else if (services.length > 0 && city) assigned = (typeof services[0] === 'string' ? services[0] : (services[0].name || '')).toLowerCase() + ' ' + city.toLowerCase();
-        else if (clientName && city) assigned = clientName.toLowerCase() + ' ' + city.toLowerCase();
+        // Homepage: Core Focus[0] (+ city only if local), or primary service
+        if (coreFocus.length > 0) assigned = coreFocus[0].toLowerCase() + _geoSuffix;
+        else if (services.length > 0) assigned = (typeof services[0] === 'string' ? services[0] : (services[0].name || '')).toLowerCase() + _geoSuffix;
+        else if (clientName) assigned = clientName.toLowerCase() + (_geoSuffix || (' ' + (industry || '').toLowerCase()));
       } else if (t === 'about' && (s === 'about' || s === 'about-us')) {
-        // About page: brand + industry/service
+        // About page: brand + industry/service (no city — about pages are brand-focused)
         if (clientName && industry) assigned = clientName.toLowerCase() + ' ' + industry.toLowerCase();
-        else if (clientName && city) assigned = clientName.toLowerCase() + ' ' + city.toLowerCase();
         else if (clientName) assigned = clientName.toLowerCase();
       } else if (t === 'contact' || s === 'contact' || s === 'contact-us') {
-        // Contact: brand + "contact" + city
-        if (clientName && city) assigned = clientName.toLowerCase() + ' contact ' + city.toLowerCase();
-        else if (clientName) assigned = clientName.toLowerCase() + ' contact';
+        // Contact: brand + "contact" (+ city only if local)
+        if (clientName) assigned = clientName.toLowerCase() + ' contact' + _geoSuffix;
       }
 
       if (assigned) {
