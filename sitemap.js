@@ -1146,11 +1146,10 @@ function _runSitemapHealthCheck() {
     warnings.push({ id: 'zero-vol', category: 'keywords', severity: 'warning', slug: zeroVol[0].slug, description: zeroVol.length + ' page' + (zeroVol.length !== 1 ? 's have' : ' has') + ' zero search volume', suggestion: 'Consider higher-volume keywords or remove low-value pages', fixType: 'scroll' });
   }
 
-  // 4. Missing primary keyword
+  // 4. Missing primary keyword (home/about/contact SHOULD have keywords — only skip utility/faq/team)
   var noKw = pages.filter(function(p) {
-    if (p.is_structural) return false;
     var t = (p.page_type || '').toLowerCase();
-    if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+    if (['utility', 'faq', 'team', 'thank-you', 'thankyou'].indexOf(t) >= 0) return false;
     return !p.primary_keyword;
   });
   if (noKw.length > 0) {
@@ -1542,10 +1541,10 @@ async function _aiFixIssue(fixId) {
 
   if (fixId === 'no-kw') {
     // Assign best keywords to pages missing them — batched, auto-loops
+    // Home/about/contact SHOULD get keywords (they are SEO-relevant pages)
     var allNeedKw = pages.filter(function(p) {
-      if (p.is_structural) return false;
       var t = (p.page_type || '').toLowerCase();
-      if (['home', 'about', 'contact', 'utility', 'faq', 'team'].indexOf(t) >= 0) return false;
+      if (['utility', 'faq', 'team', 'thank-you', 'thankyou'].indexOf(t) >= 0) return false;
       return !p.primary_keyword;
     });
     if (!allNeedKw.length) { aiBarNotify('No pages need keywords', { duration: 2000 }); return; }
@@ -1585,7 +1584,10 @@ async function _aiFixIssue(fixId) {
         + '- A keyword CAN be shared across DIFFERENT page types (service + blog = OK, different intent)\n'
         + '- A keyword should NOT be shared between pages of the SAME type (that is cannibalisation)\n'
         + '- For blog posts, use informational/question-based keywords\n'
-        + '- For service pages, use commercial-intent keywords with geo modifiers\n\n'
+        + '- For service pages, use commercial-intent keywords with geo modifiers\n'
+        + '- For homepage, use the primary brand + service keyword (e.g. "[brand] [core service]" or "[core service] [city]")\n'
+        + '- For about pages, use brand-name keywords or "[company] [city]"\n'
+        + '- For contact pages, use "[service] contact [city]" or "[company] contact"\n\n'
         + 'PAGES NEEDING KEYWORDS:\n' + batch.map(function(p) { return '- /' + p.slug + ' | ' + p.page_name + ' | type: ' + p.page_type; }).join('\n')
         + kwSection
         + '\n\nReturn a JSON array: [{"slug":"page-slug","keyword":"assigned or generated keyword","source":"pool|generated"}]\nOnly return the JSON array, nothing else.';
