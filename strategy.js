@@ -3711,48 +3711,181 @@ function buildDiagnosticPrompt(num) {
   if (num === 0) {
     // D0: Audience Intelligence
     var setup0 = S.setup || {};
-    return ctx + '\n\nDIAGNOSTIC: Audience Intelligence\n\n'
-      + 'PRIMARY AUDIENCE: ' + (r.primary_audience_description || 'not specified') + '\n'
-      + 'BUYER ROLES: ' + (r.buyer_roles_titles ? (Array.isArray(r.buyer_roles_titles) ? r.buyer_roles_titles.join(', ') : r.buyer_roles_titles) : 'unknown') + '\n'
-      + 'PAIN POINTS: ' + (r.pain_points_top5 ? r.pain_points_top5.join('; ') : 'unknown') + '\n'
-      + 'OBJECTIONS: ' + (r.objections_top5 ? (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5) : 'unknown') + '\n'
-      + 'BEST CUSTOMERS: ' + (r.best_customer_examples || 'unknown') + '\n'
-      + 'SALES CYCLE: ' + (r.sales_cycle_length || 'unknown') + '\n'
-      + 'DEAL SIZE: ' + (r.average_deal_size || 'unknown') + '\n'
-      + 'LEAD CHANNELS TODAY: ' + (r.lead_channels_today ? r.lead_channels_today.join(', ') : 'unknown') + '\n'
-      + 'DECISION FACTORS: ' + (r.decision_factors ? (Array.isArray(r.decision_factors) ? r.decision_factors.join(', ') : r.decision_factors) : 'unknown') + '\n'
-      + 'COMPETITORS: ' + (r.competitors ? r.competitors.map(function(c) { return c.name || c.url; }).join(', ') : 'none') + '\n'
-      + (r.case_studies && r.case_studies.length ? 'CASE STUDIES: ' + r.case_studies.map(function(c) { return (c.client || c.name || 'Client') + ': ' + (c.result || c.outcome || ''); }).join('; ') + '\n' : '')
-      + (setup0.strategy ? 'STRATEGY DOC: ' + setup0.strategy.slice(0, 3000) + '\n' : '')
-      + (setup0.discoveryNotes ? 'DISCOVERY NOTES: ' + setup0.discoveryNotes.slice(0, 2000) + '\n' : '')
-      + (enrich.doc_extraction ? 'DOC EXTRACTION: ' + JSON.stringify(enrich.doc_extraction).slice(0, 2000) + '\n' : '')
-      + '\nTASK: Build a complete audience intelligence profile. Identify distinct audience segments, map buying motions, '
+    var d0ctx = ctx + '\n\nDIAGNOSTIC: Audience Intelligence\n\n';
+
+    // ── Core audience data ──
+    d0ctx += 'PRIMARY AUDIENCE: ' + (r.primary_audience_description || 'not specified') + '\n';
+    d0ctx += 'BUYER ROLES: ' + (r.buyer_roles_titles ? (Array.isArray(r.buyer_roles_titles) ? r.buyer_roles_titles.join(', ') : r.buyer_roles_titles) : 'unknown') + '\n';
+    d0ctx += 'BUSINESS MODEL: ' + (r.business_model || 'unknown') + '\n';
+    d0ctx += 'PAIN POINTS: ' + (r.pain_points_top5 ? r.pain_points_top5.join('; ') : 'unknown') + '\n';
+    d0ctx += 'OBJECTIONS: ' + (r.objections_top5 ? (Array.isArray(r.objections_top5) ? r.objections_top5.join('; ') : r.objections_top5) : 'unknown') + '\n';
+    d0ctx += 'BEST CUSTOMERS: ' + (r.best_customer_examples || 'unknown') + '\n';
+    d0ctx += 'SALES CYCLE: ' + (r.sales_cycle_length || 'unknown') + '\n';
+    d0ctx += 'DEAL SIZE: ' + (r.average_deal_size || 'unknown') + '\n';
+    d0ctx += 'LEAD CHANNELS TODAY: ' + (r.lead_channels_today ? r.lead_channels_today.join(', ') : 'unknown') + '\n';
+    d0ctx += 'DECISION FACTORS: ' + (r.decision_factors ? (Array.isArray(r.decision_factors) ? r.decision_factors.join(', ') : r.decision_factors) : 'unknown') + '\n';
+
+    // Core Focus terms — reveal what the client considers their must-win territory
+    var d0cf = typeof getCoreFocus === 'function' ? getCoreFocus() : (setup0.coreFocus || []);
+    if (d0cf.length) d0ctx += 'CORE FOCUS TERMS (must-win products/tools/platforms): ' + d0cf.join(', ') + '\n';
+
+    // Services detail — reveals audience through service offerings
+    if (r.services_detail && r.services_detail.length) {
+      d0ctx += '\nSERVICES OFFERED (who they serve is implied by what they sell):\n';
+      r.services_detail.slice(0, 8).forEach(function(sd) {
+        d0ctx += '- ' + (sd.name || '');
+        if (sd.target_audience) d0ctx += ' | Target: ' + sd.target_audience;
+        if (sd.differentiator) d0ctx += ' | Differentiator: ' + sd.differentiator;
+        d0ctx += '\n';
+      });
+    }
+
+    // Competitors with DR and audience signals
+    if (r.competitors && r.competitors.length) {
+      d0ctx += '\nCOMPETITORS:\n';
+      r.competitors.slice(0, 6).forEach(function(c) {
+        d0ctx += '- ' + (c.name || c.url || '');
+        if (c.dr || c.domain_rating) d0ctx += ' (DR:' + (c.dr || c.domain_rating) + ')';
+        if (c.why_they_win) d0ctx += ' — Strength: ' + c.why_they_win;
+        if (c.weaknesses) d0ctx += ' | Weakness: ' + c.weaknesses;
+        d0ctx += '\n';
+      });
+    }
+
+    // Case studies with full context — grounds personas in reality
+    if (r.case_studies && r.case_studies.length) {
+      d0ctx += '\nCASE STUDIES (real clients — map to personas):\n';
+      r.case_studies.forEach(function(c) {
+        d0ctx += '- ' + (c.client || c.name || 'Client');
+        if (c.industry || c.vertical) d0ctx += ' [' + (c.industry || c.vertical) + ']';
+        d0ctx += ': ' + (c.result || c.outcome || '');
+        if (c.url) d0ctx += ' (' + c.url + ')';
+        d0ctx += '\n';
+      });
+    }
+
+    // ── HIGH-VALUE SIGNALS (new) ──
+
+    // Call transcripts — highest-quality audience data
+    if (setup0.transcripts && setup0.transcripts.length) {
+      d0ctx += '\nCALL TRANSCRIPT INSIGHTS (real conversations with prospects/clients):\n';
+      setup0.transcripts.forEach(function(t) {
+        if (!t.extracted) return;
+        d0ctx += '\nCall: "' + (t.label || 'Unlabelled') + '"\n';
+        if (t.extracted.pain_points && t.extracted.pain_points.length) d0ctx += '- Pain points: ' + t.extracted.pain_points.join('; ') + '\n';
+        if (t.extracted.objections && t.extracted.objections.length) d0ctx += '- Objections: ' + t.extracted.objections.join('; ') + '\n';
+        if (t.extracted.quotes && t.extracted.quotes.length) d0ctx += '- Exact quotes: ' + t.extracted.quotes.slice(0, 5).map(function(q) { return '"' + q + '"'; }).join(' | ') + '\n';
+        if (t.extracted.emotions && t.extracted.emotions.length) d0ctx += '- Emotions detected: ' + t.extracted.emotions.join(', ') + '\n';
+        if (t.extracted.criteria && t.extracted.criteria.length) d0ctx += '- Decision criteria: ' + t.extracted.criteria.join('; ') + '\n';
+        if (t.extracted.situation) d0ctx += '- Situation: ' + t.extracted.situation + '\n';
+      });
+    }
+
+    // JTBD Force Map — buyer psychology
+    if (r.jtbd_forces) {
+      var jf = r.jtbd_forces;
+      if ((jf.push_forces || []).length || (jf.pull_forces || []).length) {
+        d0ctx += '\nJTBD FORCE MAP (buyer psychology):\n';
+        if (jf.push_forces && jf.push_forces.length) d0ctx += '- Push forces (what drives them away from status quo): ' + jf.push_forces.map(function(f) { return f.force + (f.quote ? ' ("' + f.quote + '")' : ''); }).join('; ') + '\n';
+        if (jf.pull_forces && jf.pull_forces.length) d0ctx += '- Pull forces (what attracts them to a solution): ' + jf.pull_forces.map(function(f) { return f.force + (f.quote ? ' ("' + f.quote + '")' : ''); }).join('; ') + '\n';
+        if (jf.anxieties && jf.anxieties.length) d0ctx += '- Anxieties (what makes them hesitate): ' + jf.anxieties.map(function(f) { return f.force; }).join('; ') + '\n';
+        if (jf.habits && jf.habits.length) d0ctx += '- Habits (what keeps them stuck): ' + jf.habits.map(function(f) { return f.force; }).join('; ') + '\n';
+      }
+    }
+
+    // Competitor deep dives — reveals who competitors target
+    if (enrich.competitor_deep_dive && enrich.competitor_deep_dive.length) {
+      d0ctx += '\nCOMPETITOR AUDIENCE SIGNALS (from competitor site analysis):\n';
+      enrich.competitor_deep_dive.slice(0, 3).forEach(function(dd) {
+        d0ctx += '- ' + (dd.name || dd.url || '') + ': ';
+        if (dd.target_audience) d0ctx += 'targets ' + dd.target_audience + '; ';
+        if (dd.messaging_angle) d0ctx += 'messaging: ' + dd.messaging_angle + '; ';
+        if (dd.key_services) d0ctx += 'services: ' + (Array.isArray(dd.key_services) ? dd.key_services.join(', ') : dd.key_services);
+        d0ctx += '\n';
+      });
+    }
+
+    // GSC data — reveals who the CURRENT audience actually is through search behaviour
+    var snap0 = S.snapshot || {};
+    if (snap0.gsc && snap0.gsc.queries && snap0.gsc.queries.length) {
+      d0ctx += '\nCURRENT SEARCH AUDIENCE (from Google Search Console — what real people search to find this site):\n';
+      snap0.gsc.queries.slice(0, 15).forEach(function(q) {
+        d0ctx += '- "' + q.query + '" — ' + q.clicks + ' clicks, ' + q.impressions + ' impressions\n';
+      });
+    }
+
+    // GA4 — reveals audience behaviour on the current site
+    if (snap0.ga4 && snap0.ga4.channels && snap0.ga4.channels.length) {
+      d0ctx += '\nTRAFFIC CHANNELS (how the current audience finds the site):\n';
+      snap0.ga4.channels.forEach(function(ch) {
+        d0ctx += '- ' + (ch.channel || ch.sessionDefaultChannelGrouping || '') + ': ' + (ch.sessions || 0) + ' sessions\n';
+      });
+    }
+
+    // Strategy doc + discovery notes + doc extraction
+    if (setup0.strategy) d0ctx += '\nSTRATEGY DOC:\n' + setup0.strategy.slice(0, 3000) + '\n';
+    if (enrich.doc_extraction) d0ctx += '\nDOC EXTRACTION:\n' + JSON.stringify(enrich.doc_extraction).slice(0, 2000) + '\n';
+
+    // Geo context — important for segment geographic awareness
+    if (setup0.geoMetro) d0ctx += '\nGEO TARGETING: ' + (setup0.geo || '') + ' (metro-level targeting active)\n';
+    if (r.geography && r.geography.secondary && r.geography.secondary.length) d0ctx += 'SECONDARY MARKETS: ' + r.geography.secondary.join(', ') + '\n';
+
+    // ── Task + Rules ──
+    d0ctx += '\nTASK: Build a complete audience intelligence profile. Identify distinct audience segments, map buying motions, '
       + 'create detailed persona profiles, identify purchase triggers, map objections to segments, and validate which segments '
       + 'deserve strategic priority.\n\n'
+
+      + 'BUSINESS MODEL AWARENESS:\n'
+      + '- Detect whether this is B2B, B2C, or hybrid from the business model, services, and audience description.\n'
+      + '- B2B: expect buying committees, longer cycles, multiple stakeholders, procurement processes. Personas should map the decision-maker, influencer, and end-user.\n'
+      + '- B2C: expect individual decision-makers, shorter cycles, emotional triggers, price sensitivity. Personas should map demographics and lifestyle.\n'
+      + '- Adjust the buying_motions structure accordingly — do not force B2B language onto B2C businesses.\n\n'
+
       + 'CRITICAL PERSONA RULES:\n'
       + '1. NEVER invent fictional persona names (Marcus, Jennifer, etc.). Use descriptive labels: "Construction Owner-Operator (DIY)" or "Professional Services Managing Partner (Agency Switcher)." Archetypes are the default structure.\n'
       + '2. Archetypes are the BASE. Real client data is an ENRICHMENT LAYER:\n'
-      + '   a) CLIENT HAS EXISTING CLIENTS/CASE STUDIES: Map real clients to matching archetypes. Show them as proof references in the persona: "Clients matching this persona: [real client names from case studies]." This grounds the archetype in reality.\n'
-      + '   b) CLIENT IS A STARTUP / NO CLIENT DATA: Archetypes stand alone. Enrich with market research and competitor audience analysis. Flag as "archetype — not yet validated with client data."\n'
-      + '3. Pain points must use ACTUAL LANGUAGE from the intake/strategy document when available. If the founder said specific phrases, those exact phrases go into the persona. No generic marketing speak.\n'
+      + '   a) CLIENT HAS CALL TRANSCRIPTS: Extract persona details directly from transcript insights. Exact quotes go into language_patterns. Extracted pain points go into frustrations verbatim.\n'
+      + '   b) CLIENT HAS EXISTING CLIENTS/CASE STUDIES: Map real clients to matching archetypes. Show them as proof references: "Clients matching this persona: [real client names]." This grounds the archetype in reality.\n'
+      + '   c) CLIENT IS A STARTUP / NO CLIENT DATA: Archetypes stand alone. Enrich with competitor audience signals and market research. Flag as "archetype — not yet validated with client data."\n'
+      + '3. Pain points must use ACTUAL LANGUAGE from call transcripts, then intake docs, then discovery notes. If a prospect said specific phrases in a call, those exact phrases go into the persona. No generic marketing speak.\n'
       + '4. If the intake document provides detailed persona work, ADOPT and REFINE those personas — do not replace them with AI-generated ones.\n'
       + '5. Each persona must include at least one SPECIFIC detail proving it is tailored to THIS client market: industry-specific terminology, deal size ranges from this vertical, objections common in this specific market.\n'
-      + '6. The company-name-swap test applies to PAINS and LANGUAGE. If the pains read identically for any company in any industry, they are too generic.\n\n'
+      + '6. The company-name-swap test applies to PAINS and LANGUAGE. If the pains read identically for any company in any industry, they are too generic.\n'
+      + '7. Language patterns PRIORITY ORDER: (1) exact quotes from call transcripts, (2) VoC swipe file phrases, (3) phrases from discovery notes, (4) industry-typical language. Never fabricate quotes.\n\n'
+
       + 'VERTICAL COVERAGE RULES:\n'
       + '1. Every vertical listed in the intake document or Research data MUST appear — either as an ACTIVE segment with personas, or as a DEPRIORITISED segment with explicit rationale in "parked_segments".\n'
       + '2. Deprioritisation is valid when supported by data: e.g. "DTC eCommerce deprioritised for Phase 1 because: competitive density is 3x higher, no vertical-specific case studies exist, budget constraint limits coverage to 2 verticals."\n'
       + '3. A deprioritised segment appears in "parked_segments" — it is sequenced, not deleted.\n'
       + '4. Flag if a vertical from the intake is missing: "Warning: [vertical] was listed as a target but has no active persona or deprioritisation rationale."\n'
       + '5. Downstream tabs reflect vertical decisions: if 2 verticals are active and 1 is parked, channel allocation and content should serve 2 verticals. Parked verticals appear in Growth Plan Phase 2+.\n\n'
+
+      + 'SEGMENT PRIORITISATION CRITERIA (use ALL of these, not just revenue potential):\n'
+      + '1. Revenue potential: which segment has the highest deal size x volume?\n'
+      + '2. Current traction: does GSC/GA4 data show we already attract this segment? (existing search queries are a signal)\n'
+      + '3. Competitive density: are competitors underserving this segment? (from competitor deep dives)\n'
+      + '4. Client goals: did the client state a specific segment focus in their goals or discovery notes?\n'
+      + '5. Proof availability: do we have case studies, testimonials, or notable clients in this segment? (proof makes acquisition easier)\n'
+      + '6. Core Focus alignment: do the must-win terms align with this segment?\n'
+      + 'Rank segments using a weighted combination. State which criteria drove the ranking.\n\n'
+
       + 'ADDITIONAL RULES:\n'
       + '- Segments must be distinct and non-overlapping. 2-5 active segments is ideal.\n'
       + '- Each segment needs a clear "why they buy" and "why they hesitate".\n'
+      + '- Each segment must include "search_behaviour": what this segment types into Google when looking for this type of solution. This directly feeds keyword strategy.\n'
       + '- Buying motions describe HOW each segment purchases (research process, decision committee, timeline).\n'
       + '- Purchase triggers are the events that move someone from "aware" to "actively looking".\n'
-      + '- Objection map ties each objection to specific segments and provides counter-messaging.\n'
-      + '- Beyond direct competitors, identify 3-5 perceived alternatives the buyer considers: doing nothing, hiring in-house, using a freelancer, DIY tools, or other non-competitor options. For each, explain why it is attractive, how it typically fails, and provide counter-positioning language.\n'
-      + '- Validation must recommend which segment(s) to prioritise and why.\n'
+      + '- Objection map ties each objection to specific segments and provides counter-messaging. The "proof_available" field must reference specific proof from the data (case studies, testimonials, awards) — not hypothetical proof.\n'
+      + '- Beyond direct competitors, identify 3-5 perceived alternatives the buyer considers: doing nothing, hiring in-house, using a freelancer, DIY tools, or other non-competitor options. For each, state which segments consider it and why.\n'
+      + '- Validation must recommend which segment(s) to prioritise and why, citing specific prioritisation criteria.\n'
       + '- If data is limited, say so explicitly — do not fabricate specifics.\n\n'
+
+      + 'CONFIDENCE CRITERIA:\n'
+      + '- "high": call transcripts + case studies + intake docs (multiple real data sources with buyer voice)\n'
+      + '- "medium": intake docs + discovery notes (one source, no direct customer voice)\n'
+      + '- "low": AI inference only (no client-specific audience data)\n'
+      + 'State which data sources informed each major conclusion.\n\n'
+
       + 'JSON SCHEMA:\n{\n'
       + '  "segments": [\n'
       + '    {\n'
@@ -3760,13 +3893,16 @@ function buildDiagnosticPrompt(num) {
       + '      "description": "who they are",\n'
       + '      "vertical": "which vertical or industry this segment belongs to",\n'
       + '      "status": "active | deprioritised",\n'
-      + '      "estimated_size": "small | medium | large relative to total market",\n'
-      + '      "revenue_potential": "low | medium | high",\n'
-      + '      "why_they_buy": "core motivation — use founder language when available",\n'
-      + '      "why_they_hesitate": "primary friction — use founder language when available",\n'
+      + '      "estimated_size": "percentage of total addressable market or keyword volume this segment represents, with rationale",\n'
+      + '      "revenue_potential": "low | medium | high — with deal size context",\n'
+      + '      "why_they_buy": "core motivation — use founder/customer language when available",\n'
+      + '      "why_they_hesitate": "primary friction — use founder/customer language when available",\n'
       + '      "acquisition_difficulty": "low | medium | high",\n'
+      + '      "search_behaviour": "what this segment types into Google — specific query patterns and intent types",\n'
       + '      "best_channels": ["channel1", "channel2"],\n'
-      + '      "key_messages": ["message that resonates"]\n'
+      + '      "key_messages": ["message that resonates — sourced from transcripts/VoC when possible"],\n'
+      + '      "priority_score": "1-10 based on the 6 prioritisation criteria above",\n'
+      + '      "priority_rationale": "which criteria drove this score"\n'
       + '    }\n'
       + '  ],\n'
       + '  "parked_segments": [\n'
@@ -3781,7 +3917,8 @@ function buildDiagnosticPrompt(num) {
       + '  "buying_motions": [\n'
       + '    {\n'
       + '      "segment": "segment name",\n'
-      + '      "research_behaviour": "how they find and evaluate solutions",\n'
+      + '      "buying_model": "B2B | B2C | hybrid",\n'
+      + '      "research_behaviour": "how they find and evaluate solutions — reference GSC queries if available",\n'
       + '      "decision_process": "solo | committee | influencer-led",\n'
       + '      "typical_timeline": "days to months",\n'
       + '      "key_touchpoints": ["touchpoint1", "touchpoint2"],\n'
@@ -3795,13 +3932,14 @@ function buildDiagnosticPrompt(num) {
       + '      "segment": "which segment they belong to",\n'
       + '      "demographics": "age range, business size, industry vertical",\n'
       + '      "goals": ["what they want to achieve"],\n'
-      + '      "frustrations": ["specific pains using founder/industry language"],\n'
+      + '      "frustrations": ["specific pains — verbatim from transcripts/intake, NEVER generic"],\n'
       + '      "decision_criteria": ["what they evaluate when choosing"],\n'
       + '      "preferred_channels": ["where they consume content"],\n'
-      + '      "language_patterns": ["phrases they actually use — from intake when available"],\n'
+      + '      "language_patterns": ["exact phrases from transcripts > VoC > discovery notes > industry-typical"],\n'
       + '      "objection_profile": ["their specific objections"],\n'
       + '      "matching_clients": ["real client names from case studies that match this persona, or empty if none"],\n'
-      + '      "industry_specific_detail": "one concrete detail proving this persona is tailored to this market"\n'
+      + '      "industry_specific_detail": "one concrete detail proving this persona is tailored to this market",\n'
+      + '      "data_source": "what data informed this persona: transcripts | case studies | intake | inferred"\n'
       + '    }\n'
       + '  ],\n'
       + '  "purchase_triggers": [\n'
@@ -3818,12 +3956,13 @@ function buildDiagnosticPrompt(num) {
       + '      "segments": ["which segments raise this"],\n'
       + '      "frequency": "rare | common | universal",\n'
       + '      "counter_message": "how to address it",\n'
-      + '      "proof_needed": "what evidence overcomes this"\n'
+      + '      "proof_available": "specific existing proof that overcomes this — case study name, testimonial, award, or empty if no proof exists yet"\n'
       + '    }\n'
       + '  ],\n'
       + '  "perceived_alternatives": [\n'
       + '    {\n'
       + '      "alternative": "what the buyer considers instead (e.g. do nothing, hire in-house, use a DIY tool, hire a freelancer)",\n'
+      + '      "segments_who_consider": ["which segments consider this alternative"],\n'
       + '      "why_considered": "why this alternative is attractive to the buyer",\n'
       + '      "failure_mode": "how this alternative typically fails or underdelivers",\n'
       + '      "threat_level": "low | medium | high",\n'
@@ -3833,14 +3972,14 @@ function buildDiagnosticPrompt(num) {
       + '  "vertical_coverage_check": ["Warning: [vertical] listed in intake but missing from strategy — add or deprioritise"],\n'
       + '  "validation": {\n'
       + '    "primary_segment": "recommended top-priority segment name",\n'
-      + '    "primary_rationale": "why this segment should be prioritised",\n'
+      + '    "primary_rationale": "why — cite specific prioritisation criteria scores",\n'
       + '    "secondary_segment": "second priority segment name",\n'
       + '    "recommended_focus": "1-2 sentence strategic recommendation on audience targeting",\n'
       + '    "data_gaps": ["what audience data is missing that would improve this analysis"],\n'
-      + '    "confidence_notes": "honest assessment of analysis quality"\n'
+      + '    "confidence_notes": "honest assessment — state which data sources exist and which are missing"\n'
       + '  },\n'
       + '  "audience_summary": "2-3 sentence overview of the audience landscape",\n'
-      + '  "confidence": "high | medium | low"\n}';
+      + '  "confidence": "high | medium | low — per the criteria above"\n}';
   }
 
   if (num === 1) {
