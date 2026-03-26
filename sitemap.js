@@ -1555,8 +1555,15 @@ function _renderIssuesPanel() {
     groups[cat].push(issue);
   });
 
-  // Count fixable issues (keyword fixes + duplicate purpose)
-  var _fixableCount = all.filter(function(i) { return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0); }).length;
+  // Count ALL auto-fixable issues
+  var _fixableCount = all.filter(function(i) {
+    return i.id === 'no-kw' || i.id === 'zero-vol'
+      || (i.id && i.id.indexOf('cannibal-') === 0)
+      || (i.id && i.id.indexOf('dup-purpose-') === 0)
+      || (i.id && i.id.indexOf('misclass-') === 0)
+      || (i.id && i.id.indexOf('stale-') === 0 && !_pageSafetyScore(i.slug || '').isProtected)
+      || (i.id && i.id.indexOf('persona-gap-') === 0 && i.severity === 'warning');
+  }).length;
   var _errorCount = issues.errors.length;
   var _warnCount = issues.warnings.length;
   var _infoCount = issues.info.length;
@@ -1632,6 +1639,136 @@ function _renderIssuesPanel() {
   return html;
 }
 
+// ── Comprehensive fix-all: shared between Fix All button and Enrich All ──
+async function _fixAllIssuesComprehensive() {
+  var guard = projectGuard();
+  var _maxPasses = 6;
+  var _totalFixed = 0;
+  var _cannibalAttempts = {}; // Track cannibal fix attempts to detect ping-pong
+
+  for (var _pass = 0; _pass < _maxPasses; _pass++) {
+    if (guard.changed() || window._aiStopAll) break;
+    _sitemapWorkflowIssues = null; // Bust cache
+    var _iss = _runSitemapHealthCheck();
+    var _all = _iss.errors.concat(_iss.warnings);
+
+    var _hasNoKw = _all.some(function(i) { return i.id === 'no-kw'; });
+    var _hasZV = _all.some(function(i) { return i.id === 'zero-vol'; });
+    var _cann = _all.filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
+    var _dupPurpose = _all.filter(function(i) { return i.id && i.id.indexOf('dup-purpose-') === 0; });
+    var _misclass = _all.filter(function(i) { return i.id && i.id.indexOf('misclass-') === 0; });
+    var _stale = _all.filter(function(i) { return i.id && i.id.indexOf('stale-') === 0; });
+    var _personaGaps = _all.filter(function(i) { return i.id && i.id.indexOf('persona-gap-') === 0 && i.severity === 'warning'; });
+
+    // Filter out ping-pong cannibals (tried 2+ times already)
+    var _fixableCann = _cann.filter(function(c) {
+      var attempts = _cannibalAttempts[c.id] || 0;
+      if (attempts >= 2) {
+        console.log('[fixAll] Skipping ping-pong cannibal:', c.id, '(attempted', attempts, 'times)');
+        return false;
+      }
+      return true;
+    });
+
+    var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _fixableCann.length + _dupPurpose.length + _misclass.length + _stale.length + (_personaGaps.length > 0 ? 1 : 0);
+    if (_fixCount === 0) { console.log('[fixAll] Pass ' + (_pass + 1) + ': zero fixable — done'); break; }
+
+    aiBarStart('Fixing issues pass ' + (_pass + 1) + ' (' + _fixCount + ' issues)\u2026');
+    console.log('[fixAll] Pass ' + (_pass + 1) + ': ' + _fixCount + ' fixable');
+
+    // 1. Auto-reclassify
+    _misclass.forEach(function(issue) {
+      var mcSlug = issue.id.replace('misclass-', '');
+      var match = (issue.suggestion || '').match(/as "([^"]+)"/);
+      if (match) {
+        var page = (S.pages || []).find(function(p) { return p.slug === mcSlug; });
+        if (page) { page.page_type = match[1]; _totalFixed++; }
+      }
+    });
+
+    // 2. Auto-cut duplicate purpose
+    _dupPurpose.forEach(function(issue) {
+      var purpose = issue.id.replace('dup-purpose-', '');
+      var _pp = [];
+      (S.pages || []).forEach(function(p) {
+        if (p._removed) return;
+        var t = (p.page_type || '').toLowerCase();
+        var s = (p.slug || '').toLowerCase();
+        var purp = null;
+        if (t === 'home' || s === '' || s === '/' || s === 'home') purp = 'homepage';
+        else if ((t === 'contact' && /^contact/.test(s)) || s === 'contact' || s === 'contact-us') purp = 'contact';
+        else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purp = 'about';
+        else if (/^about\/team|^team|^our-team/.test(s)) purp = 'team';
+        else if (t === 'privacy' || /privacy/.test(s)) purp = 'privacy';
+        else if (t === 'terms' || /terms/.test(s)) purp = 'terms';
+        if (purp === purpose) _pp.push(p);
+      });
+      if (_pp.length <= 1) return;
+      _pp.sort(function(a, b) { var sa = _pageSafetyScore(a.slug); var sb = _pageSafetyScore(b.slug); return (sb.clicks || 0) - (sa.clicks || 0); });
+      if (!S._redirectPlan) S._redirectPlan = [];
+      for (var di = 1; di < _pp.length; di++) {
+        _pp[di]._removed = true;
+        _pp[di]._removeReason = 'Duplicate "' + purpose + '" — merged into /' + _pp[0].slug;
+        _pp[di]._removedAt = Date.now();
+        S._redirectPlan.push({ from: '/' + _pp[di].slug, to: '/' + _pp[0].slug, reason: 'Duplicate purpose', addedAt: Date.now() });
+        _totalFixed++;
+      }
+    });
+
+    // 3. Fix missing keywords
+    _sitemapWorkflowIssues = null;
+    if (_hasNoKw && !guard.changed() && !window._aiStopAll) await _aiFixIssue('no-kw');
+
+    // 4. Fix cannibals (with loop detection)
+    for (var _ci = 0; _ci < _fixableCann.length && !guard.changed() && !window._aiStopAll; _ci++) {
+      _cannibalAttempts[_fixableCann[_ci].id] = (_cannibalAttempts[_fixableCann[_ci].id] || 0) + 1;
+      await _aiFixIssue(_fixableCann[_ci].id);
+      _totalFixed++;
+    }
+
+    // 5. Fix zero-vol
+    if (_hasZV && !guard.changed() && !window._aiStopAll) await _aiFixIssue('zero-vol');
+
+    // 6. Auto-cut stale blogs (only unprotected)
+    _stale.forEach(function(issue) {
+      if (!issue.slug) return;
+      var safety = _pageSafetyScore(issue.slug);
+      if (safety.isProtected) return;
+      var page = (S.pages || []).find(function(p) { return p.slug === issue.slug; });
+      if (page && !page._removed) {
+        page._removed = true;
+        page._removeReason = 'Outdated content auto-cut';
+        page._removedAt = Date.now();
+        if (!S._redirectPlan) S._redirectPlan = [];
+        var _ct = issue.slug.toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+        var _bt = null; var _bo = 0;
+        (S.pages || []).forEach(function(tp) {
+          if (tp._removed || tp.slug === issue.slug) return;
+          var tT = (tp.slug || '').toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+          var o = 0; _ct.forEach(function(c) { if (tT.indexOf(c) >= 0) o++; });
+          if (o > _bo) { _bo = o; _bt = tp.slug; }
+        });
+        S._redirectPlan.push({ from: '/' + issue.slug, to: '/' + (_bt || issue.slug.split('/').slice(0, -1).join('/') || '/'), reason: 'Stale auto-cut', addedAt: Date.now() });
+        _totalFixed++;
+      }
+    });
+
+    // 7. Auto-assign personas if gaps exist
+    if (_personaGaps.length > 0 && typeof assignAllPersonas === 'function' && !guard.changed()) {
+      assignAllPersonas(true);
+    }
+  }
+
+  if (!guard.changed()) {
+    scheduleSave();
+    _sitemapWorkflowIssues = null;
+    var _remaining = _runSitemapHealthCheck();
+    var _remainCount = _remaining.errors.length + _remaining.warnings.length;
+    aiBarEnd('Fixed ' + _totalFixed + ' issues' + (_remainCount > 0 ? ', ' + _remainCount + ' remaining (protected/unfixable)' : ' — all clear!'));
+  }
+  return _totalFixed;
+}
+
 function _mountIssuesPanel() {
   var panel = document.getElementById('wf-issues-panel');
   if (!panel) return;
@@ -1641,61 +1778,8 @@ function _mountIssuesPanel() {
     fixAllBtn.onclick = async function() {
       fixAllBtn.disabled = true;
       fixAllBtn.innerHTML = '<span class="spinner" style="width:8px;height:8px"></span> Fixing all\u2026';
-      var guard = projectGuard();
-      var _fixSteps = [];
-      var _maxPasses = 3; // Loop until stable — cannibal fixes can create new cannibals
-
-      for (var _pass = 0; _pass < _maxPasses; _pass++) {
-        if (guard.changed() || window._aiStopAll) break;
-
-        var issues = _runSitemapHealthCheck();
-        var hasNoKw = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'no-kw'; });
-        var hasZeroVol = issues.errors.concat(issues.warnings).some(function(i) { return i.id === 'zero-vol'; });
-        var cannibals = issues.errors.concat(issues.warnings).filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
-        var _fixableThisPass = (hasNoKw ? 1 : 0) + (hasZeroVol ? 1 : 0) + cannibals.length;
-
-        if (_fixableThisPass === 0) break; // All clear
-        console.log('[Fix All] Pass ' + (_pass + 1) + '/' + _maxPasses + ': ' + _fixableThisPass + ' fixable issues');
-        aiBarStart('Fix All pass ' + (_pass + 1) + ' — ' + _fixableThisPass + ' issues\u2026');
-
-        // Pass 1: no-kw first (so cannibal fix has keywords to work with)
-        if (hasNoKw && !guard.changed() && !window._aiStopAll) {
-          console.log('[Fix All] fixing no-kw...');
-          await _aiFixIssue('no-kw');
-          _fixSteps.push('keywords');
-        }
-
-        // Pass 2: all cannibals (before zero-vol, so reassigned keywords get checked)
-        for (var ci = 0; ci < cannibals.length && !guard.changed() && !window._aiStopAll; ci++) {
-          console.log('[Fix All] fixing cannibal:', cannibals[ci].id);
-          await _aiFixIssue(cannibals[ci].id);
-          _fixSteps.push(cannibals[ci].id.replace('cannibal-', ''));
-        }
-
-        // Pass 3: zero-vol last (after cannibals, so newly zero-vol pages get caught)
-        if (hasZeroVol && !guard.changed() && !window._aiStopAll) {
-          console.log('[Fix All] fixing zero-vol...');
-          await _aiFixIssue('zero-vol');
-          _fixSteps.push('zero-vol');
-        }
-
-        // Check if new issues emerged from fixes
-        var _postCheck = _runSitemapHealthCheck();
-        var _newFixable = _postCheck.errors.concat(_postCheck.warnings).filter(function(i) {
-          return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0);
-        }).length;
-
-        if (_newFixable === 0) { console.log('[Fix All] All clear after pass ' + (_pass + 1)); break; }
-        if (_pass < _maxPasses - 1) console.log('[Fix All] ' + _newFixable + ' issues remain, running pass ' + (_pass + 2));
-      }
-
-      if (!guard.changed()) {
-        renderSitemapResults(S.sitemapApproved);
-        scheduleSave();
-        var _remaining = _runSitemapHealthCheck();
-        var _remainCount = _remaining.errors.length + _remaining.warnings.length;
-        aiBarNotify('Fix All complete \u2014 ' + _fixSteps.length + ' fixes across ' + (_pass + 1) + ' pass' + (_pass > 0 ? 'es' : '') + (_remainCount > 0 ? ', ' + _remainCount + ' issues remaining' : ', all clear!'), { duration: 5000 });
-      }
+      await _fixAllIssuesComprehensive();
+      renderSitemapResults(S.sitemapApproved);
     };
   }
   // Scroll-to-fix buttons
@@ -3505,125 +3589,12 @@ async function enrichAllSitemap() {
       } catch (_gapErr) { console.warn('[enrichAll] gap fill error:', _gapErr.message); }
     }
 
-    // Step 4: Auto-fix ALL actionable issues — loop until zero or max passes
-    // Handles: no-kw, cannibals, zero-vol, duplicate purpose, stale blogs, misclassifications
-    var _maxPasses = 6; // More passes to handle cascading fixes
-    var _totalFixed = 0;
-    for (var _pass = 0; _pass < _maxPasses; _pass++) {
-      if (guard.changed() || window._aiStopAll) break;
-      _sitemapWorkflowIssues = null; // Bust cache every pass
-      var _iss = _runSitemapHealthCheck();
-      var _allIssues = _iss.errors.concat(_iss.warnings);
-
-      // Collect all fixable issues
-      var _hasNoKw = _allIssues.some(function(i) { return i.id === 'no-kw'; });
-      var _hasZV = _allIssues.some(function(i) { return i.id === 'zero-vol'; });
-      var _cann = _allIssues.filter(function(i) { return i.id && i.id.indexOf('cannibal-') === 0; });
-      var _dupPurpose = _allIssues.filter(function(i) { return i.id && i.id.indexOf('dup-purpose-') === 0; });
-      var _misclass = _allIssues.filter(function(i) { return i.id && i.id.indexOf('misclass-') === 0; });
-      var _stale = _allIssues.filter(function(i) { return i.id && i.id.indexOf('stale-') === 0; });
-
-      var _fixCount = (_hasNoKw ? 1 : 0) + (_hasZV ? 1 : 0) + _cann.length + _dupPurpose.length + _misclass.length + _stale.length;
-      if (_fixCount === 0) { console.log('[enrichAll] Pass ' + (_pass + 1) + ': zero fixable issues — done'); break; }
-
-      aiBarStart('Enrich All (4/' + _totalSteps + '): Fixing issues pass ' + (_pass + 1) + ' (' + _fixCount + ' issues)\u2026');
-      console.log('[enrichAll] Pass ' + (_pass + 1) + ': ' + _fixCount + ' fixable (' + _cann.length + ' cannibal, ' + _dupPurpose.length + ' dup, ' + _misclass.length + ' misclass, ' + _stale.length + ' stale)');
-
-      // Fix order: misclassify → duplicate purpose → no-kw → cannibals → zero-vol → stale blogs
-
-      // Auto-reclassify misclassified pages
-      _misclass.forEach(function(issue) {
-        var mcSlug = issue.id.replace('misclass-', '');
-        var match = (issue.suggestion || '').match(/as "([^"]+)"/);
-        if (match) {
-          var page = (S.pages || []).find(function(p) { return p.slug === mcSlug; });
-          if (page) {
-            console.log('[enrichAll] Reclassify: /' + mcSlug + ' ' + page.page_type + ' → ' + match[1]);
-            page.page_type = match[1];
-            _totalFixed++;
-          }
-        }
-      });
-
-      // Auto-cut duplicate purpose pages (keep highest traffic)
-      _dupPurpose.forEach(function(issue) {
-        var purpose = issue.id.replace('dup-purpose-', '');
-        var _purposePages = [];
-        (S.pages || []).forEach(function(p) {
-          if (p._removed) return;
-          var t = (p.page_type || '').toLowerCase();
-          var s = (p.slug || '').toLowerCase();
-          var purp = null;
-          if (t === 'home' || s === '' || s === '/' || s === 'home') purp = 'homepage';
-          else if ((t === 'contact' && /^contact/.test(s)) || s === 'contact' || s === 'contact-us') purp = 'contact';
-          else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purp = 'about';
-          else if (/^about\/team|^team|^our-team/.test(s)) purp = 'team';
-          else if (t === 'privacy' || /privacy/.test(s)) purp = 'privacy';
-          else if (t === 'terms' || /terms/.test(s)) purp = 'terms';
-          if (purp === purpose) _purposePages.push(p);
-        });
-        if (_purposePages.length <= 1) return;
-        _purposePages.sort(function(a, b) {
-          var sa = _pageSafetyScore(a.slug);
-          var sb = _pageSafetyScore(b.slug);
-          if (sa.isProtected !== sb.isProtected) return sa.isProtected ? -1 : 1;
-          return (sb.clicks || 0) - (sa.clicks || 0);
-        });
-        if (!S._redirectPlan) S._redirectPlan = [];
-        for (var di = 1; di < _purposePages.length; di++) {
-          _purposePages[di]._removed = true;
-          _purposePages[di]._removeReason = 'Duplicate "' + purpose + '" — merged into /' + _purposePages[0].slug;
-          _purposePages[di]._removedAt = Date.now();
-          S._redirectPlan.push({ from: '/' + _purposePages[di].slug, to: '/' + _purposePages[0].slug, reason: 'Duplicate purpose auto-merge', addedAt: Date.now() });
-          console.log('[enrichAll] Cut dup: /' + _purposePages[di].slug + ' → /' + _purposePages[0].slug);
-          _totalFixed++;
-        }
-      });
-
-      // Fix missing keywords
-      _sitemapWorkflowIssues = null;
-      if (_hasNoKw && !guard.changed() && !window._aiStopAll) await _aiFixIssue('no-kw');
-
-      // Fix cannibals
-      for (var _ci = 0; _ci < _cann.length && !guard.changed() && !window._aiStopAll; _ci++) {
-        await _aiFixIssue(_cann[_ci].id);
-        _totalFixed++;
-      }
-
-      // Fix zero-vol
-      if (_hasZV && !guard.changed() && !window._aiStopAll) await _aiFixIssue('zero-vol');
-
-      // Auto-cut stale blogs (only those with no traffic — protected ones stay)
-      _stale.forEach(function(issue) {
-        var staleSlug = issue.slug;
-        if (!staleSlug) return;
-        var safety = _pageSafetyScore(staleSlug);
-        if (safety.isProtected) return; // Skip protected pages
-        var page = (S.pages || []).find(function(p) { return p.slug === staleSlug; });
-        if (page && !page._removed) {
-          page._removed = true;
-          page._removeReason = 'Outdated content auto-cut';
-          page._removedAt = Date.now();
-          // Smart redirect target
-          if (!S._redirectPlan) S._redirectPlan = [];
-          var _cutTokens = staleSlug.toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
-          var _bestTarget = null;
-          var _bestOverlap = 0;
-          (S.pages || []).forEach(function(tp) {
-            if (tp._removed || tp.slug === staleSlug) return;
-            var tTokens = (tp.slug || '').toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
-            var overlap = 0;
-            _cutTokens.forEach(function(ct) { if (tTokens.indexOf(ct) >= 0) overlap++; });
-            if (overlap > _bestOverlap) { _bestOverlap = overlap; _bestTarget = tp.slug; }
-          });
-          var redirectTo = _bestTarget || staleSlug.split('/').slice(0, -1).join('/') || '/';
-          S._redirectPlan.push({ from: '/' + staleSlug, to: '/' + redirectTo, reason: 'Stale content auto-cut', addedAt: Date.now() });
-          console.log('[enrichAll] Cut stale: /' + staleSlug + ' → /' + redirectTo);
-          _totalFixed++;
-        }
-      });
+    // Step 4: Auto-fix ALL issues — shared comprehensive fix function
+    if (!guard.changed() && !window._aiStopAll) {
+      aiBarStart('Enrich All (4/' + _totalSteps + '): Fixing all issues\u2026');
+      var _fixResult = await _fixAllIssuesComprehensive();
+      if (_fixResult > 0) _steps.push('fixes(' + _fixResult + ')');
     }
-    if (_totalFixed > 0) _steps.push('fixes(' + _totalFixed + ')');
 
     // Step 5: Priorities (instant, no AI)
     if (!guard.changed() && !window._aiStopAll) {
