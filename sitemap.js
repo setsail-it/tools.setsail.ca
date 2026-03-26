@@ -1509,23 +1509,37 @@ function _renderIssuesPanel() {
     groups[cat].push(issue);
   });
 
-  // Count fixable issues
+  // Count fixable issues (keyword fixes + duplicate purpose)
   var _fixableCount = all.filter(function(i) { return i.id === 'no-kw' || i.id === 'zero-vol' || (i.id && i.id.indexOf('cannibal-') === 0); }).length;
+  var _errorCount = issues.errors.length;
+  var _warnCount = issues.warnings.length;
+  var _infoCount = issues.info.length;
   var html = '<div class="wf-issues" id="wf-issues-panel">';
+  // Always show summary bar
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px 8px;border-bottom:1px solid var(--border)">';
+  html += '<div style="font-size:11px;color:var(--n2)">' + all.length + ' issue' + (all.length !== 1 ? 's' : '') + ' found'
+    + (_errorCount > 0 ? ' · <span style="color:var(--error)">' + _errorCount + ' error' + (_errorCount !== 1 ? 's' : '') + '</span>' : '')
+    + (_warnCount > 0 ? ' · <span style="color:var(--warn)">' + _warnCount + ' warning' + (_warnCount !== 1 ? 's' : '') + '</span>' : '')
+    + (_fixableCount > 0 ? ' · ' + _fixableCount + ' auto-fixable' : '') + '</div>';
   if (_fixableCount > 0) {
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px 8px;border-bottom:1px solid var(--border)">';
-    html += '<div style="font-size:11px;color:var(--n2)">' + all.length + ' issue' + (all.length !== 1 ? 's' : '') + ' found' + (_fixableCount > 0 ? ' · ' + _fixableCount + ' auto-fixable' : '') + '</div>';
     html += '<button class="btn btn-primary sm" id="wf-fix-all-btn" style="font-size:10px;padding:3px 10px"><i class="ti ti-sparkles" style="font-size:10px"></i> Fix All (' + _fixableCount + ')</button>';
-    html += '</div>';
   }
+  html += '</div>';
   ['alignment', 'keywords', 'gaps', 'redundant'].forEach(function(cat) {
     var items = groups[cat];
     if (!items || !items.length) return;
-    var sevIcon = items.some(function(i) { return i.severity === 'error'; }) ? 'ti-alert-triangle' : (items.some(function(i) { return i.severity === 'warning'; }) ? 'ti-alert-triangle' : 'ti-info-circle');
-    var sevCol = items.some(function(i) { return i.severity === 'error'; }) ? 'var(--error)' : (items.some(function(i) { return i.severity === 'warning'; }) ? 'var(--warn)' : '#3b82f6');
-    html += '<div><div class="wf-issues-hdr" style="color:' + sevCol + '">'
+    var hasErrors = items.some(function(i) { return i.severity === 'error'; });
+    var hasWarnings = items.some(function(i) { return i.severity === 'warning'; });
+    var _allInfo = !hasErrors && !hasWarnings;
+    var sevCol = hasErrors ? 'var(--error)' : (hasWarnings ? 'var(--warn)' : '#3b82f6');
+    // Collapse info-only groups by default (click to expand)
+    var _groupId = 'wf-issue-grp-' + cat;
+    html += '<div><div class="wf-issues-hdr" style="color:' + sevCol + ';cursor:pointer" onclick="var el=document.getElementById(\'' + _groupId + '\');el.style.display=el.style.display===\'none\'?\'\':\'none\'">'
       + '<i class="ti ' + (groupIcons[cat] || 'ti-info-circle') + '" style="font-size:13px"></i>'
-      + (groupLabels[cat] || cat) + ' <span style="font-weight:400;color:var(--n2)">(' + items.length + ')</span></div>';
+      + (groupLabels[cat] || cat) + ' <span style="font-weight:400;color:var(--n2)">(' + items.length + ')</span>'
+      + (_allInfo ? ' <span style="font-size:9px;color:var(--n2);font-weight:400">\u25B6</span>' : '')
+      + '</div>';
+    html += '<div id="' + _groupId + '" style="' + (_allInfo ? 'display:none' : '') + '">';
     items.forEach(function(issue, idx) {
       var rowCol = issue.severity === 'error' ? 'rgba(220,50,47,0.03)' : (issue.severity === 'warning' ? 'rgba(245,166,35,0.02)' : 'transparent');
       html += '<div class="wf-issue-row" style="background:' + rowCol + '">';
@@ -1542,7 +1556,7 @@ function _renderIssuesPanel() {
       }
       html += '</div>';
     });
-    html += '</div>';
+    html += '</div></div>';
   });
   html += '</div>';
   return html;
