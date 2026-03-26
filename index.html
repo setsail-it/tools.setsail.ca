@@ -373,6 +373,7 @@ textarea.inp{resize:vertical}
     <button id="ai-queue-nav-toggle" style="position:relative;display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)" title="Operation Queue"><i class="ti ti-list-check" style="font-size:13px"></i> Queue<span id="ai-queue-nav-badge" style="display:none;min-width:14px;height:14px;border-radius:7px;background:var(--accent);color:white;font-size:8px;font-weight:700;align-items:center;justify-content:center;padding:0 3px"></span></button>
     <button onclick="toggleSai()" id="sai-toggle" title="SetsailAI" style="position:relative;display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-sparkles" style="font-size:13px"></i> SetsailAI<span id="sai-badge"></span></button>
     <button onclick="toggleHelpPanel()" id="help-btn" title="Workflow guide" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-book-2" style="font-size:13px"></i> Guide</button>
+    <button onclick="toggleChangelog()" id="changelog-btn" title="Change Log" style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3);cursor:pointer;font-family:var(--font)"><i class="ti ti-history" style="font-size:13px"></i> Log</button>
     <div id="user-pill" onclick="toggleUserDropdown(event)" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:var(--white);font-size:11px;color:var(--n3)" title="Account">
       <i class="ti ti-user-circle" style="font-size:13px;color:var(--green)"></i>
       <span id="user-email-nav">—</span>
@@ -6072,6 +6073,128 @@ function _showSuspendedScreen() {
     + '</div></div>';
 }
 
+// ── CHANGELOG PANEL ──────────────────────────────────────────────────────────
+var _changelogOpen = false;
+var _changelogCache = null;
+
+function toggleChangelog() {
+  var panel = document.getElementById('changelog-panel');
+  var overlay = document.getElementById('changelog-overlay');
+  var btn = document.getElementById('changelog-btn');
+  if (!panel) return;
+  _changelogOpen = !_changelogOpen;
+  panel.style.display = _changelogOpen ? '' : 'none';
+  overlay.style.display = _changelogOpen ? '' : 'none';
+  if (btn) { btn.style.background = _changelogOpen ? 'var(--dark)' : 'var(--white)'; btn.style.color = _changelogOpen ? 'var(--white)' : 'var(--n3)'; }
+  if (_changelogOpen) {
+    // Show add form for admin+
+    var addForm = document.getElementById('changelog-add-form');
+    if (addForm) addForm.style.display = canAdmin() ? '' : 'none';
+    loadChangelog();
+  }
+}
+
+async function loadChangelog() {
+  var el = document.getElementById('changelog-entries');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--n2);font-size:12px"><span class="spinner" style="width:12px;height:12px"></span> Loading...</div>';
+  try {
+    var res = await fetch('/api/changelog');
+    if (!res.ok) throw new Error('Failed to load');
+    var data = await res.json();
+    _changelogCache = data.entries || [];
+    renderChangelogEntries();
+  } catch(e) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--n2);font-size:12px">Could not load changelog</div>';
+  }
+}
+
+function renderChangelogEntries() {
+  var el = document.getElementById('changelog-entries');
+  if (!el || !_changelogCache) return;
+  if (!_changelogCache.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--n2);font-size:12px">No entries yet.</div>'; return; }
+  var typeIcons = { feature: '\uD83D\uDE80', fix: '\uD83D\uDD27', improvement: '\u2728', breaking: '\u26A0\uFE0F' };
+  var typeBg = { feature: 'rgba(21,142,29,0.06)', fix: 'rgba(59,130,246,0.06)', improvement: 'rgba(147,51,234,0.06)', breaking: 'rgba(220,50,47,0.06)' };
+  var typeBorder = { feature: 'rgba(21,142,29,0.2)', fix: 'rgba(59,130,246,0.2)', improvement: 'rgba(147,51,234,0.2)', breaking: 'rgba(220,50,47,0.2)' };
+  var currentUser = (S.currentUser && S.currentUser.email) || '';
+  el.innerHTML = _changelogCache.map(function(entry, i) {
+    var d = new Date(entry.date);
+    var dateStr = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    var timeStr = d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
+    var confirmed = (entry.confirmed || []);
+    var flagged = (entry.flagged || []);
+    var iConfirmed = confirmed.indexOf(currentUser) >= 0;
+    var iFlagged = flagged.indexOf(currentUser) >= 0;
+    return '<div style="padding:12px 0;border-bottom:1px solid var(--border)">'
+      + '<div style="display:flex;align-items:flex-start;gap:8px">'
+      + '<span style="font-size:14px;flex-shrink:0;margin-top:1px">' + (typeIcons[entry.type] || '\u2022') + '</span>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:12px;font-weight:600;color:var(--dark)">' + esc(entry.title) + '</div>'
+      + (entry.description ? '<div style="font-size:11px;color:var(--n2);margin-top:3px;line-height:1.5;white-space:pre-wrap">' + esc(entry.description) + '</div>' : '')
+      + '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">'
+      + '<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:' + (typeBg[entry.type] || 'var(--bg)') + ';border:1px solid ' + (typeBorder[entry.type] || 'var(--border)') + ';color:var(--dark);text-transform:uppercase;letter-spacing:.04em">' + esc(entry.type) + '</span>'
+      + '<span style="font-size:9px;color:var(--n2)">' + dateStr + ' ' + timeStr + '</span>'
+      + (entry.author ? '<span style="font-size:9px;color:var(--n2)">by ' + esc(entry.author.split('@')[0]) + '</span>' : '')
+      + '</div>'
+      + '<div style="display:flex;gap:6px;margin-top:6px">'
+      + '<button onclick="reactChangelog(' + i + ',\'confirmed\')" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid ' + (iConfirmed ? 'rgba(21,142,29,0.3)' : 'var(--border)') + ';background:' + (iConfirmed ? 'rgba(21,142,29,0.06)' : 'transparent') + ';color:' + (iConfirmed ? 'var(--green)' : 'var(--n2)') + ';cursor:pointer;font-family:var(--font)">\u2705 Working' + (confirmed.length ? ' (' + confirmed.length + ')' : '') + '</button>'
+      + '<button onclick="reactChangelog(' + i + ',\'flagged\')" style="font-size:10px;padding:2px 8px;border-radius:3px;border:1px solid ' + (iFlagged ? 'rgba(220,50,47,0.3)' : 'var(--border)') + ';background:' + (iFlagged ? 'rgba(220,50,47,0.06)' : 'transparent') + ';color:' + (iFlagged ? 'var(--error)' : 'var(--n2)') + ';cursor:pointer;font-family:var(--font)">\uD83D\uDEA9 Broken' + (flagged.length ? ' (' + flagged.length + ')' : '') + '</button>'
+      + (canAdmin() ? '<button onclick="deleteChangelogEntry(' + i + ')" style="font-size:10px;padding:2px 6px;border:none;background:none;color:var(--n2);cursor:pointer;font-family:var(--font)"><i class="ti ti-trash" style="font-size:10px"></i></button>' : '')
+      + '</div>'
+      + '</div></div></div>';
+  }).join('');
+}
+
+async function addChangelogEntry() {
+  var titleEl = document.getElementById('cl-title');
+  var descEl = document.getElementById('cl-desc');
+  var typeEl = document.getElementById('cl-type');
+  if (!titleEl || !titleEl.value.trim()) return;
+  var entry = {
+    title: titleEl.value.trim(),
+    description: (descEl && descEl.value.trim()) || '',
+    type: typeEl ? typeEl.value : 'feature',
+    author: (S.currentUser && S.currentUser.email) || '',
+    date: new Date().toISOString(),
+    confirmed: [],
+    flagged: []
+  };
+  try {
+    await fetch('/api/changelog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', entry: entry })
+    });
+    titleEl.value = '';
+    if (descEl) descEl.value = '';
+    loadChangelog();
+  } catch(e) { if (typeof aiBarNotify === 'function') aiBarNotify('Failed to post: ' + e.message, { isError: true }); }
+}
+
+async function reactChangelog(idx, reaction) {
+  var currentUser = (S.currentUser && S.currentUser.email) || '';
+  if (!currentUser) return;
+  try {
+    await fetch('/api/changelog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'react', idx: idx, reaction: reaction, user: currentUser })
+    });
+    loadChangelog();
+  } catch(e) {}
+}
+
+async function deleteChangelogEntry(idx) {
+  try {
+    await fetch('/api/changelog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', idx: idx })
+    });
+    loadChangelog();
+  } catch(e) {}
+}
+
 // ── HELP PANEL ───────────────────────────────────────────────────────────────
 function toggleHelpPanel() {
   var panel = document.getElementById('help-panel');
@@ -6926,6 +7049,30 @@ async function deleteAdminUser(emailArg) {
   </div>
 </div>
 <div id="help-overlay" onclick="toggleHelpPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:999"></div>
+
+<!-- CHANGELOG PANEL -->
+<div id="changelog-panel" style="display:none;position:fixed;top:0;right:0;width:420px;height:100vh;background:var(--white);border-left:1px solid var(--border);z-index:950;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,0.08)">
+  <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--white);z-index:1">
+    <div style="font-size:14px;font-weight:600;color:var(--dark)"><i class="ti ti-history" style="margin-right:6px"></i>Change Log</div>
+    <button onclick="toggleChangelog()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--n2);padding:2px 6px">&times;</button>
+  </div>
+  <div id="changelog-add-form" style="display:none;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg)">
+    <input id="cl-title" type="text" placeholder="What changed?" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:var(--font);background:var(--white);color:var(--dark);margin-bottom:6px">
+    <textarea id="cl-desc" placeholder="Details — what was added, fixed, or changed..." style="width:100%;min-height:60px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:11px;font-family:var(--font);background:var(--white);color:var(--dark);resize:vertical;margin-bottom:6px"></textarea>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="cl-type" style="font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--white);font-family:var(--font)">
+        <option value="feature">Feature</option>
+        <option value="fix">Bug Fix</option>
+        <option value="improvement">Improvement</option>
+        <option value="breaking">Breaking Change</option>
+      </select>
+      <button class="btn btn-primary sm" style="font-size:11px" onclick="addChangelogEntry()"><i class="ti ti-plus"></i> Post</button>
+    </div>
+  </div>
+  <div id="changelog-entries" style="padding:12px 20px"></div>
+</div>
+<div id="changelog-overlay" onclick="toggleChangelog()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.2);z-index:949"></div>
+
 <!-- ADMIN SCREEN -->
 <div id="screen-admin" class="screen" style="max-width:800px;margin:0 auto;padding-top:8px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">

@@ -692,6 +692,52 @@ export default {
       }
     }
 
+    // ── CHANGELOG (global, all users) ─────────────────────────────
+    if (url.pathname === '/api/changelog' && request.method === 'GET') {
+      try {
+        const raw = await env.SETSAIL_OS.get('global:changelog');
+        const data = raw ? JSON.parse(raw) : { entries: [] };
+        return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(e) {
+        return new Response(JSON.stringify({ entries: [] }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
+    if (url.pathname === '/api/changelog' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const raw = await env.SETSAIL_OS.get('global:changelog');
+        const data = raw ? JSON.parse(raw) : { entries: [] };
+
+        if (body.action === 'add' && body.entry) {
+          data.entries.unshift(body.entry); // newest first
+          if (data.entries.length > 200) data.entries = data.entries.slice(0, 200); // cap at 200
+        } else if (body.action === 'react' && typeof body.idx === 'number' && body.reaction && body.user) {
+          const entry = data.entries[body.idx];
+          if (entry) {
+            if (!entry[body.reaction]) entry[body.reaction] = [];
+            const arr = entry[body.reaction];
+            const userIdx = arr.indexOf(body.user);
+            if (userIdx >= 0) arr.splice(userIdx, 1); // toggle off
+            else arr.push(body.user); // toggle on
+            // Remove from opposite reaction
+            const opposite = body.reaction === 'confirmed' ? 'flagged' : 'confirmed';
+            if (entry[opposite]) {
+              const oppIdx = entry[opposite].indexOf(body.user);
+              if (oppIdx >= 0) entry[opposite].splice(oppIdx, 1);
+            }
+          }
+        } else if (body.action === 'delete' && typeof body.idx === 'number') {
+          data.entries.splice(body.idx, 1);
+        }
+
+        await env.SETSAIL_OS.put('global:changelog', JSON.stringify(data));
+        return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json', ...cors } });
+      } catch(e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...cors } });
+      }
+    }
+
     // ── PROJECT STORAGE (KV) ─────────────────────────────────────
     // GET /api/projects — list all projects
     if (url.pathname === '/api/projects' && request.method === 'GET') {
