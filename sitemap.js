@@ -1159,15 +1159,13 @@ function _runSitemapHealthCheck() {
     var _isNearMe = /\bnear me\b|\bnear by\b|\bnearby\b/i.test(kw);
 
     if (_isGeoSplit || _isNearMe) {
-      // Different geographic markets or "near me" keyword — not cannibalisation
-      info.push({ id: 'geo-overlap-' + kw, category: 'keywords', severity: 'info', slug: entries[0].slug, description: '"' + kw + '" shared across ' + (_isGeoSplit ? 'different geographic markets' : 'location pages') + ': ' + slugs + ' — correct for local SEO, each page targets a different city SERP', suggestion: 'No action needed — geographic targeting is correct' });
+      // Different geographic markets or "near me" — not cannibalisation, don't show
+      // (correct SEO architecture — clutters issues panel if shown)
     } else if (hasSameType) {
       // Real cannibalisation — same page type, same market, competing for same keyword
       errors.push({ id: 'cannibal-' + kw, category: 'keywords', severity: 'error', slug: entries[0].slug, description: '"' + kw + '" targets ' + entries.length + ' same-type pages: ' + slugs, suggestion: 'Differentiate: assign a more specific keyword to the weaker page', fixType: 'scroll' });
-    } else {
-      // Different page types — likely different intent (service vs blog, case study vs service, etc.)
-      info.push({ id: 'overlap-' + kw, category: 'keywords', severity: 'info', slug: entries[0].slug, description: '"' + kw + '" shared across different page types (' + typeKeys.join(', ') + '): ' + slugs + ' — likely different intent, monitor in GSC for URL flickering', suggestion: 'No action needed unless GSC shows URL flickering' });
     }
+    // Cross-type keyword sharing is correct architecture (different intent) — not shown in issues
   });
 
   // 3. Zero-volume non-structural pages (exclude page types that legitimately have low/no volume)
@@ -1195,6 +1193,31 @@ function _runSitemapHealthCheck() {
     warnings.push({ id: 'no-kw', category: 'keywords', severity: 'warning', slug: noKw[0].slug, description: noKw.length + ' page' + (noKw.length !== 1 ? 's' : '') + ' missing a primary keyword', suggestion: 'Use Edit mode or Find Keywords to assign cluster anchors', fixType: 'scroll' });
   }
 
+  // 4b. Core Focus keyword check — homepage should contain a Core Focus term
+  var _coreFocusTerms = (S.setup && S.setup.coreFocus) ? S.setup.coreFocus.filter(function(f) { return f && f.trim(); }) : [];
+  if (_coreFocusTerms.length > 0) {
+    var homePage = pages.find(function(p) {
+      var t = (p.page_type || '').toLowerCase();
+      var s = (p.slug || '').toLowerCase();
+      return t === 'home' || s === '' || s === '/' || s === 'home';
+    });
+    if (homePage && homePage.primary_keyword) {
+      var _homeKwLower = homePage.primary_keyword.toLowerCase();
+      var _hasFocus = _coreFocusTerms.some(function(f) { return _homeKwLower.indexOf(f.toLowerCase()) >= 0; });
+      if (!_hasFocus) {
+        warnings.push({
+          id: 'home-focus-mismatch',
+          category: 'keywords',
+          severity: 'warning',
+          slug: homePage.slug || '',
+          description: 'Homepage keyword "' + homePage.primary_keyword + '" does not contain Core Focus term' + (_coreFocusTerms.length > 1 ? 's' : '') + ' (' + _coreFocusTerms.join(', ') + ')',
+          suggestion: 'Use Tools \u2192 Reassign All Keywords to align homepage with Core Focus',
+          fixType: 'none'
+        });
+      }
+    }
+  }
+
   // 5. Positioning direction gaps
   if (_hasStrategy) {
     var dirGaps = _checkDirectionPageGaps(pages);
@@ -1216,7 +1239,7 @@ function _runSitemapHealthCheck() {
     var covResults = _runPersonaCoverageCheck(pages);
     covResults.forEach(function(r) {
       if (r.coverage !== null && r.coverage < 50) {
-        info.push({ id: 'persona-' + (r.segment || ''), category: 'gaps', severity: 'info', slug: '', description: 'Persona "' + (r.persona || r.segment) + '" has ' + Math.round(r.coverage) + '% page coverage', suggestion: 'Add pages addressing this audience segment', fixType: 'none' });
+        info.push({ id: 'persona-gap-' + (r.segment || '').replace(/\s+/g, '-').slice(0, 30), category: 'gaps', severity: r.coverage === 0 ? 'warning' : 'info', slug: '', description: 'Persona "' + (r.persona || r.segment) + '" has ' + Math.round(r.coverage) + '% page coverage', suggestion: r.coverage === 0 ? 'Assign to existing pages or park this persona if not a priority' : 'Add pages addressing this audience segment', fixType: 'none' });
       }
     });
   }
@@ -1257,13 +1280,22 @@ function _runSitemapHealthCheck() {
 
     Object.keys(gscKwPageMap).forEach(function(kw) {
       if (gscKwPageMap[kw].length > 1) {
+        var _gscPages = gscKwPageMap[kw].sort(function(a, b) { return a.position - b.position; });
+        var _bestPos = _gscPages[0].position;
+        var _worstPos = _gscPages[_gscPages.length - 1].position;
+        // Position-based guidance
+        var _guidance = '';
+        if (_bestPos <= 5 && _worstPos > 10) _guidance = 'One page ranks well (pos ' + _bestPos.toFixed(1) + ') — likely different intent, monitor only';
+        else if (_bestPos > 10 && _worstPos > 10) _guidance = 'Neither page ranks well — consolidate content into one stronger page';
+        else if (_bestPos <= 10 && _worstPos <= 10) _guidance = 'Both ranking in top 10 — monitor for flickering, consider canonical signal';
+        else _guidance = 'Consolidate ranking signals or differentiate keywords';
         warnings.push({
           id: 'gsc-cannibal-' + kw,
           category: 'keywords',
-          severity: 'warning',
-          slug: gscKwPageMap[kw][0].slug,
-          description: 'GSC shows \u201c' + kw + '\u201d ranking on ' + gscKwPageMap[kw].length + ' pages: ' + gscKwPageMap[kw].map(function(p) { return '/' + p.slug + ' (pos ' + p.position.toFixed(1) + ')'; }).join(', '),
-          suggestion: 'Consolidate ranking signals — merge content or differentiate keywords',
+          severity: (_bestPos > 10 && _worstPos > 10) ? 'warning' : 'info',
+          slug: _gscPages[0].slug,
+          description: 'GSC: \u201c' + kw + '\u201d ranking on ' + _gscPages.length + ' pages: ' + _gscPages.map(function(p) { return '/' + p.slug + ' (pos ' + p.position.toFixed(1) + ')'; }).join(', '),
+          suggestion: _guidance,
           fixType: 'none'
         });
       }
@@ -1278,8 +1310,22 @@ function _runSitemapHealthCheck() {
     var name = (p.page_name || '').toLowerCase();
     // Group by functional purpose (not just page_type)
     var purpose = null;
-    if (t === 'home' || s === '' || s === '/' || s === 'home') purpose = 'homepage';
-    else if (t === 'contact' || /^contact/.test(s)) purpose = 'contact';
+    // Cross-check slug against type to catch misclassifications
+    // A /services/* page typed as "contact" is misclassified, not a real duplicate
+    var _slugHint = /^services\//.test(s) ? 'service' : (/^blog\//.test(s) ? 'blog' : (/^case-stud/.test(s) ? 'case-study' : (/^solutions\//.test(s) ? 'service' : null)));
+    if (_slugHint && t !== _slugHint && ['home', 'about', 'contact', 'team', 'privacy', 'terms'].indexOf(t) >= 0) {
+      // Page type doesn't match slug pattern — flag as misclassification instead
+      warnings.push({
+        id: 'misclass-' + p.slug,
+        category: 'redundant',
+        severity: 'warning',
+        slug: p.slug,
+        description: '/' + p.slug + ' has type "' + t + '" but slug suggests "' + _slugHint + '" — likely misclassified',
+        suggestion: 'Reclassify this page as "' + _slugHint + '"',
+        fixType: 'none'
+      });
+    } else if (t === 'home' || s === '' || s === '/' || s === 'home') purpose = 'homepage';
+    else if ((t === 'contact' && /^contact/.test(s)) || s === 'contact' || s === 'contact-us') purpose = 'contact';
     else if ((t === 'about' && !/team|career|job/i.test(s)) || s === 'about' || s === 'about-us') purpose = 'about';
     else if (/^about\/team|^team|^our-team|^meet-the-team/.test(s) || name.indexOf('team') >= 0) purpose = 'team';
     else if (t === 'privacy' || /privacy/.test(s)) purpose = 'privacy';
@@ -1562,6 +1608,18 @@ function _renderIssuesPanel() {
       if (issue.id && issue.id.indexOf('stale-') === 0) {
         html += '<button class="btn btn-ghost sm wf-issue-action" data-action="cut-page" data-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px;color:var(--warn);border-color:rgba(245,166,35,0.3)"><i class="ti ti-arrow-right" style="font-size:9px"></i> Cut + Redirect</button>';
       }
+      // Misclassification — reclassify button
+      if (issue.id && issue.id.indexOf('misclass-') === 0) {
+        var _mcSlug = issue.id.replace('misclass-', '');
+        var _mcType = (issue.suggestion || '').match(/as "([^"]+)"/);
+        if (_mcType) {
+          html += '<button class="btn btn-ghost sm wf-issue-action" data-action="reclassify" data-slug="' + esc(_mcSlug) + '" data-new-type="' + esc(_mcType[1]) + '" style="font-size:10px;padding:2px 8px;color:#3b82f6;border-color:rgba(59,130,246,0.3)"><i class="ti ti-switch-horizontal" style="font-size:9px"></i> Reclassify</button>';
+        }
+      }
+      // Persona gap — assign or park
+      if (issue.id && issue.id.indexOf('persona-gap-') === 0) {
+        html += '<button class="btn btn-ghost sm wf-issue-action" data-action="assign-personas" style="font-size:10px;padding:2px 8px;color:#3b82f6;border-color:rgba(59,130,246,0.3)"><i class="ti ti-users" style="font-size:9px"></i> Assign</button>';
+      }
       // Sub-page consolidation
       if (issue.id && issue.id.indexOf('consolidate-') === 0) {
         html += '<button class="btn btn-ghost sm wf-issue-action" data-action="consolidate" data-slug="' + esc(issue.slug) + '" style="font-size:10px;padding:2px 8px;color:var(--warn);border-color:rgba(245,166,35,0.3)"><i class="ti ti-arrows-merge" style="font-size:9px"></i> Consolidate</button>';
@@ -1683,18 +1741,31 @@ function _mountIssuesPanel() {
         if (page) {
           var safety = _pageSafetyScore(slug);
           if (safety.isProtected) {
-            aiBarNotify('Page has traffic (' + safety.clicks + ' clicks, ' + safety.conversions + ' conv) \u2014 marking as CUT but keeping in sitemap for redirect planning', { duration: 5000 });
+            aiBarNotify('Page has traffic (' + safety.clicks + ' clicks, ' + safety.conversions + ' conv) \u2014 consider updating instead of cutting', { duration: 5000 });
           }
           page._removed = true;
           page._removeReason = 'Outdated content — redirected';
           page._removedAt = Date.now();
-          // Track redirect
+          // Smart redirect targeting: find best topically relevant surviving page
           if (!S._redirectPlan) S._redirectPlan = [];
-          var parentSlug = slug.split('/').slice(0, -1).join('/') || '/';
-          S._redirectPlan.push({ from: '/' + slug, to: '/' + parentSlug, reason: 'Stale content cut', addedAt: Date.now() });
+          var _cutTokens = slug.toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+          var _bestTarget = null;
+          var _bestOverlap = 0;
+          (S.pages || []).forEach(function(tp) {
+            if (tp._removed || tp.slug === slug) return;
+            var tTokens = (tp.slug || '').toLowerCase().split(/[-\/]/).filter(function(t) { return t.length > 3; });
+            var overlap = 0;
+            _cutTokens.forEach(function(ct) { if (tTokens.indexOf(ct) >= 0) overlap++; });
+            // Also check keyword match
+            if (page.primary_keyword && tp.primary_keyword && tp.primary_keyword.toLowerCase().indexOf((page.primary_keyword || '').toLowerCase().split(' ')[0]) >= 0) overlap += 2;
+            if (overlap > _bestOverlap) { _bestOverlap = overlap; _bestTarget = tp.slug; }
+          });
+          var redirectTo = _bestTarget || slug.split('/').slice(0, -1).join('/') || '/';
+          S._redirectPlan.push({ from: '/' + slug, to: '/' + redirectTo, reason: 'Stale content cut', addedAt: Date.now() });
           scheduleSave();
+          _sitemapWorkflowIssues = null; // Bust cache
           renderSitemapResults(S.sitemapApproved);
-          aiBarNotify('Cut /' + slug + ' \u2192 redirect to /' + parentSlug, { duration: 4000 });
+          aiBarNotify('Cut /' + slug + ' \u2192 redirect to /' + redirectTo + (_bestTarget ? ' (topic match)' : ' (parent)'), { duration: 4000 });
         }
       }
 
@@ -1742,6 +1813,33 @@ function _mountIssuesPanel() {
         scheduleSave();
         renderSitemapResults(S.sitemapApproved);
         aiBarNotify('Kept /' + keepPage.slug + ', cut ' + cutCount + ' duplicate "' + purpose + '" page' + (cutCount !== 1 ? 's' : '') + ' with redirects', { duration: 5000 });
+      }
+
+      if (action === 'reclassify') {
+        var newType = btn.getAttribute('data-new-type');
+        if (slug && newType) {
+          var page = (S.pages || []).find(function(p) { return p.slug === slug; });
+          if (page) {
+            var oldType = page.page_type;
+            page.page_type = newType;
+            scheduleSave();
+            _sitemapWorkflowIssues = null; // Bust cache
+            renderSitemapResults(S.sitemapApproved);
+            aiBarNotify('Reclassified /' + slug + ': ' + oldType + ' \u2192 ' + newType, { duration: 3000 });
+          }
+        }
+        return;
+      }
+
+      if (action === 'assign-personas') {
+        // Run persona assignment
+        if (typeof assignAllPersonas === 'function') {
+          assignAllPersonas(true);
+          renderSitemapResults(S.sitemapApproved);
+          scheduleSave();
+          aiBarNotify('Personas re-assigned to all pages', { duration: 3000 });
+        }
+        return;
       }
 
       if (action === 'consolidate' && slug) {
@@ -4336,7 +4434,15 @@ function _renderSitemapResultsInner(approved) {
   const p1 = allPages.filter(p=>p.priority==='P1').length;
   const p2 = allPages.filter(p=>p.priority==='P2').length;
   const p3 = allPages.filter(p=>p.priority==='P3').length;
-  const zeroVol = allPages.filter(p => !p.is_structural && (!p.primary_vol || p.primary_vol === 0)).length;
+  var _zvBadgeExcluded = ['case-study', 'case_study', 'casestudy', 'resource', 'resource-hub', 'team', 'utility', 'thank-you', 'thankyou', 'privacy', 'terms', 'careers', 'testimonial', 'testimonials', 'gallery', 'portfolio'];
+  const zeroVol = allPages.filter(function(p) {
+    if (p.is_structural) return false;
+    var t = (p.page_type || '').toLowerCase();
+    if (_zvBadgeExcluded.indexOf(t) >= 0) return false;
+    var s = (p.slug || '').toLowerCase();
+    if (/^case-stud|^resource-hub\/|^team\/|^portfolio\//.test(s)) return false;
+    return (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword;
+  }).length;
   const hasKwData = S.kwResearch?.keywords?.length > 0;
 
   let html = '<div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap">';

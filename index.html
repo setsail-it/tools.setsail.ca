@@ -2205,54 +2205,89 @@ function _updateContextBar() {
     else {
       var enrichPct = typeof _computeEnrichmentPct === 'function' ? _computeEnrichmentPct() : 0;
       status = pages.length + ' pages \u00B7 ' + enrichPct + '% enriched';
-      if (enrichPct < 80) {
-        // Detect which enrichment component is the bottleneck
-        var _nonStruct = pages.filter(function(p) { return !p.is_structural; });
-        var _noGoal = _nonStruct.filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
-        var _noPersona = _nonStruct.filter(function(p) {
-          if (!p.target_persona) {
-            var _pt = (p.page_type || '').toLowerCase();
-            // Skip types that _autoAssignPersona deliberately leaves empty
-            if (['home','about','contact','utility','faq','team','blog','article','portfolio','case-study','testimonials'].indexOf(_pt) >= 0) return false;
-            return true;
-          }
-          return false;
-        }).length;
-        var _noKw = _nonStruct.filter(function(p) {
-          var t = (p.page_type || '').toLowerCase();
-          if (['home','about','contact','utility','faq','team'].indexOf(t) >= 0) return false;
-          return !p.primary_keyword;
-        }).length;
-        var _noAwareness = _nonStruct.filter(function(p) { return !p.awareness_stage; }).length;
-        if (_noKw > _noGoal && _noKw > _noPersona) {
-          next = _noKw + ' pages missing keywords \u2014 click to AI Fix';
-          _ctxAction = function() { _ctxScrollAndHighlight('align', 'wf-step-3'); };
+
+      // Dependency-ordered next-action detection
+      // Each check builds on the previous — only the FIRST unmet condition shows
+      var _nonStruct = pages.filter(function(p) { return !p.is_structural && !p._removed; });
+      var _skipKwTypes = ['utility', 'faq', 'team', 'thank-you', 'thankyou'];
+
+      // 1. Structure review needed? (never run, or stale)
+      var _srDone = S._sitemapStructureReview && S._sitemapStructureReview.reviewedAt;
+      var _srStale = _srDone && S._sitemapStructureReview.pageCount !== pages.length;
+
+      // 2. Keywords missing?
+      var _noKw = _nonStruct.filter(function(p) {
+        var t = (p.page_type || '').toLowerCase();
+        if (_skipKwTypes.indexOf(t) >= 0) return false;
+        return !p.primary_keyword;
+      }).length;
+
+      // 3. Zero-vol keywords?
+      var _zvExcl = ['case-study','case_study','casestudy','resource','resource-hub','team','utility','thank-you','thankyou','privacy','terms','careers','testimonial','testimonials','gallery','portfolio'];
+      var _zeroVol = _nonStruct.filter(function(p) {
+        var t = (p.page_type || '').toLowerCase();
+        if (_zvExcl.indexOf(t) >= 0) return false;
+        return (!p.primary_vol || p.primary_vol === 0) && p.primary_keyword;
+      }).length;
+
+      // 4. Health check issues?
+      var _issues = typeof _runSitemapHealthCheck === 'function' ? _runSitemapHealthCheck() : { errors: [], warnings: [] };
+      var _errCount = _issues.errors.length;
+      var _warnCount = _issues.warnings.length;
+
+      // 5. Goals needed?
+      var _noGoal = _nonStruct.filter(function(p) { return !p.page_goal || !p.page_goal.trim(); }).length;
+
+      // 6. Personas needed?
+      var _noPersona = _nonStruct.filter(function(p) {
+        if (!p.target_persona) {
+          var _pt = (p.page_type || '').toLowerCase();
+          if (['home','about','contact','utility','faq','team','blog','article','portfolio','case-study','testimonials'].indexOf(_pt) >= 0) return false;
+          return true;
         }
-        else if (_noGoal > 0) {
-          next = _noGoal + ' pages need goals \u2014 click to generate';
-          _ctxAction = function() { _ctxScrollAndHighlight('goals', 'goals-dropdown-wrap'); };
-        }
-        else if (_noPersona > 0) {
-          next = _noPersona + ' pages need personas \u2014 click to assign';
-          _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
-        }
-        else if (_noAwareness > 0) {
-          next = _noAwareness + ' pages need awareness stage';
-          _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
-        }
-        else {
-          // Check if blog pages actually need pillars
-          var _blogNoPillar = _nonStruct.filter(function(p) {
-            var _bpt = (p.page_type || '').toLowerCase();
-            return ['blog','article','recipe','event'].indexOf(_bpt) >= 0 && !p.content_pillar;
-          }).length;
-          if (_blogNoPillar > 0) {
-            next = _blogNoPillar + ' blog pages need content pillars \u2014 click to assign';
-            _ctxAction = function() { _ctxScrollAndHighlight('pillars', null); if (typeof assignContentPillars === 'function') assignContentPillars(); };
-          }
-        }
+        return false;
+      }).length;
+
+      // 7. Pillars needed?
+      var _blogNoPillar = _nonStruct.filter(function(p) {
+        var _bpt = (p.page_type || '').toLowerCase();
+        return ['blog','article','recipe','event'].indexOf(_bpt) >= 0 && !p.content_pillar;
+      }).length;
+
+      // Priority order: structure → keywords → issues → goals → personas → pillars → approve
+      if (!_srDone || _srStale) {
+        next = (_srStale ? 'Structure changed \u2014 ' : '') + 'Run structure review to clean up architecture';
+        _ctxAction = function() { if (typeof runStructureReview === 'function') runStructureReview(); };
       }
-      // Always fall through to approval/briefs if no enrichment action needed
+      else if (_noKw > 10) {
+        next = _noKw + ' pages missing keywords \u2014 click to reassign';
+        _ctxAction = function() { if (typeof reassignAllKeywords === 'function') reassignAllKeywords(); };
+      }
+      else if (_errCount > 0) {
+        next = _errCount + ' error' + (_errCount !== 1 ? 's' : '') + ' to fix \u2014 click to auto-fix';
+        _ctxAction = function() { var btn = document.getElementById('wf-fix-all-btn'); if (btn) btn.click(); };
+      }
+      else if (_noKw > 0) {
+        next = _noKw + ' pages missing keywords \u2014 click to fix';
+        _ctxAction = function() { var btn = document.getElementById('wf-fix-all-btn'); if (btn) btn.click(); };
+      }
+      else if (_zeroVol > 5) {
+        next = _zeroVol + ' pages have zero volume \u2014 click to expand pool and fix';
+        _ctxAction = function() { if (typeof reassignAllKeywords === 'function') reassignAllKeywords(); };
+      }
+      else if (_noGoal > 0) {
+        next = '\u25B6 ' + _noGoal + ' pages need goals \u2014 click to generate';
+        _ctxAction = function() { if (typeof generateAllPageGoals === 'function') generateAllPageGoals('auto'); };
+      }
+      else if (_noPersona > 0) {
+        next = _noPersona + ' pages need personas \u2014 click to assign';
+        _ctxAction = function() { if (typeof assignAllPersonas === 'function') assignAllPersonas(); };
+      }
+      else if (_blogNoPillar > 0) {
+        next = _blogNoPillar + ' blog pages need content pillars \u2014 click to assign';
+        _ctxAction = function() { if (typeof assignContentPillars === 'function') assignContentPillars(); };
+      }
+      // Fall through to approval/briefs
       if (!next) {
         if (!S.sitemapApproved) { next = 'Approve sitemap (Gate 1)'; _ctxAction = function() { var g = document.getElementById('sitemap-gate1'); if (g) g.scrollIntoView({ behavior:'smooth', block:'center' }); }; }
         else { next = 'Next \u2192 Briefs'; _ctxAction = function() { navToStage('briefs'); }; }
