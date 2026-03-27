@@ -6549,10 +6549,23 @@ function renderStrategyTabContent() {
     _mountSubtractionControls();
   }
 
-  // Mount interactive Gantt chart (now lives in Channels tab with growth content)
+  // Mount interactive Gantt chart + scope panel + channel intelligence toggle
   if (_sTab === 'channels') {
     _mountGantt(S.strategy || {});
     _mountScopePanel();
+    // Wire channel intelligence accordion toggle (no inline onclick)
+    var _ciToggle = document.getElementById('channel-intel-toggle');
+    if (_ciToggle) {
+      _ciToggle.onclick = function() {
+        var body = document.getElementById('channel-intel-body');
+        var icon = document.getElementById('channel-intel-icon');
+        if (body) {
+          var show = body.style.display === 'none';
+          body.style.display = show ? 'block' : 'none';
+          if (icon) icon.style.transform = show ? 'rotate(180deg)' : '';
+        }
+      };
+    }
   }
 }
 
@@ -8231,65 +8244,168 @@ function _renderEconomics(st) {
   return html;
 }
 
-function _renderChannels(st) {
+// ── Available Budget card (Issue 77) ──
+function _renderAvailableBudget(st) {
+  var r = S.research || {};
+  var sub = st.subtraction || {};
   var cs = st.channel_strategy || {};
-  if (!cs.levers || !cs.levers.length) {
-    return '<div class="card" style="color:var(--n2);text-align:center"><p>No channel data yet. Generate strategy to populate.</p></div>';
-  }
-  var html = '';
+  var bt = cs.budget_tiers || {};
+  var clientBudget = parseFloat(String(r.monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var recoverable = parseFloat(sub.total_recoverable_monthly) || 0;
+  var totalAvailable = clientBudget + recoverable;
+  var pkgFit = getPackageFit(clientBudget);
+  var pkgColour = pkgFit ? (pkgFit.tier === 'below_minimum' ? '#f56c6c' : pkgFit.tier === 'custom' ? 'var(--green)' : '#409eff') : 'var(--n2)';
 
-  // Budget tiers (Correction 2)
-  var bt = cs.budget_tiers;
-  if (bt) {
-    var tiers = [
-      { key: 'current_budget', label: 'Current Budget', icon: 'ti-wallet', colour: 'var(--dark)' },
-      { key: 'growth_budget', label: 'Growth (2\u20133x)', icon: 'ti-trending-up', colour: '#e6a23c' },
-      { key: 'optimal_budget', label: 'Optimal', icon: 'ti-star', colour: 'var(--green)' }
-    ];
-    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Budget Tiers</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">';
-    tiers.forEach(function(t) {
-      var tier = bt[t.key];
-      if (!tier) return;
-      var total = tier.total_monthly || tier.total || 0;
-      html += '<div style="background:var(--panel);border-radius:8px;padding:14px;border:1px solid var(--border)">';
-      html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
-      html += '<i class="ti ' + t.icon + '" style="color:' + t.colour + ';font-size:15px"></i>';
-      html += '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--n3)">' + t.label + '</span></div>';
-      html += '<div style="font-size:22px;font-weight:700;color:var(--dark);margin-bottom:6px">$' + Number(total).toLocaleString() + '<span style="font-size:11px;font-weight:400;color:var(--n2)">/mo</span></div>';
-      if (tier.expected_leads) html += '<div style="font-size:11px;color:var(--n2)">' + tier.expected_leads + ' leads/mo expected</div>';
-      if (tier.expected_cpl) html += '<div style="font-size:11px;color:var(--n2)">~$' + tier.expected_cpl + ' CPL</div>';
-      if (tier.rationale) html += '<div style="font-size:11px;color:var(--n2);margin-top:6px;line-height:1.4">' + esc(tier.rationale) + '</div>';
-      html += '</div>';
+  var html = '<div class="card" style="margin-bottom:14px;padding:14px 16px">';
+  html += '<div style="font-size:10px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Available Budget</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:10px">';
+  // Client budget
+  html += '<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:var(--dark)">$' + clientBudget.toLocaleString() + '</div>';
+  html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Client Budget/mo</div></div>';
+  // Recoverable
+  html += '<div style="text-align:center"><div style="font-size:20px;font-weight:700;color:' + (recoverable > 0 ? 'var(--green)' : 'var(--n2)') + '">+$' + recoverable.toLocaleString() + '</div>';
+  html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Recoverable (D3)</div></div>';
+  // Total
+  html += '<div style="text-align:center;border-left:1px solid var(--border);padding-left:12px"><div style="font-size:20px;font-weight:700;color:var(--dark)">$' + totalAvailable.toLocaleString() + '</div>';
+  html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase">Total Available/mo</div></div>';
+  html += '</div>';
+  // Package fit + budget tier info
+  html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  if (pkgFit) {
+    html += '<span style="font-size:10px;font-weight:600;color:' + pkgColour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + pkgColour + '30;background:' + pkgColour + '08">' + esc(pkgFit.label) + '</span>';
+  }
+  if (bt.growth_budget) {
+    html += '<span style="font-size:10px;color:var(--n2)">Growth tier: $' + Number(bt.growth_budget.total_monthly || 0).toLocaleString() + '/mo</span>';
+  }
+  if (bt.optimal_budget) {
+    html += '<span style="font-size:10px;color:var(--n2)">Optimal: $' + Number(bt.optimal_budget.total_monthly || 0).toLocaleString() + '/mo</span>';
+  }
+  html += '</div>';
+  if (bt.paid_viability_floor) {
+    html += '<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:10px;color:var(--dark)">'
+      + '<strong>Paid viability floor:</strong> ' + esc(bt.paid_viability_floor) + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ── Merged Funnel Coverage (Issue 81) — filtered to enabled services ──
+function _renderMergedFunnel(st) {
+  var cs = st.channel_strategy || {};
+  var fc = cs.funnel_coverage || (st.growth_plan || {}).funnel_architecture;
+  if (!fc) return '';
+  // Build set of enabled service slugs from engagement scope
+  var enabledSlugs = new Set();
+  if (st.engagement_scope && st.engagement_scope.services) {
+    Object.keys(st.engagement_scope.services).forEach(function(slug) {
+      if (st.engagement_scope.services[slug].enabled !== false) enabledSlugs.add(slug);
     });
+  }
+  // Build lever-to-service map for filtering
+  var leverToService = {};
+  Object.keys(LEVER_SERVICE_MAP).forEach(function(lev) { leverToService[lev] = LEVER_SERVICE_MAP[lev]; });
+
+  var html = '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Funnel Coverage</div>';
+  html += '<div style="display:grid;gap:6px">';
+  ['awareness','consideration','conversion','nurture','retention'].forEach(function(stage) {
+    var stageData = fc[stage] || {};
+    var byList = (stageData.by || []);
+    // Filter to only levers whose service is enabled
+    var enabledBy = byList.filter(function(lev) {
+      var svcSlug = leverToService[lev.toLowerCase().replace(/\s+/g, '_')] || leverToService[lev] || lev;
+      return enabledSlugs.size === 0 || enabledSlugs.has(svcSlug);
+    });
+    var isCovered = enabledBy.length > 0;
+    var statusIcon = isCovered ? '<i class="ti ti-circle-check" style="color:var(--green);font-size:14px"></i>' : '<i class="ti ti-alert-circle" style="color:#f56c6c;font-size:14px"></i>';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;background:' + (isCovered ? '#f0fdf4' : '#fef0f0') + '">';
+    html += statusIcon;
+    html += '<span style="font-size:12px;font-weight:500;min-width:100px">' + stage.charAt(0).toUpperCase() + stage.slice(1) + '</span>';
+    html += '<span style="font-size:11px;color:var(--n3);flex:1">' + (enabledBy.length ? enabledBy.join(', ') : '<span style="color:#f56c6c">No enabled services cover this stage</span>') + '</span>';
+    if (stageData.gap && !isCovered) html += '<span style="font-size:10px;color:#f56c6c;font-style:italic">' + esc(stageData.gap) + '</span>';
     html += '</div>';
-    if (bt.paid_viability_floor) {
-      html += '<div style="padding:8px 10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px;color:var(--dark);margin-bottom:4px">'
-        + '<strong>Paid viability floor:</strong> ' + esc(bt.paid_viability_floor) + '</div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+// ── Budget Waterfall (Issue 83) — priority-ordered with funded/unfunded line ──
+function _renderBudgetWaterfall(st) {
+  var scope = st.engagement_scope;
+  if (!scope || !scope.services) return '';
+  var r = S.research || {};
+  var sub = st.subtraction || {};
+  var clientBudget = parseFloat(String(r.monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+  var recoverable = parseFloat(sub.total_recoverable_monthly) || 0;
+  var totalAvailable = clientBudget + recoverable;
+
+  // Gather enabled services sorted by priority
+  var svcs = [];
+  Object.keys(scope.services).forEach(function(slug) {
+    var svc = scope.services[slug];
+    if (svc.enabled === false) return;
+    var cost = _scopeEffectiveCost ? _scopeEffectiveCost(svc) : (svc.monthly_cost || svc.cost || 0);
+    svcs.push({ slug: slug, name: svc.name || slug.replace(/-/g, ' '), scope: svc.scope || 'mid', cost: cost, priority: svc.avg_priority || 0, isProject: svc.billing_type === 'project' || svc.isProject });
+  });
+  svcs.sort(function(a, b) { return (b.priority || 0) - (a.priority || 0); });
+
+  if (!svcs.length) return '';
+
+  var html = '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Budget Allocation</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">#</th>'
+    + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Service</th>'
+    + '<th style="padding:6px 8px;font-weight:500;color:var(--n2)">Scope</th>'
+    + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Monthly Cost</th>'
+    + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right">Cumulative</th>'
+    + '<th style="padding:6px 8px;font-weight:500;color:var(--n2)">Status</th></tr>';
+  var cumulative = 0;
+  svcs.forEach(function(svc, idx) {
+    if (!svc.isProject) cumulative += svc.cost;
+    var status = '', statusColour = '';
+    if (svc.isProject) {
+      status = '\u2014 project'; statusColour = 'var(--n2)';
+    } else if (cumulative <= totalAvailable) {
+      status = '\u2713 Funded'; statusColour = 'var(--green)';
+    } else if (cumulative - svc.cost < totalAvailable) {
+      status = '\u26a0 Over by $' + (cumulative - totalAvailable).toLocaleString(); statusColour = '#e6a23c';
+    } else {
+      status = '\u2717 Unfunded'; statusColour = '#f56c6c';
     }
-    html += '</div>';
-  }
+    var rowBg = (!svc.isProject && cumulative > totalAvailable) ? 'background:#fef0f050' : '';
+    html += '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">';
+    html += '<td style="padding:6px 8px;font-size:11px;color:var(--n2)">' + (idx + 1) + '</td>';
+    html += '<td style="padding:6px 8px;font-weight:500">' + esc(svc.name) + '</td>';
+    html += '<td style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase;color:var(--n2)">' + svc.scope + '</td>';
+    html += '<td style="padding:6px 8px;text-align:right">$' + svc.cost.toLocaleString() + (svc.isProject ? '' : '/mo') + '</td>';
+    html += '<td style="padding:6px 8px;text-align:right;font-weight:500">' + (svc.isProject ? '\u2014' : '$' + cumulative.toLocaleString()) + '</td>';
+    html += '<td style="padding:6px 8px;font-weight:600;color:' + statusColour + '">' + status + '</td>';
+    html += '</tr>';
+  });
+  // Total row
+  html += '<tr style="font-weight:700;border-top:2px solid var(--border)">';
+  html += '<td colspan="3" style="padding:6px 8px">Total Monthly</td>';
+  html += '<td style="padding:6px 8px;text-align:right">$' + cumulative.toLocaleString() + '/mo</td>';
+  html += '<td style="padding:6px 8px;text-align:right">Budget: $' + totalAvailable.toLocaleString() + '</td>';
+  var gap = cumulative - totalAvailable;
+  html += '<td style="padding:6px 8px;color:' + (gap > 0 ? '#f56c6c' : 'var(--green)') + '">' + (gap > 0 ? 'Over by $' + gap.toLocaleString() : 'Within budget') + '</td>';
+  html += '</tr></table></div>';
+  return html;
+}
 
-  // Package fit indicator
-  var _chBudget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
-  var _chPkgFit = getPackageFit(_chBudget);
-  if (_chPkgFit) {
-    var _pkgColour = _chPkgFit.tier === 'below_minimum' ? '#f56c6c' : _chPkgFit.tier === 'custom' ? 'var(--green)' : '#409eff';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 12px;border-radius:6px;background:var(--panel);border:1px solid var(--border)">'
-      + '<span style="font-size:11px;color:var(--n2)">Client budget: <strong>$' + _chBudget.toLocaleString() + '/mo</strong></span>'
-      + '<span style="font-size:10px;font-weight:600;color:' + _pkgColour + ';padding:2px 8px;border-radius:10px;border:1px solid ' + _pkgColour + '30;background:' + _pkgColour + '08">' + esc(_chPkgFit.label) + '</span>'
-      + (_chPkgFit.tier === 'below_minimum' ? '<span style="font-size:10px;color:#f56c6c">Min: $' + (_chPkgFit.minimum || 0).toLocaleString() + '/mo</span>' : '')
-      + '</div>';
-  }
-
-  // Service Scope panel
-  if (S.strategy.engagement_scope) {
-    html += _renderScopePanel();
-  }
-
-  // Priority order table with service costs
+// ── Channel Intelligence accordion (Issue 78) — lever scoring detail ──
+function _renderChannelIntelligence(st) {
+  var cs = st.channel_strategy || {};
+  if (!cs.levers || !cs.levers.length) return '';
   var _hasPricing = _pricingCatalog && _pricingCatalog.services;
-  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Channel Priority ' + _renderPricingIndicator() + '</div>';
+  var _chBudget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
+
+  var html = '<div style="margin-bottom:18px">';
+  html += '<button id="channel-intel-toggle" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--panel);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font)">';
+  html += '<span style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Channel Intelligence (AI Analysis)</span>';
+  html += '<i class="ti ti-chevron-down" id="channel-intel-icon" style="color:var(--n2);font-size:14px;transition:transform .2s"></i>';
+  html += '</button>';
+  html += '<div id="channel-intel-body" style="display:none;margin-top:8px">';
+  // Lever scoring table (existing content)
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
   html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Lever</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Fit</th>'
@@ -8300,7 +8416,7 @@ function _renderChannels(st) {
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Budget %</th>'
     + (_hasPricing ? '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">Min Cost</th>' : '')
     + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Timeline</th></tr>';
-  cs.levers.sort(function(a, b) { return (b.priority_score || 0) - (a.priority_score || 0); }).forEach(function(lev) {
+  cs.levers.slice().sort(function(a, b) { return (b.priority_score || 0) - (a.priority_score || 0); }).forEach(function(lev) {
     var _levSvc = _hasPricing ? lookupServicePricing(lev.lever) : null;
     var _levCost = _levSvc ? getServiceMonthlyCost(_levSvc) : null;
     var _budgetFeasible = true;
@@ -8309,7 +8425,7 @@ function _renderChannels(st) {
       if (_allocDollars < _levCost.min && lev.budget_allocation_pct > 0) _budgetFeasible = false;
     }
     html += '<tr style="border-bottom:1px solid var(--border);' + (!_budgetFeasible ? 'background:#fef0f0' : '') + '">';
-    html += '<td style="padding:6px 8px;font-weight:500">' + esc(lev.lever || '') + (!_budgetFeasible ? ' <span style="font-size:9px;color:#f56c6c;font-weight:400" title="Budget allocation below minimum service cost">⚠ underfunded</span>' : '') + '</td>';
+    html += '<td style="padding:6px 8px;font-weight:500" data-tip="' + esc(lev.recommendation || '') + '">' + esc(lev.lever || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.fit || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.economics || '') + '</td>';
     html += '<td style="padding:6px 4px;text-align:center">' + (lev.competitive_reality || '') + '</td>';
@@ -8319,31 +8435,83 @@ function _renderChannels(st) {
     if (_hasPricing) {
       html += '<td style="padding:6px 4px;text-align:right;font-size:10px;color:var(--n2)">' + (_levCost ? '$' + _levCost.min.toLocaleString() + (_levCost.isProject ? ' proj' : '/mo') : '\u2014') + '</td>';
     }
-    html += '<td style="padding:6px 8px">' + esc(lev.timeline_to_results || '') + '</td>';
+    html += '<td style="padding:6px 8px;font-size:11px">' + esc(lev.timeline_to_results || '') + '</td>';
     html += '</tr>';
   });
-  html += '</table></div>';
+  html += '</table>';
+  html += '</div></div>';
+  return html;
+}
 
-  // Funnel coverage
-  if (cs.funnel_coverage) {
-    html += _stratSection('Funnel Coverage',
-      Object.keys(cs.funnel_coverage).map(function(stage) {
-        var fc = cs.funnel_coverage[stage];
-        var covered = fc.covered ? '<span style="color:var(--green)">Covered</span>' : '<span style="color:#f56c6c">Gap</span>';
-        return _stratField(stage.charAt(0).toUpperCase() + stage.slice(1),
-          covered + (fc.by && fc.by.length ? ' by ' + fc.by.join(', ') : '') + (fc.gap ? ' \u2014 ' + esc(fc.gap) : ''), { _html: true });
-      }).join('')
-    );
+// ── Unlock at Growth/Optimal (Issue 80) — aspirational framing ──
+function _renderUnlockTiers(st) {
+  var cs = st.channel_strategy || {};
+  var bt = cs.budget_tiers || {};
+  var nr = cs.levers_not_recommended || [];
+  // Find disabled services
+  var disabledSvcs = [];
+  if (st.engagement_scope && st.engagement_scope.services) {
+    Object.keys(st.engagement_scope.services).forEach(function(slug) {
+      if (st.engagement_scope.services[slug].enabled === false) {
+        disabledSvcs.push(st.engagement_scope.services[slug].name || slug.replace(/-/g, ' '));
+      }
+    });
+  }
+  if (!nr.length && !disabledSvcs.length && !bt.growth_budget) return '';
+
+  var html = '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Unlock with Higher Budget</div>';
+
+  // Growth tier
+  if (bt.growth_budget) {
+    var gTotal = bt.growth_budget.total_monthly || 0;
+    html += '<div class="card" style="margin-bottom:8px;padding:10px 14px;border-left:3px solid #e6a23c">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:4px"><i class="ti ti-trending-up" style="color:#e6a23c;font-size:13px"></i> Growth Budget ($' + Number(gTotal).toLocaleString() + '/mo)</div>';
+    if (bt.growth_budget.unlocks && bt.growth_budget.unlocks.length) {
+      bt.growth_budget.unlocks.forEach(function(u) {
+        html += '<div style="font-size:11px;color:var(--n3);padding:2px 0;padding-left:8px">\u2022 ' + esc(u) + '</div>';
+      });
+    }
+    if (bt.growth_budget.expected_impact) html += '<div style="font-size:11px;color:var(--green);margin-top:4px;font-weight:500">' + esc(bt.growth_budget.expected_impact) + '</div>';
+    html += '</div>';
+  }
+  // Optimal tier
+  if (bt.optimal_budget) {
+    var oTotal = bt.optimal_budget.total_monthly || 0;
+    html += '<div class="card" style="margin-bottom:8px;padding:10px 14px;border-left:3px solid var(--green)">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:4px"><i class="ti ti-star" style="color:var(--green);font-size:13px"></i> Optimal Budget ($' + Number(oTotal).toLocaleString() + '/mo)</div>';
+    if (bt.optimal_budget.rationale) html += '<div style="font-size:11px;color:var(--n3);padding-left:8px">' + esc(bt.optimal_budget.rationale) + '</div>';
+    if (bt.optimal_budget.expected_impact) html += '<div style="font-size:11px;color:var(--green);margin-top:4px;font-weight:500">' + esc(bt.optimal_budget.expected_impact) + '</div>';
+    html += '</div>';
+  }
+  // Not-recommended levers as future unlocks
+  if (nr.length) {
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:6px">';
+    nr.forEach(function(n) {
+      html += '<div style="padding:2px 0">' + esc(n.lever) + ': ' + esc(n.reason) + (n.revisit_when ? ' \u2014 <em>revisit: ' + esc(n.revisit_when) + '</em>' : '') + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _renderChannels(st) {
+  var cs = st.channel_strategy || {};
+  if (!cs.levers || !cs.levers.length) {
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No channel data yet. Generate strategy to populate.</p></div>';
+  }
+  var html = '';
+
+  // 1. Available Budget (replaces old budget tiers + package fit)
+  html += _renderAvailableBudget(st);
+
+  // 2. Service Selection (promoted scope panel)
+  if (S.strategy.engagement_scope) {
+    html += _renderScopePanel();
   }
 
-  // Not recommended
-  if (cs.levers_not_recommended && cs.levers_not_recommended.length) {
-    html += _stratSection('Not Recommended',
-      cs.levers_not_recommended.map(function(nr) {
-        return _stratField(nr.lever, nr.reason + (nr.revisit_when ? ' (revisit: ' + nr.revisit_when + ')' : ''));
-      }).join('')
-    );
-  }
+  // 3. Funnel Coverage (merged, filtered to enabled services)
+  html += _renderMergedFunnel(st);
 
   return html;
 }
@@ -8352,27 +8520,10 @@ function _renderGrowth(st) {
   var gp = st.growth_plan || {};
   var html = '';
 
-  // Funnel architecture
-  if (gp.funnel_architecture) {
-    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Funnel Architecture</div>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
-    html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Stage</th>'
-      + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Status</th>'
-      + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Covered By</th>'
-      + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Gap</th></tr>';
-    ['awareness','consideration','conversion','nurture','retention'].forEach(function(stage) {
-      var fc = gp.funnel_architecture[stage] || {};
-      html += '<tr style="border-bottom:1px solid var(--border)">';
-      html += '<td style="padding:6px 8px;font-weight:500">' + stage.charAt(0).toUpperCase() + stage.slice(1) + '</td>';
-      html += '<td style="padding:6px 8px">' + (fc.covered ? '<span style="color:var(--green)">Covered</span>' : '<span style="color:#f56c6c">Gap</span>') + '</td>';
-      html += '<td style="padding:6px 8px">' + esc((fc.by || []).join(', ')) + '</td>';
-      html += '<td style="padding:6px 8px">' + esc(fc.gap || '') + '</td>';
-      html += '</tr>';
-    });
-    html += '</table></div>';
-  }
+  // 4. Budget Waterfall (replaces old percentage-based allocation)
+  html += _renderBudgetWaterfall(st);
 
-  // Interactive Gantt Timeline
+  // 5. Interactive Gantt Timeline
   var overrideCount = (gp.timeline_overrides ? Object.keys(gp.timeline_overrides).length : 0)
     + (gp.deleted_items ? gp.deleted_items.length : 0)
     + (gp.custom_items ? gp.custom_items.length : 0);
@@ -8399,54 +8550,11 @@ function _renderGrowth(st) {
   html += '<div id="strat-gantt-container"></div></div>';
   // Gantt is rendered via DOM after innerHTML is set (see _mountGantt call in renderStrategyTabContent)
 
-  // Budget allocation with real costs
-  if (gp.budget_allocation) {
-    var _gaHasPricing = _pricingCatalog && _pricingCatalog.services;
-    var _gaTotalReal = 0;
-    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Budget Allocation ' + (_gaHasPricing ? _renderPricingIndicator() : '') + '</div>';
-    if (gp.budget_allocation.total_monthly) {
-      html += '<div style="font-size:18px;font-weight:700;color:var(--dark);margin-bottom:10px">$' + Number(gp.budget_allocation.total_monthly).toLocaleString() + '<span style="font-size:11px;font-weight:400;color:var(--n2)">/mo (AI recommended)</span></div>';
-    }
-    if (gp.budget_allocation.by_lever && typeof gp.budget_allocation.by_lever === 'object') {
-      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
-      html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:5px 8px;font-weight:500;color:var(--n2)">Lever</th>'
-        + '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">AI Allocation</th>'
-        + (_gaHasPricing ? '<th style="padding:5px 8px;font-weight:500;color:var(--n2);text-align:right">Real Cost (mid)</th>' : '')
-        + '</tr>';
-      Object.keys(gp.budget_allocation.by_lever).forEach(function(lever) {
-        var aiAmt = gp.budget_allocation.by_lever[lever] || 0;
-        var _gaSvc = _gaHasPricing ? lookupServicePricing(lever) : null;
-        var _gaCost = _gaSvc ? getServiceMonthlyCost(_gaSvc) : null;
-        if (_gaCost && !_gaCost.isProject) _gaTotalReal += _gaCost.mid;
-        html += '<tr style="border-bottom:1px solid var(--border)">';
-        html += '<td style="padding:5px 8px">' + esc(lever.replace(/_/g, ' ')) + '</td>';
-        html += '<td style="padding:5px 8px;text-align:right">$' + Number(aiAmt).toLocaleString() + '</td>';
-        if (_gaHasPricing) {
-          html += '<td style="padding:5px 8px;text-align:right;color:' + (_gaCost ? 'var(--dark)' : 'var(--n2)') + '">' + (_gaCost && !_gaCost.isProject ? '$' + _gaCost.mid.toLocaleString() : '\u2014') + '</td>';
-        }
-        html += '</tr>';
-      });
-      if (_gaHasPricing && _gaTotalReal > 0) {
-        html += '<tr style="font-weight:700;border-top:2px solid var(--border)"><td style="padding:5px 8px">Total (real pricing)</td>'
-          + '<td style="padding:5px 8px;text-align:right">$' + Number(gp.budget_allocation.total_monthly || 0).toLocaleString() + '</td>'
-          + '<td style="padding:5px 8px;text-align:right;color:var(--dark)">$' + _gaTotalReal.toLocaleString() + '</td></tr>';
-      }
-      html += '</table>';
-    }
-    // Budget vs plan comparison
-    var _gaBudget = parseFloat(String((S.research || {}).monthly_marketing_budget || '0').replace(/[^0-9.]/g, ''));
-    var _gaPlanTotal = _gaTotalReal > 0 ? _gaTotalReal : (gp.budget_allocation.total_monthly || 0);
-    if (_gaBudget > 0 && _gaPlanTotal > 0) {
-      var _gaGap = _gaPlanTotal - _gaBudget;
-      var _gaGapColour = _gaGap > 0 ? '#f56c6c' : 'var(--green)';
-      html += '<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:' + (_gaGap > 0 ? '#fef0f0' : '#f0fdf4') + ';border:1px solid ' + _gaGapColour + '30;font-size:11px;display:flex;align-items:center;gap:8px">'
-        + '<i class="ti ' + (_gaGap > 0 ? 'ti-alert-triangle' : 'ti-circle-check') + '" style="color:' + _gaGapColour + ';font-size:14px"></i>'
-        + '<span>Client budget: <strong>$' + _gaBudget.toLocaleString() + '/mo</strong> | Plan total: <strong>$' + _gaPlanTotal.toLocaleString() + '/mo</strong> | '
-        + (_gaGap > 0 ? '<span style="color:#f56c6c;font-weight:600">Gap: $' + _gaGap.toLocaleString() + '/mo over budget</span>' : '<span style="color:var(--green);font-weight:600">Within budget (\u2212$' + Math.abs(_gaGap).toLocaleString() + ')</span>')
-        + '</span></div>';
-    }
-    html += '</div>';
-  }
+  // 6. Channel Intelligence (lever scoring detail — collapsible)
+  html += _renderChannelIntelligence(st);
+
+  // 7. Unlock at Growth/Optimal (replaces "Not Recommended")
+  html += _renderUnlockTiers(st);
 
   // Targets
   if (st.targets && Object.keys(st.targets).length) {
