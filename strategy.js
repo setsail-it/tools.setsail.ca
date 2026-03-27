@@ -1976,11 +1976,11 @@ var INDUSTRY_BENCHMARKS = {
     source: 'Unbounce 2024 (SaaS median CVR 3.8%) + First Page Sage 2026 (B2B SaaS close 12%) + Shopify (SaaS 77% annual retention)'
   },
   'ecommerce': {
-    landing_page_cvr: { low: 0.02, mid: 0.04, high: 0.07 },
-    avg_cpl: { low: 30, mid: 70, high: 120 },
-    close_rate: { low: 0.01, mid: 0.03, high: 0.05 },
-    retention_multiplier: { low: 1.5, mid: 2.0, high: 3.0 },
-    source: 'WordStream 2025 (Apparel CVR 3.99%, CPL $101.49) + Shopify (e-commerce 38% retention, repeat buyers spend 67% more)'
+    landing_page_cvr: { low: 0.015, mid: 0.03, high: 0.05 },
+    avg_cpl: { low: 15, mid: 45, high: 100 },
+    close_rate: { low: 0.015, mid: 0.03, high: 0.05 }, // Note: for ecommerce, "close rate" = site conversion rate (visitors → buyers)
+    retention_multiplier: { low: 1.3, mid: 2.0, high: 3.0 },
+    source: 'Shopify 2025 (avg ecommerce CVR 2.5-3.5%, CPA $45 median) + Statista 2025 (global ecommerce CVR 2.86%) + Shopify (38% retention, repeat buyers spend 67% more)'
   },
   'restaurant': {
     landing_page_cvr: { low: 0.05, mid: 0.07, high: 0.12 },
@@ -4058,10 +4058,89 @@ function buildDiagnosticPrompt(num) {
       cpcBlock = '- CPC data: NOT AVAILABLE \u2014 estimates will be assumptions\n';
     }
 
-    return ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
+    // Detect business model — ecommerce gets a completely different economics prompt
+    var _bizCat = (typeof _detectBusinessCategory === 'function') ? _detectBusinessCategory() : 'professional';
+    var _isEcom = _bizCat === 'ecommerce' || (r.business_model || '').toLowerCase().indexOf('ecommerce') >= 0 || (r.business_model || '').toLowerCase().indexOf('e-commerce') >= 0;
+
+    var d1Base = ctx + '\n\nDIAGNOSTIC: Unit Economics Analysis\n\n'
       + buildPricingContextBlock()
       + _snapshotCtxBlock()
-      + _buildBenchmarkContextBlock()
+      + _buildBenchmarkContextBlock();
+
+    if (_isEcom) {
+      // ── ECOMMERCE MODEL ──
+      return d1Base
+        + 'BUSINESS MODEL: ECOMMERCE\n'
+        + 'This is an ecommerce/retail business. Use ecommerce-specific unit economics.\n'
+        + 'Do NOT use lead-gen metrics (CPL, qualified leads, close rate, deal size). These do not apply.\n\n'
+        + 'CLIENT DATA:\n'
+        + '- Monthly ad spend: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
+        + '- Average order value (AOV): ' + (r.average_deal_size || r.aov || 'UNKNOWN') + '\n'
+        + '- Site conversion rate: ' + (r.known_close_rate || r.site_conversion_rate || 'UNKNOWN — use ecommerce benchmark ~2-4%') + '\n'
+        + '- Monthly website traffic: ' + (r.monthly_traffic || 'UNKNOWN') + '\n'
+        + '- Repeat purchase rate: ' + (r.repeat_purchase_rate || 'UNKNOWN — assume 20-30% for most ecommerce') + '\n'
+        + '- Average product margin: ' + (r.product_margin || 'UNKNOWN — assume 40-60%') + '\n'
+        + '- Primary goal: ' + (r.primary_goal || '') + '\n'
+        + (r.goal_target ? '- Measurable target: ' + r.goal_target + '\n' : '')
+        + (r.goal_baseline ? '- Current baseline: ' + r.goal_baseline + '\n' : '')
+        + (r.goal_timeline ? '- Goal timeline: ' + r.goal_timeline + '\n' : '')
+        + cpcBlock
+        + (setup.estimated_engagement_size ? '- Estimated engagement size: ' + setup.estimated_engagement_size + '\n' : '') + '\n'
+        + 'TASK: Calculate ecommerce unit economics. Use benchmark data to fill unknowns. Mark every assumption explicitly.\n\n'
+        + 'CRITICAL SENSITIVITY RULES:\n'
+        + '1. THREE scenarios (conservative, base, optimistic) — vary AOV, conversion rate, and CPA.\n'
+        + '2. ROAS = Revenue / Ad Spend. Break-even ROAS = 1 / product margin. Target ROAS typically 3-5x.\n'
+        + '3. CLV = AOV x purchase frequency x avg customer lifespan. Repeat purchase rate is critical.\n'
+        + '4. Show what BREAKS the economics: "If ROAS drops below X, ad spend is unprofitable."\n\n'
+        + 'JSON SCHEMA:\n{\n'
+        + '  "business_model": "ecommerce",\n'
+        + '  "aov": 0,\n'
+        + '  "site_conversion_rate": 0,\n'
+        + '  "monthly_traffic": 0,\n'
+        + '  "monthly_orders": 0,\n'
+        + '  "monthly_revenue": 0,\n'
+        + '  "avg_product_margin_pct": 0,\n'
+        + '  "customer_acquisition_cost": 0,\n'
+        + '  "repeat_purchase_rate": 0,\n'
+        + '  "purchase_frequency_annual": 0,\n'
+        + '  "avg_customer_lifespan_months": 0,\n'
+        + '  "customer_lifetime_value": 0,\n'
+        + '  "ltv_cac_ratio": "e.g. 4.2:1",\n'
+        + '  "ltv_cac_health": "unsustainable | healthy | under-investing",\n'
+        + '  "roas_current": 0,\n'
+        + '  "roas_target": 0,\n'
+        + '  "roas_breakeven": 0,\n'
+        + '  "paid_media_viable": true,\n'
+        + '  "sensitivity": [\n'
+        + '    {"scenario": "conservative", "aov": 0, "conversion_rate": 0, "cpa": 0, "roas": 0, "ltv_cac": "X:1", "verdict": "string"},\n'
+        + '    {"scenario": "base", "aov": 0, "conversion_rate": 0, "cpa": 0, "roas": 0, "ltv_cac": "X:1", "verdict": "string"},\n'
+        + '    {"scenario": "optimistic", "aov": 0, "conversion_rate": 0, "cpa": 0, "roas": 0, "ltv_cac": "X:1", "verdict": "string"}\n'
+        + '  ],\n'
+        + '  "strategy_built_on": "conservative | base | optimistic",\n'
+        + '  "break_even_floor": "what breaks the economics — e.g. ROAS below X",\n'
+        + '  "input_quality": "client-provided | estimated | mixed",\n'
+        + '  "market_cpc_summary": {\n'
+        + '    "avg_cpc": 0,\n'
+        + '    "median_cpc": 0,\n'
+        + '    "cpc_range": "$X - $Y",\n'
+        + '    "high_intent_avg_cpc": 0,\n'
+        + '    "data_source": "keyword_research | shallow_estimate | assumption",\n'
+        + '    "rationale": "how CPC data informed the CPA estimate"\n'
+        + '  },\n'
+        + '  "pricing_strategy": "recommendation",\n'
+        + '  "recommendation": "narrative recommendation",\n'
+        + '  "assumptions": ["each assumption made"],\n'
+        + '  "benchmark_sources": {\n'
+        + '    "cvr_source": "layer_1_benchmark | layer_2_gkp | layer_3_client | assumption",\n'
+        + '    "cpa_source": "cpc_derived | benchmark_derived | assumption",\n'
+        + '    "aov_source": "client_provided | research_extracted | assumption",\n'
+        + '    "retention_source": "layer_1_benchmark | client_provided | assumption"\n'
+        + '  },\n'
+        + '  "confidence": "high | medium | low"\n}';
+    }
+
+    // ── LEAD-GEN MODEL (default) ──
+    return d1Base
       + 'CLIENT DATA:\n'
       + '- Monthly marketing budget: ' + (r.monthly_marketing_budget || 'UNKNOWN') + '\n'
       + '- Average deal size: ' + (r.average_deal_size || 'UNKNOWN') + '\n'
@@ -7581,7 +7660,11 @@ function _renderPositioning(st) {
 
 function _renderEconomics(st) {
   var ue = st.unit_economics || {};
-  if (!ue.max_allowable_cpl && !ue.recommendation) {
+  var _isEcomModel = ue.business_model === 'ecommerce' || (ue.aov && ue.aov > 0);
+  if (!_isEcomModel && !ue.max_allowable_cpl && !ue.recommendation) {
+    return '<div class="card" style="color:var(--n2);text-align:center"><p>No economics data yet. Generate strategy to populate.</p></div>';
+  }
+  if (_isEcomModel && !ue.aov && !ue.recommendation) {
     return '<div class="card" style="color:var(--n2);text-align:center"><p>No economics data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
@@ -7589,6 +7672,121 @@ function _renderEconomics(st) {
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     + _renderPricingIndicator() + '</div>';
 
+  // ── ECOMMERCE ECONOMICS RENDERER ──
+  if (_isEcomModel) {
+    // Metric flow: CPC → CPA → AOV → CLV
+    var _eCpcVal = (ue.market_cpc_summary && ue.market_cpc_summary.avg_cpc) ? '$' + ue.market_cpc_summary.avg_cpc : '\u2014';
+    var _eCpaVal = ue.customer_acquisition_cost ? '$' + ue.customer_acquisition_cost : '\u2014';
+    var _eAovVal = ue.aov ? '$' + ue.aov : '\u2014';
+    var _eClvVal = ue.customer_lifetime_value ? '$' + (typeof ue.customer_lifetime_value === 'number' ? ue.customer_lifetime_value.toLocaleString() : ue.customer_lifetime_value) : '\u2014';
+    var _eRatioDisp = ue.ltv_cac_ratio || '\u2014';
+    var _eRatioColour = 'var(--n2)';
+    if (ue.ltv_cac_health === 'healthy' || ue.ltv_cac_health === 'under-investing') _eRatioColour = 'var(--green)';
+    else if (ue.ltv_cac_health === 'unsustainable') _eRatioColour = '#f56c6c';
+    html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
+    html += '<div style="font-size:10px;font-weight:600;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Ecommerce Economics</div>';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap">';
+    var _eFlowItems = [
+      { label: 'Avg CPC', value: _eCpcVal, tip: 'Average cost per click from keyword research' },
+      { label: 'CPA', value: _eCpaVal, tip: 'Cost per acquisition — ad spend to acquire one customer' },
+      { label: 'AOV', value: _eAovVal, tip: 'Average order value — revenue per transaction' },
+      { label: 'CLV', value: _eClvVal, tip: 'Customer lifetime value = AOV x purchase frequency x avg lifespan' }
+    ];
+    _eFlowItems.forEach(function(item, idx) {
+      html += '<div style="text-align:center;flex:1;min-width:60px" data-tip="' + esc(item.tip) + '">';
+      html += '<div style="font-size:16px;font-weight:700;color:var(--dark)">' + item.value + '</div>';
+      html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">' + item.label + '</div>';
+      html += '</div>';
+      if (idx < _eFlowItems.length - 1) html += '<div style="color:var(--n1);font-size:14px">\u2192</div>';
+    });
+    html += '<div style="text-align:center;min-width:60px;padding-left:8px;border-left:1px solid var(--border)" data-tip="LTV:CAC ratio — 3:1+ is healthy">';
+    html += '<div style="font-size:16px;font-weight:700;color:' + _eRatioColour + '">' + _eRatioDisp + '</div>';
+    html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">LTV:CAC</div>';
+    html += '</div>';
+    html += '</div></div>';
+
+    // Ecommerce KPIs grid
+    html += _stratSection('Ecommerce KPIs',
+      _stratField('AOV', ue.aov ? '$' + ue.aov : '', { tip: 'Average order value' }) +
+      _stratField('Site Conversion Rate', ue.site_conversion_rate ? (ue.site_conversion_rate * 100).toFixed(1) + '%' : '', { tip: 'Visitors who become customers' }) +
+      _stratField('Monthly Traffic', ue.monthly_traffic ? ue.monthly_traffic.toLocaleString() : '') +
+      _stratField('Monthly Orders', ue.monthly_orders || '') +
+      _stratField('Monthly Revenue', ue.monthly_revenue ? '$' + ue.monthly_revenue.toLocaleString() : '') +
+      _stratField('Product Margin', ue.avg_product_margin_pct ? ue.avg_product_margin_pct + '%' : '') +
+      _stratField('Customer Acquisition Cost', ue.customer_acquisition_cost ? '$' + ue.customer_acquisition_cost : '') +
+      _stratField('Repeat Purchase Rate', ue.repeat_purchase_rate ? (ue.repeat_purchase_rate * 100).toFixed(0) + '%' : '') +
+      _stratField('Purchase Frequency (annual)', ue.purchase_frequency_annual || '') +
+      _stratField('Avg Customer Lifespan', ue.avg_customer_lifespan_months ? ue.avg_customer_lifespan_months + ' months' : '') +
+      _stratField('Customer Lifetime Value', ue.customer_lifetime_value ? '$' + ue.customer_lifetime_value.toLocaleString() : '')
+    );
+    // ROAS section
+    html += _stratSection('ROAS & Viability',
+      _stratField('Current ROAS', ue.roas_current ? ue.roas_current + 'x' : '', { tip: 'Return on ad spend = Revenue / Ad Spend' }) +
+      _stratField('Target ROAS', ue.roas_target ? ue.roas_target + 'x' : '') +
+      _stratField('Break-Even ROAS', ue.roas_breakeven ? ue.roas_breakeven + 'x' : '', { tip: 'Minimum ROAS to cover product costs = 1 / margin %' }) +
+      _stratField('Paid Media Viable', ue.paid_media_viable === true ? '\u2705 Yes' : ue.paid_media_viable === false ? '\u274c No' : '')
+    );
+    // Sensitivity table (ecommerce)
+    if (ue.sensitivity && ue.sensitivity.length) {
+      html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Sensitivity Analysis</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Scenario</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">AOV</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">CVR</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">CPA</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">ROAS</th>'
+        + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">LTV:CAC</th>'
+        + '<th style="padding:6px 8px;font-weight:500;color:var(--n2)">Verdict</th></tr>';
+      ue.sensitivity.forEach(function(row) {
+        var isBuild = (ue.strategy_built_on || 'base') === row.scenario;
+        html += '<tr style="' + (isBuild ? 'background:#f0fdf4;font-weight:500' : 'border-bottom:1px solid var(--border)') + '">';
+        html += '<td style="padding:6px 8px">' + (isBuild ? '\u2705 ' : '') + esc(row.scenario) + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + (row.aov ? '$' + row.aov : '\u2014') + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + (row.conversion_rate || '\u2014') + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + (row.cpa ? '$' + row.cpa : '\u2014') + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + (row.roas ? row.roas + 'x' : '\u2014') + '</td>';
+        html += '<td style="padding:6px 4px;text-align:right">' + (row.ltv_cac || '\u2014') + '</td>';
+        html += '<td style="padding:6px 8px;color:var(--n2)">' + esc(row.verdict || '') + '</td>';
+        html += '</tr>';
+      });
+      html += '</table></div>';
+    }
+    // Break-even + recommendation
+    if (ue.break_even_floor) html += _stratField('Break-Even Floor', ue.break_even_floor, {span:true});
+    if (ue.input_quality) html += _stratField('Input Quality', ue.input_quality);
+    if (ue.assumptions && ue.assumptions.length) {
+      html += _stratSection('Assumptions', ue.assumptions.map(function(a) { return '<div style="font-size:11px;padding:2px 0;color:var(--n2)">\u2022 ' + esc(a) + '</div>'; }).join(''));
+    }
+    html += _stratSection('Strategic Recommendation',
+      _stratField('Investment Strategy', ue.pricing_strategy, {span:true, textarea:true}) +
+      _stratField('Overall Recommendation', ue.recommendation, {span:true, textarea:true})
+    );
+    // CPC Intelligence (shared with lead-gen)
+    var cpcSummary = ue.market_cpc_summary;
+    if (cpcSummary) {
+      var srcLabel = cpcSummary.data_source === 'keyword_research' ? 'Keyword Research' : cpcSummary.data_source === 'shallow_estimate' ? 'Shallow Estimate' : 'Assumption';
+      var srcColour = cpcSummary.data_source === 'keyword_research' ? 'var(--green)' : cpcSummary.data_source === 'shallow_estimate' ? '#e6a23c' : '#f56c6c';
+      html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Market CPC Intelligence</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:12px">';
+      html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--dark)">$' + (cpcSummary.avg_cpc || 0) + '</div><div style="font-size:10px;color:var(--n2);text-transform:uppercase">Avg CPC</div></div>';
+      html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--dark)">$' + (cpcSummary.median_cpc || 0) + '</div><div style="font-size:10px;color:var(--n2);text-transform:uppercase">Median CPC</div></div>';
+      html += '<div style="background:var(--panel);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--dark)">' + (cpcSummary.high_intent_avg_cpc ? '$' + cpcSummary.high_intent_avg_cpc : '\u2014') + '</div><div style="font-size:10px;color:var(--n2);text-transform:uppercase">High-Intent CPC</div></div>';
+      html += '</div>';
+      html += _stratField('Data Source', '<span style="color:' + srcColour + ';font-weight:500">' + esc(srcLabel) + '</span>', { _html: true });
+      html += '</div>';
+    }
+    // Benchmark reference
+    var _eBenchRef = _matchIndustryBenchmark((S.research || {}).industry);
+    if (_eBenchRef && _eBenchRef.source) {
+      html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:6px 10px;background:var(--panel);border-radius:6px">';
+      html += '<strong>Industry benchmark: ' + esc(_eBenchRef.source) + '</strong>';
+      html += ' \u2014 CVR mid: ' + Math.round(_eBenchRef.landing_page_cvr.mid * 100) + '%';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  // ── LEAD-GEN ECONOMICS RENDERER (default) ──
   // Metric flow: CPC → CPL → CAC → LTV (shows the acquisition funnel at a glance)
   var _cpcVal = (ue.market_cpc_summary && ue.market_cpc_summary.avg_cpc) ? '$' + ue.market_cpc_summary.avg_cpc : '\u2014';
   var _cplDisp = ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '\u2014';
@@ -9732,6 +9930,34 @@ function _renderStrategyAuditPanel(diagNum) {
 function _buildRevenueProjection() {
   var st = S.strategy || {};
   var ue = st.unit_economics || {};
+
+  // Ecommerce revenue projection — different model entirely
+  var _isEcomProj = ue.business_model === 'ecommerce' || (ue.aov && ue.aov > 0);
+  if (_isEcomProj) {
+    var eAov = parseFloat(ue.aov) || 0;
+    var eCvr = parseFloat(ue.site_conversion_rate) || 0;
+    var eTraffic = parseFloat(ue.monthly_traffic) || 0;
+    var eClv = parseFloat(ue.customer_lifetime_value) || 0;
+    var eCpa = parseFloat(ue.customer_acquisition_cost) || 0;
+    if (!eAov || !eCvr) return '';
+    var eMonthlyOrders = eTraffic > 0 ? Math.round(eTraffic * eCvr) : (parseFloat(ue.monthly_orders) || 0);
+    var eMonthlyRev = eMonthlyOrders * eAov;
+    var eRoas = eCpa > 0 ? Math.round((eAov / eCpa) * 10) / 10 : 0;
+    var proj = '- Business model: Ecommerce\n';
+    proj += '- AOV: $' + eAov + '\n';
+    proj += '- Site conversion rate: ' + Math.round(eCvr * 10000) / 100 + '%\n';
+    if (eTraffic) proj += '- Monthly traffic: ' + eTraffic.toLocaleString() + '\n';
+    proj += '- Monthly orders: ~' + eMonthlyOrders.toLocaleString() + '\n';
+    proj += '- Monthly revenue: $' + eMonthlyRev.toLocaleString() + '\n';
+    proj += '- Annual revenue: $' + (eMonthlyRev * 12).toLocaleString() + '\n';
+    if (eCpa) proj += '- CPA: $' + eCpa + '\n';
+    if (eRoas) proj += '- First-order ROAS: ' + eRoas + 'x\n';
+    if (eClv) proj += '- Customer lifetime value: $' + eClv.toLocaleString() + '\n';
+    if (ue.repeat_purchase_rate) proj += '- Repeat purchase rate: ' + Math.round(ue.repeat_purchase_rate * 100) + '%\n';
+    if (ue.ltv_cac_ratio) proj += '- LTV:CAC ratio: ' + ue.ltv_cac_ratio + ' (' + (ue.ltv_cac_health || '') + ')\n';
+    return proj;
+  }
+
   if (!ue.max_allowable_cpl && !ue.estimated_market_cpl) return '';
 
   var cpl = parseFloat(ue.estimated_market_cpl) || parseFloat(ue.max_allowable_cpl) || 0;
