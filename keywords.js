@@ -11,6 +11,14 @@ function _getStrategistNotesCtx() {
   return '\n\nSTRATEGIST NOTES (MUST FOLLOW — these are human overrides from the strategist):\n' + notes.join('\n') + '\n';
 }
 
+function _inferKwIntent(kw) {
+  var k = kw.toLowerCase();
+  if (/\b(buy|purchase|order|shop|deal|coupon|discount|cheap|price|pricing|cost|quote|hire|book|schedule|near me|for sale)\b/.test(k)) return 'transactional';
+  if (/\b(best|top|review|compare|vs|versus|alternative|recommendation)\b/.test(k)) return 'commercial';
+  if (/\b(how|what|why|when|where|who|guide|tutorial|tips|learn|example|definition)\b/.test(k)) return 'informational';
+  return 'commercial'; // default for service/product terms
+}
+
 async function runKwDebug() {
   const out = document.getElementById('kw-debug-output');
   if (!out) return;
@@ -1191,6 +1199,12 @@ async function generateAISeeds() {
 
   var systemPrompt = 'You are an expert SEO strategist. Your job is to generate SHORT HEAD TERMS for keyword research — 2 to 4 words max. These will be fed into Google Autocomplete to generate hundreds of real keyword variations, so they must be broad enough to expand, not specific long-tail phrases.\\n\\nGOAL: Generate 50-75 of the most valuable HEAD TERMS a buyer types into Google when searching for this type of business.\\n\\nRULES:\\n- 2 to 4 words MAXIMUM per term — shorter is better\\n- No city names in the terms (city targeting happens via Google Suggest expansion)\\n- Service category first: \"dental laboratory\", \"crown bridge lab\", \"dental prosthetics\"\\n- Include bare service categories, buyer intent modifiers, and problem-aware terms\\n- NO long-tail: never \"dental laboratory services sydney\", never \"affordable crown and bridge lab\"\\n- NO jargon, thought-leadership, or informational terms\\n- If strategist notes are provided, pay close attention to which services or topics to include or exclude\\n- Output ONLY a JSON array of strings. No markdown. No explanation. Raw JSON only.\\n\\nGOOD output: [\"dental laboratory\",\"dental lab\",\"crown bridge lab\",\"dental prosthetics\",\"implant laboratory\",\"dental lab near me\",\"best dental lab\",\"dental technician\",\"digital dental lab\",\"same day dental lab\"]\\nBAD output: [\"dental laboratory services sydney\",\"cad cam dental services sydney\",\"affordable implant laboratory\",\"digital dentistry lab services\"]'
 
+  // Adapt prompt for ecommerce businesses
+  var _seedCategory = (typeof _detectBusinessCategory === 'function') ? _detectBusinessCategory() : 'agency';
+  if (_seedCategory === 'ecommerce') {
+    systemPrompt += '\n\nECOMMERCE MODE: This is a product-based business. Focus on:\n- Product category terms: "[product type]", "[category]"\n- Buying intent: "buy [product]", "best [product]", "[product] deals", "[product] sale"\n- Comparison: "[product] vs [product]", "best [category] [year]", "[product] reviews"\n- Price-qualified: "cheap [product]", "affordable [product]", "[product] under $X"\n- Do NOT generate service/agency terms like "hire", "agency", "consulting"';
+  }
+
   // Core Focus: THE must-win terms from Setup — strongest signal
   var _coreFocusAI = (typeof getCoreFocus === 'function') ? getCoreFocus() : [];
   if (_coreFocusAI.length) {
@@ -1303,6 +1317,11 @@ async function fetchKwVolumes() {
     S.kwResearch.fetchedAt = Date.now();
     S.kwResearch.selected = deduped.slice(0, 50).map(function(k) { return k.kw; });
     scheduleSave();
+    // Auto-select top keywords if no selection exists yet
+    if (!S.kwResearch.selected || !S.kwResearch.selected.length) {
+      selectTopKws(30);
+      if (typeof aiBarNotify === 'function') aiBarNotify('Pre-selected top 30 keywords by score. Review and adjust, or run AI-Select for smarter selection.', { duration: 5000 });
+    }
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)"><i class="ti ti-check"></i> ' + deduped.length + ' keywords found <span style="opacity:0.6;font-size:10px">(Google Suggest + DataForSEO)</span></span>';
     _kwTab = 'opps';
     renderKwTabContent();
@@ -1491,6 +1510,12 @@ function _renderKwGoogleTab() {
   var enrichedKws = kws.filter(function(k) { return k.low_bid || k.gkp_volume; });
   var html = '<div>';
 
+  html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px;padding:8px 12px;background:var(--panel);border-radius:6px;border:1px solid var(--border)">'
+    + '<i class="ti ti-info-circle" style="font-size:12px;margin-right:4px"></i>'
+    + 'Google Keyword Planner enrichment sends ALL keywords to Google Ads API in batches of 20 to retrieve bid ranges and ad competition data. Keywords without GKP data may not have enough search volume for Google Ads to report.'
+    + (S.kwResearch && S.kwResearch.gkpEnrichedAt ? ' <span style="color:var(--green)">Last enriched: ' + new Date(S.kwResearch.gkpEnrichedAt).toLocaleDateString() + '</span>' : '')
+    + '</div>';
+
   // Status header
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" onclick="enrichWithGKP()"><i class="ti ti-brand-google"></i> Enrich Keywords with Google Ads</button>';
@@ -1660,11 +1685,11 @@ function _renderKwOppsTab() {
     var clr = active ? 'var(--dark)' : 'var(--n3)';
     return '<span onclick="sortKwOpps(\'' + col + '\')" style="cursor:pointer;color:' + clr + ';user-select:none;white-space:nowrap" title="Sort by ' + label + '">' + label + arrow + '</span>';
   }
-  var gridCols = hasGkp ? '28px 1fr 76px 44px 58px 70px 44px 54px 56px' : '28px 1fr 76px 44px 58px 54px 56px';
+  var gridCols = hasGkp ? '28px 1fr 56px 76px 44px 58px 70px 44px 54px 56px' : '28px 1fr 56px 76px 44px 58px 54px 56px';
   var gkpHdr = hasGkp ? hdrBtn('Bid','bid') + hdrBtn('Ad','adcomp') : '';
   var _sfClr = _kwSelectedFirst ? 'var(--green)' : 'var(--n3)';
   var _sfArrow = _kwSelectedFirst ? ' <i class="ti ti-filter-filled" style="font-size:10px"></i>' : '';
-  html += '<div style="display:grid;grid-template-columns:' + gridCols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span onclick="toggleKwSelectedFirst()" style="cursor:pointer;color:' + _sfClr + ';user-select:none" title="Show selected keywords first">Keyword' + _sfArrow + '</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + gkpHdr + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
+  html += '<div style="display:grid;grid-template-columns:' + gridCols + ';background:var(--panel);padding:6px 12px;border-bottom:1px solid var(--border);font-size:11px;font-weight:500;gap:4px"><span></span><span onclick="toggleKwSelectedFirst()" style="cursor:pointer;color:' + _sfClr + ';user-select:none" title="Show selected keywords first">Keyword' + _sfArrow + '</span><span style="color:var(--n3)">Intent</span>' + hdrBtn('Vol','vol') + hdrBtn('KD','kd') + hdrBtn('CPC','cpc') + gkpHdr + '<span style="color:var(--n3)">Trend</span>' + hdrBtn('Score','score') + '</div>';
   sortedKws.slice(0, 200).forEach(function(k, i) {
     var isSel = selected.has(k.kw);
     // DR-aware rankability: Green=rankable, Yellow=stretch, Red=out of range, Grey=no data
@@ -1710,6 +1735,7 @@ function _renderKwOppsTab() {
         html += '<div class="kw-row" data-kw="' + esc(k.kw) + '" onclick="_toggleKwByAttr(this)" style="display:grid;grid-template-columns:' + gridCols + ';padding:5px 12px;border-bottom:1px solid var(--border);background:' + rowBg + ';cursor:pointer;align-items:center;gap:4px;transition:background .1s">'
       + '<input type="checkbox" ' + (isSel ? 'checked' : '') + ' style="pointer-events:none;accent-color:var(--green)">'
       + '<span style="font-size:12px;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px">' + esc(k.kw) + (function(){ var t = S.kwResearch._selectionTiers && S.kwResearch._selectionTiers[k.kw]; if (!t || !isSel) return ''; var tc = t.tier === 'must-have' ? 'var(--green)' : t.tier === 'high-value' ? '#4285F4' : 'var(--n2)'; return ' <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + tc + ';color:#fff;white-space:nowrap;flex-shrink:0" title="' + esc(t.reason || '') + '">' + esc(t.tier) + '</span>'; })() + '</span>'
+      + (function(){ var _int = _inferKwIntent(k.kw); var _ic = _int === 'transactional' ? '#15803d' : _int === 'commercial' ? '#2563eb' : _int === 'informational' ? '#6b7280' : '#7c3aed'; return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + _ic + '15;color:' + _ic + '">' + _int.charAt(0).toUpperCase() + '</span>'; })()
       + '<span style="color:' + volClr + ';font-weight:500;font-size:12px">' + (k.noData ? '—' : (k.vol || 0).toLocaleString()) + '</span>'
       + '<span style="color:' + kdClr + ';font-weight:500;font-size:12px">' + (k.kd === 0 ? '?' : k.kd) + (typeof kdLabel2 !== 'undefined' ? kdLabel2 : '') + '</span>'
       + '<span style="font-size:11px;color:var(--green)">' + (k.cpc ? '$' + k.cpc.toFixed(2) : '<span style="color:var(--n1)">-</span>') + '</span>'
@@ -2021,6 +2047,10 @@ function _renderKwClustersTab() {
   var impCt = clusters.filter(function(c) { return c.recommendation === 'improve_existing'; }).length;
   var flagCt = clusters.filter(function(c) { return c.qualifies === false; }).length;
   var html = '<div>';
+  html += '<div style="font-size:11px;color:var(--n2);margin-bottom:12px;padding:8px 12px;background:var(--panel);border-radius:6px;border:1px solid var(--border)">'
+    + '<i class="ti ti-info-circle" style="font-size:12px;margin-right:4px"></i>'
+    + 'Keywords are grouped by topical relevance and search intent. Each cluster represents a potential page on the site. The primary keyword is the highest-volume term in the cluster.'
+    + '</div>';
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
   html += '<button class="btn btn-primary" data-tip="Build Sitemap converts each keyword cluster into a page entry with a type (service, location, blog, core), slug, and cluster anchor keyword. This hands off to Stage 5. Review cluster names and anchors carefully before clicking — the sitemap drives all downstream brief and copy generation." onclick="goToSitemap()"><i class="ti ti-sitemap"></i> Build Sitemap from Clusters</button>';
   html += '<button id="recluster-btn" class="btn btn-ghost" data-tip="Re-cluster re-runs the grouping AI on your current keyword selection. Use after adding more keywords from Opportunities or refining your picks. Existing cluster names are discarded and rebuilt from scratch — export or note any cluster names you want to keep." onclick="clusterSelectedKws()"><i class="ti ti-refresh"></i> Re-cluster</button>';
@@ -2246,6 +2276,7 @@ function _renderKwQuestionsTab() {
     html += '<button class="btn btn-primary" data-tip="Validate & Assign runs each question through AI to assign it a content type: service page FAQ (shown on the page), new blog post, or sitewide FAQ. It also checks DataForSEO volume as a signal. Required before Briefs — the assignment determines where each question appears in copy." onclick="validateAndAssignQuestions()"><i class="ti ti-bolt"></i> Validate & Assign' + (isValidated ? ' Again' : '') + '</button>';
     html += '<button class="btn btn-ghost" data-tip="Re-fetch discards all current questions and generates a fresh set of 40 AI questions + Google PAA data. Use if the first batch missed key buying intent angles. Pin any questions to keep before running — pinned questions survive the re-fetch." onclick="fetchPAAFromKeywords()"><i class="ti ti-refresh"></i> Re-fetch</button>';
     html += '<button class="btn btn-ghost" data-tip="More Questions generates a second batch of 20 BOF questions in the same intent categories (pricing, ROI, risk, comparison) and appends them to the list. Existing questions are passed to the AI so duplicates are skipped. Use when you need more question coverage before Validate & Assign." onclick="generateMoreQuestions()" id="more-questions-btn"><i class="ti ti-plus"></i> More Questions</button>';
+    html += '<button class="btn btn-ghost sm" onclick="showPromptModal(\'questions-gen\')" style="font-size:11px" data-tip="View the AI prompt used to generate questions"><i class="ti ti-eye"></i> View Prompt</button>';
     html += '<button class="btn btn-ghost" data-tip="Blog Seeds takes informational questions (how-to, what-is intent) and extracts their keyword phrase to use as blog content seeds. These go into the Seeds tab Questions bucket so they get volumes in the next Fetch Volumes run — giving you blog topics with real search demand." onclick="generateBlogSeedsFromQuestions()"><i class="ti ti-sparkles"></i> Blog Seeds</button>';
     html += '<button class="btn btn-ghost sm" data-tip="Add All to Seeds extracts the intent keyword from every question and adds them to the Seeds tab. Same as Pull from Questions in the Seeds toolbar — use this shortcut when already on the Questions tab." onclick="addAllQuestionsAsSeeds()"><i class="ti ti-plus"></i> Add All to Seeds</button>';
     html += '<button class="btn btn-ghost sm" data-tip="Clear all questions and start fresh. Run before Re-fetch if you want a completely new set." onclick="_clearAllQuestions()" style="color:var(--error)"><i class="ti ti-trash" style="font-size:11px"></i> Clear All</button>';
@@ -2778,6 +2809,8 @@ async function generateMoreQuestions() {
     '- Category-specific buying: "how to choose social media agency for restaurant", "seo agency for construction companies vancouver"\n\n' +
     'NEVER generate: how marketing works, what is SEO, educational content, generic industry stats, anything a student would search.\n' +
     'All questions must be lowercase, conversational, specific to services and location where relevant. Return exactly 20 questions as a JSON array.';
+
+  if (typeof storePrompt === 'function') storePrompt('questions-gen', systemPrompt, userPrompt, 'Generate Questions', 'AI question generation');
 
   try {
     var res = await fetch('/api/claude', {

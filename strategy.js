@@ -1846,6 +1846,7 @@ var STRATEGY_TABS = [
   { id:'positioning',  label:'Positioning',        icon:'ti-target' },
   { id:'economics',    label:'Economics',          icon:'ti-calculator' },
   { id:'subtraction',  label:'Subtraction',        icon:'ti-scissors' },
+  { id:'keywords',     label:'Keywords',            icon:'ti-tags' },
   { id:'channels',     label:'Channels',           icon:'ti-chart-dots-3' },
   { id:'execution',    label:'Website',            icon:'ti-checklist' },
   { id:'brand',        label:'Content & Authority', icon:'ti-palette' },
@@ -6425,12 +6426,20 @@ function renderStrategyTabContent() {
   var el = document.getElementById('strategy-tab-content');
   if (!el) return;
 
-  // Keywords persistent panel — always render above tab content
-  _renderKeywordsPanel();
-
-  // Redirect legacy 'growth' / 'keywords' tabs to merged destinations
+  // Redirect legacy 'growth' tab
   if (_sTab === 'growth') _sTab = 'channels';
-  if (_sTab === 'keywords') _sTab = 'channels';
+
+  // Keywords tab — renders keyword workspace directly
+  if (_sTab === 'keywords') {
+    el.innerHTML = '<div id="strategy-kw-wrap">'
+      + (typeof renderPipelineStatusContainer === 'function' ? renderPipelineStatusContainer() : '')
+      + '<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px" id="kw-tab-nav"></div>'
+      + '<div id="kw-tab-content"></div>'
+      + '</div>';
+    initKeywords();
+    if (typeof _renderPipelineStatus === 'function') _renderPipelineStatus();
+    return;
+  }
 
   if (_sTab === 'output') {
     el.innerHTML = _renderOutput(S.strategy || {});
