@@ -3992,8 +3992,14 @@ function buildDiagnosticPrompt(num) {
     var cpcBlock = '';
     var kwR = S.kwResearch || {};
     if (kwR.keywords && kwR.keywords.length >= 10) {
-      // Real keyword research CPC data (best source)
-      var kwsWithCpc = kwR.keywords.filter(function(k) { return k.cpc && k.cpc > 0; });
+      // Prefer selected/pinned keywords for CPC data — these are the strategist's core terms.
+      // Fallback to all keywords if no selection yet (pre-Phase 2).
+      var _cpcSelSet = new Set((kwR.selected || []).concat(kwR.pinned || []));
+      var _cpcUseSelected = _cpcSelSet.size >= 3;
+      var kwsWithCpc = kwR.keywords.filter(function(k) {
+        return k.cpc && k.cpc > 0 && (!_cpcUseSelected || _cpcSelSet.has(k.kw));
+      });
+      var _cpcSourceLabel = _cpcUseSelected ? 'selected/pinned keywords' : 'full keyword research';
       if (kwsWithCpc.length >= 3) {
         var totalCpc = kwsWithCpc.reduce(function(s, k) { return s + k.cpc; }, 0);
         var kwAvgCpc = Math.round((totalCpc / kwsWithCpc.length) * 100) / 100;
@@ -4006,7 +4012,7 @@ function buildDiagnosticPrompt(num) {
         // CPC by intent bucket
         var highIntentKws = kwsWithCpc.filter(function(k) { var kw = (k.kw||'').toLowerCase(); return kw.indexOf('near me')>=0 || kw.indexOf('cost')>=0 || kw.indexOf('pricing')>=0 || kw.indexOf('hire')>=0 || kw.indexOf('quote')>=0 || kw.indexOf('buy')>=0; });
         var highIntentAvg = highIntentKws.length ? Math.round((highIntentKws.reduce(function(s,k){return s+k.cpc;},0) / highIntentKws.length) * 100) / 100 : null;
-        cpcBlock = '\nMARKET CPC DATA (from ' + kwsWithCpc.length + ' keywords with CPC data, source: full keyword research):\n'
+        cpcBlock = '\nMARKET CPC DATA (from ' + kwsWithCpc.length + ' keywords with CPC data, source: ' + _cpcSourceLabel + '):\n'
           + '- Average CPC: $' + kwAvgCpc + '\n'
           + '- Median CPC: $' + kwMedianCpc + '\n'
           + '- CPC range: $' + kwMinCpc + ' - $' + kwMaxCpc + '\n'
@@ -4297,10 +4303,14 @@ function buildDiagnosticPrompt(num) {
       + (function() {
         var kwR = S.kwResearch || {};
         if (kwR.keywords && kwR.keywords.length >= 10) {
-          var kwsC = kwR.keywords.filter(function(k) { return k.cpc > 0; });
+          // Prefer selected/pinned keywords for CPC — same filter as D1
+          var _d4SelSet = new Set((kwR.selected || []).concat(kwR.pinned || []));
+          var _d4UseSel = _d4SelSet.size >= 3;
+          var kwsC = kwR.keywords.filter(function(k) { return k.cpc > 0 && (!_d4UseSel || _d4SelSet.has(k.kw)); });
+          var _d4Label = _d4UseSel ? 'selected/pinned' : 'all';
           if (kwsC.length >= 3) {
             var avg = Math.round((kwsC.reduce(function(s,k){return s+k.cpc;},0)/kwsC.length)*100)/100;
-            return 'KEYWORD RESEARCH CPC (more accurate, ' + kwsC.length + ' keywords): avg $' + avg
+            return 'KEYWORD RESEARCH CPC (' + _d4Label + ', ' + kwsC.length + ' keywords): avg $' + avg
               + ', range $' + Math.round(Math.min.apply(null,kwsC.map(function(k){return k.cpc;}))*100)/100
               + ' - $' + Math.round(Math.max.apply(null,kwsC.map(function(k){return k.cpc;}))*100)/100 + '\n';
           }
@@ -7578,6 +7588,37 @@ function _renderEconomics(st) {
   // Pricing source indicator
   html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
     + _renderPricingIndicator() + '</div>';
+
+  // Metric flow: CPC → CPL → CAC → LTV (shows the acquisition funnel at a glance)
+  var _cpcVal = (ue.market_cpc_summary && ue.market_cpc_summary.avg_cpc) ? '$' + ue.market_cpc_summary.avg_cpc : '\u2014';
+  var _cplDisp = ue.estimated_market_cpl ? '$' + ue.estimated_market_cpl : '\u2014';
+  var _cacDisp = ue.estimated_cac ? '$' + ue.estimated_cac : '\u2014';
+  var _ltvDisp = ue.ltv ? '$' + (typeof ue.ltv === 'number' ? ue.ltv.toLocaleString() : ue.ltv) : '\u2014';
+  var _ratioDisp = ue.ltv_cac_ratio || '\u2014';
+  var _ratioColour = 'var(--n2)';
+  if (ue.ltv_cac_health === 'healthy' || ue.ltv_cac_health === 'under-investing') _ratioColour = 'var(--green)';
+  else if (ue.ltv_cac_health === 'unsustainable') _ratioColour = '#f56c6c';
+  html += '<div class="card" style="margin-bottom:14px;padding:12px 16px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap">';
+  var _flowItems = [
+    { label: 'Avg CPC', value: _cpcVal, tip: 'Average cost per click from keyword research (selected keywords)' },
+    { label: 'Market CPL', value: _cplDisp, tip: 'Cost per lead — what a lead costs to acquire in this market' },
+    { label: 'CAC', value: _cacDisp, tip: 'Customer Acquisition Cost — total cost to acquire one paying customer' },
+    { label: 'LTV', value: _ltvDisp, tip: 'Customer Lifetime Value — total revenue from one customer over their lifetime' }
+  ];
+  _flowItems.forEach(function(item, idx) {
+    html += '<div style="text-align:center;flex:1;min-width:60px" data-tip="' + esc(item.tip) + '">';
+    html += '<div style="font-size:16px;font-weight:700;color:var(--dark)">' + item.value + '</div>';
+    html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">' + item.label + '</div>';
+    html += '</div>';
+    if (idx < _flowItems.length - 1) html += '<div style="color:var(--n1);font-size:14px">\u2192</div>';
+  });
+  html += '<div style="text-align:center;min-width:60px;padding-left:8px;border-left:1px solid var(--border)" data-tip="LTV:CAC ratio — 3:1+ is healthy, below 1.5:1 is unsustainable">';
+  html += '<div style="font-size:16px;font-weight:700;color:' + _ratioColour + '">' + _ratioDisp + '</div>';
+  html += '<div style="font-size:9px;color:var(--n2);text-transform:uppercase;letter-spacing:.04em">LTV:CAC</div>';
+  html += '</div>';
+  html += '</div></div>';
+
   // Build formula tooltips — use COMPUTED output values (not research inputs that Claude may have overridden)
   var _mktCpl = ue.estimated_market_cpl || '?';
   var _maxCpl = ue.max_allowable_cpl || '?';
@@ -7643,9 +7684,9 @@ function _renderEconomics(st) {
     });
     html += '</table></div>';
   }
-  html += _stratSection('Pricing & Recommendation',
-    _stratField('Pricing Strategy', ue.pricing_strategy, {span:true, textarea:true}) +
-    _stratField('Recommendation', ue.recommendation, {span:true, textarea:true})
+  html += _stratSection('Strategic Recommendation',
+    _stratField('Investment Strategy', ue.pricing_strategy, {span:true, textarea:true}) +
+    _stratField('Overall Recommendation', ue.recommendation, {span:true, textarea:true})
   );
   // Market CPC Intelligence section
   var cpcSummary = ue.market_cpc_summary;
@@ -7674,13 +7715,16 @@ function _renderEconomics(st) {
     html += '</div>';
   }
 
-  // Also show live keyword CPC data if available from keyword research
+  // Show live keyword CPC data — prefer selected/pinned keywords (core terms the strategist chose)
   var kwR = S.kwResearch || {};
   if (kwR.keywords && kwR.keywords.length >= 10) {
-    var kwsWithCpc = kwR.keywords.filter(function(k) { return k.cpc && k.cpc > 0; });
+    var _econSelSet = new Set((kwR.selected || []).concat(kwR.pinned || []));
+    var _econUseSel = _econSelSet.size >= 3;
+    var kwsWithCpc = kwR.keywords.filter(function(k) { return k.cpc && k.cpc > 0 && (!_econUseSel || _econSelSet.has(k.kw)); });
+    var _econLabel = _econUseSel ? 'selected/pinned' : 'all';
     if (kwsWithCpc.length >= 3) {
       var topCpcKws = kwsWithCpc.slice().sort(function(a, b) { return b.cpc - a.cpc; }).slice(0, 8);
-      html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Top Keywords by CPC <span style="font-weight:400;color:var(--n2)">(' + kwsWithCpc.length + ' keywords with CPC data)</span></div>';
+      html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Top Keywords by CPC <span style="font-weight:400;color:var(--n2)">(' + kwsWithCpc.length + ' ' + _econLabel + ' keywords with CPC data)</span></div>';
       html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
       html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Keyword</th>'
         + '<th style="padding:6px 4px;font-weight:500;color:var(--n2);text-align:right">CPC</th>'
@@ -7757,15 +7801,35 @@ function _renderEconomics(st) {
     html += '<div><span style="color:var(--n2)">Close Rate:</span> ' + _srcLabel(bs.close_rate_source) + '</div>';
     html += '</div></div>';
   }
-  // Show matched industry benchmark for reference
+  // Show matched industry benchmark with comparison indicators
   var _benchRef = _matchIndustryBenchmark((S.research || {}).industry);
   if (_benchRef && _benchRef.source) {
-    html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:6px 10px;background:var(--panel);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">'
-      + '<span><strong>Industry benchmark matched:</strong> ' + esc(_benchRef.source)
-      + ' \u2014 CVR mid: ' + (_benchRef.landing_page_cvr.mid*100) + '%, CPL mid: $' + _benchRef.avg_cpl.mid
-      + ', Close mid: ' + (_benchRef.close_rate.mid*100) + '%</span>'
-      + '<button onclick="showBenchmarkTable()" style="border:none;background:none;color:var(--accent);cursor:pointer;font-size:10px;white-space:nowrap;text-decoration:underline">View All Benchmarks</button>'
-      + '</div>';
+    // Compare client metrics against benchmark ranges — green=good, amber=watch, red=concern
+    var _bCompare = function(actual, benchObj, lowerIsBetter) {
+      if (!actual || !benchObj) return { colour: 'var(--n2)', icon: '\u2014', tip: 'No data to compare' };
+      var lo = benchObj.low, mid = benchObj.mid, hi = benchObj.high;
+      if (lowerIsBetter) {
+        if (actual <= mid) return { colour: 'var(--green)', icon: '\u2713', tip: 'Your $' + actual + ' is at or below the industry midpoint ($' + mid + '). Range: $' + lo + '-$' + hi + '. Source: ' + _benchRef.source };
+        if (actual <= hi) return { colour: '#e6a23c', icon: '\u26a0', tip: 'Your $' + actual + ' is above the midpoint ($' + mid + ') but within normal range ($' + lo + '-$' + hi + '). Source: ' + _benchRef.source };
+        return { colour: '#f56c6c', icon: '\u2717', tip: 'Your $' + actual + ' exceeds the industry high ($' + hi + '). Midpoint: $' + mid + '. Source: ' + _benchRef.source };
+      } else {
+        if (actual >= mid) return { colour: 'var(--green)', icon: '\u2713', tip: actual + ' is at or above the industry midpoint (' + mid + '). Range: ' + lo + '-' + hi + '. Source: ' + _benchRef.source };
+        if (actual >= lo) return { colour: '#e6a23c', icon: '\u26a0', tip: actual + ' is below the midpoint (' + mid + ') but above minimum (' + lo + '). Source: ' + _benchRef.source };
+        return { colour: '#f56c6c', icon: '\u2717', tip: actual + ' is below the industry low (' + lo + '). Midpoint: ' + mid + '. Source: ' + _benchRef.source };
+      }
+    };
+    var _cplComp = _bCompare(parseFloat(ue.estimated_market_cpl) || 0, _benchRef.avg_cpl, true);
+    var _closeComp = _bCompare(parseFloat(ue.close_rate) || 0, { low: _benchRef.close_rate.low * 100, mid: _benchRef.close_rate.mid * 100, high: _benchRef.close_rate.high * 100 }, false);
+    html += '<div style="font-size:10px;color:var(--n2);margin-top:4px;padding:8px 10px;background:var(--panel);border-radius:6px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">';
+    html += '<strong>Industry benchmark: ' + esc(_benchRef.source) + '</strong>';
+    html += '<button onclick="showBenchmarkTable()" style="border:none;background:none;color:var(--accent);cursor:pointer;font-size:10px;white-space:nowrap;text-decoration:underline">View All</button>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap">';
+    html += '<span data-tip="' + esc(_cplComp.tip) + '" style="color:' + _cplComp.colour + ';cursor:help">' + _cplComp.icon + ' CPL: $' + (ue.estimated_market_cpl || '\u2014') + ' vs mid $' + _benchRef.avg_cpl.mid + '</span>';
+    html += '<span data-tip="' + esc(_closeComp.tip) + '" style="color:' + _closeComp.colour + ';cursor:help">' + _closeComp.icon + ' Close: ' + (ue.close_rate ? Math.round(ue.close_rate * 100) + '%' : '\u2014') + ' vs mid ' + Math.round(_benchRef.close_rate.mid * 100) + '%</span>';
+    html += '<span style="color:var(--n2)">CVR mid: ' + Math.round(_benchRef.landing_page_cvr.mid * 100) + '%</span>';
+    html += '</div></div>';
   }
   return html;
 }
@@ -9671,10 +9735,12 @@ function _buildRevenueProjection() {
   if (!ue.max_allowable_cpl && !ue.estimated_market_cpl) return '';
 
   var cpl = parseFloat(ue.estimated_market_cpl) || parseFloat(ue.max_allowable_cpl) || 0;
-  var cac = parseFloat(ue.estimated_cac) || cpl * 3;
+  var cac = parseFloat(ue.estimated_cac) || 0;
   var ltv = parseFloat(ue.ltv) || 0;
-  var closeRate = parseFloat(ue.close_rate) || 0.25;
-  var dealSize = parseFloat(ue.avg_deal_size) || ltv * 0.3 || 0;
+  var closeRate = parseFloat(ue.close_rate) || 0;
+  var dealSize = parseFloat(ue.avg_deal_size) || 0;
+  // Revenue projection requires real D1 economics — do not fabricate missing values
+  if (!cac || !closeRate || !dealSize) return '';
   var s = S.setup || {};
   var monthlyBudget = 0;
   var ba = (st.channel_strategy && st.channel_strategy.budget_allocation) || {};
@@ -10197,14 +10263,16 @@ async function compileStrategyOutput() {
     if (qualifiedClusters.length > 25) ctx += '... and ' + (qualifiedClusters.length - 25) + ' more clusters\n';
   }
 
-  // Market CPC data from keyword research
+  // Market CPC data from keyword research — prefer selected/pinned keywords
   var kwR2 = S.kwResearch || {};
   if (kwR2.keywords && kwR2.keywords.length >= 10) {
-    var kwsC2 = kwR2.keywords.filter(function(k) { return k.cpc > 0; });
+    var _compSelSet = new Set((kwR2.selected || []).concat(kwR2.pinned || []));
+    var _compUseSel = _compSelSet.size >= 3;
+    var kwsC2 = kwR2.keywords.filter(function(k) { return k.cpc > 0 && (!_compUseSel || _compSelSet.has(k.kw)); });
     if (kwsC2.length >= 3) {
       var avgC2 = Math.round((kwsC2.reduce(function(s,k){return s+k.cpc;},0)/kwsC2.length)*100)/100;
       var topC2 = kwsC2.slice().sort(function(a,b){return b.cpc-a.cpc;}).slice(0,5);
-      ctx += '\nMARKET CPC DATA (' + kwsC2.length + ' keywords):\n';
+      ctx += '\nMARKET CPC DATA (' + kwsC2.length + (_compUseSel ? ' selected' : '') + ' keywords):\n';
       ctx += '- Avg CPC: $' + avgC2 + '\n';
       ctx += '- Top by CPC: ' + topC2.map(function(k){return '"'+k.kw+'" $'+k.cpc;}).join(', ') + '\n';
     }
