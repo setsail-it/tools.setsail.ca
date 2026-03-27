@@ -4364,7 +4364,7 @@ function buildDiagnosticPrompt(num) {
       + '    {\n'
       + '      "activity": "description of the marketing activity",\n'
       + '      "monthly_cost": 0,\n'
-      + '      "monthly_cost_source": "estimated from team time | from client ad spend data | from contractor invoices | unknown",\n'
+      + '      "monthly_cost_source": "client_provided (confirmed by client) | ai_estimated (inferred from context or industry norms) | unknown",\n'
       + '      "verdict": "cut | keep | restructure",\n'
       + '      "reason": "why this verdict — reference economics if relevant",\n'
       + '      "confidence": "high | medium | low"\n'
@@ -6552,9 +6552,10 @@ function renderStrategyTabContent() {
     _mountRegenControls(diagNum);
   }
 
-  // Wire audience segment add/remove buttons
+  // Wire audience segment add/remove/edit/reorder buttons
   if (_sTab === 'audience') {
     _mountAudienceSegmentControls();
+    _mountPersonaControls();
   }
 
   // Wire sensitivity edit + scenario selector + subtraction edit
@@ -6563,6 +6564,10 @@ function renderStrategyTabContent() {
   }
   if (_sTab === 'subtraction') {
     _mountSubtractionControls();
+  }
+  // Wire voice word chip editor
+  if (_sTab === 'positioning') {
+    _mountVoiceWordControls();
   }
 
   // Wire execution sub-lever nav buttons
@@ -7119,27 +7124,53 @@ function _renderAudience(st) {
     html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:20px">';
     a.segments.forEach(function(seg, segIdx) {
+      var _segEditing = (window._segEditIdx === segIdx);
       var revColour = seg.revenue_potential === 'high' ? '#15803d' : seg.revenue_potential === 'medium' ? '#b45309' : '#6b7280';
       var diffColour = seg.acquisition_difficulty === 'low' ? '#15803d' : seg.acquisition_difficulty === 'medium' ? '#b45309' : '#dc2626';
       html += '<div class="card" style="margin-bottom:0;position:relative">';
-      html += '<button class="btn btn-ghost sm audience-remove-seg-btn" data-seg-idx="' + segIdx + '" style="position:absolute;top:6px;right:6px;padding:2px 4px;font-size:10px;color:var(--n2);opacity:0.5" data-tip="Remove segment"><i class="ti ti-x" style="font-size:12px"></i></button>';
-      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:6px;padding-right:24px">' + esc(seg.name) + '</div>';
-      if (seg.description) html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px">' + esc(seg.description) + '</div>';
-      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-      if (seg.estimated_size) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f3f4f6;color:#374151">Size: ' + esc(seg.estimated_size) + '</span>';
-      if (seg.revenue_potential) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f0fdf4;color:' + revColour + '">Revenue: ' + esc(seg.revenue_potential) + '</span>';
-      if (seg.acquisition_difficulty) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fef2f2;color:' + diffColour + '">Difficulty: ' + esc(seg.acquisition_difficulty) + '</span>';
+      // Action buttons row
+      html += '<div style="position:absolute;top:6px;right:6px;display:flex;gap:3px;align-items:center">';
+      if (segIdx > 0) html += '<button class="btn btn-ghost sm seg-move-up-btn" data-seg-idx="' + segIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2)" data-tip="Move up"><i class="ti ti-chevron-up" style="font-size:12px"></i></button>';
+      if (segIdx < a.segments.length - 1) html += '<button class="btn btn-ghost sm seg-move-down-btn" data-seg-idx="' + segIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2)" data-tip="Move down"><i class="ti ti-chevron-down" style="font-size:12px"></i></button>';
+      html += '<button class="btn btn-ghost sm seg-edit-btn" data-seg-idx="' + segIdx + '" style="padding:2px 4px;font-size:10px;color:' + (_segEditing ? 'var(--acc)' : 'var(--n2)') + '" data-tip="' + (_segEditing ? 'Save' : 'Edit') + '"><i class="ti ' + (_segEditing ? 'ti-check' : 'ti-pencil') + '" style="font-size:12px"></i></button>';
+      html += '<button class="btn btn-ghost sm audience-remove-seg-btn" data-seg-idx="' + segIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2);opacity:0.5" data-tip="Remove segment"><i class="ti ti-x" style="font-size:12px"></i></button>';
       html += '</div>';
-      if (seg.why_they_buy) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they buy:</strong> ' + esc(seg.why_they_buy) + '</div>';
-      if (seg.why_they_hesitate) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they hesitate:</strong> ' + esc(seg.why_they_hesitate) + '</div>';
-      if (seg.best_channels && seg.best_channels.length) {
-        html += '<div style="font-size:11px;margin-bottom:4px"><strong>Best channels:</strong> ' + seg.best_channels.map(function(c) { return esc(c); }).join(', ') + '</div>';
-      }
-      if (seg.key_messages && seg.key_messages.length) {
-        html += '<div style="font-size:11px"><strong>Key messages:</strong></div>';
-        seg.key_messages.forEach(function(m) {
-          html += '<div style="font-size:11px;color:var(--n2);padding-left:8px">&bull; ' + esc(m) + '</div>';
-        });
+      if (_segEditing) {
+        // Edit mode
+        html += '<div style="padding-right:90px">';
+        html += '<input class="seg-edit-field" data-seg-idx="' + segIdx + '" data-field="name" value="' + esc(seg.name || '') + '" placeholder="Segment name" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-weight:600;margin-bottom:5px">';
+        html += '<textarea class="seg-edit-field" data-seg-idx="' + segIdx + '" data-field="description" rows="2" placeholder="Description" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;resize:vertical;margin-bottom:5px">' + esc(seg.description || '') + '</textarea>';
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        html += '<div><div style="font-size:10px;color:var(--n2);margin-bottom:2px">Revenue potential</div>';
+        html += '<select class="seg-edit-field" data-seg-idx="' + segIdx + '" data-field="revenue_potential" style="padding:2px 5px;border:1px solid var(--border);border-radius:4px;font-size:11px">';
+        ['high','medium','low'].forEach(function(v) { html += '<option value="' + v + '"' + (seg.revenue_potential === v ? ' selected' : '') + '>' + v + '</option>'; });
+        html += '</select></div>';
+        html += '<div><div style="font-size:10px;color:var(--n2);margin-bottom:2px">Acquisition difficulty</div>';
+        html += '<select class="seg-edit-field" data-seg-idx="' + segIdx + '" data-field="acquisition_difficulty" style="padding:2px 5px;border:1px solid var(--border);border-radius:4px;font-size:11px">';
+        ['low','medium','high'].forEach(function(v) { html += '<option value="' + v + '"' + (seg.acquisition_difficulty === v ? ' selected' : '') + '>' + v + '</option>'; });
+        html += '</select></div>';
+        html += '</div>';
+        html += '</div>';
+      } else {
+        // View mode
+        html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:6px;padding-right:90px">' + esc(seg.name) + '</div>';
+        if (seg.description) html += '<div style="font-size:12px;color:var(--n2);margin-bottom:8px">' + esc(seg.description) + '</div>';
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+        if (seg.estimated_size) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f3f4f6;color:#374151">Size: ' + esc(seg.estimated_size) + '</span>';
+        if (seg.revenue_potential) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#f0fdf4;color:' + revColour + '">Revenue: ' + esc(seg.revenue_potential) + '</span>';
+        if (seg.acquisition_difficulty) html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:#fef2f2;color:' + diffColour + '">Difficulty: ' + esc(seg.acquisition_difficulty) + '</span>';
+        html += '</div>';
+        if (seg.why_they_buy) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they buy:</strong> ' + esc(seg.why_they_buy) + '</div>';
+        if (seg.why_they_hesitate) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Why they hesitate:</strong> ' + esc(seg.why_they_hesitate) + '</div>';
+        if (seg.best_channels && seg.best_channels.length) {
+          html += '<div style="font-size:11px;margin-bottom:4px"><strong>Best channels:</strong> ' + seg.best_channels.map(function(c) { return esc(c); }).join(', ') + '</div>';
+        }
+        if (seg.key_messages && seg.key_messages.length) {
+          html += '<div style="font-size:11px"><strong>Key messages:</strong></div>';
+          seg.key_messages.forEach(function(m) {
+            html += '<div style="font-size:11px;color:var(--n2);padding-left:8px">&bull; ' + esc(m) + '</div>';
+          });
+        }
       }
       html += '</div>';
     });
@@ -7167,11 +7198,34 @@ function _renderAudience(st) {
 
   // Personas
   if (a.personas && a.personas.length) {
-    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin:16px 0 8px"><i class="ti ti-user-circle" style="font-size:12px"></i> PERSONA PROFILES (' + a.personas.length + ')</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin:16px 0 8px">';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark)"><i class="ti ti-user-circle" style="font-size:12px"></i> PERSONA PROFILES (' + a.personas.length + ')</div>';
+    html += '<button class="btn btn-ghost sm" id="persona-add-btn" style="font-size:11px;padding:2px 8px"><i class="ti ti-plus" style="font-size:11px"></i> Add</button>';
+    html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-bottom:20px">';
-    a.personas.forEach(function(p) {
-      html += '<div class="card" style="margin-bottom:0">';
-      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px">' + esc(p.name) + '</div>';
+    a.personas.forEach(function(p, pIdx) {
+      var _pEditing = (window._personaEditIdx === pIdx);
+      html += '<div class="card" style="margin-bottom:0;position:relative">';
+      // Action buttons
+      html += '<div style="position:absolute;top:6px;right:6px;display:flex;gap:3px;align-items:center">';
+      if (pIdx > 0) html += '<button class="btn btn-ghost sm persona-move-up-btn" data-p-idx="' + pIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2)" data-tip="Move up"><i class="ti ti-chevron-up" style="font-size:12px"></i></button>';
+      if (pIdx < a.personas.length - 1) html += '<button class="btn btn-ghost sm persona-move-down-btn" data-p-idx="' + pIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2)" data-tip="Move down"><i class="ti ti-chevron-down" style="font-size:12px"></i></button>';
+      html += '<button class="btn btn-ghost sm persona-edit-btn" data-p-idx="' + pIdx + '" style="padding:2px 4px;font-size:10px;color:' + (_pEditing ? 'var(--acc)' : 'var(--n2)') + '" data-tip="' + (_pEditing ? 'Save' : 'Edit') + '"><i class="ti ' + (_pEditing ? 'ti-check' : 'ti-pencil') + '" style="font-size:12px"></i></button>';
+      html += '<button class="btn btn-ghost sm persona-remove-btn" data-p-idx="' + pIdx + '" style="padding:2px 4px;font-size:10px;color:var(--n2);opacity:0.5" data-tip="Remove persona"><i class="ti ti-x" style="font-size:12px"></i></button>';
+      html += '</div>';
+      if (_pEditing) {
+        html += '<div style="padding-right:90px">';
+        html += '<input class="persona-edit-field" data-p-idx="' + pIdx + '" data-field="name" value="' + esc(p.name || '') + '" placeholder="Persona name" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-weight:600;margin-bottom:4px">';
+        html += '<input class="persona-edit-field" data-p-idx="' + pIdx + '" data-field="role" value="' + esc(p.role || '') + '" placeholder="Role / title" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--acc);margin-bottom:4px">';
+        html += '<div style="font-size:10px;color:var(--n2);margin-bottom:2px">Goals (one per line)</div>';
+        html += '<textarea class="persona-edit-field" data-p-idx="' + pIdx + '" data-field="goals" rows="3" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;resize:vertical;margin-bottom:4px">' + esc((Array.isArray(p.goals) ? p.goals.join('\n') : p.goals) || '') + '</textarea>';
+        html += '<div style="font-size:10px;color:var(--n2);margin-bottom:2px">Frustrations (one per line)</div>';
+        html += '<textarea class="persona-edit-field" data-p-idx="' + pIdx + '" data-field="frustrations" rows="3" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;resize:vertical;margin-bottom:4px">' + esc((Array.isArray(p.frustrations) ? p.frustrations.join('\n') : p.frustrations) || '') + '</textarea>';
+        html += '<div style="font-size:10px;color:var(--n2);margin-bottom:2px">Decision criteria (one per line)</div>';
+        html += '<textarea class="persona-edit-field" data-p-idx="' + pIdx + '" data-field="decision_criteria" rows="3" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;resize:vertical">' + esc((Array.isArray(p.decision_criteria) ? p.decision_criteria.join('\n') : p.decision_criteria) || '') + '</textarea>';
+        html += '</div>';
+      } else {
+      html += '<div style="font-size:13px;font-weight:600;color:var(--dark);margin-bottom:2px;padding-right:90px">' + esc(p.name) + '</div>';
       if (p.role) html += '<div style="font-size:11px;color:var(--acc);margin-bottom:2px">' + esc(p.role) + '</div>';
       if (p.segment) html += '<div style="font-size:10px;color:var(--n2);margin-bottom:6px">Segment: ' + esc(p.segment) + '</div>';
       if (p.demographics) html += '<div style="font-size:11px;margin-bottom:4px"><strong>Demo:</strong> ' + esc(p.demographics) + '</div>';
@@ -7229,6 +7283,7 @@ function _renderAudience(st) {
         html += '<div style="font-size:10px;color:var(--n2);font-style:italic">Customer Voice not enriched yet</div>';
         html += '</div>';
       }
+      }  // end if/else editing
       html += '</div>';
     });
     html += '</div>';
@@ -7362,14 +7417,63 @@ function _mountAudienceSegmentControls() {
   if (!a) return;
 
   // Wire remove buttons
-  var removeBtns = document.querySelectorAll('.audience-remove-seg-btn');
-  removeBtns.forEach(function(btn) {
+  document.querySelectorAll('.audience-remove-seg-btn').forEach(function(btn) {
     var idx = parseInt(btn.getAttribute('data-seg-idx'), 10);
     btn.onclick = function() {
       if (!a.segments || idx < 0 || idx >= a.segments.length) return;
       var name = a.segments[idx].name || 'this segment';
       if (!confirm('Remove "' + name + '" from audience segments?')) return;
       a.segments.splice(idx, 1);
+      window._segEditIdx = undefined;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire edit/save toggle buttons
+  document.querySelectorAll('.seg-edit-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-seg-idx'), 10);
+    btn.onclick = function() {
+      if (window._segEditIdx === idx) {
+        // Save edits
+        document.querySelectorAll('.seg-edit-field[data-seg-idx="' + idx + '"]').forEach(function(inp) {
+          var field = inp.getAttribute('data-field');
+          a.segments[idx][field] = inp.value.trim ? inp.value.trim() : inp.value;
+        });
+        window._segEditIdx = undefined;
+        scheduleSave();
+      } else {
+        window._segEditIdx = idx;
+      }
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire move-up buttons
+  document.querySelectorAll('.seg-move-up-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-seg-idx'), 10);
+    btn.onclick = function() {
+      if (!a.segments || idx <= 0) return;
+      var tmp = a.segments[idx - 1];
+      a.segments[idx - 1] = a.segments[idx];
+      a.segments[idx] = tmp;
+      if (window._segEditIdx === idx) window._segEditIdx = idx - 1;
+      else if (window._segEditIdx === idx - 1) window._segEditIdx = idx;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire move-down buttons
+  document.querySelectorAll('.seg-move-down-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-seg-idx'), 10);
+    btn.onclick = function() {
+      if (!a.segments || idx >= a.segments.length - 1) return;
+      var tmp = a.segments[idx + 1];
+      a.segments[idx + 1] = a.segments[idx];
+      a.segments[idx] = tmp;
+      if (window._segEditIdx === idx) window._segEditIdx = idx + 1;
+      else if (window._segEditIdx === idx + 1) window._segEditIdx = idx;
       scheduleSave();
       renderStrategyTabContent();
     };
@@ -7395,6 +7499,103 @@ function _mountAudienceSegmentControls() {
         priority_score: '5',
         priority_rationale: 'Manually added'
       });
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
+}
+
+function _mountPersonaControls() {
+  var a = S.strategy && S.strategy.audience;
+  if (!a) return;
+
+  // Wire remove buttons
+  document.querySelectorAll('.persona-remove-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-p-idx'), 10);
+    btn.onclick = function() {
+      if (!a.personas || idx < 0 || idx >= a.personas.length) return;
+      var name = a.personas[idx].name || 'this persona';
+      if (!confirm('Remove "' + name + '" from personas?')) return;
+      a.personas.splice(idx, 1);
+      window._personaEditIdx = undefined;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire edit/save toggle buttons
+  document.querySelectorAll('.persona-edit-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-p-idx'), 10);
+    btn.onclick = function() {
+      if (window._personaEditIdx === idx) {
+        // Save edits
+        document.querySelectorAll('.persona-edit-field[data-p-idx="' + idx + '"]').forEach(function(inp) {
+          var field = inp.getAttribute('data-field');
+          var val = inp.tagName === 'TEXTAREA' ? inp.value : inp.value.trim();
+          if (field === 'goals' || field === 'frustrations' || field === 'decision_criteria') {
+            a.personas[idx][field] = val.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+          } else {
+            a.personas[idx][field] = val;
+          }
+        });
+        window._personaEditIdx = undefined;
+        scheduleSave();
+      } else {
+        window._personaEditIdx = idx;
+      }
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire move-up buttons
+  document.querySelectorAll('.persona-move-up-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-p-idx'), 10);
+    btn.onclick = function() {
+      if (!a.personas || idx <= 0) return;
+      var tmp = a.personas[idx - 1];
+      a.personas[idx - 1] = a.personas[idx];
+      a.personas[idx] = tmp;
+      if (window._personaEditIdx === idx) window._personaEditIdx = idx - 1;
+      else if (window._personaEditIdx === idx - 1) window._personaEditIdx = idx;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire move-down buttons
+  document.querySelectorAll('.persona-move-down-btn').forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-p-idx'), 10);
+    btn.onclick = function() {
+      if (!a.personas || idx >= a.personas.length - 1) return;
+      var tmp = a.personas[idx + 1];
+      a.personas[idx + 1] = a.personas[idx];
+      a.personas[idx] = tmp;
+      if (window._personaEditIdx === idx) window._personaEditIdx = idx + 1;
+      else if (window._personaEditIdx === idx + 1) window._personaEditIdx = idx;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Wire add persona button
+  var addBtn = document.getElementById('persona-add-btn');
+  if (addBtn) {
+    addBtn.onclick = function() {
+      if (!a.personas) a.personas = [];
+      var name = prompt('Persona name (archetype label):');
+      if (!name || !name.trim()) return;
+      a.personas.push({
+        name: name.trim(),
+        role: '',
+        segment: '',
+        goals: [],
+        frustrations: [],
+        decision_criteria: [],
+        preferred_channels: [],
+        language_patterns: [],
+        objection_profile: []
+      });
+      window._personaEditIdx = a.personas.length - 1;
       scheduleSave();
       renderStrategyTabContent();
     };
@@ -7538,6 +7739,80 @@ function _mountSubtractionControls() {
       delete sub._original_audit;
       scheduleSave();
       renderStrategyTabContent();
+    };
+  }
+}
+
+function _mountVoiceWordControls() {
+  var pos = S.strategy && S.strategy.positioning;
+  if (!pos || !pos.brand_voice_direction) return;
+  var bv = pos.brand_voice_direction;
+  if (!S.strategy.brand_strategy) S.strategy.brand_strategy = {};
+  var bs = S.strategy.brand_strategy;
+
+  function _normWords(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.slice();
+    return String(val).split(',').map(function(w){return w.trim();}).filter(Boolean);
+  }
+
+  function _saveWordField(field, arr) {
+    bv[field] = arr;
+    // Keep top-level brand_strategy in sync (for briefs.js / copy.js)
+    bs[field] = arr;
+    scheduleSave();
+    renderStrategyTabContent();
+  }
+
+  // Remove buttons — words to use
+  document.querySelectorAll('[data-vw-use-rm]').forEach(function(btn) {
+    var wi = parseInt(btn.getAttribute('data-vw-use-rm'), 10);
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      var words = _normWords(bv.words_to_use);
+      words.splice(wi, 1);
+      _saveWordField('words_to_use', words);
+    };
+  });
+
+  // Remove buttons — words to avoid
+  document.querySelectorAll('[data-vw-avoid-rm]').forEach(function(btn) {
+    var wi = parseInt(btn.getAttribute('data-vw-avoid-rm'), 10);
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      var words = _normWords(bv.words_to_avoid);
+      words.splice(wi, 1);
+      _saveWordField('words_to_avoid', words);
+    };
+  });
+
+  // Add word to use — Enter or comma commits
+  var useInp = document.getElementById('voice-use-input');
+  if (useInp) {
+    useInp.onkeydown = function(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var v = useInp.value.replace(/,/g, '').trim();
+        if (!v) return;
+        var words = _normWords(bv.words_to_use);
+        if (words.indexOf(v) === -1) words.push(v);
+        _saveWordField('words_to_use', words);
+      }
+    };
+  }
+
+  // Add word to avoid — Enter or comma commits
+  var avoidInp = document.getElementById('voice-avoid-input');
+  if (avoidInp) {
+    avoidInp.onkeydown = function(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var v = avoidInp.value.replace(/,/g, '').trim();
+        if (!v) return;
+        var words = _normWords(bv.words_to_avoid);
+        if (words.indexOf(v) === -1) words.push(v);
+        _saveWordField('words_to_avoid', words);
+      }
     };
   }
 }
@@ -7857,13 +8132,35 @@ function _renderPositioning(st) {
   }
   if (p.brand_voice_direction) {
     var bv = p.brand_voice_direction;
-    html += _stratSection('Brand Voice Direction',
-      _stratField('Style', bv.style) +
-      _stratField('Tone', bv.tone_detail) +
-      _stratField('Words to Use', bv.words_to_use) +
-      _stratField('Words to Avoid', bv.words_to_avoid) +
-      _stratField('Rationale', bv.voice_rationale, {span:true})
-    );
+    var _bvInner = _stratField('Style', bv.style) + _stratField('Tone', bv.tone_detail);
+    // Words to Use — editable chip tags
+    var _wtu = bv.words_to_use || [];
+    if (typeof _wtu === 'string') _wtu = _wtu.split(',').map(function(w){return w.trim();}).filter(Boolean);
+    _bvInner += '<div style="grid-column:1/-1;padding:4px 0">';
+    _bvInner += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:5px">Words to Use</div>';
+    _bvInner += '<div id="voice-words-use" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">';
+    _wtu.forEach(function(w, wi) {
+      _bvInner += '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:#dcfce7;color:#15803d;border-radius:12px;font-size:11px">' + esc(w);
+      _bvInner += '<button data-vw-use-rm="' + wi + '" style="border:none;background:none;cursor:pointer;color:#15803d;padding:0 0 0 2px;font-size:13px;line-height:1">&times;</button>';
+      _bvInner += '</span>';
+    });
+    _bvInner += '<input id="voice-use-input" type="text" placeholder="+ add word" style="padding:2px 8px;border:1px dashed #86efac;border-radius:12px;font-size:11px;width:90px;background:transparent;color:var(--dark);outline:none">';
+    _bvInner += '</div></div>';
+    // Words to Avoid — editable chip tags
+    var _wta = bv.words_to_avoid || [];
+    if (typeof _wta === 'string') _wta = _wta.split(',').map(function(w){return w.trim();}).filter(Boolean);
+    _bvInner += '<div style="grid-column:1/-1;padding:4px 0">';
+    _bvInner += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:5px">Words to Avoid</div>';
+    _bvInner += '<div id="voice-words-avoid" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">';
+    _wta.forEach(function(w, wi) {
+      _bvInner += '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;background:#fee2e2;color:#dc2626;border-radius:12px;font-size:11px">' + esc(w);
+      _bvInner += '<button data-vw-avoid-rm="' + wi + '" style="border:none;background:none;cursor:pointer;color:#dc2626;padding:0 0 0 2px;font-size:13px;line-height:1">&times;</button>';
+      _bvInner += '</span>';
+    });
+    _bvInner += '<input id="voice-avoid-input" type="text" placeholder="+ add word" style="padding:2px 8px;border:1px dashed #fca5a5;border-radius:12px;font-size:11px;width:90px;background:transparent;color:var(--dark);outline:none">';
+    _bvInner += '</div></div>';
+    _bvInner += _stratField('Rationale', bv.voice_rationale, {span:true});
+    html += _stratSection('Brand Voice Direction', _bvInner);
   }
   if (p.proof_strategy && p.proof_strategy.length) {
     html += _stratSection('Proof Strategy', _stratField('Build this proof', p.proof_strategy, {span:true}));
@@ -9620,7 +9917,13 @@ function _renderSubtraction(st) {
       html += '<td style="padding:4px 4px;text-align:center"><button class="btn btn-ghost sm sub-remove-btn" data-idx="' + ai + '" style="padding:2px 4px;color:#f56c6c"><i class="ti ti-trash" style="font-size:12px"></i></button></td>';
     } else {
       html += '<td style="padding:6px 8px;font-weight:500">' + esc(a.activity || '') + (a._manual ? ' <span style="font-size:9px;color:var(--acc);background:var(--panel);padding:1px 4px;border-radius:3px">manual</span>' : '') + '</td>';
-      html += '<td style="padding:6px 4px;text-align:center">' + (a.monthly_cost ? '$' + Number(a.monthly_cost).toLocaleString() : '\u2014') + '</td>';
+      var _srcBadge = '';
+      if (a.monthly_cost_source) {
+        var _srcStr = String(a.monthly_cost_source).toLowerCase();
+        var _isClientProv = _srcStr.indexOf('client') > -1;
+        _srcBadge = ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:' + (_isClientProv ? '#dcfce7' : '#fef3c7') + ';color:' + (_isClientProv ? '#15803d' : '#b45309') + '">' + (_isClientProv ? 'client' : 'est.') + '</span>';
+      }
+      html += '<td style="padding:6px 4px;text-align:center">' + (a.monthly_cost ? '$' + Number(a.monthly_cost).toLocaleString() : '\u2014') + _srcBadge + '</td>';
       html += '<td style="padding:6px 4px;text-align:center"><span style="color:' + vc + ';font-weight:600;display:inline-flex;align-items:center;gap:3px">'
         + '<i class="ti ' + (verdictIcons[a.verdict] || '') + '" style="font-size:12px"></i>' + (a.verdict || '').toUpperCase() + '</span></td>';
       html += '<td style="padding:6px 8px;font-size:11px;color:var(--n3)">' + esc(a.reason || '') + '</td>';
