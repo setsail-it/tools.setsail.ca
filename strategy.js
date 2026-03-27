@@ -5002,6 +5002,13 @@ async function runDiagnostic(num, feedbackText) {
       if (parsed.brand_voice_direction) {
         S.strategy.brand_strategy = S.strategy.brand_strategy || {};
         S.strategy.brand_strategy.voice_direction = parsed.brand_voice_direction;
+        // Promote key fields to top-level of brand_strategy so briefs.js and copy.js
+        // can read them via getStrategyField('brand_strategy.words_to_avoid', ...) etc.
+        var _bvd = parsed.brand_voice_direction;
+        if (_bvd.words_to_use) S.strategy.brand_strategy.words_to_use = _bvd.words_to_use;
+        if (_bvd.words_to_avoid) S.strategy.brand_strategy.words_to_avoid = _bvd.words_to_avoid;
+        if (_bvd.style) S.strategy.brand_strategy.voice_style = _bvd.style;
+        if (_bvd.tone_detail) S.strategy.brand_strategy.tone_and_voice = _bvd.tone_detail;
       }
     } else if (num === 3) {
       S.strategy.subtraction = parsed;
@@ -6064,7 +6071,7 @@ function renderStrategyNav() {
       var sr = scoreSection(t.id);
       secScore = sr.score;
     }
-    html += '<button onclick="_sTab=\'' + t.id + '\';renderStrategyNav();renderStrategyTabContent()" '
+    html += '<button data-stab="' + t.id + '" '
       + 'style="padding:8px 14px;font-size:12px;border:none;background:none;cursor:pointer;font-family:var(--font);'
       + 'color:' + (active ? 'var(--dark)' : 'var(--n2)') + ';border-bottom:2px solid ' + (active ? 'var(--dark)' : 'transparent') + ';transition:all .15s">'
       + '<i class="ti ' + t.icon + '" style="margin-right:4px"></i>' + t.label;
@@ -6079,6 +6086,15 @@ function renderStrategyNav() {
     html += '</button>';
   });
   el.innerHTML = html;
+  // Wire tab buttons via data attribute (avoids escaped-quote onclick concat)
+  el.querySelectorAll('[data-stab]').forEach(function(btn) {
+    var tabId = btn.getAttribute('data-stab');
+    btn.onclick = function() {
+      _sTab = tabId;
+      renderStrategyNav();
+      renderStrategyTabContent();
+    };
+  });
 }
 
 // ── Keywords Persistent Panel ─────────────────────────────────────────
@@ -6547,6 +6563,20 @@ function renderStrategyTabContent() {
   }
   if (_sTab === 'subtraction') {
     _mountSubtractionControls();
+  }
+
+  // Wire execution sub-lever nav buttons
+  if (_sTab === 'execution') {
+    var _subLeverNav = document.getElementById('sublever-nav');
+    if (_subLeverNav) {
+      _subLeverNav.querySelectorAll('[data-sublever]').forEach(function(btn) {
+        var lev = btn.getAttribute('data-sublever');
+        btn.onclick = function() {
+          _sSubLever = lev;
+          renderStrategyTabContent();
+        };
+      });
+    }
   }
 
   // Mount interactive Gantt chart + scope panel + channel intelligence toggle
@@ -9488,10 +9518,10 @@ function _renderExecution(st) {
   // Lever sub-navigation
   var activeLevers = Object.keys(ld).filter(function(k) { return ld[k] && Object.keys(ld[k]).length > 0; });
   if (activeLevers.length) {
-    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px">';
+    html += '<div id="sublever-nav" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px">';
     activeLevers.forEach(function(lev) {
       var active = _sSubLever === lev;
-      html += '<button onclick="_sSubLever=\'' + lev + '\';renderStrategyTabContent()" class="btn ' + (active ? 'btn-dark' : 'btn-ghost') + ' sm">' + esc(lev.replace(/_/g, ' ')) + '</button>';
+      html += '<button data-sublever="' + esc(lev) + '" class="btn ' + (active ? 'btn-dark' : 'btn-ghost') + ' sm">' + esc(lev.replace(/_/g, ' ')) + '</button>';
     });
     html += '</div>';
 
