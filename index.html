@@ -1184,7 +1184,10 @@ var _ctxUpdateTimer = null;
 function scheduleSave() {
   if (!S.projectId) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveProject, 1500);
+  // During active AI runs, extend debounce to 8s to avoid save races with diagnostic writes.
+  // Diagnostic saves happen via direct saveProject() calls — user edits should not race them.
+  var delay = _aiBarActive ? 8000 : 1500;
+  saveTimer = setTimeout(saveProject, delay);
   showSaveIndicator('saving');
   // Debounced context bar update — refreshes 2s after last state change
   clearTimeout(_ctxUpdateTimer);

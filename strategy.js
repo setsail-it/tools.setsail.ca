@@ -4824,7 +4824,7 @@ function _appendStrategistNotes(prompt, diagNum) {
 
 // ── Diagnostic Execution ──────────────────────────────────────────────
 
-async function runDiagnostic(num) {
+async function runDiagnostic(num, feedbackText) {
   if (!S.strategy) S.strategy = strategyDefaults();
   var label = 'D' + num + ': ';
   if (num === 0) label += 'Audience Intelligence';
@@ -4846,6 +4846,13 @@ async function runDiagnostic(num) {
     prompt += _versionLearningCtx(num);
     // Append strategist notes if present
     prompt = _appendStrategistNotes(prompt, num);
+    // Append one-time feedback from regen button (if provided)
+    if (feedbackText && feedbackText.trim()) {
+      prompt += '\n\n--- STRATEGIST FEEDBACK FOR THIS RE-RUN ---\n'
+        + feedbackText.trim()
+        + '\n--- END FEEDBACK ---\n'
+        + 'Incorporate this feedback into your output. The feedback takes priority over previous output.';
+    }
 
     // D8 (Narrative) uses Opus for higher-quality strategic writing
     var diagModel = (num === 8) ? 'claude-opus-4-6' : undefined;
@@ -6319,21 +6326,29 @@ function renderStrategyTabContent() {
   var diagNum = diagMap[_sTab];
   if (diagNum !== undefined && diagNum !== null) {
     var meta = (S.strategy && S.strategy._meta) ? S.strategy._meta : { current_version: 0 };
-    html += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
-    html += '<button class="btn btn-ghost sm" data-tip="' + (diagTips[diagNum] || '') + '" onclick="runDiagnostic(' + diagNum + ').then(function(){renderStrategyScorecard();renderStrategyTabContent()})"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
+    html += '<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;align-items:center">';
+    // Regen button with inline feedback
+    html += '<button class="btn btn-ghost sm" id="strat-regen-btn-' + diagNum + '" data-tip="' + (diagTips[diagNum] || '') + '"><i class="ti ti-refresh"></i> Re-run ' + diagLabels[diagNum] + '</button>';
     if (meta.current_version > 0) {
       html += '<button class="btn btn-primary sm" data-tip="Runs all diagnostics (D0-D7) in sequence without re-fetching enrichment data" onclick="runAllDiagnostics()"><i class="ti ti-list-check"></i> Run All Diagnostics</button>';
-      // "From here forward" — re-run this diagnostic and all subsequent
       if (diagNum < 7) {
         html += '<button class="btn btn-ghost sm" data-tip="Re-runs D' + diagNum + ' through D7 sequentially" onclick="runDiagnosticsFrom(' + diagNum + ')"><i class="ti ti-player-skip-forward"></i> From here \u2192</button>';
       }
       if (S.strategy._kwDataStale && (diagNum === 4 || diagNum === 5 || diagNum === 6)) {
-        html += '<button class="btn btn-primary sm" style="background:var(--green)" data-tip="Re-runs D4, D5, D6 with keyword research data for more accurate channel, website, and content recommendations" onclick="rerunKeywordSensitiveDiagnostics()"><i class="ti ti-vocabulary"></i> Re-run with Keywords</button>';
+        html += '<button class="btn btn-primary sm" style="background:var(--green)" data-tip="Re-runs D4, D5, D6 with keyword research data" onclick="rerunKeywordSensitiveDiagnostics()"><i class="ti ti-vocabulary"></i> Re-run with Keywords</button>';
       }
     } else {
       html += '<button class="btn btn-primary sm" data-tip="Runs enrichment then all diagnostics (D0-D7) in sequence" onclick="generateStrategy()"><i class="ti ti-sparkles"></i> Generate Full Strategy</button>';
     }
     html += '</div>';
+    // Collapsible feedback input (hidden by default, shown on regen click)
+    html += '<div id="strat-regen-feedback-' + diagNum + '" style="display:none;margin-bottom:14px">';
+    html += '<div style="display:flex;gap:6px;align-items:flex-end">';
+    html += '<textarea id="strat-regen-text-' + diagNum + '" placeholder="Optional: tell the AI what to fix (e.g. personas too generic, missing healthcare segment...)" style="flex:1;min-height:48px;max-height:120px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:12px;line-height:1.4;resize:vertical;color:var(--dark);background:var(--panel)"></textarea>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px">';
+    html += '<button class="btn btn-primary sm" id="strat-regen-run-' + diagNum + '" style="white-space:nowrap"><i class="ti ti-sparkles"></i> Run</button>';
+    html += '<button class="btn btn-ghost sm" id="strat-regen-cancel-' + diagNum + '" style="white-space:nowrap;font-size:10px">Cancel</button>';
+    html += '</div></div></div>';
   }
 
   // Gap panel
@@ -6404,6 +6419,11 @@ function renderStrategyTabContent() {
         rerunBtn.onclick = function() { _rerunWithNotes(tab, dNum); };
       })(_sTab, diagNum);
     }
+  }
+
+  // Wire regen-with-feedback buttons for the current diagnostic tab
+  if (diagNum !== undefined && diagNum !== null) {
+    _mountRegenControls(diagNum);
   }
 
   // Wire audience segment add/remove buttons
@@ -7136,6 +7156,44 @@ function _renderAudience(st) {
   }
 
   return html;
+}
+
+function _mountRegenControls(diagNum) {
+  var regenBtn = document.getElementById('strat-regen-btn-' + diagNum);
+  var feedbackPanel = document.getElementById('strat-regen-feedback-' + diagNum);
+  var runBtn = document.getElementById('strat-regen-run-' + diagNum);
+  var cancelBtn = document.getElementById('strat-regen-cancel-' + diagNum);
+  var textArea = document.getElementById('strat-regen-text-' + diagNum);
+  if (!regenBtn || !feedbackPanel) return;
+
+  regenBtn.onclick = function() {
+    // Toggle: if already visible, just run without feedback
+    if (feedbackPanel.style.display !== 'none') {
+      feedbackPanel.style.display = 'none';
+      return;
+    }
+    feedbackPanel.style.display = 'block';
+    if (textArea) textArea.focus();
+  };
+
+  if (cancelBtn) {
+    cancelBtn.onclick = function() {
+      feedbackPanel.style.display = 'none';
+      if (textArea) textArea.value = '';
+    };
+  }
+
+  if (runBtn) {
+    runBtn.onclick = function() {
+      var feedback = textArea ? textArea.value.trim() : '';
+      feedbackPanel.style.display = 'none';
+      runDiagnostic(diagNum, feedback).then(function() {
+        renderStrategyScorecard();
+        renderStrategyTabContent();
+        if (typeof _saiPostGenAudit === 'function') setTimeout(_saiPostGenAudit, 500);
+      });
+    };
+  }
 }
 
 function _mountAudienceSegmentControls() {
