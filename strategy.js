@@ -3887,6 +3887,7 @@ function buildDiagnosticPrompt(num) {
       + '- "low": AI inference only (no client-specific audience data)\n'
       + 'State which data sources informed each major conclusion.\n\n'
 
+      + 'NOTE: D0 objection_map provides the raw audience-grounded objections. D8 Narrative will enrich these with messaging angles, proof tagging, and priority ranking. Focus on capturing WHAT buyers object to and WHICH segments raise each objection — not how to message around them.\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "segments": [\n'
       + '    {\n'
@@ -3947,8 +3948,7 @@ function buildDiagnosticPrompt(num) {
       + '    {\n'
       + '      "trigger": "event or situation",\n'
       + '      "segments_affected": ["segment name"],\n'
-      + '      "urgency_level": "low | medium | high",\n'
-      + '      "messaging_angle": "how to address this trigger"\n'
+      + '      "urgency_level": "low | medium | high"\n'
       + '    }\n'
       + '  ],\n'
       + '  "objection_map": [\n'
@@ -4257,6 +4257,11 @@ function buildDiagnosticPrompt(num) {
       + 'CLIENT SERVICES: ' + JSON.stringify((r.services_detail || []).map(function(s) { return s.name; })) + '\n'
       + 'CLIENT CLAIMED STRENGTHS: ' + JSON.stringify(r.existing_proof || r.proof_points || []) + '\n'
       + 'CLIENT AWARDS/CERTS: ' + JSON.stringify(r.awards_certifications || []) + '\n\n'
+      + (r.current_slogan ? 'CLIENT CURRENT SLOGAN: ' + r.current_slogan + '\n' : '')
+      + (r.brand_name ? 'CLIENT BRAND NAME: ' + r.brand_name + '\n' : '')
+      + (r.business_overview ? 'BUSINESS OVERVIEW: ' + r.business_overview + '\n' : '')
+      + ((S.setup && S.setup.goalStatement) ? 'CLIENT GOAL: ' + S.setup.goalStatement + '\n' : '')
+      + ((S.setup && S.setup.goalKpi) ? 'PRIMARY KPI: ' + S.setup.goalKpi + '\n' : '')
       + 'COMPETITORS:\n' + (compInfo || 'No competitor data available') + '\n\n'
       + 'COMPETITOR DEEP-DIVE DATA:\n' + (deepDive || 'NOT YET AVAILABLE \u2014 score confidence lower') + '\n\n'
       + hypCtx
@@ -4278,8 +4283,9 @@ function buildDiagnosticPrompt(num) {
       + '3. competitor_depth MUST distinguish between "they say this on their website" vs "they have built their business around this." Be specific — cite what you actually found on the competitor\'s site.\n'
       + '4. NEVER put a differentiator in validated_differentiators AND contested_differentiators — it goes in one or the other.\n'
       + '5. A differentiator should ONLY be strongly_contested if the competitor has AT LEAST 2 of: (a) proprietary technology/methodology, (b) published case studies proving the claim, (c) industry recognition/awards for this specific capability, (d) it is central to their brand tagline/positioning.\n\n'
+      + 'NAMING RULE: NEVER name specific competitors in positioning statements, value propositions, messaging hierarchy, brand voice direction, or proof strategy. Use category references instead: "unlike traditional providers", "compared to DIY solutions", "where generalist agencies fall short". Competitor names may appear in the analysis sections (market_position, contested_differentiators) but NEVER in client-facing messaging output.\n\n'
       + 'Also analyse the gap between what the buyer thinks they are buying and what the company actually sells. Most buyers enter with a commodity mental model (e.g. "I need a website" or "I need SEO"). Identify the buyer\'s starting category frame, the company\'s actual value frame, the severity of the gap, and generate reframing language that bridges it.'
-      + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.') + '\n\n'
+      + (posDir ? ' A positioning direction has been SELECTED — align ALL outputs to it.' : ' NO positioning direction has been selected yet. Generate the competitive analysis (market_position, differentiators, positioning_gaps) but set messaging_hierarchy, brand_voice_direction, core_value_proposition, and proof_strategy to placeholder values with "direction_required": true. These fields cannot be finalised until the strategist selects a direction.\n\nAUTO-HYPOTHESES: Since no direction is selected, also generate "auto_hypotheses" — 3-4 positioning direction options derived from the competitive analysis, audience data, and brand data. For each: a short direction name, a one-sentence angle, what it emphasises, and what it de-emphasises. These give the strategist a starting point instead of requiring manual input.') + '\n\n'
       + 'JSON SCHEMA:\n{\n'
       + '  "market_position": "where client sits vs competitors",\n'
       + '  "authority_gap": "DR/content/backlink gap description",\n'
@@ -4315,6 +4321,7 @@ function buildDiagnosticPrompt(num) {
       + '    "reframing_trigger_pages": ["homepage", "service pages where reframing matters most"]\n'
       + '  },\n'
       + '  "proof_strategy": ["proof to build that does not exist yet"],\n'
+      + '  "auto_hypotheses": [{"direction": "short name", "angle": "one sentence positioning angle", "emphasises": "what this direction leads with", "de_emphasises": "what gets less focus", "best_for_segments": ["which D0 segments this serves"]}],\n'
       + '  "confidence": "high | medium | low"\n}';
   }
 
@@ -4568,7 +4575,7 @@ function buildDiagnosticPrompt(num) {
       + '4. Quick wins (low-effort, high-impact content actions)\n\n'
       + 'VOICE RULES: Content pillars should specify which audience segment or vertical each pillar serves. If the client has 2+ active verticals, tag each content piece with its target vertical. Blog posts tagged by target vertical enable voice overlay matching.\n\n'
       + 'JSON SCHEMA:\n{\n'
-      + '  "content_pillars": ["topic pillar"],\n'
+      + '  "content_pillars": [{"pillar": "topic pillar name", "funnel_stage": "awareness|consideration|conversion|retention", "target_segments": ["which D0 audience segments this serves"], "mapped_service": "which client service this pillar supports"}],\n'
       + '  "content_priority": [{"topic": "string", "rationale": "string", "format": "string"}],\n'
       + '  "preferred_formats": ["blog | video | case_study | whitepaper | tool"],\n'
       + '  "content_velocity": "posts per month recommendation",\n'
@@ -4671,6 +4678,10 @@ function buildDiagnosticPrompt(num) {
           + '\nSECONDARY CTAs: ' + JSON.stringify(st.execution_plan.lever_details.website.secondary_ctas || st.execution_plan.secondary_ctas || [])
           + '\nLOW COMMITMENT CTA: ' + (st.execution_plan.lever_details.website.low_commitment_cta || st.execution_plan.low_commitment_cta || '')
           : 'Not yet run')
+      + '\n\n--- CLIENT GOALS (from Setup) ---\n'
+      + ((S.setup && S.setup.goalStatement) ? 'GOAL: ' + S.setup.goalStatement : 'Not specified')
+      + ((S.setup && S.setup.goalKpi) ? '\nPRIMARY KPI: ' + S.setup.goalKpi : '')
+      + ((S.setup && S.setup.goalTarget) ? '\nTARGET: ' + S.setup.goalTarget : '')
       + '\n\n--- RESEARCH: PAIN & BUYER DATA ---\n'
       + 'PAIN POINTS: ' + (r.pain_points_top5 || []).join('; ')
       + '\nOBJECTIONS: ' + (r.objections_top5 || []).join('; ')
@@ -4702,7 +4713,9 @@ function buildDiagnosticPrompt(num) {
       + '- Content hooks are for the CLIENT\'S website content targeting THEIR audience.\n'
       + '- Use the D0 audience personas — those are the CLIENT\'S customer segments.\n\n'
       + 'RULES:\n'
-      + '- StoryBrand plan MUST have exactly 3-4 steps (the customer\'s journey to buying from the client)\n'
+      + '- direct_cta MUST reflect the client\u2019s stated goal and KPI. If goalKpi is "leads", drive to a lead form. If "booked_appointments", drive to scheduling. If "revenue", drive to a purchase or quote action.\n'
+      + '- Generate a StoryBrand arc for EACH of the top 2-3 D0 personas (not one generic hero). Each persona has different problems, guides, and plans.\n'
+      + '- Each StoryBrand plan MUST have exactly 3-4 steps specific to that persona\u2019s journey\n'
       + '- Messaging pillars ranked by importance to the CLIENT\'S CUSTOMERS\n'
       + '- Objection proof_available is true ONLY if evidence exists in the client\'s research/proof data\n'
       + '- Content hooks must be specific to this client\'s market, not generic marketing advice\n'
@@ -4716,24 +4729,26 @@ function buildDiagnosticPrompt(num) {
       + '- touchpoint_messaging: rational (logical argument) + emotional (feeling-layer) message for EACH of 9 buyer touchpoints. These are what the CLIENT should say at each moment in the buyer journey.\n'
       + '- vertical_resonance: when the client serves multiple verticals/segments, map the specific fear and tailored language per vertical. Use D0 audience segments as the source. If single-vertical, provide at least 2-3 sub-segments.\n\n'
       + 'JSON SCHEMA:\n{\n'
-      + '  "storybrand": {\n'
-      + '    "hero": "the CLIENT\'S CUSTOMER — who they are, role + context (NOT the client themselves)",\n'
-      + '    "external_problem": "tangible problem the CLIENT\'S CUSTOMER faces",\n'
-      + '    "internal_problem": "emotional layer — how the problem makes the CLIENT\'S CUSTOMER feel",\n'
-      + '    "philosophical_problem": "values/beliefs — why this should not be this way for the customer",\n'
-      + '    "guide_empathy": "how the CLIENT\'S BRAND shows understanding of the customer pain",\n'
-      + '    "guide_authority": "CLIENT\'S credentials and proof they can help their customers",\n'
-      + '    "plan": ["step 1 of the customer journey to buying from the client", "step 2", "step 3"],\n'
-      + '    "direct_cta": "primary CTA on the CLIENT\'S website",\n'
-      + '    "transitional_cta": "low-commitment entry point on the CLIENT\'S website",\n'
-      + '    "failure_stakes": "what happens to the CUSTOMER if they do not act",\n'
-      + '    "success_transformation": "desired end state for the CUSTOMER after working with the client"\n'
-      + '  },\n'
+      + '  "storybrand_arcs": [{\n'
+      + '    "persona": "the D0 persona archetype this arc targets",\n'
+      + '    "hero": "this specific persona — their role, context, and situation",\n'
+      + '    "external_problem": "tangible problem THIS persona faces",\n'
+      + '    "internal_problem": "how the problem makes THIS persona feel",\n'
+      + '    "philosophical_problem": "why this should not be this way",\n'
+      + '    "guide_empathy": "how the brand shows understanding of THIS persona\u2019s pain",\n'
+      + '    "guide_authority": "credentials and proof relevant to THIS persona",\n'
+      + '    "plan": ["step 1", "step 2", "step 3"],\n'
+      + '    "direct_cta": "primary CTA for THIS persona",\n'
+      + '    "transitional_cta": "low-commitment entry for THIS persona",\n'
+      + '    "failure_stakes": "what happens to THIS persona if they do not act",\n'
+      + '    "success_transformation": "desired end state for THIS persona"\n'
+      + '  }],\n'
       + '  "messaging_pillars": [{\n'
       + '    "rank": 1,\n'
       + '    "pillar": "the claim",\n'
       + '    "evidence": ["data point supporting the claim"],\n'
       + '    "resonance_quotes": ["buyer language that validates this pillar"],\n'
+      + '    "target_personas": ["which D0 personas this pillar resonates with most"],\n'
       + '    "page_types": ["homepage","service","landing","blog"]\n'
       + '  }],\n'
       + '  "objection_map": [{\n'
@@ -4762,7 +4777,7 @@ function buildDiagnosticPrompt(num) {
       + '    {"stage": "relief", "emotion_from": "...", "emotion_to": "...", "buyer_voice": "...", "language_direction": "..."}\n'
       + '  ],\n'
       + '  "emotional_veins": [\n'
-      + '    {"vein": "deep emotional driver name (e.g. shame of being fooled, exhaustion of evaluating)", "description": "what this fear/desire really is underneath — the psychology", "messaging": "specific language direction for copy that taps this vein"}\n'
+      + '    {"vein": "deep emotional driver name", "description": "the psychology underneath — what this fear/desire really is", "strongest_in_persona": "which D0 persona feels this most", "manifests_as": "how this driver shows up in buyer behaviour (e.g. excessive comparison shopping, delayed decisions, requesting guarantees)", "truth_behind_objection": "the surface objection this drives (e.g. \u2018too expensive\u2019) and what it really means (e.g. \u2018afraid of wasting community funds on another failed project\u2019)", "messaging": "specific language direction for copy that addresses the real concern, not just the surface objection"}\n'
       + '  ],\n'
       + '  "touchpoint_messaging": {\n'
       + '    "homepage_headline": {"rational": "logical message for this touchpoint", "emotional": "feeling-layer message"},\n'
@@ -4778,8 +4793,10 @@ function buildDiagnosticPrompt(num) {
       + '  "vertical_resonance": [\n'
       + '    {"vertical": "industry vertical or buyer segment", "fear": "what this vertical fears most when hiring", "tailored_language": "how to speak to this vertical specifically"}\n'
       + '  ],\n'
-      + '  "recommended_entry_point": "which awareness stage to enter at",\n'
-      + '  "call_shape": "education-led or proof-led",\n'
+      + '  "strategic_recommendations": {\n'
+      + '    "recommended_entry_point": {"recommendation": "which awareness stage", "reasoning": "why this entry point based on data", "confidence": "high|medium|low"},\n'
+      + '    "call_shape": {"recommendation": "education-led or proof-led", "reasoning": "why this shape", "confidence": "high|medium|low"}\n'
+      + '  },\n'
       + '  "confidence": 7\n'
       + '}';
   }
@@ -6565,9 +6582,21 @@ function renderStrategyTabContent() {
   if (_sTab === 'subtraction') {
     _mountSubtractionControls();
   }
-  // Wire voice word chip editor
+  // Wire voice word chip editor + rejected hypotheses toggle
   if (_sTab === 'positioning') {
     _mountVoiceWordControls();
+    var _rejToggle = document.querySelector('[data-toggle-rejected]');
+    if (_rejToggle) {
+      _rejToggle.onclick = function() {
+        var body = document.getElementById('rejected-hyp-body');
+        var icon = document.getElementById('rejected-hyp-icon');
+        if (body) {
+          var show = body.style.display === 'none';
+          body.style.display = show ? 'block' : 'none';
+          if (icon) icon.className = show ? 'ti ti-chevron-down' : 'ti ti-chevron-right';
+        }
+      };
+    }
   }
 
   // Wire execution sub-lever nav buttons
@@ -6959,6 +6988,12 @@ function selectPositioningDirection(idx) {
   renderStrategyScorecard();
   renderStrategyTabContent();
   aiBarNotify('Direction selected: ' + dir.direction + ' — re-run D2 to regenerate positioning outputs', { duration: 5000 });
+  // Flag downstream diagnostics as stale
+  if (typeof aiBarNotify === 'function') {
+    setTimeout(function() {
+      aiBarNotify('Positioning updated. D4, D5, D8 reference this data \u2014 use "From here forward" to update them.', { duration: 6000 });
+    }, 5500);
+  }
 }
 
 function setCustomPositioningDirection() {
@@ -6989,6 +7024,12 @@ function setCustomPositioningDirection() {
   renderStrategyScorecard();
   renderStrategyTabContent();
   aiBarNotify('Custom direction set — re-run D2 to regenerate positioning outputs', { duration: 5000 });
+  // Flag downstream diagnostics as stale
+  if (typeof aiBarNotify === 'function') {
+    setTimeout(function() {
+      aiBarNotify('Positioning updated. D4, D5, D8 reference this data \u2014 use "From here forward" to update them.', { duration: 6000 });
+    }, 5500);
+  }
 }
 
 function addPositioningHypothesis() {
@@ -7313,21 +7354,17 @@ function _renderAudience(st) {
     html += '</table></div>';
   }
 
-  // Objection Map
+  // Objection map — reference to D8 Narrative (D0 captures raw data, D8 owns messaging)
   if (a.objection_map && a.objection_map.length) {
-    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-shield" style="font-size:12px"></i> OBJECTION MAP</div>';
-    a.objection_map.forEach(function(obj) {
-      var freqColour = obj.frequency === 'universal' ? '#dc2626' : obj.frequency === 'common' ? '#b45309' : '#6b7280';
-      html += '<div class="card" style="margin-bottom:6px;padding:8px 12px">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-      html += '<span style="font-size:12px;font-weight:600">' + esc(obj.objection) + '</span>';
-      if (obj.frequency) html += '<span style="font-size:10px;color:' + freqColour + ';padding:1px 6px;border-radius:3px;background:#f9fafb">' + esc(obj.frequency) + '</span>';
-      html += '</div>';
-      if (obj.segments && obj.segments.length) html += '<div style="font-size:11px;color:var(--n2);margin-bottom:2px">Segments: ' + obj.segments.map(function(s) { return esc(s); }).join(', ') + '</div>';
-      if (obj.counter_message) html += '<div style="font-size:11px;margin-bottom:2px"><strong>Counter:</strong> ' + esc(obj.counter_message) + '</div>';
-      if (obj.proof_needed) html += '<div style="font-size:11px;color:var(--n2)"><strong>Proof:</strong> ' + esc(obj.proof_needed) + '</div>';
-      html += '</div>';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin:16px 0 8px"><i class="ti ti-shield-check" style="font-size:12px"></i> OBJECTION MAP (' + a.objection_map.length + ' captured)</div>';
+    html += '<div class="card" style="margin-bottom:16px;background:#f9fafb;border:1px dashed var(--border)">';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:8px"><i class="ti ti-info-circle" style="font-size:11px"></i> Raw objections captured from audience analysis. Full objection handling with messaging angles, rebuttals, and proof tags \u2192 <strong>Narrative tab</strong></div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    a.objection_map.forEach(function(o) {
+      var pColor = '#6b7280';
+      html += '<span style="font-size:11px;padding:3px 8px;background:var(--panel);border-radius:4px;color:' + pColor + '">' + esc(o.objection || '') + '</span>';
     });
+    html += '</div></div>';
   }
 
   // Perceived Alternatives
@@ -7889,6 +7926,26 @@ function _renderPositioning(st) {
   }
   html += '</div>';
 
+  // ── Auto-generated hypotheses (from D2 prompt, shown when no user hypotheses evaluated yet) ──
+  if (p.auto_hypotheses && p.auto_hypotheses.length && (!p.hypothesis_evaluations || !p.hypothesis_evaluations.length)) {
+    html += '<div class="card" style="margin:14px 0 10px;border-left:3px solid var(--acc)">';
+    html += '<div class="eyebrow" style="margin-bottom:8px">Suggested Positioning Directions <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--acc-bg,#3b82f615);color:var(--acc);margin-left:6px">AUTO-GENERATED</span></div>';
+    html += '<div style="font-size:11px;color:var(--n2);margin-bottom:10px">These directions were generated from your competitive analysis and audience data. Use them as starting points \u2014 edit, add, or replace before evaluating.</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px">';
+    p.auto_hypotheses.forEach(function(h) {
+      html += '<div class="card" style="margin-bottom:0;border:1px solid var(--border)">';
+      html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:4px">' + esc(h.direction || '') + '</div>';
+      html += '<div style="font-size:11px;color:var(--n3);margin-bottom:6px">' + esc(h.angle || '') + '</div>';
+      if (h.emphasises) html += '<div style="font-size:10px;margin-bottom:2px"><strong style="color:var(--green)">Emphasises:</strong> ' + esc(h.emphasises) + '</div>';
+      if (h.de_emphasises) html += '<div style="font-size:10px;margin-bottom:2px"><strong style="color:#b45309">De-emphasises:</strong> ' + esc(h.de_emphasises) + '</div>';
+      if (h.best_for_segments && h.best_for_segments.length) {
+        html += '<div style="font-size:10px;color:var(--n2);margin-top:4px">Best for: ' + h.best_for_segments.map(function(s) { return esc(s); }).join(', ') + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+
   // ── Hypothesis evaluation cards ──
   if (p.hypothesis_evaluations && p.hypothesis_evaluations.length) {
     html += '<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">';
@@ -7951,6 +8008,27 @@ function _renderPositioning(st) {
       }
       html += '</div>';
     });
+
+    // Collapsed section for other directions considered
+    if (p.selected_direction && p.hypothesis_evaluations.length > 0) {
+      var _rejectedHyps = p.hypothesis_evaluations.filter(function(h) {
+        var selDir = typeof p.selected_direction === 'string' ? p.selected_direction : (p.selected_direction.direction || '');
+        return h.hypothesis !== selDir;
+      });
+      if (_rejectedHyps.length) {
+        html += '<div style="margin-top:12px">';
+        html += '<button class="btn btn-ghost sm" data-toggle-rejected style="font-size:11px;color:var(--n2)"><i class="ti ti-chevron-right" style="font-size:12px" id="rejected-hyp-icon"></i> Other directions considered (' + _rejectedHyps.length + ')</button>';
+        html += '<div id="rejected-hyp-body" style="display:none;margin-top:8px">';
+        _rejectedHyps.forEach(function(h) {
+          html += '<div class="card" style="margin-bottom:6px;padding:8px 12px;background:#f9fafb;border:1px dashed var(--border)">';
+          html += '<div style="font-size:12px;font-weight:500;color:var(--n2)">' + esc(h.hypothesis || '') + '</div>';
+          html += '<div style="font-size:11px;color:var(--n3);margin-top:3px">' + esc(h.verdict || '') + '</div>';
+          html += '</div>';
+        });
+        html += '</div></div>';
+      }
+    }
+
     html += '</div>';
   }
 
@@ -8087,11 +8165,16 @@ function _renderPositioning(st) {
     _stratField('Competitive Counter', p.competitive_counter, {textarea:true})
   );
   if (p.validated_differentiators && p.validated_differentiators.length) {
-    html += _stratSection('Validated Differentiators', _stratField('Validated', p.validated_differentiators, {span:true}));
+    var _vdHtml = '<div style="grid-column:1/-1"><ul style="margin:0;padding-left:16px">';
+    p.validated_differentiators.forEach(function(vd) {
+      _vdHtml += '<li style="margin-bottom:4px">' + esc(String(vd)) + ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#dcfce7;color:#15803d;margin-left:4px">uncontested</span></li>';
+    });
+    _vdHtml += '</ul></div>';
+    html += _stratSection('Validated Differentiators', _vdHtml);
   }
   // Contested differentiators — competitive intensity analysis (new format)
   if (p.contested_differentiators && p.contested_differentiators.length) {
-    var intensityColors = { weakly_contested: '#e6a700', strongly_contested: '#f56c6c', category_owned: '#999' };
+    var intensityColors = { weakly_contested: '#b45309', strongly_contested: '#dc2626', category_owned: '#6b7280' };
     var intensityLabels = { weakly_contested: 'Weakly Contested', strongly_contested: 'Strongly Contested', category_owned: 'Category Owned' };
     var intensityIcons = { weakly_contested: 'ti-alert-triangle', strongly_contested: 'ti-shield-x', category_owned: 'ti-lock' };
     html += _stratSection('Competitive Intensity Analysis',
@@ -8105,7 +8188,7 @@ function _renderPositioning(st) {
           + '<i class="ti ' + icon + '" style="font-size:14px;color:' + color + '"></i>'
           + '<strong style="font-size:13px">' + esc(cd.claim) + '</strong>'
           + '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:' + color + '20;color:' + color + ';font-weight:600">' + label + '</span>'
-          + (claimable ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#22c55e20;color:#22c55e;font-weight:600">Claimable with proof</span>' : '')
+          + (claimable ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#15803d;font-weight:600">Claimable with proof</span>' : '')
           + '</div>'
           + '<div style="font-size:11px;color:var(--n1);margin-bottom:4px"><strong>Competitor:</strong> ' + esc(cd.competitor || '') + '</div>'
           + '<div style="font-size:11px;color:var(--n2);margin-bottom:4px"><strong>Their depth:</strong> ' + esc(cd.competitor_depth || '') + '</div>'
@@ -8118,7 +8201,7 @@ function _renderPositioning(st) {
   if (p.rejected_differentiators && p.rejected_differentiators.length && !(p.contested_differentiators && p.contested_differentiators.length)) {
     html += _stratSection('Rejected Differentiators',
       '<div style="grid-column:1/-1">' + p.rejected_differentiators.map(function(rd) {
-        return '<div style="font-size:12px;margin-bottom:4px"><span style="text-decoration:line-through;color:#f56c6c">' + esc(rd.claim) + '</span> \u2014 ' + esc(rd.reason) + '</div>';
+        return '<div style="font-size:12px;margin-bottom:4px"><span style="text-decoration:line-through;color:#dc2626">' + esc(rd.claim) + '</span> \u2014 ' + esc(rd.reason) + '</div>';
       }).join('') + '</div>'
     );
   }
@@ -10237,35 +10320,44 @@ function _renderRisks(st) {
 
 function _renderNarrative(st) {
   var n = st.narrative || {};
-  if (!n.storybrand && !n.messaging_pillars) {
+  if (!n.storybrand && !n.storybrand_arcs && !n.messaging_pillars) {
     return '<div style="padding:40px;text-align:center;color:var(--n2)"><i class="ti ti-message-2" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.3"></i><div style="font-size:13px">Run D8 Narrative & Messaging diagnostic to generate StoryBrand arc, messaging pillars, objection map, content hooks, and VoC swipe file.</div></div>';
   }
   var html = '';
-  // StoryBrand Arc
-  if (n.storybrand) {
-    var sb = n.storybrand;
-    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">StoryBrand Arc</div>';
-    var steps = [
-      { label: 'Hero', value: sb.hero, colour: '#3b82f6' },
-      { label: 'External Problem', value: sb.external_problem, colour: '#dc2626' },
-      { label: 'Internal Problem', value: sb.internal_problem, colour: '#f59e0b' },
-      { label: 'Philosophical Problem', value: sb.philosophical_problem, colour: '#8b5cf6' },
-      { label: 'Guide \u2014 Empathy', value: sb.guide_empathy, colour: '#10b981' },
-      { label: 'Guide \u2014 Authority', value: sb.guide_authority, colour: '#10b981' },
-      { label: 'Plan', value: (sb.plan || []).join(' \u2192 '), colour: '#0d9488' },
-      { label: 'Direct CTA', value: sb.direct_cta, colour: '#dc2626' },
-      { label: 'Transitional CTA', value: sb.transitional_cta, colour: '#f59e0b' },
-      { label: 'Failure (Stakes)', value: sb.failure_stakes, colour: '#dc2626' },
-      { label: 'Success (Transformation)', value: sb.success_transformation, colour: '#10b981' }
-    ];
-    steps.forEach(function(s) {
-      if (!s.value) return;
-      html += '<div style="display:flex;gap:10px;margin-bottom:8px;align-items:start">';
-      html += '<div style="min-width:140px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + s.colour + ';padding-top:2px;font-weight:500">' + s.label + '</div>';
-      html += '<div style="font-size:12.5px;color:var(--dark);line-height:1.5">' + esc(s.value) + '</div>';
+  // StoryBrand Arcs (per-persona or single legacy)
+  var _sbArcs = n.storybrand_arcs || (n.storybrand ? [n.storybrand] : []);
+  if (_sbArcs.length) {
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px"><i class="ti ti-route" style="font-size:12px"></i> STORYBRAND ARCS (' + _sbArcs.length + ')</div>';
+    _sbArcs.forEach(function(sb, sbi) {
+      var personaLabel = sb.persona ? '<span style="font-size:10px;padding:1px 6px;background:var(--acc-bg,#3b82f615);color:var(--acc);border-radius:3px;margin-left:6px">' + esc(sb.persona) + '</span>' : '';
+      html += '<div class="card" style="margin-bottom:10px">';
+      html += '<div style="font-size:12px;font-weight:600;color:var(--dark);margin-bottom:8px">Arc ' + (sbi + 1) + personaLabel + '</div>';
+      html += _stratField('Hero', sb.hero, {span:true});
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+      html += _stratField('External Problem', sb.external_problem);
+      html += _stratField('Internal Problem', sb.internal_problem);
+      html += _stratField('Philosophical Problem', sb.philosophical_problem);
+      html += '</div>';
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+      html += _stratField('Guide Empathy', sb.guide_empathy);
+      html += _stratField('Guide Authority', sb.guide_authority);
+      html += '</div>';
+      if (sb.plan && sb.plan.length) {
+        html += '<div style="margin:8px 0">';
+        html += '<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-bottom:4px">Plan</div>';
+        sb.plan.forEach(function(step, si) {
+          html += '<div style="font-size:12px;color:var(--dark);padding:3px 0;display:flex;gap:6px"><span style="font-weight:600;color:var(--acc)">' + (si+1) + '.</span> ' + esc(step) + '</div>';
+        });
+        html += '</div>';
+      }
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+      html += _stratField('Direct CTA', sb.direct_cta);
+      html += _stratField('Transitional CTA', sb.transitional_cta);
+      html += '</div>';
+      html += _stratField('Failure Stakes', sb.failure_stakes, {span:true});
+      html += _stratField('Success', sb.success_transformation, {span:true});
       html += '</div>';
     });
-    html += '</div>';
   }
   // Messaging Pillars
   if (n.messaging_pillars && n.messaging_pillars.length) {
@@ -10275,6 +10367,11 @@ function _renderNarrative(st) {
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
       html += '<span style="background:var(--green);color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600">#' + (p.rank || i + 1) + '</span>';
       html += '<span style="font-size:13px;font-weight:500;color:var(--dark)">' + esc(p.pillar || '') + '</span>';
+      if (p.target_personas && p.target_personas.length) {
+        p.target_personas.forEach(function(tp) {
+          html += ' <span style="font-size:9px;padding:1px 5px;background:var(--acc-bg,#3b82f615);color:var(--acc);border-radius:3px">' + esc(tp) + '</span>';
+        });
+      }
       html += '</div>';
       if (p.evidence && p.evidence.length) {
         html += '<div style="margin-bottom:4px">';
@@ -10418,12 +10515,36 @@ function _renderNarrative(st) {
     html += '</div>';
   }
 
-  // Strategic Recommendations
-  html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Strategic Recommendations</div>';
-  if (n.recommended_entry_point) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Entry Point</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.recommended_entry_point) + '</span></div>';
-  if (n.call_shape) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Call Shape</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.call_shape) + '</span></div>';
-  if (n.confidence !== undefined) html += '<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Confidence</span><span style="font-size:12.5px;font-weight:500;color:' + (n.confidence >= 7 ? 'var(--green)' : n.confidence >= 4 ? 'var(--warn)' : 'var(--error)') + '">' + n.confidence + '/10</span></div>';
-  html += '</div>';
+  // Strategic Recommendations (new object format with confidence, or legacy string format)
+  if (n.strategic_recommendations) {
+    var sr = n.strategic_recommendations;
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Strategic Recommendations</div>';
+    if (sr.recommended_entry_point) {
+      var _ep = sr.recommended_entry_point;
+      var _epVal = typeof _ep === 'string' ? _ep : (_ep.recommendation || '');
+      html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Entry Point</span><span style="font-size:12.5px;color:var(--dark)">' + esc(_epVal) + '</span>';
+      if (_ep.confidence) html += ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:' + (_ep.confidence === 'high' ? '#dcfce7;color:#15803d' : _ep.confidence === 'low' ? '#fee2e2;color:#dc2626' : '#fef3c7;color:#b45309') + '">' + esc(_ep.confidence) + '</span>';
+      html += '</div>';
+      if (_ep.reasoning) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-bottom:8px;margin-left:2px">' + esc(_ep.reasoning) + '</div>';
+    }
+    if (sr.call_shape) {
+      var _cs = sr.call_shape;
+      var _csVal = typeof _cs === 'string' ? _cs : (_cs.recommendation || '');
+      html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Call Shape</span><span style="font-size:12.5px;color:var(--dark)">' + esc(_csVal) + '</span>';
+      if (_cs.confidence) html += ' <span style="font-size:9px;padding:1px 4px;border-radius:3px;background:' + (_cs.confidence === 'high' ? '#dcfce7;color:#15803d' : _cs.confidence === 'low' ? '#fee2e2;color:#dc2626' : '#fef3c7;color:#b45309') + '">' + esc(_cs.confidence) + '</span>';
+      html += '</div>';
+      if (_cs.reasoning) html += '<div style="font-size:10px;color:var(--n2);font-style:italic;margin-bottom:8px;margin-left:2px">' + esc(_cs.reasoning) + '</div>';
+    }
+    if (n.confidence !== undefined) html += '<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Confidence</span><span style="font-size:12.5px;font-weight:500;color:' + (n.confidence >= 7 ? 'var(--green)' : n.confidence >= 4 ? 'var(--warn)' : 'var(--error)') + '">' + n.confidence + '/10</span></div>';
+    html += '</div>';
+  } else if (n.recommended_entry_point || n.call_shape) {
+    // Legacy format
+    html += '<div class="card" style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:12px">Strategic Recommendations</div>';
+    if (n.recommended_entry_point) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Entry Point</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.recommended_entry_point) + '</span></div>';
+    if (n.call_shape) html += '<div style="margin-bottom:6px"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Call Shape</span><span style="font-size:12.5px;color:var(--dark)">' + esc(n.call_shape) + '</span></div>';
+    if (n.confidence !== undefined) html += '<div><span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n2);margin-right:8px">Confidence</span><span style="font-size:12.5px;font-weight:500;color:' + (n.confidence >= 7 ? 'var(--green)' : n.confidence >= 4 ? 'var(--warn)' : 'var(--error)') + '">' + n.confidence + '/10</span></div>';
+    html += '</div>';
+  }
   return html;
 }
 
