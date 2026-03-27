@@ -2971,11 +2971,14 @@ export default {
           });
           const dfsData = await dfsRes.json();
           const techs = dfsData?.tasks?.[0]?.result?.[0]?.technologies || [];
-          stack = techs.map(t => ({
-            name: t.name || t.technology || '',
-            category: t.category || t.group || '',
-            version: t.version || ''
-          })).filter(t => t.name);
+          // Known category corrections for DataForSEO misclassifications
+          var _techCatFix = { 'WooCommerce': 'E-commerce', 'Magento': 'E-commerce', 'PrestaShop': 'E-commerce', 'BigCommerce': 'E-commerce', 'OpenCart': 'E-commerce', 'WooCommerce Payments': 'E-commerce', 'Easy Digital Downloads': 'E-commerce' };
+          stack = techs.map(t => {
+            var name = t.name || t.technology || '';
+            var cat = t.category || t.group || '';
+            if (_techCatFix[name]) cat = _techCatFix[name];
+            return { name: name, category: cat, version: t.version || '' };
+          }).filter(t => t.name);
         } catch(e) { /* DataForSEO tech lookup failed, try HTML detection */ }
 
         // If DataForSEO returned nothing, detect from live HTML + headers
@@ -3005,6 +3008,7 @@ export default {
               // CMS
               { re: /wp-content|wp-includes|wordpress/i, name: 'WordPress', cat: 'CMS' },
               { re: /Shopify\.theme|cdn\.shopify\.com/i, name: 'Shopify', cat: 'E-commerce' },
+              { re: /woocommerce|wc-add-to-cart|wc-cart/i, name: 'WooCommerce', cat: 'E-commerce' },
               { re: /wix\.com|wixsite/i, name: 'Wix', cat: 'CMS' },
               { re: /squarespace\.com|sqsp/i, name: 'Squarespace', cat: 'CMS' },
               { re: /webflow\.com|data-wf-/i, name: 'Webflow', cat: 'CMS' },

@@ -3789,6 +3789,24 @@ function buildEnrichCtx() {
     ctx += '\n\nREFERENCE DOCUMENTS:';
     ctx += _docExtractCtx(docs, ['facts','decisions','requirements','quotes','objections','competitors','audience','services','goals']);
   }
+  // Inject call transcript extraction data (pain points, quotes, objections, criteria)
+  if (s.transcripts && s.transcripts.length) {
+    var _txHasData = false;
+    var _txCtx = '\n\nCALL TRANSCRIPT EXTRACTIONS:';
+    s.transcripts.forEach(function(t) {
+      if (!t.extracted || !t.extracted.extractedAt) return;
+      _txHasData = true;
+      var ex = t.extracted;
+      _txCtx += '\n[' + (t.label || 'Transcript') + ']:';
+      if (ex.situation) _txCtx += '\n  Situation: ' + ex.situation;
+      if (ex.pain_points && ex.pain_points.length) _txCtx += '\n  Pain points: ' + ex.pain_points.join('; ');
+      if (ex.objections && ex.objections.length) _txCtx += '\n  Objections: ' + ex.objections.join('; ');
+      if (ex.criteria && ex.criteria.length) _txCtx += '\n  Decision criteria: ' + ex.criteria.join('; ');
+      if (ex.quotes && ex.quotes.length) _txCtx += '\n  Buyer quotes: ' + ex.quotes.map(function(q) { return '"' + q + '"'; }).join('; ');
+      if (ex.emotions && ex.emotions.length) _txCtx += '\n  Emotions: ' + ex.emotions.join('; ');
+    });
+    if (_txHasData) ctx += _txCtx;
+  }
   return ctx;
 }
 

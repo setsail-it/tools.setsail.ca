@@ -369,6 +369,7 @@ function jumpToResearchField(key, tab) {
 function initResearch() {
   if (!S.research) S.research = researchDefaults();
   migrateResearchFields(S.research);
+  _sanitiseResearchArrays(S.research);
   _cachedWebsiteText = null; // reset website cache on project load
   // Ensure clientPain exists for older projects
   if (!S.research.clientPain) {
@@ -500,6 +501,28 @@ function migrateResearchFields(r) {
   });
   // Removed fields stay in S.research for backward compat but are no longer rendered/scored
   return r;
+}
+
+function _sanitiseResearchArrays(r) {
+  // Clean undefined/null values from repeat-group array items
+  var repeatKeys = ['case_studies','testimonials','reviews','notable_clients','social_profiles','publications_media','reference_brands','services_detail','current_customer_profile','competitors'];
+  repeatKeys.forEach(function(key) {
+    if (Array.isArray(r[key])) {
+      r[key] = r[key].filter(function(item) {
+        return item && typeof item === 'object';
+      }).map(function(item) {
+        var clean = {};
+        Object.keys(item).forEach(function(k) {
+          clean[k] = (item[k] === undefined || item[k] === null) ? '' : item[k];
+        });
+        return clean;
+      });
+    }
+  });
+  // Also clean string fields that might be literal "undefined"
+  Object.keys(r).forEach(function(k) {
+    if (r[k] === 'undefined' || r[k] === 'null') r[k] = '';
+  });
 }
 
 function renderResearchNav() {
@@ -1640,6 +1663,18 @@ async function extractClientPain() {
   }
 }
 
+function _closeRateBenchmarkHint(r) {
+  if (r.close_rate_estimate && String(r.close_rate_estimate).trim()) {
+    return '<div style="grid-column:1/-1;font-size:10px;color:var(--green);padding:2px 0"><i class="ti ti-check" style="font-size:10px"></i> Close rate provided by client or AI</div>';
+  }
+  if (r.known_close_rate && String(r.known_close_rate).trim()) {
+    return '<div style="grid-column:1/-1;font-size:10px;color:var(--green);padding:2px 0"><i class="ti ti-check" style="font-size:10px"></i> CRM close rate provided: ' + esc(r.known_close_rate) + '</div>';
+  }
+  // Show benchmark hint when empty
+  var industry = r.industry || '';
+  return '<div style="grid-column:1/-1;font-size:10px;color:#e6a23c;padding:2px 0"><i class="ti ti-info-circle" style="font-size:10px"></i> No close rate provided — Strategy will use industry benchmarks' + (industry ? ' for ' + esc(industry) : '') + '. Provide for higher confidence.</div>';
+}
+
 function renderRAudience(r) {
   let html = rTabActions('audience');
   html += _renderSourceBanner('audience');
@@ -1661,6 +1696,7 @@ function renderRAudience(r) {
     rField('lead_channels_today','Current Lead Channels (comma-separated)', r.lead_channels_today, 'text-csv') +
     rField('sales_cycle_length','Sales Cycle Length', r.sales_cycle_length, 'select', {options:['','same_day','1_7_days','14_30_days','30_plus_days']}) +
     rField('close_rate_estimate','Estimated Close Rate', r.close_rate_estimate) +
+    _closeRateBenchmarkHint(r) +
     rField('current_qualification','Current Lead Qualification', r.current_qualification, 'textarea', {rows:2}) +
     rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
     rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
@@ -1726,29 +1762,63 @@ function renderRBrand(r) {
     rField('existing_ad_creatives_link','Existing Ad Creatives Link', r.existing_ad_creatives_link) +
     rField('do_not_use_assets_notes','Do Not Use (assets/phrases)', r.do_not_use_assets_notes, 'textarea', {rows:2})
   );
+  var _eeatEmpty = function(field, label) {
+    var val = r[field];
+    var empty = Array.isArray(val) ? !val.length : (!val || !String(val).trim());
+    if (!empty) return '';
+    return '<div style="grid-column:1/-1;font-size:10px;color:var(--n2);padding:2px 0;font-style:italic"><i class="ti ti-search" style="font-size:10px"></i> No ' + label + ' found on site. Add manually below if available.</div>';
+  };
   html += rSec('Proof & E-E-A-T',
     rField('team_credentials','Team Credentials / Expertise', r.team_credentials, 'textarea', {rows:3}) +
     rField('founder_bio','Founder Bio', r.founder_bio, 'textarea', {rows:3}) +
     rField('awards_certifications','Awards & Certifications (one per line)', r.awards_certifications, 'textarea-array', {rows:4}) +
+    _eeatEmpty('awards_certifications', 'awards or certifications') +
     rField('notable_clients','Notable Clients (one per line)', r.notable_clients, 'textarea-array', {rows:4}) +
-    rField('publications_media','Publications & Media Mentions (one per line)', r.publications_media, 'textarea-array', {rows:3})
+    rField('publications_media','Publications & Media Mentions (one per line)', r.publications_media, 'textarea-array', {rows:3}) +
+    _eeatEmpty('publications_media', 'publications or media mentions')
   );
+  // VoC source indicator
+  var _vocSources = [];
+  var _vocRaw = r.voc_swipe_raw || '';
+  if (_vocRaw.indexOf('--- FROM CALL TRANSCRIPTS ---') !== -1) {
+    var _txLines = _vocRaw.substring(_vocRaw.indexOf('--- FROM CALL TRANSCRIPTS ---')).split('\n').filter(function(l) { return l.trim() && l.indexOf('---') !== 0; });
+    if (_txLines.length) _vocSources.push(_txLines.length + ' from transcripts');
+  }
+  var _vocManual = _vocRaw.indexOf('--- FROM CALL TRANSCRIPTS ---') !== -1 ? _vocRaw.substring(0, _vocRaw.indexOf('--- FROM CALL TRANSCRIPTS ---')).trim() : _vocRaw.trim();
+  if (_vocManual) {
+    var _manLines = _vocManual.split('\n').filter(function(l) { return l.trim(); });
+    if (_manLines.length) _vocSources.push(_manLines.length + ' manual');
+  }
+  if (S.strategy && S.strategy._enrichment && S.strategy._enrichment.voc_swipe_file && S.strategy._enrichment.voc_swipe_file.length) {
+    _vocSources.push(S.strategy._enrichment.voc_swipe_file.length + ' from documents');
+  }
+  var _vocBadge = _vocSources.length ? '<div style="font-size:10px;color:var(--green);margin-bottom:6px"><i class="ti ti-quote" style="font-size:10px"></i> VoC sources: ' + _vocSources.join(', ') + '</div>' : '<div style="font-size:10px;color:var(--n2);margin-bottom:6px;font-style:italic"><i class="ti ti-info-circle" style="font-size:10px"></i> No VoC data yet. Paste quotes below, upload transcripts in Setup, or run enrichment.</div>';
   html += rSec('Voice of Customer',
+    '<div style="grid-column:1/-1">' + _vocBadge + '</div>' +
     rField('voc_swipe_raw','Voice of Customer \u2014 Swipe File', r.voc_swipe_raw || '', 'textarea', {rows:5, placeholder:'Paste real customer quotes, review excerpts, or sales call transcripts \u2014 one per line\ne.g. "I just need someone who picks up the phone"\n"We wasted $30k on the last agency and got nothing"'})
   );
   html += rRepGroup('case_studies','Case Studies',
-    [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'},{key:'url',label:'URL',width:'150px'}],
+    [{key:'client',label:'Client',width:'140px'},{key:'result',label:'Result / Outcome'},{key:'timeframe',label:'Timeframe',width:'100px'},{key:'url',label:'URL / Source',width:'150px'}],
     '+ Add Case Study'
   );
+  if (!r.case_studies || !r.case_studies.length) {
+    html += '<div style="font-size:10px;color:var(--n2);margin:-6px 0 10px 0;font-style:italic;padding-left:4px"><i class="ti ti-search" style="font-size:10px"></i> No case studies found on site. Add manually or run "Scrape Website" in Schema tab.</div>';
+  }
   html += rSec('Social Proof');
   html += rRepGroup('testimonials','Testimonials',
     [{key:'quote',label:'Quote'},{key:'author',label:'Author',width:'120px'},{key:'title',label:'Title / Company',width:'140px'},{key:'source',label:'Source',width:'100px'}],
     '+ Add Testimonial'
   );
+  if (!r.testimonials || !r.testimonials.length) {
+    html += '<div style="font-size:10px;color:var(--n2);margin:-6px 0 10px 0;font-style:italic;padding-left:4px"><i class="ti ti-search" style="font-size:10px"></i> No testimonials found. Add manually or check if site has a /testimonials page.</div>';
+  }
   html += rRepGroup('reviews','Reviews',
     [{key:'author_name',label:'Author',width:'120px'},{key:'rating_value',label:'Rating',width:'60px'},{key:'review_body_short',label:'Excerpt'},{key:'source_url',label:'Source',width:'120px'}],
     '+ Add Review'
   );
+  if (!r.reviews || !r.reviews.length) {
+    html += '<div style="font-size:10px;color:var(--n2);margin:-6px 0 10px 0;font-style:italic;padding-left:4px"><i class="ti ti-search" style="font-size:10px"></i> No reviews found. Pull from Google Business Profile in Schema tab or add manually.</div>';
+  }
   html += rRepGroup('reference_brands','Reference Brands',
     [{key:'url',label:'URL'},{key:'what_you_like',label:'What You Like'}],
     '+ Add Reference Brand'
@@ -1773,7 +1843,46 @@ async function pullGMB() {
     });
     const data = await res.json();
     if (!data.result) {
-      if (statusEl) statusEl.textContent = data.error || 'No listing found';
+      if (statusEl) {
+        statusEl.innerHTML = '<span style="color:#e6a23c">' + esc(data.error || 'No listing found') + '</span>'
+          + '<span style="margin-left:8px;font-size:11px;color:var(--n2)">Try a different name:</span>'
+          + ' <input id="gmb-manual-name" type="text" placeholder="Business name + city" style="padding:3px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;width:200px">'
+          + ' <button id="gmb-manual-retry-btn" class="btn btn-ghost sm" style="font-size:11px;padding:2px 8px">Retry</button>';
+        var _retryBtn = document.getElementById('gmb-manual-retry-btn');
+        if (_retryBtn) {
+          _retryBtn.onclick = async function() {
+            var inp = document.getElementById('gmb-manual-name');
+            var q = inp ? inp.value.trim() : '';
+            if (!q) return;
+            statusEl.textContent = 'Searching...';
+            try {
+              var res2 = await fetch('/api/gmb', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword: q }) });
+              var data2 = await res2.json();
+              if (data2.result) {
+                _cachedGMBData = data2.result;
+                var g2 = data2.result;
+                if (!S.research) S.research = researchDefaults();
+                var rd2 = S.research;
+                var ap2 = g2.address_parts || {};
+                if (ap2.address) rd2.schema_street_address = ap2.address;
+                if (ap2.city || ap2.borough) rd2.schema_city = ap2.city || ap2.borough;
+                if (ap2.region) rd2.schema_region = ap2.region;
+                if (ap2.zip) rd2.schema_postal_code = ap2.zip;
+                if (g2.category && !rd2.schema_primary_category) rd2.schema_primary_category = g2.category;
+                if (g2.phone && !rd2.schema_phone) rd2.schema_phone = g2.phone;
+                if (g2.social_profiles && g2.social_profiles.length) rd2.social_profiles = g2.social_profiles;
+                if (g2.reviews && g2.reviews.length) rd2.reviews = g2.reviews;
+                scheduleSave();
+                _rTab = 'schema';
+                renderResearchTabContent();
+                statusEl.innerHTML = '<span style="color:var(--green)">Found: ' + esc(g2.title || q) + '</span>';
+              } else {
+                statusEl.innerHTML = '<span style="color:#f56c6c">Still not found for "' + esc(q) + '"</span>';
+              }
+            } catch(e2) { statusEl.textContent = 'Error: ' + (e2.message || '').slice(0,40); }
+          };
+        }
+      }
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brand-google"></i> Pull from Google Business Profile'; }
       return;
     }
@@ -1850,6 +1959,39 @@ function renderRSchema(r) {
     + '<button class="btn btn-ghost" onclick="scrapeWebsiteStructured()" id="scrape-website-btn"><i class="ti ti-world-search"></i> Scrape Website</button>'
     + '<span id="scrape-website-status" style="font-size:12px;color:var(--n2)"></span>'
     + '</div>';
+  // Show detected schema types from Snapshot stage
+  if (S.snapshot && S.snapshot.schemas && S.snapshot.schemas.length) {
+    html += '<div class="card" style="margin-bottom:10px;border-left:3px solid var(--green)">';
+    html += '<div class="eyebrow" style="margin-bottom:8px">Detected Schema Markup <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--green-bg,#10b98115);color:var(--green);margin-left:6px">FROM SNAPSHOT</span></div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    S.snapshot.schemas.forEach(function(s) {
+      var schemaName = typeof s === 'string' ? s : (s.type || s.name || JSON.stringify(s));
+      html += '<span style="font-size:11px;padding:3px 8px;background:var(--panel);border-radius:4px;color:var(--dark)">' + esc(schemaName) + '</span>';
+    });
+    html += '</div></div>';
+  } else if (S.snapshot && S.snapshot.techStack && S.snapshot.techStack.length) {
+    // Check if any tech was categorised as "Structured Data"
+    var _schTech = S.snapshot.techStack.filter(function(t) { return t.category === 'Structured Data'; });
+    if (_schTech.length) {
+      html += '<div class="card" style="margin-bottom:10px;border-left:3px solid var(--green)">';
+      html += '<div class="eyebrow" style="margin-bottom:8px">Detected Structured Data <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--green-bg,#10b98115);color:var(--green);margin-left:6px">FROM SNAPSHOT</span></div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      _schTech.forEach(function(t) {
+        html += '<span style="font-size:11px;padding:3px 8px;background:var(--panel);border-radius:4px;color:var(--dark)">' + esc(t.name) + '</span>';
+      });
+      html += '</div></div>';
+    }
+  }
+  // Also show JSON-LD types from structured scrape if available
+  if (_cachedStructuredScrape && _cachedStructuredScrape.json_ld_types && _cachedStructuredScrape.json_ld_types.length) {
+    html += '<div class="card" style="margin-bottom:10px;border-left:3px solid #6366f1">';
+    html += '<div class="eyebrow" style="margin-bottom:8px">JSON-LD Types Found <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#6366f115;color:#6366f1;margin-left:6px">FROM SCRAPE</span></div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    _cachedStructuredScrape.json_ld_types.forEach(function(t) {
+      html += '<span style="font-size:11px;padding:3px 8px;background:#f5f3ff;border-radius:4px;color:#6366f1">' + esc(t) + '</span>';
+    });
+    html += '</div></div>';
+  }
   html += rSec('Business Info',
     rField('schema_business_type','Business Type', r.schema_business_type, 'select', {options:['LocalBusiness','Organization']}) +
     rField('schema_primary_category','Primary Category', r.schema_primary_category) +
@@ -2066,6 +2208,23 @@ async function enrichAll(forceAll, startFrom) {
       await enrichRTab(step, forceAll);
     } catch(e) { if (e.name === 'AbortError') return; }
     _enrichDone.add(step);
+
+    // After audience tab: sync transcript pain points to research if still empty
+    if (step === 'audience' && !window._aiStopAll) {
+      var _r = S.research || {};
+      if ((!_r.pain_points_top5 || !_r.pain_points_top5.length) && S.setup && S.setup.transcripts) {
+        var _txPains = [];
+        S.setup.transcripts.forEach(function(t) {
+          if (t.extracted && t.extracted.pain_points) {
+            t.extracted.pain_points.forEach(function(p) { if (p && _txPains.indexOf(p) === -1) _txPains.push(p); });
+          }
+        });
+        if (_txPains.length) {
+          _r.pain_points_top5 = _txPains.slice(0, 5);
+          scheduleSave();
+        }
+      }
+    }
 
     // After client-pain tab: auto-generate missing buyer psychology fields (JTBD Force Map)
     if (step === 'client-pain' && !window._aiStopAll) {
@@ -2824,7 +2983,7 @@ async function enrichRTab(tab, forceAll) {
     var parsed = parseEnrichResult(result);
     console.log('ENRICH PARSED ['+tab+']:', JSON.stringify(parsed));
     if (parsed) {
-      // Competitors: direct write, skip mergeEnriched entirely
+      // Competitors: validation panel before committing
       if (tab === 'competitors') {
         if (parsed.competitors && Array.isArray(parsed.competitors) && parsed.competitors.length > 0) {
           // Post-AI blocklist filter — remove any domains that slipped through
@@ -2836,15 +2995,67 @@ async function enrichRTab(tab, forceAll) {
           if (_filtered.length < parsed.competitors.length) {
             console.log('[competitors] blocklist removed', parsed.competitors.length - _filtered.length, 'entries');
           }
-          r.competitors = _filtered;
-          console.log('COMPETITORS WRITTEN:', r.competitors.length, 'items', JSON.stringify(r.competitors[0]));
+          window._pendingCompetitors = _filtered;
+          window._pendingCompR = r;
+          _rTab = 'competitors';
+          renderResearchTabContent();
+          // Show confirmation banner
+          var compContainer = document.getElementById('research-tab-content');
+          if (compContainer) {
+            var confirmHtml = '<div id="comp-validation-panel" class="card" style="margin-bottom:12px;border-left:3px solid #6366f1;background:#f5f3ff">';
+            confirmHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+            confirmHtml += '<i class="ti ti-alert-circle" style="color:#6366f1"></i>';
+            confirmHtml += '<span style="font-size:12px;font-weight:600;color:var(--dark)">Review Detected Competitors</span>';
+            confirmHtml += '<span style="font-size:10px;color:var(--n2)">Uncheck any that are not real competitors</span>';
+            confirmHtml += '</div>';
+            _filtered.forEach(function(c, ci) {
+              var cType = c.type === 'indirect' ? '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#fef3c7;color:#b45309">indirect</span>' : '<span style="font-size:9px;padding:1px 4px;border-radius:3px;background:#dcfce7;color:#15803d">direct</span>';
+              confirmHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #e5e7eb">';
+              confirmHtml += '<input type="checkbox" checked data-comp-idx="' + ci + '" class="comp-confirm-cb" style="width:14px;height:14px">';
+              confirmHtml += '<div style="flex:1"><div style="font-size:12px;font-weight:500">' + esc(c.name || '') + ' ' + cType + '</div>';
+              if (c.url) confirmHtml += '<div style="font-size:10px;color:var(--n2)">' + esc(c.url) + '</div>';
+              if (c.why_they_win) confirmHtml += '<div style="font-size:10px;color:var(--n3)">' + esc(c.why_they_win) + '</div>';
+              confirmHtml += '</div></div>';
+            });
+            confirmHtml += '<div style="display:flex;gap:8px;margin-top:10px">';
+            confirmHtml += '<button id="comp-confirm-btn" class="btn btn-primary sm" style="font-size:11px">Confirm Selected</button>';
+            confirmHtml += '<button id="comp-confirm-all-btn" class="btn btn-ghost sm" style="font-size:11px">Accept All</button>';
+            confirmHtml += '</div></div>';
+            compContainer.insertAdjacentHTML('afterbegin', confirmHtml);
+            // Wire buttons
+            var _confirmBtn = document.getElementById('comp-confirm-btn');
+            var _confirmAllBtn = document.getElementById('comp-confirm-all-btn');
+            if (_confirmBtn) {
+              _confirmBtn.onclick = function() {
+                var checked = [];
+                document.querySelectorAll('.comp-confirm-cb').forEach(function(cb) {
+                  if (cb.checked) checked.push(parseInt(cb.getAttribute('data-comp-idx'), 10));
+                });
+                var confirmed = window._pendingCompetitors.filter(function(c, i) { return checked.indexOf(i) !== -1; });
+                window._pendingCompR.competitors = confirmed;
+                console.log('COMPETITORS CONFIRMED:', confirmed.length, 'items');
+                scheduleSave();
+                window._pendingCompetitors = null;
+                renderResearchTabContent();
+                scheduleScorecard();
+                aiBarNotify('Saved ' + confirmed.length + ' confirmed competitors', { duration: 3000 });
+              };
+            }
+            if (_confirmAllBtn) {
+              _confirmAllBtn.onclick = function() {
+                window._pendingCompR.competitors = window._pendingCompetitors;
+                console.log('COMPETITORS ACCEPTED ALL:', window._pendingCompetitors.length, 'items');
+                scheduleSave();
+                window._pendingCompetitors = null;
+                renderResearchTabContent();
+                scheduleScorecard();
+                aiBarNotify('Saved all ' + (window._pendingCompR.competitors || []).length + ' competitors', { duration: 3000 });
+              };
+            }
+          }
         } else {
           console.warn('COMPETITORS EMPTY IN PARSED:', JSON.stringify(parsed));
         }
-        scheduleSave();
-        _rTab = 'competitors';
-        renderResearchTabContent();
-        scheduleScorecard();
         return;
       }
       if (parsed.geography) {
