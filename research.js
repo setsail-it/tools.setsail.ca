@@ -422,6 +422,10 @@ function researchDefaults() {
     current_marketing_activities:[], previous_agency_experience:'',
     // Client-provided benchmark actuals
     known_landing_page_cvr:'', known_cpl:'', known_close_rate:'',
+    // Ecommerce economics
+    ecom_aov:'', ecom_monthly_orders:'', ecom_product_margin:'', ecom_target_roas:'', ecom_repeat_rate:'', ecom_customer_lifespan:'',
+    // SaaS economics
+    saas_mrr:'', saas_acv:'', saas_churn_rate:'', saas_trial_cvr:'', saas_expansion_pct:'',
     // Brand
     brand_name:'', current_slogan:'',
     existing_proof:[],
@@ -674,14 +678,36 @@ function rSec(title, fieldsHtml) {
 }
 
 function renderEconReadiness(r) {
-  var fields = [
-    { key: 'monthly_marketing_budget', label: 'Budget', impact: 'Controls D1 lead volume estimates, D4 budget allocation, D3 cost analysis' },
-    { key: 'average_deal_size', label: 'Deal Size', impact: 'Drives CPL thresholds, LTV calculation, paid viability' },
-    { key: 'customer_lifetime_value', label: 'LTV', impact: 'Determines LTV:CAC ratio health, investment ceiling' },
-    { key: 'close_rate_estimate', label: 'Close Rate', impact: 'Converts leads to deals — AI estimates if missing (lower confidence)' },
-    { key: 'lead_quality_percentage', label: 'Lead Quality %', impact: 'Adjusts CPL to CPQL — AI assumes 30% if missing' },
-    { key: 'current_lead_volume', label: 'Lead Volume', impact: 'Gap analysis between current and target lead volume' }
-  ];
+  var _econBm = _detectResearchBizModel();
+  var fields;
+  if (_econBm === 'ecommerce') {
+    fields = [
+      { key: 'monthly_marketing_budget', label: 'Ad Spend', impact: 'Controls ROAS calculation, D4 budget allocation' },
+      { key: 'ecom_aov', label: 'AOV', impact: 'Average Order Value — drives revenue projections and ROAS targets' },
+      { key: 'ecom_product_margin', label: 'Margin %', impact: 'Determines break-even ROAS and profitability thresholds' },
+      { key: 'ecom_monthly_orders', label: 'Monthly Orders', impact: 'Current volume baseline for growth modelling' },
+      { key: 'ecom_target_roas', label: 'Target ROAS', impact: 'Minimum return on ad spend for profitable campaigns' },
+      { key: 'customer_lifetime_value', label: 'CLV', impact: 'Customer lifetime value — guides allowable acquisition cost' }
+    ];
+  } else if (_econBm === 'saas') {
+    fields = [
+      { key: 'monthly_marketing_budget', label: 'Budget', impact: 'Controls D1 CAC estimates, D4 budget allocation' },
+      { key: 'saas_mrr', label: 'MRR', impact: 'Monthly recurring revenue — baseline for growth projections' },
+      { key: 'saas_acv', label: 'ACV', impact: 'Average contract value — drives payback period calculations' },
+      { key: 'saas_churn_rate', label: 'Churn', impact: 'Monthly churn rate — determines LTV and retention economics' },
+      { key: 'saas_trial_cvr', label: 'Trial CVR', impact: 'Trial-to-paid conversion — drives lead-to-revenue math' },
+      { key: 'customer_lifetime_value', label: 'LTV', impact: 'Customer lifetime value — determines LTV:CAC ratio' }
+    ];
+  } else {
+    fields = [
+      { key: 'monthly_marketing_budget', label: 'Budget', impact: 'Controls D1 lead volume estimates, D4 budget allocation, D3 cost analysis' },
+      { key: 'average_deal_size', label: 'Deal Size', impact: 'Drives CPL thresholds, LTV calculation, paid viability' },
+      { key: 'customer_lifetime_value', label: 'LTV', impact: 'Determines LTV:CAC ratio health, investment ceiling' },
+      { key: 'close_rate_estimate', label: 'Close Rate', impact: 'Converts leads to deals — AI estimates if missing (lower confidence)' },
+      { key: 'lead_quality_percentage', label: 'Lead Quality %', impact: 'Adjusts CPL to CPQL — AI assumes 30% if missing' },
+      { key: 'current_lead_volume', label: 'Lead Volume', impact: 'Gap analysis between current and target lead volume' }
+    ];
+  }
   var filled = 0;
   var missing = [];
   var warnings = [];
@@ -1447,7 +1473,7 @@ function renderRBusiness(r) {
     rField('business_overview','Business Overview', r.business_overview, 'textarea', {rows:3}) +
     rField('industry','Industry', r.industry) +
     rField('sub_industry','Sub-Industry / Niche', r.sub_industry) +
-    rField('business_model','Business Model', r.business_model, 'select', {options:['','b2b','b2c','b2b2c','marketplace','saas','nonprofit']}) +
+    rField('business_model','Business Model', r.business_model, 'select', {options:['','b2b','b2c','b2b2c','ecommerce','marketplace','saas','nonprofit']}) +
     rField('years_in_business','Years in Business', r.years_in_business) +
     rField('team_size','Team Size', r.team_size) +
     rField('locations_count','Number of Locations', r.locations_count)
@@ -1675,6 +1701,23 @@ function _closeRateBenchmarkHint(r) {
   return '<div style="grid-column:1/-1;font-size:10px;color:#e6a23c;padding:2px 0"><i class="ti ti-info-circle" style="font-size:10px"></i> No close rate provided — Strategy will use industry benchmarks' + (industry ? ' for ' + esc(industry) : '') + '. Provide for higher confidence.</div>';
 }
 
+function _detectResearchBizModel() {
+  var r = S.research || {};
+  var bm = (r.business_model || '').toLowerCase();
+  // Explicit ecommerce
+  if (bm === 'ecommerce' || bm === 'e-commerce') return 'ecommerce';
+  // Explicit SaaS
+  if (bm === 'saas') return 'saas';
+  // Auto-detect from tech stack
+  if (S.snapshot && S.snapshot.techStack && S.snapshot.techStack.length) {
+    var hasEcom = S.snapshot.techStack.some(function(t) {
+      return /shopify|woocommerce|magento|bigcommerce|prestashop/i.test(t.name || '');
+    });
+    if (hasEcom) return 'ecommerce';
+  }
+  return 'leadgen';
+}
+
 function renderRAudience(r) {
   let html = rTabActions('audience');
   html += _renderSourceBanner('audience');
@@ -1690,17 +1733,30 @@ function renderRAudience(r) {
     rField('pain_points_top5','Top Pain Points (one per line)', r.pain_points_top5, 'textarea-array', {rows:5}) +
     rField('objections_top5','Top Objections (one per line)', r.objections_top5, 'textarea-array', {rows:5})
   );
-  html += rSec('Sales & Goals',
-    rField('primary_goal','Primary Goal', r.primary_goal, 'select', {options:['leads','sales','bookings','traffic','awareness','recruitment','retention']}) +
-    rField('secondary_goals','Secondary Goals (comma-separated)', r.secondary_goals, 'text-csv') +
-    rField('lead_channels_today','Current Lead Channels (comma-separated)', r.lead_channels_today, 'text-csv') +
-    rField('sales_cycle_length','Sales Cycle Length', r.sales_cycle_length, 'select', {options:['','same_day','1_7_days','14_30_days','30_plus_days']}) +
-    rField('close_rate_estimate','Estimated Close Rate', r.close_rate_estimate) +
-    _closeRateBenchmarkHint(r) +
-    rField('current_qualification','Current Lead Qualification', r.current_qualification, 'textarea', {rows:2}) +
-    rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
-    rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
-  );
+  var _bizModel = _detectResearchBizModel();
+  var _bizBadge = _bizModel === 'ecommerce' ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#6366f115;color:#6366f1;margin-left:6px">Ecommerce</span>'
+    : _bizModel === 'saas' ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#8b5cf615;color:#8b5cf6;margin-left:6px">SaaS</span>'
+    : '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--green-bg,#10b98115);color:var(--green);margin-left:6px">Lead Gen</span>';
+  if (_bizModel === 'ecommerce') {
+    html += rSec('Sales & Goals' + _bizBadge,
+      rField('primary_goal','Primary Goal', r.primary_goal, 'select', {options:['','sales','revenue','traffic','awareness','retention']}) +
+      rField('secondary_goals','Secondary Goals (comma-separated)', r.secondary_goals, 'text-csv') +
+      rField('lead_channels_today','Current Traffic Sources (comma-separated)', r.lead_channels_today, 'text-csv') +
+      rField('booking_flow_description','Purchase Flow', r.booking_flow_description, 'textarea', {rows:2, placeholder:'How a visitor becomes a customer — checkout steps, shipping, returns policy'})
+    );
+  } else {
+    html += rSec('Sales & Goals' + _bizBadge,
+      rField('primary_goal','Primary Goal', r.primary_goal, 'select', {options:['','leads','sales','bookings','traffic','awareness','recruitment','retention']}) +
+      rField('secondary_goals','Secondary Goals (comma-separated)', r.secondary_goals, 'text-csv') +
+      rField('lead_channels_today','Current Lead Channels (comma-separated)', r.lead_channels_today, 'text-csv') +
+      rField('sales_cycle_length','Sales Cycle Length', r.sales_cycle_length, 'select', {options:['','same_day','1_7_days','14_30_days','30_plus_days']}) +
+      rField('close_rate_estimate','Estimated Close Rate', r.close_rate_estimate) +
+      _closeRateBenchmarkHint(r) +
+      rField('current_qualification','Current Lead Qualification', r.current_qualification, 'textarea', {rows:2}) +
+      rField('top_reasons_leads_dont_close','Top Reasons Leads Do Not Close', r.top_reasons_leads_dont_close, 'textarea', {rows:2}) +
+      rField('booking_flow_description','Booking / Intake Flow', r.booking_flow_description, 'textarea', {rows:2})
+    );
+  }
   html += rSec('Client Success Definition',
     rField('goal_statement','Success Statement (Client Voice)', r.goal_statement, 'textarea', {rows:3}) +
     rField('goal_target','Measurable Target', r.goal_target) +
@@ -1710,13 +1766,37 @@ function renderRAudience(r) {
   );
   // Economics readiness panel
   html += renderEconReadiness(r);
-  html += rSec('Unit Economics',
-    rField('monthly_marketing_budget','Monthly Marketing Budget (e.g. $5,000)', r.monthly_marketing_budget) +
-    rField('average_deal_size','Average Deal Size (e.g. $3,500)', r.average_deal_size) +
-    rField('customer_lifetime_value','Customer Lifetime Value (e.g. $12,000)', r.customer_lifetime_value) +
-    rField('lead_quality_percentage','Lead Quality % (e.g. 40%)', r.lead_quality_percentage) +
-    rField('current_lead_volume','Current Monthly Leads (e.g. 25)', r.current_lead_volume)
-  );
+  if (_bizModel === 'ecommerce') {
+    html += rSec('Unit Economics — Ecommerce',
+      rField('monthly_marketing_budget','Monthly Ad Spend (e.g. $5,000)', r.monthly_marketing_budget) +
+      rField('ecom_aov','Average Order Value / AOV (e.g. $85)', r.ecom_aov || r.average_deal_size) +
+      rField('ecom_monthly_orders','Monthly Orders (e.g. 500)', r.ecom_monthly_orders) +
+      rField('ecom_product_margin','Product Margin % (e.g. 40%)', r.ecom_product_margin) +
+      rField('ecom_target_roas','Target ROAS (e.g. 4x)', r.ecom_target_roas) +
+      rField('ecom_repeat_rate','Repeat Purchase Rate % (e.g. 25%)', r.ecom_repeat_rate) +
+      rField('ecom_customer_lifespan','Avg Customer Lifespan in Months (e.g. 18)', r.ecom_customer_lifespan) +
+      rField('customer_lifetime_value','Customer Lifetime Value (e.g. $850)', r.customer_lifetime_value)
+    );
+  } else if (_bizModel === 'saas') {
+    html += rSec('Unit Economics — SaaS',
+      rField('monthly_marketing_budget','Monthly Marketing Budget (e.g. $10,000)', r.monthly_marketing_budget) +
+      rField('saas_mrr','Monthly Recurring Revenue / MRR (e.g. $50,000)', r.saas_mrr) +
+      rField('saas_acv','Average Contract Value / ACV (e.g. $2,400)', r.saas_acv || r.average_deal_size) +
+      rField('saas_churn_rate','Monthly Churn Rate (e.g. 3%)', r.saas_churn_rate) +
+      rField('saas_trial_cvr','Trial-to-Paid Conversion Rate (e.g. 12%)', r.saas_trial_cvr) +
+      rField('saas_expansion_pct','Expansion Revenue % (e.g. 15%)', r.saas_expansion_pct) +
+      rField('customer_lifetime_value','Customer Lifetime Value (e.g. $12,000)', r.customer_lifetime_value) +
+      rField('current_lead_volume','Monthly Sign-ups / Trial Starts (e.g. 200)', r.current_lead_volume)
+    );
+  } else {
+    html += rSec('Unit Economics',
+      rField('monthly_marketing_budget','Monthly Marketing Budget (e.g. $5,000)', r.monthly_marketing_budget) +
+      rField('average_deal_size','Average Deal Size (e.g. $3,500)', r.average_deal_size) +
+      rField('customer_lifetime_value','Customer Lifetime Value (e.g. $12,000)', r.customer_lifetime_value) +
+      rField('lead_quality_percentage','Lead Quality % (e.g. 40%)', r.lead_quality_percentage) +
+      rField('current_lead_volume','Current Monthly Leads (e.g. 25)', r.current_lead_volume)
+    );
+  }
   html += rSec('Marketing History',
     rField('current_marketing_activities','Current Marketing Activities (one per line)', r.current_marketing_activities, 'textarea-array', {rows:4}) +
     rField('previous_agency_experience','Previous Agency Experience', r.previous_agency_experience, 'select', {options:['','Good experience','Bad experience','No agency','Multiple agencies']})
