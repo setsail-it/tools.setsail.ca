@@ -4335,6 +4335,27 @@ function buildDiagnosticPrompt(num) {
       + 'CURRENT LEAD VOLUME: ' + (r.current_lead_volume || 'UNKNOWN') + '\n'
       + 'SITE PERFORMANCE: ' + JSON.stringify(enrich.current_presence || 'NOT ASSESSED') + '\n'
       + econCtx + '\n'
+      + (function() {
+        // Inject D0 audience context so subtraction considers which segments each activity serves
+        var _d3Aud = '';
+        if (st.audience && st.audience.segments && st.audience.segments.length) {
+          _d3Aud = '\nAUDIENCE SEGMENTS (from D0 — consider which segment each activity serves):\n';
+          st.audience.segments.forEach(function(seg) {
+            _d3Aud += '- ' + seg.name + ' (revenue: ' + (seg.revenue_potential || '?') + ', difficulty: ' + (seg.acquisition_difficulty || '?') + ')\n';
+          });
+        }
+        if (st.audience && st.audience.personas && st.audience.personas.length) {
+          _d3Aud += 'PERSONAS: ' + st.audience.personas.map(function(p) { return p.name || p.archetype || ''; }).join(', ') + '\n';
+        }
+        return _d3Aud;
+      })()
+      + '\nBIAS GUARD: This is an objective audit of the CLIENT\'S current marketing activities. '
+      + 'Do NOT bias recommendations toward channels that Setsail Marketing sells (SEO, PPC, web design, etc.). '
+      + 'An activity should be kept if it serves the client\'s goals effectively, even if Setsail does not offer that service. '
+      + 'Cut/restructure verdicts must be based on ROI and strategic fit, not on whether Setsail can replace the activity.\n\n'
+      + 'PERSONA CONSIDERATION: When evaluating whether to cut or keep an activity, consider which audience segment it serves. '
+      + 'An activity that serves a high-revenue-potential segment should not be cut simply because it is not a core marketing channel. '
+      + 'Activities serving low-priority or parked segments are stronger candidates for removal.\n\n'
       + 'TASK: Audit every current marketing activity. For each one: estimate monthly cost, determine verdict (cut/keep/restructure), explain why. '
       + 'Calculate total recoverable budget. Recommend where to redirect recovered budget (reference channels from the business context). '
       + 'State all assumptions explicitly — distinguish estimated costs from confirmed ones.\n\n'
@@ -6520,6 +6541,14 @@ function renderStrategyTabContent() {
     _mountAudienceSegmentControls();
   }
 
+  // Wire sensitivity edit + scenario selector + subtraction edit
+  if (_sTab === 'economics') {
+    _mountSensitivityControls();
+  }
+  if (_sTab === 'subtraction') {
+    _mountSubtractionControls();
+  }
+
   // Mount interactive Gantt chart (now lives in Channels tab with growth content)
   if (_sTab === 'channels') {
     _mountGantt(S.strategy || {});
@@ -7329,6 +7358,147 @@ function _mountAudienceSegmentControls() {
   }
 }
 
+function _mountSensitivityControls() {
+  var ue = S.strategy && S.strategy.unit_economics;
+  if (!ue || !ue.sensitivity) return;
+
+  // Edit toggle
+  var editBtn = document.getElementById('sensitivity-edit-toggle');
+  if (editBtn) {
+    editBtn.onclick = function() {
+      window._sensitivityEditMode = !window._sensitivityEditMode;
+      if (!window._sensitivityEditMode) {
+        // Save edits from input fields
+        var fields = document.querySelectorAll('.sens-edit-field');
+        if (fields.length) {
+          if (!ue.sensitivity_overrides) ue.sensitivity_overrides = {};
+          fields.forEach(function(inp) {
+            var scen = inp.getAttribute('data-scen');
+            var field = inp.getAttribute('data-field');
+            var val = inp.value.trim();
+            if (!ue.sensitivity_overrides[scen]) ue.sensitivity_overrides[scen] = {};
+            if (val && val !== '') {
+              ue.sensitivity_overrides[scen][field] = isNaN(val) ? val : parseFloat(val);
+              ue.sensitivity_overrides._hasEdits = true;
+            }
+          });
+          scheduleSave();
+        }
+      }
+      renderStrategyTabContent();
+    };
+  }
+
+  // Reset button
+  var resetBtn = document.getElementById('sensitivity-reset-btn');
+  if (resetBtn) {
+    resetBtn.onclick = function() {
+      delete ue.sensitivity_overrides;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
+
+  // Scenario selector
+  var scenSelect = document.getElementById('sensitivity-scenario-select');
+  if (scenSelect) {
+    scenSelect.onchange = function() {
+      ue.strategy_built_on = scenSelect.value;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
+}
+
+function _mountSubtractionControls() {
+  var sub = S.strategy && S.strategy.subtraction;
+  if (!sub) return;
+  var audit = sub.current_activities_audit || [];
+
+  // Edit toggle
+  var editBtn = document.getElementById('subtraction-edit-toggle');
+  if (editBtn) {
+    editBtn.onclick = function() {
+      window._subtractionEditMode = !window._subtractionEditMode;
+      if (!window._subtractionEditMode) {
+        // Save edits from input fields
+        var rows = document.querySelectorAll('.sub-edit-row');
+        rows.forEach(function(row, idx) {
+          if (idx >= audit.length) return;
+          var actInput = row.querySelector('[data-field="activity"]');
+          var costInput = row.querySelector('[data-field="monthly_cost"]');
+          var verdictSelect = row.querySelector('[data-field="verdict"]');
+          var reasonInput = row.querySelector('[data-field="reason"]');
+          if (actInput) audit[idx].activity = actInput.value.trim();
+          if (costInput) audit[idx].monthly_cost = parseFloat(costInput.value) || 0;
+          if (verdictSelect) audit[idx].verdict = verdictSelect.value;
+          if (reasonInput) audit[idx].reason = reasonInput.value.trim();
+        });
+        // Recalculate total recoverable
+        sub.total_recoverable_monthly = audit.reduce(function(sum, a) {
+          return sum + ((a.verdict === 'cut' || a.verdict === 'restructure') ? (parseFloat(a.monthly_cost) || 0) : 0);
+        }, 0);
+        scheduleSave();
+      }
+      renderStrategyTabContent();
+    };
+  }
+
+  // Add button
+  var addBtn = document.getElementById('subtraction-add-btn');
+  if (addBtn) {
+    addBtn.onclick = function() {
+      var name = prompt('Activity name:');
+      if (!name || !name.trim()) return;
+      if (!sub._original_audit) sub._original_audit = JSON.parse(JSON.stringify(audit));
+      audit.push({
+        activity: name.trim(),
+        monthly_cost: 0,
+        monthly_cost_source: 'manual entry',
+        verdict: 'cut',
+        reason: '',
+        confidence: 'medium',
+        _manual: true
+      });
+      sub.current_activities_audit = audit;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
+
+  // Remove buttons
+  var removeBtns = document.querySelectorAll('.sub-remove-btn');
+  removeBtns.forEach(function(btn) {
+    var idx = parseInt(btn.getAttribute('data-idx'), 10);
+    btn.onclick = function() {
+      if (idx < 0 || idx >= audit.length) return;
+      if (!confirm('Remove "' + (audit[idx].activity || 'this activity') + '"?')) return;
+      if (!sub._original_audit) sub._original_audit = JSON.parse(JSON.stringify(audit));
+      audit.splice(idx, 1);
+      sub.current_activities_audit = audit;
+      // Recalculate total recoverable
+      sub.total_recoverable_monthly = audit.reduce(function(sum, a) {
+        return sum + ((a.verdict === 'cut' || a.verdict === 'restructure') ? (parseFloat(a.monthly_cost) || 0) : 0);
+      }, 0);
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  });
+
+  // Reset to AI button
+  var resetBtn = document.getElementById('subtraction-reset-btn');
+  if (resetBtn) {
+    resetBtn.onclick = function() {
+      if (!sub._original_audit) return;
+      if (!confirm('Reset all activities to AI output? Manual edits will be lost.')) return;
+      sub.current_activities_audit = JSON.parse(JSON.stringify(sub._original_audit));
+      delete sub._original_audit;
+      scheduleSave();
+      renderStrategyTabContent();
+    };
+  }
+}
+
 function _renderPositioning(st) {
   var p = st.positioning || {};
   if (!p.core_value_proposition && !p.recommended_positioning_angle && !p.hypotheses_input && !p.hypothesis_evaluations) {
@@ -7940,35 +8110,64 @@ function _renderEconomics(st) {
     }
   }
 
-  // Sensitivity analysis (Correction 7)
+  // Sensitivity analysis with editable overrides + scenario selector
   if (ue.sensitivity && ue.sensitivity.length) {
-    html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Sensitivity Analysis <span data-tip="Three scenarios stress-testing the economics. Conservative uses low-end deal size and close rate. Base uses midpoints. Optimistic uses high-end values. Shows how resilient the business model is to changing conditions." style="cursor:help;opacity:.6;font-size:9px">\u24d8</span></div>';
+    var _sensOverrides = ue.sensitivity_overrides || {};
+    var _sensEditing = !!window._sensitivityEditMode;
+    html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">';
+    html += '<div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Sensitivity Analysis <span data-tip="Three scenarios stress-testing the economics. Edit values to model different assumptions." style="cursor:help;opacity:.6;font-size:9px">\u24d8</span></div>';
+    html += '<div style="display:flex;gap:6px;align-items:center">';
+    html += '<button class="btn btn-ghost sm" id="sensitivity-edit-toggle" style="font-size:10px;padding:2px 8px"><i class="ti ti-pencil" style="font-size:11px"></i> ' + (_sensEditing ? 'Done' : 'Edit') + '</button>';
+    if (_sensOverrides._hasEdits) {
+      html += '<button class="btn btn-ghost sm" id="sensitivity-reset-btn" style="font-size:10px;padding:2px 8px;color:#f56c6c"><i class="ti ti-refresh" style="font-size:11px"></i> Reset</button>';
+    }
+    html += '</div></div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html += '<tr style="border-bottom:1px solid var(--border)">'
       + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Scenario</th>'
       + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="What percentage of qualified leads become paying customers">Close Rate</th>'
       + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Average revenue per closed deal">Avg Deal</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Maximum cost per lead that keeps the business profitable at this scenario. Formula: (Avg Deal x Close Rate x Profit Margin) / Target ROI">Max CPL</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Monthly leads required to hit the revenue target at this close rate and deal size">Leads Needed</th>'
-      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Lifetime Value / Customer Acquisition Cost. Below 3:1 = unsustainable. 3-5:1 = healthy. Above 5:1 = under-investing">LTV:CAC</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Maximum cost per lead that keeps the business profitable">Max CPL</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="Monthly leads required to hit the revenue target">Leads Needed</th>'
+      + '<th style="padding:6px 8px;font-weight:500;color:var(--n2);text-align:right" data-tip="LTV / CAC. Below 3:1 = unsustainable. 3-5:1 = healthy.">LTV:CAC</th>'
       + '</tr>';
-    ue.sensitivity.forEach(function(s) {
-      var rowBg = s.scenario === 'base' ? 'background:var(--panel)' : '';
+    ue.sensitivity.forEach(function(s, si) {
+      var _ov = (_sensOverrides[s.scenario] || {});
+      var _cr = _ov.close_rate || s.close_rate || '';
+      var _ad = _ov.avg_deal !== undefined ? _ov.avg_deal : s.avg_deal;
+      var _mc = _ov.max_cpl !== undefined ? _ov.max_cpl : s.max_cpl;
+      var _ln = _ov.leads_needed !== undefined ? _ov.leads_needed : s.leads_needed;
+      var _lc = _ov.ltv_cac || s.ltv_cac || '';
+      var builtOn = (ue.strategy_built_on || 'base');
+      var isBuilt = builtOn === s.scenario;
+      var rowBg = isBuilt ? 'background:#f0fdf4' : (s.scenario === 'base' ? 'background:var(--panel)' : '');
       var scenLabel = s.scenario === 'conservative' ? '\u26a0\ufe0f Conservative' : s.scenario === 'base' ? '\u2705 Base' : '\ud83d\ude80 Optimistic';
       html += '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">';
-      html += '<td style="padding:6px 8px;font-weight:500">' + scenLabel + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right">' + (s.close_rate || '\u2014') + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right">' + (s.avg_deal ? '$' + Number(s.avg_deal).toLocaleString() : '\u2014') + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right;font-weight:600">' + (s.max_cpl ? '$' + s.max_cpl : '\u2014') + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right">' + (s.leads_needed || '\u2014') + '</td>';
-      html += '<td style="padding:6px 8px;text-align:right">' + (s.ltv_cac || '\u2014') + '</td>';
+      html += '<td style="padding:6px 8px;font-weight:500">' + scenLabel + (isBuilt ? ' <span style="font-size:9px;color:var(--green);font-weight:600">(active)</span>' : '') + '</td>';
+      if (_sensEditing) {
+        html += '<td style="padding:4px 4px;text-align:right"><input type="text" class="sens-edit-field" data-scen="' + s.scenario + '" data-field="close_rate" value="' + esc(_cr + '') + '" style="width:60px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+        html += '<td style="padding:4px 4px;text-align:right"><input type="text" class="sens-edit-field" data-scen="' + s.scenario + '" data-field="avg_deal" value="' + (_ad || '') + '" style="width:70px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+        html += '<td style="padding:4px 4px;text-align:right"><input type="text" class="sens-edit-field" data-scen="' + s.scenario + '" data-field="max_cpl" value="' + (_mc || '') + '" style="width:60px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+        html += '<td style="padding:4px 4px;text-align:right"><input type="text" class="sens-edit-field" data-scen="' + s.scenario + '" data-field="leads_needed" value="' + (_ln || '') + '" style="width:50px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+        html += '<td style="padding:4px 4px;text-align:right"><input type="text" class="sens-edit-field" data-scen="' + s.scenario + '" data-field="ltv_cac" value="' + esc(_lc + '') + '" style="width:60px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+      } else {
+        html += '<td style="padding:6px 8px;text-align:right">' + esc(_cr + '') + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right">' + (_ad ? '$' + Number(_ad).toLocaleString() : '\u2014') + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right;font-weight:600">' + (_mc ? '$' + _mc : '\u2014') + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right">' + (_ln || '\u2014') + '</td>';
+        html += '<td style="padding:6px 8px;text-align:right">' + esc(_lc + '') + '</td>';
+      }
       html += '</tr>';
     });
     html += '</table>';
-    if (ue.strategy_built_on) {
-      html += '<div style="margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--panel);font-size:11px;color:var(--n2)">'
-        + '<strong style="color:var(--dark)">Strategy built on:</strong> ' + esc(ue.strategy_built_on) + '</div>';
-    }
+    // Scenario selector
+    html += '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--panel)">';
+    html += '<strong style="font-size:11px;color:var(--dark)">Strategy built on:</strong>';
+    html += '<select id="sensitivity-scenario-select" style="font-size:11px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white">';
+    ['conservative', 'base', 'optimistic'].forEach(function(sc) {
+      html += '<option value="' + sc + '"' + ((ue.strategy_built_on || 'base') === sc ? ' selected' : '') + '>' + sc.charAt(0).toUpperCase() + sc.slice(1) + '</option>';
+    });
+    html += '</select></div>';
     if (ue.break_even_floor) {
       html += '<div style="margin-top:6px;padding:8px 10px;border-radius:6px;background:#fdf6ec;border:1px solid #e6a23c40;font-size:11px;color:var(--dark)">'
         + '<strong>Break-even floor:</strong> ' + esc(ue.break_even_floor) + '</div>';
@@ -9246,27 +9445,49 @@ function _renderSubtraction(st) {
     html += '</div>';
   }
 
-  // Activities Audit Table
-  html += '<div style="margin-bottom:18px"><div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">Current Activities Audit</div>';
+  // Activities Audit Table — editable
+  var _subEditing = !!window._subtractionEditMode;
+  html += '<div style="margin-bottom:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">';
+  html += '<div style="font-size:11px;font-weight:500;color:var(--n3);text-transform:uppercase;letter-spacing:.06em">Current Activities Audit</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  html += '<button class="btn btn-ghost sm" id="subtraction-edit-toggle" style="font-size:10px;padding:2px 8px"><i class="ti ti-pencil" style="font-size:11px"></i> ' + (_subEditing ? 'Done' : 'Edit') + '</button>';
+  html += '<button class="btn btn-ghost sm" id="subtraction-add-btn" style="font-size:10px;padding:2px 8px"><i class="ti ti-plus" style="font-size:11px"></i> Add</button>';
+  if (sub._original_audit) {
+    html += '<button class="btn btn-ghost sm" id="subtraction-reset-btn" style="font-size:10px;padding:2px 8px;color:#f56c6c"><i class="ti ti-refresh" style="font-size:11px"></i> Reset to AI</button>';
+  }
+  html += '</div></div>';
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
   html += '<tr style="border-bottom:1px solid var(--border)">'
     + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Activity</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Monthly Cost</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Verdict</th>'
     + '<th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Reason</th>'
-    + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Confidence</th></tr>';
+    + (_subEditing ? '<th style="padding:6px 4px;font-weight:500;color:var(--n2);width:30px"></th>' : '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Confidence</th>')
+    + '</tr>';
 
   var verdictColours = { cut: '#f56c6c', keep: 'var(--green)', restructure: '#e6a23c' };
   var verdictIcons = { cut: 'ti-x', keep: 'ti-check', restructure: 'ti-arrows-exchange' };
-  audit.forEach(function(a) {
+  audit.forEach(function(a, ai) {
     var vc = verdictColours[a.verdict] || 'var(--n2)';
-    html += '<tr style="border-bottom:1px solid var(--border)">';
-    html += '<td style="padding:6px 8px;font-weight:500">' + esc(a.activity || '') + '</td>';
-    html += '<td style="padding:6px 4px;text-align:center">' + (a.monthly_cost ? '$' + Number(a.monthly_cost).toLocaleString() : '\u2014') + '</td>';
-    html += '<td style="padding:6px 4px;text-align:center"><span style="color:' + vc + ';font-weight:600;display:inline-flex;align-items:center;gap:3px">'
-      + '<i class="ti ' + (verdictIcons[a.verdict] || '') + '" style="font-size:12px"></i>' + (a.verdict || '').toUpperCase() + '</span></td>';
-    html += '<td style="padding:6px 8px;font-size:11px;color:var(--n3)">' + esc(a.reason || '') + '</td>';
-    html += '<td style="padding:6px 4px;text-align:center;font-size:10px;color:var(--n2)">' + esc(a.confidence || '') + '</td>';
+    html += '<tr class="sub-edit-row" style="border-bottom:1px solid var(--border)">';
+    if (_subEditing) {
+      html += '<td style="padding:4px 4px"><input data-field="activity" value="' + esc(a.activity || '') + '" style="width:100%;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+      html += '<td style="padding:4px 4px"><input data-field="monthly_cost" value="' + (a.monthly_cost || '') + '" style="width:70px;text-align:right;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+      html += '<td style="padding:4px 4px"><select data-field="verdict" style="padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px">';
+      ['cut', 'keep', 'restructure'].forEach(function(v) {
+        html += '<option value="' + v + '"' + (a.verdict === v ? ' selected' : '') + '>' + v.toUpperCase() + '</option>';
+      });
+      html += '</select></td>';
+      html += '<td style="padding:4px 4px"><input data-field="reason" value="' + esc(a.reason || '') + '" style="width:100%;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:11px"></td>';
+      html += '<td style="padding:4px 4px;text-align:center"><button class="btn btn-ghost sm sub-remove-btn" data-idx="' + ai + '" style="padding:2px 4px;color:#f56c6c"><i class="ti ti-trash" style="font-size:12px"></i></button></td>';
+    } else {
+      html += '<td style="padding:6px 8px;font-weight:500">' + esc(a.activity || '') + (a._manual ? ' <span style="font-size:9px;color:var(--acc);background:var(--panel);padding:1px 4px;border-radius:3px">manual</span>' : '') + '</td>';
+      html += '<td style="padding:6px 4px;text-align:center">' + (a.monthly_cost ? '$' + Number(a.monthly_cost).toLocaleString() : '\u2014') + '</td>';
+      html += '<td style="padding:6px 4px;text-align:center"><span style="color:' + vc + ';font-weight:600;display:inline-flex;align-items:center;gap:3px">'
+        + '<i class="ti ' + (verdictIcons[a.verdict] || '') + '" style="font-size:12px"></i>' + (a.verdict || '').toUpperCase() + '</span></td>';
+      html += '<td style="padding:6px 8px;font-size:11px;color:var(--n3)">' + esc(a.reason || '') + '</td>';
+      html += '<td style="padding:6px 4px;text-align:center;font-size:10px;color:var(--n2)">' + esc(a.confidence || '') + '</td>';
+    }
     html += '</tr>';
   });
   html += '</table></div>';
@@ -9532,6 +9753,18 @@ function _renderRisks(st) {
     return '<div class="card" style="color:var(--n2);text-align:center"><p>No risk data yet. Generate strategy to populate.</p></div>';
   }
   var html = '';
+  // Inject break-even floor from D1 Economics as a financial risk card
+  var _ue = st.unit_economics || {};
+  if (_ue.break_even_floor) {
+    html += '<div class="card" style="margin-bottom:14px;padding:12px 16px;border-left:3px solid #e6a23c;background:#fdf6ec">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    html += '<i class="ti ti-alert-triangle" style="color:#e6a23c;font-size:14px"></i>';
+    html += '<div style="font-size:12px;font-weight:600;color:var(--dark)">Financial Break-Even Floor</div>';
+    html += '<span style="font-size:9px;color:var(--n2);background:var(--panel);padding:1px 6px;border-radius:3px">from D1 Economics</span>';
+    html += '</div>';
+    html += '<div style="font-size:12px;line-height:1.5;color:var(--dark)">' + esc(_ue.break_even_floor) + '</div>';
+    html += '</div>';
+  }
   html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:18px">';
   html += '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:6px 8px;font-weight:500;color:var(--n2)">Risk</th>'
     + '<th style="padding:6px 4px;font-weight:500;color:var(--n2)">Severity</th>'
